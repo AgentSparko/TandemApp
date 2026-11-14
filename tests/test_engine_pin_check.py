@@ -124,6 +124,9 @@ def _yaml(path: str) -> dict:
 
 
 def test_the_workflow_runs_the_check():
+    if not os.path.isfile(WF):
+        from scriptmode import Skip
+        raise Skip("no .github/workflows here (a vendored copy leaves it out)")
     wf = _yaml(WF)
     assert set(wf["on"]) == {"workflow_dispatch"}, wf["on"]
     assert wf["permissions"] == {"contents": "read"}
