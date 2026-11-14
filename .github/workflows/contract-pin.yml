@@ -1,0 +1,55 @@
+# The engine contract this tree pinned, checked against the engine's own repository; by hand only.
+# contracts/engine-api-v1/PIN names an engine commit and each folder's tree id there;
+# tests/test_contract_pin.py holds the copy on disk to those ids offline. This job fetches the
+# engine at that commit and runs tools/engine_pin_check.py: the commit exists, the tree ids and
+# versions are the PIN's, and every file of the copy is the engine's.
+# The engine's repository is private: the job needs a read-only token for it in the secret
+# ENGINE_REPO_TOKEN (contents: read on TandemLLM/TandemEngine). Without it the job stops at its
+# first step and says so. The same check runs locally with --engine <a clone>.
+name: contract-pin
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    name: engine contract pin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: The token for the engine's repository
+        env:
+          ENGINE_REPO_TOKEN: ${{ secrets.ENGINE_REPO_TOKEN }}
+        run: |
+          if [ -z "$ENGINE_REPO_TOKEN" ]; then
+            echo "::error::secret ENGINE_REPO_TOKEN is not set (read access to TandemLLM/TandemEngine)"
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: The pinned commit
+        id: pin
+        run: echo "commit=$(python3 tools/engine_pin_check.py --commit)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the engine at that commit
+        uses: actions/checkout@v4.2.2
+        with:
+          repository: TandemLLM/TandemEngine
+          ref: ${{ steps.pin.outputs.commit }}
+          token: ${{ secrets.ENGINE_REPO_TOKEN }}
+          path: _engine
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the copy against the engine
+        run: python3 tools/engine_pin_check.py --engine _engine
