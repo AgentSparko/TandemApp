@@ -377,7 +377,6 @@ class Runner:
         self.breakers: dict[str, Breaker] = {}
         self.stats: dict[str, Stats] = {}
         self.redactor = None            # tests put a failing one here (SEC-16 redaction failure)
-        self.decision_provider = None   # E2's seam: fn(question, ctx) -> answer | None
 
     def stop(self) -> None:
         self.pool.shutdown(wait=False, cancel_futures=True)

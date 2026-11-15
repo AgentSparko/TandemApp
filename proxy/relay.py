@@ -269,7 +269,11 @@ class Relay:
             retry_after = outcome[2]
             hk = getattr(rec, "hk", None)
             if hk is not None:
-                fb = hk.error(last[0], outcome[3], bid, upstream_model, tries, cands[i + 1:])
+                try:
+                    fb = hk.error(last[0], outcome[3], bid, upstream_model, tries, cands[i + 1:])
+                except Exception as exc:                           # noqa: BLE001
+                    fb = None
+                    self.svc.log(f"[hooks] request.error failed: {type(exc).__name__}")
                 if fb is not None and self.svc.table.backend_for(fb[0]) is not None:
                     pick = (fb[0], fb[1] or upstream_model)
                     cands = cands[:i + 1] + [pick] + [c for c in cands[i + 1:] if c != pick]
@@ -324,7 +328,12 @@ class Relay:
         if hk is not None:
             # SRV-849: request.before_engine on the final body; the client's bytes when no hook
             # changed it
-            body2, changed, deny = hk.before_engine(body, backend["id"], upstream_model)
+            try:
+                body2, changed, deny = hk.before_engine(body, backend["id"], upstream_model)
+            except Exception as exc:                               # noqa: BLE001
+                body2, changed, deny = body, False, None
+                self.svc.log(f"[hooks] request.before_engine failed, sent as is: "
+                             f"{type(exc).__name__}")
             if deny is not None:
                 self.svc.refuse(handler, rec, deny)
                 return ("done",)
@@ -522,7 +531,10 @@ class Relay:
                 if token:
                     rec.stamp_token(t_arr, st.kind, st.tool_name, st.tool_chars)
                 if hk is not None and not drop:
-                    hk.see(event)                # SRV-849: stream.chunk's observers
+                    try:
+                        hk.see(event)            # SRV-849: stream.chunk's observers
+                    except Exception:                              # noqa: BLE001
+                        hk = None                # never the stream's failure
                 if hx is None:
                     if not drop:
                         out += event
@@ -662,7 +674,12 @@ class Relay:
         hk = getattr(rec, "hk", None)
         if hk is not None and status == 200 and "json" in ctype:
             # SRV-849: tool_call.detected and response.after_engine before any byte goes out
-            data2, deny, again = hk.answer(data, status, path)
+            try:
+                data2, deny, again = hk.answer(data, status, path)
+            except Exception as exc:                               # noqa: BLE001
+                data2, deny, again = data, None, False
+                self.svc.log(f"[hooks] the answer's stages failed, sent as is: "
+                             f"{type(exc).__name__}")
             if again:
                 return "retry"
             if deny is not None:

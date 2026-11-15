@@ -20,6 +20,8 @@ contract's fake hook server, end to end.
  10  a closed guard that fails refuses with 503, a ledger row says so  test_closed_failure_refuses
  11  with the conductor's harness on: request.before_engine sees the
      harness's final body and its patch goes with the harness's note  test_with_the_harness
+ 12  a hook stage that fails inside the controller never fails the
+     request: the stream and the whole answer go out as they are      test_runner_fault_relays_as_is
 
 Run: python tests/test_hooks_relay.py
 """
@@ -433,6 +435,37 @@ def test_with_the_harness():
             assert main["temperature"] == 0.05
             assert "<runtime-note>" in main["messages"][1]["content"], main["messages"][1]
             assert "<runtime-note>" in seen[0]["messages"][1]["content"]
+    finally:
+        srv.shutdown()
+
+
+def test_runner_fault_relays_as_is():
+    from proxy import hooks as hooks_mod
+    srv, port = fake(models=["fake-a"], key=KEY, cache=False)
+    try:
+        with Proxy(_env(("f1", port))) as px:
+            px.sync()
+            body = _chat("hello FAKE_REASONING", stream=True)
+            plain = px.post("/v1/chat/completions", body)[2]
+            whole = px.post("/v1/chat/completions", _chat("hi"))[2]
+            _hook(px, {"name": "o", "kind": "builtin", "target": "noop", "role": "observer",
+                       "stages": ["stream.chunk", "response.after_engine",
+                                  "request.before_engine"]})
+
+            def boom(*a, **k):
+                raise RuntimeError("inside the runner")
+            saved = {n: getattr(hooks_mod.Turn, n) for n in ("see", "answer", "before_engine")}
+            for n in saved:
+                setattr(hooks_mod.Turn, n, boom)
+            try:
+                st, _, got = px.post("/v1/chat/completions", body)
+                assert st == 200 and got == plain
+                st, _, got = px.post("/v1/chat/completions", _chat("hi"))
+                assert st == 200 and got == whole
+            finally:
+                for n, f in saved.items():
+                    setattr(hooks_mod.Turn, n, f)
+            assert any("[hooks]" in m and "failed" in m for m in px.logs)
     finally:
         srv.shutdown()
 
