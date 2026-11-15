@@ -46,7 +46,9 @@ When SSH fails but the engine serves over HTTP with the token, the SSH finding i
 inference works, control does not.
 
 THE CONTROLLER'S CHECKS (`controller`): chatd (own: running and answering, else chatd_down or
-chatd_silent with Restart; external: QSE_CHAT_URL answers, else chat_unreachable), the sandbox
+chatd_silent with Restart; external: QSE_CHAT_URL answers, else chat_unreachable; off, OPS-288:
+Chat is switched off, so chatd, the sandbox and the memory cgroup are not checked and say
+nothing), the sandbox
 runtime of an own chatd (its socket answers /_ping and holds the image: sandbox_off,
 sandbox_unreachable, sandbox_no_image), the memory cgroup on that host (Linux: the kernel's memory
 controller, and its delegation to the user whose /run/user/<uid> holds the socket:
@@ -336,6 +338,13 @@ class Health:
         """The chatd this controller owns (proxy/appchat.py), or None."""
         return getattr(self.fleet, "chat", None)
 
+    def chat_off(self) -> bool:
+        """Chat is switched off here (OPS-288): `chat_mode` off, else the chat forward's state."""
+        if self.chat_mode is not None:
+            return self.chat_mode == "off"
+        from tandemapp import chat_forward
+        return chat_forward.is_off()
+
     def log(self, msg: str) -> None:
         self.fleet.log(msg)
 
@@ -572,7 +581,12 @@ class Health:
         chat = self.chat
         state_dir = os.path.dirname(self.cfg.path)
         sock = None
-        if chat is not None:
+        off = self.chat_off()
+        if off:
+            chat = None
+            checks.append(_check("chatd", None))
+            checks.append(_check("sandbox", None))
+        elif chat is not None:
             st = chat.status()
             log = chat.log_path
             if not st["running"]:
@@ -635,7 +649,8 @@ class Health:
         checks.append(_check("engines", not setup["needs_setup"],
                              "no_engine" if setup["needs_setup"] else None))
         return {"id": CONTROLLER, "kind": "controller", "alias": "TandemApp",
-                "address": None, "chat": "own" if chat is not None else "external",
+                "address": None,
+                "chat": "off" if off else "own" if chat is not None else "external",
                 "sandbox_socket": sock, "findings": found, "checks": checks}
 
     def _disk(self, path: str) -> tuple[str, int] | None:

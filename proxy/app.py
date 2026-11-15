@@ -27,7 +27,12 @@ serves on one port:
     GET  /v1/fleet/chat, POST /v1/fleet/chat/{start,stop,restart}
                                    chatd on this controller's host with `--chat own`
                                    (proxy/appchat.py, SRV-841); `external` (the default): someone
-                                   else runs it and /v1/chat-app/* goes to QSE_CHAT_URL
+                                   else runs it and /v1/chat-app/* goes to QSE_CHAT_URL; `off`
+                                   (OPS-288): no chatd, every chat route answers 503 chat_off
+    GET  /v1/fleet/app/parts, POST /v1/fleet/app/parts/{chat,conductor}
+                                   what this TandemApp runs, switched from the page (OPS-288,
+                                   proxy/appparts.py): Chat and the conductor on or off, with a
+                                   plan and its confirm; the page's switch wins over the install's
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -639,7 +644,7 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:1] == ["app"]:
             # 6.3b: the page's view follows the reads; the export (the whole registry, a backup)
             # and a plan need write rights, an import that writes pairing's
-            route = ("dashboard" if method == "GET" and parts == ["app"] else
+            route = ("dashboard" if method == "GET" and parts in (["app"], ["app", "parts"]) else
                      "fleet_trust" if parts == ["app", "import", "apply"] else "conductor_write")
         elif len(parts) >= 4 and parts[0] == "nodes" and parts[2] == "setup-confirm":
             # VIS-252: a Setup Guide write's plan, under the rule of the engine's own /v1/setup
@@ -691,12 +696,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed(route):
             return
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
+        if parts[:2] == ["app", "parts"] and STATE.get("parts") is not None:
+            # OPS-288: Chat and the conductor switched from the page (proxy/appparts.py)
+            code, out = STATE["parts"].handle(method, parts, body,
+                                              config_api._who(self, STATE["svc"]))
+            return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
         if parts[:1] == ["chat"]:
             # SRV-841: chatd on this controller's host (`--chat own`, proxy/appchat.py)
             from proxy import appchat
             chat = STATE.get("chat")
             code, out = (chat.handle(method, parts, config_api._who(self, STATE["svc"]))
-                         if chat is not None else appchat.handle_external(method, parts))
+                         if chat is not None else appchat.handle_off(method, parts)
+                         if chat_forward.is_off() else appchat.handle_external(method, parts))
             return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
         code, out = STATE["fleet"].handle(method, path, q, body,
                                           who=config_api._who(self, STATE["svc"]))
@@ -1158,7 +1169,10 @@ def build(args, env=None) -> Service:
     STATE.update(version=version(), ledger=led, auth=a, registry=registry, live=live,
                  dashboard_dir=args.dashboard_dir, verbose=args.verbose,
                  args={k: v for k, v in vars(args).items()})
-    cond, base = conductor_of(args, led, env)
+    from proxy import appparts
+    state_dir = os.path.dirname(cfg.path)
+    cond, base = conductor_of(args, led, env, root=appparts.conductor_root(
+        cfg, getattr(args, "conductor_config", "off"), state_dir) or "off")
     svc = Service(cfg, ledger=led, live=live, auth=a, registry=registry,
                   engine_version=STATE["version"], log=lambda m: print(m, flush=True),
                   conductor=cond, monitor_base=base)
@@ -1175,6 +1189,10 @@ def build(args, env=None) -> Service:
         store=fleet_store(args, cfg))
     STATE["fleet"].local_node = env.get("TANDEM_LOCAL_NODE", "on") != "off"
     chat_of(args, cfg, env)
+    STATE["parts"] = appparts.Parts(cfg, install_chat=getattr(args, "chat", None) or "external",
+                                    install_conductor=getattr(args, "conductor_config", "off"),
+                                    state_dir=state_dir, app=AppSide(args, cfg, env, led),
+                                    log=lambda m: print(m, flush=True))
     # the sampler: it sleeps while nothing is in flight (the live stream and the parallel view's
     # once-a-second sample; before 0.3.32 the standalone proxy never started it)
     live.start()
@@ -1191,15 +1209,25 @@ def gateway_url(host: str, port: int) -> str:
 def chat_of(args, cfg, env):
     """SRV-841: who runs chatd (`--chat`, TANDEM_CHAT). `external` (the default): someone else,
     the forward goes to QSE_CHAT_URL as before. `own`: this controller, on its own host, with its
-    own env file (proxy/appchat.py); the forward goes to that chatd."""
-    from proxy import appchat
+    own env file (proxy/appchat.py); the forward goes to that chatd. `off` (OPS-288): no chatd,
+    every chat route answers 503 chat_off. The page's switch (proxy/appparts.py) wins over the
+    install's mode once it was used: on runs an `external` install's forward, else an own chatd."""
+    from proxy import appchat, appparts
     mode = getattr(args, "chat", None) or "external"
     if mode not in appchat.MODES:
         raise SystemExit(f"--chat is one of {', '.join(appchat.MODES)}")
     STATE["chat"] = None
     chat_forward.configure()
-    if mode != "own":
+    on = appparts.chat_on(cfg, mode)
+    chat_forward.switch_off(not on)
+    if not on or appparts.chat_runner(mode) != "own":
         return None
+    return own_chat(args, cfg, env)
+
+
+def own_chat(args, cfg, env):
+    """This controller's chatd (proxy/appchat.py), the forward to it, and the fleet's view of it."""
+    from proxy import appchat
     try:
         chat = appchat.AppChat.load(os.path.dirname(cfg.path), env=env,
                                     log=lambda m: print(m, flush=True))
@@ -1220,6 +1248,92 @@ def chat_of(args, cfg, env):
     if STATE.get("fleet") is not None:
         STATE["fleet"].chat = chat              # SRV-835: the health page checks it
     return chat
+
+
+class AppSide:
+    """The controller's side of the page's switches (proxy/appparts.py `Parts`)."""
+
+    def __init__(self, args, cfg, env, led):
+        self.args, self.cfg, self.env, self.led = args, cfg, env, led
+        self.state_dir = os.path.dirname(cfg.path)
+
+    def chat_status(self) -> dict:
+        from proxy import appchat
+        if (getattr(self.args, "chat", None) or "external") == "external":
+            return {"running": None, "url": self.env.get("QSE_CHAT_URL") or appchat.DEFAULT_URL,
+                    "data": None, "sandbox": None, "sandbox_path": None}
+        chat = STATE.get("chat")
+        try:
+            c = chat or appchat.AppChat.load(self.state_dir, env=self.env, log=lambda m: None)
+        except ValueError:
+            return {"running": False, "url": None, "data": None, "sandbox": "none",
+                    "sandbox_path": None}
+        if (c.cfg.get("QSE_SANDBOX_BACKEND") or "") == "kubernetes":
+            sb, path = "kubernetes", None
+        else:
+            path = c.cfg.get("QSE_SANDBOX_SOCKET") or "/var/run/docker.sock"
+            sb = "socket" if os.path.exists(path) else "none"
+        return {"running": bool(chat is not None and c.status()["running"]), "url": c.url,
+                "data": c.data, "sandbox": sb, "sandbox_path": path}
+
+    def set_chat(self, on: bool, runner: str, who: str) -> str:
+        from proxy import appchat
+        if runner == "external":
+            chat_forward.configure()
+            chat_forward.switch_off(not on)
+            url = self.env.get("QSE_CHAT_URL") or appchat.DEFAULT_URL
+            return f"forwarding to {url}" if on else f"no longer forwarding to {url}"
+        if on:
+            chat = STATE.get("chat")
+            if chat is None:
+                from proxy.appparts import PartsError
+                try:
+                    chat = own_chat(self.args, self.cfg, self.env)
+                except SystemExit as exc:
+                    raise PartsError(409, "chat_config", f"chatd's env file: {exc}") from None
+                port = getattr(self.args, "port", 0) or 0
+                if port and not chat.gateway:
+                    chat.gateway = gateway_url(getattr(self.args, "host", "127.0.0.1"), port)
+            chat_forward.switch_off(False)
+            rc, msg = chat.run_action("start")
+            chat.start_watcher()
+            return f"chatd {msg}" if rc == 0 else \
+                f"chatd did not start ({msg}); its watcher tries again"
+        chat = STATE.get("chat")
+        said = "chatd was not this controller's"
+        if chat is not None:
+            _, msg = chat.run_action("stop")
+            chat.close()
+            said = f"chatd {msg}"
+        STATE["chat"] = None
+        if STATE.get("fleet") is not None:
+            STATE["fleet"].chat = None
+        chat_forward.configure()
+        chat_forward.switch_off(True)
+        return said
+
+    def set_conductor(self, root: str | None, who: str) -> str:
+        svc = STATE["svc"]
+        if svc.harness is not None:
+            svc.harness.stop()
+            svc.harness = None
+        STATE.update(conductor=None, session_tokens=None, laya=None)
+        if root is None:
+            return "off: every backend is relayed as it is"
+        cond, base = conductor_of(self.args, self.led, self.env, root=root)
+        from proxy.harness import Harness
+        svc.monitor_base = base
+        svc.harness = Harness(svc, cond, base, log=svc.log)
+        return f"on, its documents in {root}"
+
+    def backends(self) -> list[dict]:
+        return [dict(b, env=bool(self.cfg.backend_locks(b["id"]))) for b in self.cfg.backends()]
+
+    def engines(self) -> list[dict]:
+        fleet = STATE.get("fleet")
+        if fleet is None:
+            return []
+        return fleet.engines()._ssh_rows()
 
 
 def fleet_store(args, cfg):
@@ -1250,12 +1364,14 @@ def node_agent(env):
                                 logbuf=logbuf.BUFFER)
 
 
-def conductor_of(args, led, env) -> tuple:
-    """The standalone proxy's conductor (P4): its documents under `--conductor-config`, its
-    journal in the usage ledger's file (as the engine's), the session tokens beside the
-    documents, the monitor's policy file (`ops/supervisor.yaml`, when PyYAML is there), and
-    Laya when the `decider` role names a Jev endpoint. (None, None) with `off`."""
-    root = getattr(args, "conductor_config", "off") or "off"
+def conductor_of(args, led, env, root: str | None = None) -> tuple:
+    """The standalone proxy's conductor (P4): its documents under `--conductor-config` (or
+    `root`: the page's switch, proxy/appparts.py), its journal in the usage ledger's file (as the
+    engine's), the session tokens beside the documents, the monitor's policy file
+    (`ops/supervisor.yaml`, when PyYAML is there), and Laya when the `decider` role names a Jev
+    endpoint. (None, None) with `off`."""
+    if root is None:
+        root = getattr(args, "conductor_config", "off") or "off"
     STATE.update(conductor=None, session_tokens=None, laya=None)
     if root == "off":
         return None, None

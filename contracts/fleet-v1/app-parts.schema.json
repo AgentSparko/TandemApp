@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/app-parts.schema.json",
+  "title": "GET /v1/fleet/app/parts (200), and the answer of an applied POST /v1/fleet/app/parts/{chat|conductor}: what this TandemApp runs (OPS-288, proxy/appparts.py). Chat and the conductor on or off, whether the page switched them (else the install's TANDEM_CHAT and TANDEM_CONDUCTOR decide), an own chatd's sandbox runtime (none: chat runs without its sandbox tools), the engine hosts paired over SSH (each one's own mode is the engine's setting), the backends, and where the MCP servers are (chatd's, while Chat is on)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "chat": {
+      "type": "object",
+      "properties": {
+        "on": {
+          "type": "boolean"
+        },
+        "switched": {
+          "type": "boolean"
+        },
+        "install": {
+          "type": "string",
+          "enum": [
+            "off",
+            "external",
+            "own"
+          ]
+        },
+        "runner": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "own",
+            "external",
+            null
+          ]
+        },
+        "running": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "sandbox": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "socket",
+            "none",
+            "kubernetes",
+            null
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "on",
+        "switched",
+        "install",
+        "runner",
+        "running",
+        "sandbox",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "conductor": {
+      "type": "object",
+      "properties": {
+        "on": {
+          "type": "boolean"
+        },
+        "switched": {
+          "type": "boolean"
+        },
+        "install": {
+          "type": "string",
+          "enum": [
+            "off",
+            "on"
+          ]
+        },
+        "dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "on",
+        "switched",
+        "install",
+        "dir"
+      ],
+      "additionalProperties": false
+    },
+    "engines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "backends": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "env": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "enabled",
+          "env"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "where": {
+          "const": "chat"
+        },
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "where",
+        "available"
+      ],
+      "additionalProperties": false
+    },
+    "done": {
+      "type": "object",
+      "properties": {
+        "part": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "conductor"
+          ]
+        },
+        "on": {
+          "type": "boolean"
+        },
+        "said": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "part",
+        "on",
+        "said"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contract_version",
+    "chat",
+    "conductor",
+    "engines",
+    "backends",
+    "mcp"
+  ],
+  "additionalProperties": false
+}

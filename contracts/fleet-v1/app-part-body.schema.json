@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/app-part-body.schema.json",
+  "title": "The body of POST /v1/fleet/app/parts/{chat|conductor}: {on} for the plan, {on, confirm} with the plan's confirm to switch",
+  "type": "object",
+  "properties": {
+    "on": {
+      "type": "boolean"
+    },
+    "confirm": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "on"
+  ],
+  "additionalProperties": false
+}

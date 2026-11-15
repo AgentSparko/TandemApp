@@ -19,6 +19,8 @@ module is the engine server's side of that: the auth check, then a byte forward.
     websocket   `Upgrade: websocket` gets chatd's 101 and the two sockets are spliced, one thread
                 each way, until either side closes
     chatd down  502 `chat_unavailable` with a JSON body; the engine's other routes are untouched
+    chat off    503 `chat_off` for every chat route while a controller's Chat is switched off
+                (`switch_off`, OPS-288: proxy/appparts.py); nothing is forwarded
 
 The key: QSE_CHAT_FORWARD_KEY (secrets.env, ops/make-secrets.sh), else the file chatd writes on its
 first start, `<QSE_CHAT_DATA or ~/.tandemllm/chat>/forward.key`. chatd: QSE_CHAT_URL, default
@@ -50,6 +52,22 @@ _DROP = {"connection", "keep-alive", "proxy-connection", "proxy-authorization", 
 
 # SRV-841: what `configure` set (a controller's own chatd); None reads the environment
 _OWN: dict = {}
+# OPS-288: a controller whose Chat is off answers every chat route with this message (503)
+_OFF: dict = {}
+OFF_MESSAGE = ("Chat is off on this TandemApp. An admin switches it on in Settings, App, "
+               "What runs here.")
+
+
+def switch_off(off: bool, message: str | None = None) -> None:
+    """Chat off (every chat route answers 503 `chat_off`) or on again (the forward as
+    `configure` set it)."""
+    _OFF.clear()
+    if off:
+        _OFF["message"] = message or OFF_MESSAGE
+
+
+def is_off() -> bool:
+    return bool(_OFF)
 
 
 def configure(url: str | None = None, data: str | None = None, key=None) -> None:
@@ -117,6 +135,11 @@ def route(handler, method: str, auth, *, peer: str | None = None) -> bool:
     if not wanted(path):
         return False
     path = path.rstrip("/")
+    if _OFF:
+        if method not in ("GET", "HEAD"):
+            handler.close_connection = True          # its body is not read
+        _json(handler, 503, "chat_off", _OFF["message"])
+        return True
     password_set = bool(auth is not None and auth.password_set)
     peer = peer if peer is not None else (handler.client_address or ("",))[0]
     signed_in = (not password_set or auth.admin_any(handler.headers)

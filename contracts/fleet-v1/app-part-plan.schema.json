@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/app-part-plan.schema.json",
+  "title": "POST /v1/fleet/app/parts/{chat|conductor} {on} without a confirm (200): what the switch changes, in words, and its confirm; nothing changed. `changed` false: the part is in that state already (no confirm)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "part": {
+      "type": "string",
+      "enum": [
+        "chat",
+        "conductor"
+      ]
+    },
+    "on": {
+      "type": "boolean"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "needs_confirm": {
+      "type": "boolean"
+    },
+    "confirm": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "contract_version",
+    "part",
+    "on",
+    "changed",
+    "needs_confirm",
+    "confirm",
+    "changes"
+  ],
+  "additionalProperties": false
+}

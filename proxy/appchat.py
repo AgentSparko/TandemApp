@@ -6,10 +6,12 @@
     chat.act(action, who)        start | stop | restart: a job (POST /v1/fleet/chat/{action})
     chat.tick()                  the watcher, once a minute (start_watcher, close)
 
-WHO RUNS CHATD. `tandem-app serve --chat external` (TANDEM_CHAT, the default) leaves it to someone
-else and only forwards /v1/chat-app/* to QSE_CHAT_URL, as before: TandemNode on an engine box
-(`tandem-node serve --chat on`, proxy/nodechat.py), an engine's own launchers before engine API 1.7,
-or a unit. `--chat own` makes it this controller's: started, stopped and watched here, on a host
+WHO RUNS CHATD. `tandem-app serve --chat off` (OPS-288, what every new install writes): nobody,
+the Chat tab says Chat is off until an admin switches it on in Settings (proxy/appparts.py, which
+then makes it this controller's). `--chat external` (TANDEM_CHAT's default when unset) leaves
+it to someone else and only forwards /v1/chat-app/* to QSE_CHAT_URL, as before: TandemNode on an
+engine box (`tandem-node serve --chat on`, proxy/nodechat.py), an engine's own launchers before
+engine API 1.7, or a unit. `--chat own` makes it this controller's: started, stopped and watched here, on a host
 that may run no engine at all, and the forward goes to this chatd. One owner at a time: a box whose
 TandemNode or engine runs chatd keeps `external`.
 
@@ -80,7 +82,7 @@ ENGINE_USER = "chatd"
 ENGINE_KEY_FILE = "engine.key"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODES = ("external", "own")
+MODES = ("off", "external", "own")
 DEFAULT_URL = "http://127.0.0.1:8016"
 START_WAIT_S = 10.0
 STOP_WAIT_S = 30.0
@@ -539,6 +541,16 @@ def external_view(env=None) -> dict:
     """GET /v1/fleet/chat while chatd is someone else's (`--chat external`)."""
     env = os.environ if env is None else env
     return {"own": False, "owner": "external", "url": env.get("QSE_CHAT_URL") or DEFAULT_URL}
+
+
+def handle_off(method: str, parts: list[str]) -> tuple[int, dict]:
+    """GET /v1/fleet/chat and its verbs while Chat is off (OPS-288)."""
+    if method == "GET" and parts == ["chat"]:
+        return 200, {"own": False, "owner": "off"}
+    if method == "POST" and len(parts) == 2 and parts[0] == "chat":
+        return 409, ChatError(409, "chat_off", "Chat is off on this TandemApp: switch it on in "
+                                               "Settings, App, What runs here").body()
+    return 404, ChatError(404, "not_found", f"no route {method} /v1/fleet/{'/'.join(parts)}").body()
 
 
 def handle_external(method: str, parts: list[str], env=None) -> tuple[int, dict]:

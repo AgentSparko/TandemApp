@@ -219,7 +219,8 @@
       "type": "string",
       "enum": [
         "own",
-        "external"
+        "external",
+        "off"
       ]
     },
     "sandbox_socket": {
