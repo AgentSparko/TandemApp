@@ -2,6 +2,13 @@
 with the forward key, an SSE reader, and the client's reducer (dashboard/src/chat/store.ts) ported
 for the event types phase 1 sends, so a test can check snapshot + events = the stored message.
 
+THE GATEWAY MODE (SRV-843: chatd off the engine host). With `GATEWAY.on` (tests/
+test_chatd_via_gateway.py sets it) each Chat's engine is a controller in this process
+(tests/proxy_util.py) at `<its URL>/chat-engine`, as proxy/appchat.py gives chatd, and the fake
+engine is that controller's TandemLLM backend on another host: an engine host over SSH whose HTTP
+token the fake wants on every route but /health (engine API 1.9), the loopback rule patched so
+127.0.0.1 counts as that host. chatd never reaches the fake but through the gateway.
+
 CPU only, standard library only; nothing here touches a real engine.
 """
 
@@ -42,6 +49,47 @@ from chatd.service import Service  # noqa: E402
 KEY = "k" * 64
 
 
+class GATEWAY:
+    """The gateway mode's switch and its fixed values (THE GATEWAY MODE above)."""
+    on = False
+    token = "engine-http-token-" + "0123456789abcdef" * 3
+    host_id = "eh-chat-gw"
+
+
+class Gateway:
+    """A controller in this process in front of one fake engine on "another host"."""
+
+    def __init__(self, fake_srv, fake_port: int):
+        from proxy import config as cfgm
+        from proxy import enginectl
+        from proxy_util import Proxy
+        self._loopback = cfgm.is_loopback_host
+        cfgm.is_loopback_host = lambda h: False
+        self.fake_srv = fake_srv
+        self._key = fake_srv.fake.key
+        fake_srv.fake.key = GATEWAY.token              # the engine wants its HTTP token
+        self.px = Proxy(env={"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
+                             "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{fake_port}/v1"})
+        self.px.__enter__()
+        cfg = self.px.svc.cfg
+        t = enginectl.ssh_trust(host="127.0.0.1", user="tandem", key_id="tandemapp-0123456789",
+                                host_key_type="ssh-ed25519", host_key="SHA256:" + "A" * 43)
+        cfg.add_node({"id": GATEWAY.host_id, "alias": "chat-engine-host", "transport": "ssh",
+                      "endpoint": "ssh://tandem@127.0.0.1:22", "address": "127.0.0.1",
+                      "trust": t})
+        cfg.put_engine_token(GATEWAY.host_id, GATEWAY.token)
+        self.px.sync()
+        self.url = f"http://127.0.0.1:{self.px.port}/chat-engine"
+
+    def close(self) -> None:
+        from proxy import config as cfgm
+        try:
+            self.px.__exit__(None, None, None)
+        finally:
+            cfgm.is_loopback_host = self._loopback
+            self.fake_srv.fake.key = self._key
+
+
 class Chat:
     """A chatd (service + HTTP) on 127.0.0.1:<free port>, the fake engine behind it."""
 
@@ -55,6 +103,10 @@ class Chat:
         else:
             self.fake_srv, self.fake_port = None, None
         self.engine_url = engine_url or f"http://127.0.0.1:{self.fake_port}"
+        self.gateway = None
+        if GATEWAY.on and engine_url is None:
+            self.gateway = Gateway(self.fake_srv, self.fake_port)
+            self.engine_url = self.gateway.url
         self.owned_data = data is None
         self.data = data or tempfile.mkdtemp(prefix="chatd-test-")
         self.lines: list[str] = []
@@ -78,6 +130,8 @@ class Chat:
         self.srv.shutdown()
         self.svc.shutdown()
         self.srv.server_close()
+        if self.gateway is not None:
+            self.gateway.close()
         if self.owned_fake and self.fake_srv is not None:
             self.fake_srv.shutdown()
         if self.owned_data and not keep_data:
