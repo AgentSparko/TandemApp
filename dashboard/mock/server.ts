@@ -20,6 +20,10 @@
 // else TANDEM_MOCK_FLEET, else fleet4. What macOS answers the controller's first discovery browse
 // (SRV-727): `?lan=deny` (or `allow`) on the page URL (a cookie), else POST /__mock/fleet {"lan"},
 // else allow. Discovery, its GET included, wants the token or a session like the other writes.
+// Adding an engine host (/v1/fleet/engines/*, mock/enginehosts.ts, VIS-278) follows the same `lan`
+// answer; POST /__mock/fleet {"engineFail": "<route>:<code>"} makes one of its routes answer that
+// code until {"engineFail": "<route>:"} clears it, and {"engineJob": "fail"} stops the next model
+// install in its download.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.
 
@@ -43,6 +47,7 @@ import { MockBackends } from './backends.ts';
 import { longSession } from './memory.ts';
 import { MockSetup } from './setup.ts';
 import { isFleetScenario, MockFleet, type FleetScenario } from './fleet.ts';
+import { FAIL_ROUTES, type FailRoute } from './enginehosts.ts';
 
 type Next = (err?: unknown) => void;
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: Next) => void;
@@ -474,6 +479,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
     const f = fleets.get(name)!;
     f.extern = (now, taken) => backends.members(now, taken);
     f.discovery.lanMode = c.qse_lan === 'deny' || c.qse_lan === 'allow' ? c.qse_lan : lanDefault;
+    f.engines.lanMode = f.discovery.lanMode;
     return f;
   };
   function proxied(r: Record<string, unknown>): void {
@@ -704,6 +710,20 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         if (b.scenario) fleetDefault = b.scenario;
         if (b.lan) lanDefault = b.lan;
         if (b.reset) fleets.clear();
+        if (b.engineFail != null || b.engineJob != null) {
+          // the engine host routes' switches, on the fleet this request reaches
+          const eng = fleetFor(req).engines;
+          if (b.engineJob != null) eng.failJob = b.engineJob === 'fail';
+          if (b.engineFail != null) {
+            const [route, code] = String(b.engineFail).split(':');
+            if (!(FAIL_ROUTES as readonly string[]).includes(route)) return error(res, 400, 'bad_request', `engineFail is <route>:<code>, a route of ${FAIL_ROUTES.join(', ')}`);
+            try {
+              eng.fail(route as FailRoute, code || null);
+            } catch (e) {
+              return error(res, 400, 'bad_request', (e as Error).message);
+            }
+          }
+        }
         return json(res, 200, { scenario: fleetDefault, lan: lanDefault, started: [...fleets.keys()] });
       }
       if (path === '/__mock/backends' && req.method === 'POST') {
@@ -954,7 +974,8 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
           return error(res, 400, 'bad_request', 'the body is not JSON');
         }
         // SRV-731: the placement planner is a read in a POST
-        const write = path.startsWith('/v1/fleet/discovery') || (req.method !== 'GET' && !(req.method === 'PUT' && path.startsWith('/v1/fleet/layouts/')) && !(req.method === 'POST' && path === '/v1/fleet/placement'));
+        // the LAN's engines are read with a write's rights too, as discovery's list is
+        const write = path.startsWith('/v1/fleet/discovery') || path === '/v1/fleet/engines/discover' || (req.method !== 'GET' && !(req.method === 'PUT' && path.startsWith('/v1/fleet/layouts/')) && !(req.method === 'POST' && path === '/v1/fleet/placement'));
         // 6.3b: the export (the whole registry) needs write rights; the App page's own view is a read
         const appWrite = write || path === '/v1/fleet/app/export';
         if (ctlPassword() && appWrite && !authed(req)) return error(res, 401, 'unauthorized', 'a session or an admin token is required');

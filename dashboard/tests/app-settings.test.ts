@@ -13,7 +13,8 @@ import type { AppPermission, AppView, FleetConfigFile, ImportPlan, ImportResult,
 import { applyLabel, browserNotify, exportName, importGroups, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine } from '../src/lib/app-settings.ts';
 
 const FDIR = join(__dirname, '..', '..', 'contracts', 'fleet-v1');
-const ajv = new Ajv2020({ allErrors: true, strict: true });
+// allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
+const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
 const schema: Record<string, ReturnType<typeof ajv.compile>> = {};
 for (const f of readdirSync(FDIR)) if (f.endsWith('.schema.json')) schema[f.replace('.schema.json', '')] = ajv.compile(JSON.parse(readFileSync(join(FDIR, f), 'utf8')));
 function valid<T>(name: string, data: T): T {

@@ -1,0 +1,284 @@
+/* The setup wizard and Settings → Add engine (VIS-278; SRV-827, SRV-829, SRV-831, SRV-833). It
+   stands on the Add Spark wizard's stylesheet (wizard.css: the stepper, the code field, the progress
+   bar, the pills) and adds what is its own: a finding's card, a fingerprint to compare, and the
+   slip, the engine host's last printed lines as rows the page fills in. Phone: every grid stacks,
+   the buttons take the row. */
+
+/* ---- shared: a finding, a fingerprint, the slip ---------------------------------------------- */
+qse-engine-wizard,
+qse-engine-find,
+qse-engine-pair,
+qse-engine-connect,
+qse-engine-after,
+.eh-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.eh-wrap {
+  overflow-wrap: anywhere;
+}
+.eh-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cobalt-hi);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.eh-link:hover {
+  text-decoration: underline;
+}
+.eh-h3 {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.eh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 10px;
+}
+.eh-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.eh-copy .icon {
+  width: 16px;
+  height: 16px;
+}
+/* a command wraps where the page is narrow: a phone shows all of it */
+.eh-cmd > code {
+  overflow-wrap: anywhere;
+}
+.eh-cmd > .btn {
+  vertical-align: middle;
+}
+.eh-finding {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.eh-finding.is-err {
+  border-color: color-mix(in srgb, var(--err) 55%, transparent);
+  background: var(--err-wash);
+}
+.eh-finding.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: var(--warn-wash);
+}
+.eh-finding.is-info {
+  border-color: var(--cobalt-dim);
+  background: var(--cobalt-wash);
+}
+.eh-finding-g {
+  display: flex;
+  padding-top: 1px;
+}
+.is-err > .eh-finding-g {
+  color: var(--err);
+}
+.is-warn > .eh-finding-g {
+  color: var(--warn-ink);
+}
+.is-info > .eh-finding-g {
+  color: var(--cobalt-hi);
+}
+.eh-finding-b {
+  min-width: 0;
+}
+.eh-finding-m {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.eh-finding-f {
+  margin-top: 2px;
+  color: var(--ink);
+  opacity: 0.86;
+}
+.eh-finding code {
+  background: var(--bg-inset);
+}
+.eh-facts {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+.eh-facts > div {
+  display: grid;
+  grid-template-columns: 10.5em minmax(0, 1fr);
+  gap: 10px;
+}
+.eh-facts dt {
+  color: var(--ink-2);
+}
+.eh-facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.eh-fp {
+  min-width: 0;
+}
+.eh-fp-v {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 6px 7px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+}
+.eh-fp-t {
+  color: var(--ink-2);
+}
+.eh-fp[data-compare='same'] .eh-fp-v {
+  border-color: var(--ok);
+  box-shadow: inset 0 0 0 1px var(--ok-wash);
+}
+.eh-fp[data-compare='different'] .eh-fp-v {
+  border-color: var(--err);
+  box-shadow: inset 0 0 0 1px var(--err-wash);
+}
+.eh-fp-paste {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-fp-paste input {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.eh-fp-paste + p {
+  margin-top: 5px;
+}
+/* inside the slip the values are set in the fixed-width face; the words around them are not */
+.eh-fp-paste > span,
+.eh-fp > p,
+.eh-slip-v .btn {
+  font-family: var(--font-ui);
+}
+
+/* the slip: a terminal's last lines, the same three on both screens */
+.eh-slip {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+.eh-slip-h {
+  display: flex;
+  gap: 9px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  font: var(--fs-xs) / 1.5 var(--font-mono);
+}
+.eh-slip-p {
+  color: var(--orange);
+  font-weight: 700;
+}
+.eh-slip-rows {
+  margin: 0;
+}
+.eh-slip-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 37em) minmax(0, 1fr);
+  gap: 6px 18px;
+  align-items: start;
+  padding: 11px 14px;
+}
+.eh-slip-row + .eh-slip-row {
+  border-top: 1px solid var(--rule);
+}
+.eh-slip-row > dt {
+  padding-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-slip-row.is-have > dt::before {
+  content: '✓ ';
+  color: var(--ok);
+}
+.eh-slip-v {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+}
+.eh-slip-hint {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+/* the row the page waits for: orange is what is live right now */
+.eh-slip-row.is-now {
+  background: var(--cobalt-wash);
+}
+.eh-slip-row.is-now::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--orange);
+}
+.eh-ghost {
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 760px) {
+  .eh-slip-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .eh-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .eh-foot {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .eh-foot .btn {
+    justify-content: center;
+  }
+}
+@media (max-width: 640px) {
+  .eh-actions > .btn-primary {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
