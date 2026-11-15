@@ -29,8 +29,11 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
 5. Chat: chatd is {{ if eq .Values.chat.mode "own" }}this pod's own ({{ .Values.persistence.mountPath }}/{{ .Values.chat.dataDir }}){{ else }}external (another host runs it){{ end }}.
    Sandboxes: {{ .Values.sandbox.mode }}.
 {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
-   sandbox.mode kubernetes is PLANNED: its Role and NetworkPolicy are in place, but chatd of this
-   release does not make sandbox pods yet, so the sandbox tools stay off.
+   Each chat's sandbox is a pod in this namespace ({{ .Values.sandbox.kubernetes.image }}, pull
+   policy {{ .Values.sandbox.kubernetes.imagePullPolicy }}). Put the image on every node first:
+     bash ops/sandbox/build-k8s.sh {{ .Release.Namespace }} <node> <user@node>
+   chatd checks at start that the cluster enforces the sandbox NetworkPolicy; its log says
+   "the cluster check passed", or why there are no sandboxes.
 {{- else if eq (toString .Values.sandbox.mode) "off" }}
    The chats' sandbox tools (files, shell, browser) are off; the Chat tab says so.
 {{- end }}

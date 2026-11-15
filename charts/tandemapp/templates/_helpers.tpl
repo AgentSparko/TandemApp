@@ -22,6 +22,11 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
+{{/* the labels of this release's sandbox pods (chatd/k8s.py puts them on each pod) */}}
+{{- define "tandemapp.sandboxLabels" -}}
+{{- toYaml (merge (dict "app.kubernetes.io/instance" .Release.Name) .Values.sandbox.kubernetes.podLabels) -}}
+{{- end -}}
+
 {{- define "tandemapp.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "tandemapp.fullname" .) .Values.serviceAccount.name -}}
@@ -69,6 +74,20 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- if not (has (toString .Values.sandbox.mode) (list "off" "podman-socket" "kubernetes")) -}}
 {{- fail "sandbox.mode is off, podman-socket or kubernetes" -}}
+{{- end -}}
+{{- if eq (toString .Values.sandbox.mode) "kubernetes" -}}
+{{- if ne .Values.chat.mode "own" -}}
+{{- fail "sandbox.mode kubernetes needs chat.mode own (chatd in this pod makes the sandbox pods)" -}}
+{{- end -}}
+{{- if not .Values.sandbox.kubernetes.image -}}
+{{- fail "sandbox.mode kubernetes needs sandbox.kubernetes.image" -}}
+{{- end -}}
+{{- if hasKey .Values.sandbox.kubernetes.podLabels "app.kubernetes.io/instance" -}}
+{{- fail "sandbox.kubernetes.podLabels: app.kubernetes.io/instance is set by the chart" -}}
+{{- end -}}
+{{- if eq (int .Values.sandbox.kubernetes.egressPort) (int .Values.controller.port) -}}
+{{- fail "sandbox.kubernetes.egressPort must differ from controller.port" -}}
+{{- end -}}
 {{- end -}}
 {{- if eq (toString .Values.sandbox.mode) "podman-socket" -}}
 {{- if not .Values.sandbox.podmanSocket.hostDir -}}

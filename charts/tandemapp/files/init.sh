@@ -60,6 +60,10 @@ mv "$ROOT/ca/bundle.pem.next" "$ROOT/ca/bundle.pem"
 # chatd's env file (chat.mode own); the controller reads <state>/chatd.env
 if [ -f /etc/tandemapp/config/chatd.env ]; then
   install -m 600 /etc/tandemapp/config/chatd.env "$ROOT/state/chatd.env"
+  # sandbox.mode kubernetes: chatd finds its own pod (node, address, owner of the sandbox pods)
+  if [ -n "${TA_POD_NAME:-}" ] && grep -q '^QSE_SANDBOX_BACKEND=kubernetes' "$ROOT/state/chatd.env"; then
+    echo "QSE_K8S_POD=$TA_POD_NAME" >> "$ROOT/state/chatd.env"
+  fi
 fi
 mkdir -p "$ROOT/$TA_CHAT_DIR"
 if [ -n "${TA_CONDUCTOR_DIR:-}" ]; then mkdir -p "$TA_CONDUCTOR_DIR"; fi

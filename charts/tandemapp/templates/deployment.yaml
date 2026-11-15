@@ -34,7 +34,9 @@ spec:
       # a stable host name: the fleet and the topology name the controller's host by it
       hostname: {{ include "tandemapp.fullname" . }}
       serviceAccountName: {{ include "tandemapp.serviceAccountName" . }}
-      automountServiceAccountToken: {{ eq (toString .Values.sandbox.mode) "kubernetes" }}
+      # the token goes to the controller's container only (sandbox.mode kubernetes), not to the
+      # init container or the MCP bridge
+      automountServiceAccountToken: false
       enableServiceLinks: false
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
@@ -67,6 +69,9 @@ spec:
               value: {{ $c := include "tandemapp.conductor" . }}{{ if eq $c "off" }}""{{ else }}{{ $c | quote }}{{ end }}
             - name: HOME
               value: {{ printf "%s/home" $root | quote }}
+            - name: TA_POD_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
@@ -88,6 +93,11 @@ spec:
             - name: http
               containerPort: {{ .Values.controller.port }}
               protocol: TCP
+            {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
+            - name: egress
+              containerPort: {{ .Values.sandbox.kubernetes.egressPort }}
+              protocol: TCP
+            {{- end }}
           env:
             - {name: TANDEM_APP_STATE, value: {{ printf "%s/state" $root | quote }}}
             - {name: TANDEM_APP_PYTHON, value: {{ printf "%s/current/venv/bin/python" $root | quote }}}
@@ -130,6 +140,9 @@ spec:
             - {name: tmp, mountPath: /tmp}
             {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
             - {name: sandbox-socket, mountPath: /run/tandem-sandbox}
+            {{- end }}
+            {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
+            - {name: kube-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
             {{- end }}
         {{- if .Values.mcpBridge.enabled }}
         - name: mcp-{{ .Values.mcpBridge.name }}
@@ -182,6 +195,19 @@ spec:
             name: {{ default (printf "%s-trust" $full) .Values.trust.existingConfigMap }}
             items:
               - {key: {{ .Values.trust.configMapKey }}, path: ca.pem}
+        {{- end }}
+        {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
+        # the ServiceAccount's token for chatd (its Role: pods, exec, logs in this namespace)
+        - name: kube-api
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3607}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+              - downwardAPI:
+                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
         {{- end }}
         {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
         - name: sandbox-socket

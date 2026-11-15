@@ -19,6 +19,31 @@ data:
     SSL_CERT_FILE={{ printf "%s/ca/bundle.pem" .Values.persistence.mountPath }}
     {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
     QSE_SANDBOX_SOCKET=/run/tandem-sandbox/podman.sock
+    {{- else if eq (toString .Values.sandbox.mode) "kubernetes" }}
+    {{- $k := .Values.sandbox.kubernetes }}
+    {{- $labels := include "tandemapp.sandboxLabels" . | fromYaml }}
+    # sandbox.mode kubernetes: a pod per sandbox through the Kubernetes API (chatd/k8s.py)
+    QSE_SANDBOX_BACKEND=kubernetes
+    QSE_K8S_API=https://kubernetes.default.svc
+    QSE_K8S_NAMESPACE={{ .Release.Namespace }}
+    QSE_K8S_LABELS={{ $labels | toJson }}
+    QSE_K8S_CLAIM={{ include "tandemapp.claimName" . }}
+    QSE_K8S_VOLUME_ROOT={{ .Values.persistence.mountPath }}
+    QSE_K8S_SERVICE_ACCOUNT={{ include "tandemapp.fullname" . }}-sandbox
+    QSE_K8S_IMAGE_PULL={{ $k.imagePullPolicy }}
+    QSE_K8S_RUNTIME_CLASS={{ $k.runtimeClassName }}
+    QSE_K8S_HOST_USERS={{ $k.hostUsers }}
+    QSE_K8S_EGRESS_PORT={{ $k.egressPort }}
+    QSE_K8S_CONTROLLER_PORT={{ .Values.controller.port }}
+    QSE_SANDBOX_IMAGE={{ $k.image }}
+    QSE_SANDBOX_UID={{ $k.runAsUser }}
+    QSE_SANDBOX_CPUS={{ $k.cpus }}
+    {{- with $k.memoryGiB }}
+    QSE_SANDBOX_MEM_GB={{ . }}
+    {{- end }}
+    {{- with $k.maxRunning }}
+    QSE_SANDBOX_MAX_RUNNING={{ . }}
+    {{- end }}
     {{- else }}
     # sandbox.mode {{ .Values.sandbox.mode }}: no runtime socket in the pod, the sandbox tools say so
     QSE_SANDBOX_SOCKET=/run/tandem-sandbox/none.sock

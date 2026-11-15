@@ -111,23 +111,38 @@ sandbox:
   # podman-socket: a rootless Podman socket on the node (ops/sandbox/install.sh), mounted into the
   #   pod. Needs persistence.hostPath.path == persistence.mountPath, and the socket's ACL open to
   #   podSecurityContext.runAsUser.
-  # kubernetes: PLANNED. chatd makes each sandbox a pod through the Kubernetes API. This chart
-  #   already renders its ServiceAccount, Role and NetworkPolicy; chatd of this release does not
-  #   use them yet, so sandboxes stay off.
+  # kubernetes: chatd makes each chat's sandbox a pod in this namespace through the Kubernetes API
+  #   (chatd/k8s.py). Needs chat.mode own. The image must be on the node (ops/sandbox/build-k8s.sh)
   mode: "off"
   podmanSocket:
     # the folder on the node that holds podman.sock (/run/user/<uid>/podman)
     hostDir: ""
   kubernetes:
-    # labels every sandbox pod carries (the NetworkPolicy selects them)
+    # the sandbox image, put on each node by ops/sandbox/build-k8s.sh (built in the cluster,
+    # imported into the node's containerd): never pulled, so Never by default
+    image: tandem-sandbox:1
+    imagePullPolicy: Never
+    # labels every sandbox pod carries (with app.kubernetes.io/instance; the NetworkPolicies
+    # select them)
     podLabels:
       app.kubernetes.io/component: chat-sandbox
+    # a RuntimeClass for stronger isolation (gVisor, Kata) where the cluster has one; chatd's
+    # start check refuses a class that does not exist
     runtimeClassName: ""
-    resources:
-      limits:
-        cpu: "2"
-        memory: 2Gi
-    # where a sandbox may connect: only the controller's pod (chatd's egress proxy) by default
+    # false: a user namespace per sandbox pod (uid 1000 in the pod is not the node's uid 1000),
+    # and the 512-process limit applies per pod. Needs Kubernetes 1.33+ with a runtime and
+    # kernel that support it; true where they do not (the node's podPidsLimit is then the only
+    # process limit)
+    hostUsers: false
+    # the user the sandbox's processes run as (the image's `agent`)
+    runAsUser: 1000
+    # per sandbox: memory in GiB (request and limit; empty: chatd's default, 2 on a host without
+    # the engine) and CPUs (limit)
+    memoryGiB: ""
+    cpus: 4
+    # at most this many sandbox pods at once (empty: chatd's default, 2)
+    maxRunning: ""
+    # chatd's egress proxy in the controller's pod: the only place a sandbox pod may connect to
     egressPort: 3128
 
 # -- a stdio MCP server served as streamable HTTP on the pod's loopback (files/mcp-stdio-http.py),
