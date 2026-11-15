@@ -863,6 +863,17 @@ def test_fleet_ssh_node(tmp_path, monkeypatch):
         st, _, out = px.request("DELETE", "/v1/fleet/nodes/eh-2?force=1")
         assert st == 200, out
         assert keys.get("eh-2") is None and E.pinned_key(root, "eh-2") is None
+        # one whose host key changed: refused with both fingerprints, then forgotten with force
+        fake_ssh.server(rig.server, unreachable=False)
+        add("eh-3", "engine-three")
+        nt, nb = host_pair()
+        fake_ssh.server(rig.server, host_key=[nt, nb])
+        st, _, out = px.request("DELETE", "/v1/fleet/nodes/eh-3")
+        err = json.loads(out)["error"]
+        assert st == 409 and err["type"] == "host_key_changed", out
+        assert E.sshonce.fingerprint(nb) in err["message"] and rig.fp in err["message"], err
+        st, _, out = px.request("DELETE", "/v1/fleet/nodes/eh-3?force=1")
+        assert st == 200 and keys.get("eh-3") is None, out
         E._drop_all()
     return "node and nodes validate, paired via ssh, no agent, for_node, release and force, export"
 

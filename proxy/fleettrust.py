@@ -277,9 +277,10 @@ class Trust:
                                    f"{text}; certificate sha256 {fp[:16]} pinned")
         return row
 
-    def _unpair_ssh(self, row: dict) -> str:
+    def _unpair_ssh(self, row: dict) -> tuple[str, str]:
         """SRV-839: an engine host over SSH removes this controller's key line (`tandem remote
-        unpair`): unpinned, not_paired (no key or record here), or unreachable."""
+        unpair`): (unpinned, not_paired (no key or record here), unreachable or
+        host_key_changed, why in words)."""
         return _unpair_ssh_row(self, row)
 
     def _unpin_remote(self, endpoint: str, trust: dict) -> str:
@@ -528,14 +529,16 @@ class Trust:
                                                 f"forgets it here only (then `tandem node "
                                                 f"reset` on the node)", 502)
         elif t.get("kind") == "ssh":
-            side = self._unpair_ssh(row)
-            if side == "unreachable" and not force:
-                raise TrustError("unreachable", f"{row['alias']} does not answer over SSH; "
-                                                f"?force=1 forgets it here only (then remove "
-                                                f"this controller's line from its "
-                                                f"authorized_keys)", 502)
-            hostkeys.HostKeys(self.cfg).delete(nid, who=who)
-            enginectl.forget_host(self.root, nid)
+            side, why = self._unpair_ssh(row)
+            if side in ("unreachable", "host_key_changed") and not force:
+                raise TrustError(side, f"{row['alias']} {why}; ?force=1 forgets it here only "
+                                       f"(then remove this controller's line from its "
+                                       f"authorized_keys)", 502 if side == "unreachable" else 409)
+            try:
+                hostkeys.HostKeys(self.cfg).delete(nid, who=who)
+                enginectl.forget_host(self.root, nid)
+            except (hostkeys.HostKeyError, enginectl.CtlError):
+                pass                             # an id no key or pin could have been made for
         else:
             side = "not_paired"
         tun = t.get("tunnel")
@@ -559,21 +562,24 @@ class Trust:
         return {"contract_version": "1.0", "id": nid, "node": side}
 
 
-def _unpair_ssh_row(trust: "Trust", row: dict) -> str:
+def _unpair_ssh_row(trust: "Trust", row: dict) -> tuple[str, str]:
     try:
         ctl = enginectl.for_node(row, state_dir=trust.root, keys=hostkeys.HostKeys(trust.cfg),
                                  log=trust.fleet.log)
     except enginectl.CtlError:
-        return "not_paired"
+        return "not_paired", "has no key or record here"
     try:
         ctl.unpair()
-        return "unpinned"
-    except enginectl.HostKeyChanged:
-        return "unreachable"
+        return "unpinned", "removed this controller's key"
+    except enginectl.HostKeyChanged as exc:
+        return "host_key_changed", (f"offers another SSH host key than the pinned one (pinned "
+                                    f"{exc.pinned}, offered {exc.offered or 'unknown'})")
+    except (enginectl.CtlNotPaired, enginectl.CtlAuthRefused):
+        return "not_paired", "no longer takes this controller's key"
     except (enginectl.CtlTransport, enginectl.CtlTimeout):
-        return "unreachable"
+        return "unreachable", "does not answer over SSH"
     except enginectl.CtlError:
-        return "not_paired"
+        return "not_paired", "did not remove the key"
     finally:
         ctl.close()
 
