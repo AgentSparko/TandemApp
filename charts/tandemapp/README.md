@@ -96,6 +96,18 @@ host folder with a Retain volume.
 `mcpBridge` runs a stdio MCP server (a program on the volume, with its own login folder) as
 streamable HTTP on the pod's loopback (`files/mcp-stdio-http.py`), for chatd's MCP servers.
 
+The bridge must never take the controller down with it. Kubernetes counts a pod Ready only while
+every one of its containers runs (a native sidecar too), and the Service sends traffic only to Ready
+pods: a sidecar that restarts, and waits in CrashLoopBackOff for up to 5 minutes between tries,
+makes the page and the API answer 503 for that time, whatever the controller's own state. No probe
+setting avoids that, so the bridge's container never exits: a shell loop starts the bridge again
+5 s after it ends (a port in use, a crash), and TERM ends the loop at once. It has no liveness or
+readiness probe; only the controller's readiness probe decides whether the pod gets traffic. The
+bridge starts its MCP program on the first request and again after it exits, so a slow or failed
+login there shows as an MCP error in the chats, not as a dead pod. What a probe would have healed
+and this does not: a bridge that hangs while its port stays open. Check it with an MCP
+`initialize` and `tools/list` from the controller's container after an install or upgrade.
+
 ## Network
 
 The Ingress routes everything to the controller except `ingress.blockedPaths` (`/chat-engine`,

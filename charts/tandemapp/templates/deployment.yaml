@@ -148,10 +148,20 @@ spec:
         - name: mcp-{{ .Values.mcpBridge.name }}
           image: {{ include "tandemapp.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # a pod is Ready only while every container runs, so a restarting bridge would take the
+          # Service (the page, the API) down with it. This container never exits: the loop starts
+          # the bridge again 5 s after it ends, and there is no probe to restart it (README: MCP bridge)
           command:
-            - python3
-            - -u
-            - /etc/tandemapp/config/mcp-stdio-http.py
+            - sh
+            - -c
+            - |
+              trap 'kill "$c" 2>/dev/null; wait "$c"; exit 0' TERM INT
+              while :; do
+                python3 -u /etc/tandemapp/config/mcp-stdio-http.py "$@" & c=$!
+                wait "$c"; echo "[bridge] exited ($?); again in 5 s" >&2
+                sleep 5 & c=$!; wait "$c"
+              done
+            - mcp-bridge
             - --host
             - 127.0.0.1
             - --port
@@ -168,14 +178,6 @@ spec:
             {{- range $k, $v := .Values.mcpBridge.env }}
             - {name: {{ $k }}, value: {{ $v | toString | quote }}}
             {{- end }}
-          # the bridge listens on the pod's loopback only; a tcpSocket probe dials the pod's address
-          # and never reaches it, so the probe connects from inside the container instead
-          livenessProbe:
-            exec:
-              command: [python3, -c, "import socket; socket.create_connection(('127.0.0.1', {{ .Values.mcpBridge.port }}), 3).close()"]
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 5
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
