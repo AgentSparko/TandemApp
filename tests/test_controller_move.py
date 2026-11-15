@@ -90,6 +90,7 @@ def test_export_import():
     d = tempfile.mkdtemp(prefix="mv-b-")
     c = _cfg(d)
     got = ctlmove.import_bundle(c, b, "/b/ctl.crt", "/b/ctl.key")
+    assert sorted(got.pop("backend_ids")) == ["ds", "eng"], got
     assert got == {"nodes": 1, "backends": 2, "keys": 1, "host_keys": 0, "users_from": 0}, got
     assert {x["id"] for x in c.backends()} == {"ds", "eng"}
     assert c.key_for("ds") == KEY                     # stored again under c's own master key

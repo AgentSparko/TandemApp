@@ -220,7 +220,7 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
     try:
         with open(path, "wb") as f:
             f.write(base64.b64decode(bundle["db"]))
-        n = {}
+        n, ids = {}, []
         with cfg._lock:
             c = cfg._conn
             c.execute("ATTACH DATABASE ? AS src", (path,))
@@ -236,6 +236,8 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
                     c.execute(f"INSERT OR REPLACE INTO main.{t}({', '.join(cols)}) SELECT "
                               f"{', '.join(cols)} FROM src.{t}")
                     n[t] = c.execute(f"SELECT COUNT(*) FROM src.{t}").fetchone()[0]
+                    if t == "backends":
+                        ids = [r[0] for r in c.execute("SELECT id FROM src.backends")]
                 c.commit()
             finally:
                 c.execute("DETACH DATABASE src")
@@ -266,7 +268,7 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
                 f"{(bundle.get('from') or {}).get('name') or 'another controller'}"})
     return {"nodes": n.get("nodes", 0), "backends": n.get("backends", 0),
             "keys": len(bundle.get("keys") or {}), "host_keys": hk,
-            "users_from": int(bundle.get("users_from") or 0)}
+            "users_from": int(bundle.get("users_from") or 0), "backend_ids": ids}
 
 
 def import_at_start(cfg, state_dir: str, log=print) -> dict | None:
@@ -919,7 +921,8 @@ class Mover:
             # a controller that gave its fleet away before takes one again: it points nowhere now
             if self.cfg.setting("controller.moved_to") is not None:
                 self.cfg.delete_setting("controller.moved_to", who=job["by"])
-            moved = rebase_loopback(self.cfg, giver_host(url), who=job["by"])
+            moved = rebase_loopback(self.cfg, giver_host(url), who=job["by"],
+                                    only=n["backend_ids"])
             for bid, was, now in moved:
                 self._say(job, f"backend {bid}: {was} was the giver's own loopback; now {now}")
             job["rebased"] = [{"backend": b, "from": a, "to": c} for b, a, c in moved]
@@ -1016,15 +1019,18 @@ def _rebase(u, host: str):
     return urlunsplit(p._replace(netloc=h + (f":{p.port}" if p.port else "")))
 
 
-def rebase_loopback(cfg, host: str | None, who: str = "controller") -> list[tuple]:
-    """SRV-841: after a take from a controller on another host, each backend whose URL (or host
-    collector URL) is the giver's loopback points at the giver's host instead: on this host the
-    loopback is another machine. A field set by a variable stays as it is. [(id, was, now)]."""
+def rebase_loopback(cfg, host: str | None, who: str = "controller", only=None) -> list[tuple]:
+    """SRV-841: after a take from a controller on another host, each backend the take brought
+    (`only`: their ids; None: all) whose URL (or host collector URL) is the giver's loopback
+    points at the giver's host instead: on this host the loopback is another machine. A backend
+    this controller had before keeps its URL; a field set by a variable stays. [(id, was, now)]."""
     if not host:
         return []
     from proxy import config as config_mod
     out = []
     for b in cfg.backends():
+        if only is not None and b["id"] not in only:
+            continue
         patch = {}
         new = _rebase(b.get("url"), host)
         if new:

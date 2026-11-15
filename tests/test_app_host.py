@@ -310,6 +310,9 @@ def test_take_across_hosts():
         f = tf.fleet_on(px, tf.local_node(tf.fake_root(), h=tf.host(gpu=False)))
         tr = f.trust()
         px.svc.cfg.set_setting("controller.moved_to", {"api_url": "http://old"})
+        # a backend the taker had before, on its own loopback: the take leaves it
+        px.svc.cfg.create_backend({"id": "mine", "kind": "generic",
+                                   "url": "http://127.0.0.1:1234/v1"})
         nodes = [{"id": "eh-1", "alias": "engine-one", "how": "carry", "why": None}]
         bundle = ctlmove.export(giver, host_keys=["eh-1"], ssh_root=groot)
         assert bundle["users_from"] == 1 and set(bundle["host_keys"]) == {"eh-1"}, bundle.keys()
@@ -341,6 +344,7 @@ def test_take_across_hosts():
         assert cfg.backend("eng")["url"] == "http://engine-box.example:8000/v1"
         assert cfg.backend("eng")["host"]["url"] == "http://engine-box.example:9108"
         assert cfg.backend("lan")["url"] == "http://192.0.2.9:8000/v1"
+        assert cfg.backend("mine")["url"] == "http://127.0.0.1:1234/v1"
         assert cfg.backend("ds")["url"] == giver.backend("ds")["url"]
         assert {x["backend"] for x in j["rebased"]} == {"eng"}, j["rebased"]
         assert cfg.key_for("eng") == KEY
