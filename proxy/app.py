@@ -172,8 +172,19 @@ def dashboard() -> "dashboard_api.DashboardAPI":
     if api is None:
         api = STATE["dashboard_api"] = dashboard_api.DashboardAPI(
             STATE.get("ledger"), live=_live_status, system=_system,
-            backends=lambda: STATE["svc"].cfg.backends())
+            backends=lambda: STATE["svc"].cfg.backends(), clients_path=clients_path())
     return api
+
+
+def clients_path() -> str:
+    """The client names the usage views show (`{client id: name}`): TANDEM_CLIENTS_JSON, else
+    clients.json beside the config database, else the engine's on this host as before (SRV-841: a
+    host with no engine has none of it)."""
+    got = os.environ.get("TANDEM_CLIENTS_JSON")
+    if got:
+        return got
+    own = os.path.join(os.path.dirname(STATE["svc"].cfg.path), "clients.json")
+    return own if os.path.isfile(own) else dashboard_api.CLIENTS_JSON
 
 
 class Handler(BaseHTTPRequestHandler):
