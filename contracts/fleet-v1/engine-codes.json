@@ -1,0 +1,196 @@
+{
+  "title": "every code a /v1/fleet/engines/* refusal or finding carries: its HTTP status, the sentence and the fix, {name} a fact the answer names (proxy/enginecodes.py; the health page reads the same)",
+  "version": "1.0",
+  "codes": {
+    "bad_request": {
+      "status": 400,
+      "message": "The request is not valid: {detail}",
+      "fix": "Send the fields the page asks for."
+    },
+    "not_found": {
+      "status": 404,
+      "message": "There is no such engine host or pairing here.",
+      "fix": "Start again from Add engine."
+    },
+    "too_many": {
+      "status": 429,
+      "message": "Too many pairing tries from this TandemApp.",
+      "fix": "Wait a minute and try again."
+    },
+    "lan_denied": {
+      "status": 409,
+      "message": "This TandemApp may not use the local network, so it found no engine.",
+      "fix": "Allow it under System Settings, Privacy & Security, Local Network, or type the engine's address."
+    },
+    "lan_failed": {
+      "status": 502,
+      "message": "The search on the local network failed: {detail}",
+      "fix": "Type the engine's address instead, a tailnet name or address included."
+    },
+    "unreachable": {
+      "status": 502,
+      "message": "TandemApp cannot reach the engine at {address}:{port}.",
+      "fix": "Check that the engine host is on, that the engine runs (`bin/tandem start` there), and that the address and port are right."
+    },
+    "not_an_engine": {
+      "status": 502,
+      "message": "{address}:{port} answers, but not as a TandemLLM engine.",
+      "fix": "Check the address and port: the engine's port is 8000 unless its install chose another."
+    },
+    "not_allowed": {
+      "status": 403,
+      "message": "The engine at {address}:{port} refuses this machine's address.",
+      "fix": "Add this machine's address to QSE_ALLOW_FROM on the engine host, or clear that setting."
+    },
+    "pairing_unsupported": {
+      "status": 409,
+      "message": "The engine at {address}:{port} is too old to pair by code.",
+      "fix": "Update the engine on its host, or connect with a password or a key under Other ways."
+    },
+    "no_window": {
+      "status": 409,
+      "message": "No pairing code is showing on the engine host.",
+      "fix": "Run `tandem pair` on the engine host and type the code it prints."
+    },
+    "code_spent": {
+      "status": 410,
+      "message": "This code cannot be used any more: it expired, was used, or had five wrong tries.",
+      "fix": "Run `tandem pair` on the engine host again for a new code."
+    },
+    "bad_code": {
+      "status": 400,
+      "message": "A pairing code is 6 digits.",
+      "fix": "Type the 6 digits `tandem pair` printed on the engine host."
+    },
+    "wrong_code": {
+      "status": 403,
+      "message": "The code does not match: {tries_left} tries left.",
+      "fix": "Type the code the engine host shows; after five wrong tries run `tandem pair` there again."
+    },
+    "host_key_mismatch": {
+      "status": 409,
+      "message": "The engine's SSH host key is {offered}, not the {expected} shown for it.",
+      "fix": "Compare it with the fingerprint `tandem pair` printed on the engine host: if they differ, something on the network changed the answer; do not pair."
+    },
+    "rate_limited": {
+      "status": 429,
+      "message": "The engine host takes no more pairing tries from here for now.",
+      "fix": "Wait {retry_after} seconds, then type the code again."
+    },
+    "key_present": {
+      "status": 409,
+      "message": "TandemApp's key is already in the engine host's authorized_keys with another line.",
+      "fix": "Remove that line on the engine host, then pair again."
+    },
+    "key_refused": {
+      "status": 409,
+      "message": "The engine host could not add TandemApp's key: {detail}",
+      "fix": "Fix ~/.ssh on the engine host as the message says (the user's own, not a link, not writable by others), then pair again."
+    },
+    "engine_failed": {
+      "status": 502,
+      "message": "The engine host could not finish: {detail}",
+      "fix": "Try again; if it fails again, run `tandem doctor` on the engine host."
+    },
+    "ssh_unreachable": {
+      "status": 502,
+      "message": "TandemApp cannot reach SSH on {host} port {port}.",
+      "fix": "Check that the SSH server runs on the engine host and that port {port} is open from this machine, then retry."
+    },
+    "host_key_changed": {
+      "status": 409,
+      "message": "The engine host's SSH host key changed: it is {offered} now, {pinned} before.",
+      "fix": "If the engine host was reinstalled, pair it again by code (`tandem pair`), which proves the new key; otherwise do not connect."
+    },
+    "host_key_unconfirmed": {
+      "status": 409,
+      "message": "The SSH host key {offered} was not confirmed.",
+      "fix": "Compare it with the engine host's own (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` there) and send it back to confirm."
+    },
+    "auth_failed": {
+      "status": 403,
+      "message": "The engine host did not accept that user name and password.",
+      "fix": "Check the user name and password for {host} and try again."
+    },
+    "ssh_failed": {
+      "status": 502,
+      "message": "The SSH login to {host} failed: {detail}",
+      "fix": "Check the address, port and user, then retry."
+    },
+    "key_not_installed": {
+      "status": 409,
+      "message": "The engine host does not take TandemApp's key yet.",
+      "fix": "Add the line shown to ~/.ssh/authorized_keys of {user} on {host}, then check again."
+    },
+    "not_paired": {
+      "status": 409,
+      "message": "The engine host no longer takes TandemApp's key.",
+      "fix": "Pair it again by code (`tandem pair` on the engine host)."
+    },
+    "not_installed": {
+      "status": 409,
+      "message": "No TandemLLM engine is installed at {dir} on {host}.",
+      "fix": "Install the engine there first, or give the folder it is installed in."
+    },
+    "bad_engine_dir": {
+      "status": 409,
+      "message": "The engine's folder on {host} has characters a key line cannot hold.",
+      "fix": "Install the engine in a folder whose path has only letters, digits and . _ / + @ -."
+    },
+    "engine_too_old": {
+      "status": 409,
+      "message": "The engine on {host} is too old for TandemApp's control.",
+      "fix": "Upgrade the engine on its host."
+    },
+    "ctl_failed": {
+      "status": 502,
+      "message": "The engine host's control command failed: {detail}",
+      "fix": "Run `tandem doctor` on the engine host."
+    },
+    "engine_down": {
+      "status": 503,
+      "message": "The engine is not running.",
+      "fix": "Start it."
+    },
+    "http_blocked": {
+      "status": 502,
+      "message": "TandemApp reaches the engine host over SSH but not the engine's port {port}.",
+      "fix": "Open port {port} on the engine host's firewall for this machine; test it through SSH."
+    },
+    "token_missing": {
+      "status": 409,
+      "message": "TandemApp holds no HTTP token for this engine.",
+      "fix": "Rotate the token; TandemApp does it over SSH."
+    },
+    "token_refused": {
+      "status": 401,
+      "message": "The engine refused TandemApp's HTTP token.",
+      "fix": "Rotate the token; TandemApp does it over SSH."
+    },
+    "setup_locked": {
+      "status": 403,
+      "message": "The engine's Setup Guide wants its admin password.",
+      "fix": "Remove the engine's admin password or use its own Setup page; TandemApp's token does not open the Setup Guide."
+    },
+    "busy": {
+      "status": 409,
+      "message": "The engine is busy: {detail}",
+      "fix": "Wait until the running job or requests end, then try again."
+    },
+    "setup_refused": {
+      "status": 409,
+      "message": "The engine's Setup Guide refused: {detail}",
+      "fix": "Change the choice as the message says."
+    },
+    "unknown_model": {
+      "status": 404,
+      "message": "The engine does not offer the model {model}.",
+      "fix": "Pick a model from the list."
+    },
+    "not_ssh": {
+      "status": 409,
+      "message": "{node} is not an engine host TandemApp reaches over SSH.",
+      "fix": "Pair the engine host by code under Add engine."
+    }
+  }
+}

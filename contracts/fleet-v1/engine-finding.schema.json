@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-finding.schema.json",
+  "title": "what is wrong with an engine host, in words: a code of engine-codes.json, one sentence, its fix and the facts it names (SRV-827..833; the health page reads the same)",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "fix": {
+      "type": "string"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "host": {
+      "type": "string"
+    },
+    "user": {
+      "type": "string"
+    },
+    "dir": {
+      "type": "string"
+    },
+    "tries_left": {
+      "type": "integer"
+    },
+    "state": {
+      "type": "string"
+    },
+    "retry_after": {
+      "type": "integer"
+    },
+    "expected": {
+      "type": "string"
+    },
+    "offered": {
+      "type": "string"
+    },
+    "pinned": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "job": {
+      "type": "string"
+    },
+    "node": {
+      "type": "string"
+    },
+    "alias": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "fix"
+  ],
+  "additionalProperties": false
+}

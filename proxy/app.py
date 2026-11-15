@@ -653,6 +653,13 @@ class Handler(BaseHTTPRequestHandler):
             # SSH and installing log in to a machine and pair it: pairing's rights
             route = "fleet_trust" if method == "POST" and (
                 parts[-1:] in (["connect"], ["check"], ["install"])) else "conductor_write"
+        elif parts[:1] == ["engines"]:
+            # SRV-827..833 (proxy/engineonboard.py): pairing and connecting an engine host change
+            # who controls it, pairing's rights; the LAN search and an address probe, discovery's;
+            # its mode and a model download, the Setup Guide's writes; a read, the dashboard's
+            route = ("fleet_trust" if method == "POST" and parts[1:2] in (["pair"], ["connect"])
+                     else "conductor_write" if parts[1:2] in (["discover"], ["probe"])
+                     else "setup" if method != "GET" else "dashboard")
         elif method == "GET" or (method == "PUT" and parts[:1] == ["layouts"]) or \
                 (method == "POST" and parts == ["placement"]):
             # SRV-731: the placement planner is a read (each node's memory estimate) in a POST

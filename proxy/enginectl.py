@@ -1113,10 +1113,7 @@ def pinned_key(state_dir: str, host_id: str) -> tuple[str, str] | None:
     return None
 
 
-def pin_host_key(state_dir: str, host_id: str, kind: str, b64: str, *,
-                 replace: bool = False) -> str:
-    """Pin `kind`/`b64` as `host_id`'s host key (its own known_hosts file); its fingerprint. A
-    different key already pinned is HostKeyChanged unless `replace` (a new pairing)."""
+def _check_host_key(kind: str, b64: str) -> None:
     if kind not in HOST_KEY_TYPES:
         raise CtlBadCall(f"host key type {str(kind)[:40]!r} is not one of {', '.join(HOST_KEY_TYPES)}",
                          code="bad_call")
@@ -1126,6 +1123,26 @@ def pin_host_key(state_dir: str, host_id: str, kind: str, b64: str, *,
         raise CtlBadCall("the host key does not decode", code="bad_call") from None
     if not raw or len(raw) > 4096:
         raise CtlBadCall("the host key does not decode", code="bad_call")
+
+
+def pin_host_key(state_dir: str, host_id: str, kind: str, b64: str, *,
+                 replace: bool = False) -> str:
+    """Pin `kind`/`b64` as `host_id`'s host key (its own known_hosts file); its fingerprint. A
+    different key already pinned is HostKeyChanged unless `replace` (a new pairing)."""
+    return pin_host_keys(state_dir, host_id, [(kind, b64)], replace=replace)
+
+
+def pin_host_keys(state_dir: str, host_id: str, keys: list, *, replace: bool = False) -> str:
+    """Pin every host key of `keys` [(type, base64)] for `host_id`, the first the one a login
+    asks for (`pinned_key`, HostKeyAlgorithms); its fingerprint. SRV-829: pairing by code returns
+    the host's keys, each proven by the code. A different first key already pinned is
+    HostKeyChanged unless `replace`."""
+    keys = list(dict.fromkeys((k, b) for k, b in keys))
+    if not keys:
+        raise CtlBadCall("no host key to pin", code="bad_call")
+    for kind, b64 in keys:
+        _check_host_key(kind, b64)
+    kind, b64 = keys[0]
     fp = sshonce.fingerprint(b64)
     old = pinned_key(state_dir, host_id)
     if old is not None and old != (kind, b64) and not replace:
@@ -1133,7 +1150,8 @@ def pin_host_key(state_dir: str, host_id: str, kind: str, b64: str, *,
                              f"pair the host again to replace it", pinned=sshonce.fingerprint(old[1]),
                              offered=fp, host=host_id)
     _private_dir(ssh_dir(state_dir))
-    _write_private(known_hosts_path(state_dir, host_id), f"tandem-engine-{host_id} {kind} {b64}\n")
+    _write_private(known_hosts_path(state_dir, host_id),
+                   "".join(f"tandem-engine-{host_id} {k} {b}\n" for k, b in keys))
     return fp
 
 

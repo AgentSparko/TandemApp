@@ -199,13 +199,14 @@ ALIAS_MAX, TAGS_MAX, TAG_MAX, WINDOWS_MAX, PAGE_MAX = 40, 16, 32, 64, 80
 class FleetError(Exception):
     """An error in the contract's shape: 400 bad_request, 404 not_found, or `kind`."""
 
-    def __init__(self, status: int, message: str, kind: str | None = None):
+    def __init__(self, status: int, message: str, kind: str | None = None, extra: dict | None = None):
         super().__init__(message)
         self.status, self.message = status, message
         self.kind = kind or ("not_found" if status == 404 else "bad_request")
+        self.extra = extra or {}
 
     def body(self) -> dict:
-        return {"error": {"type": self.kind, "message": self.message}}
+        return {"error": {"type": self.kind, "message": self.message, **self.extra}}
 
 
 def window(rng: str, now: float) -> tuple[float, float, int]:
@@ -340,6 +341,7 @@ class Fleet:
         self.setup = fleetsetup.SetupRelay(self)
         self._discovery = None
         self._wizard = None
+        self._engines = None
         self._tunnels = None
         self._claimed_by = None                 # the agent told it is this fleet's own node
         self.local_node = True                  # TANDEM_LOCAL_NODE=off: this machine is no node
@@ -366,6 +368,15 @@ class Fleet:
                 if self._discovery is None:
                     self._discovery = discovery.Discovery(self, clock=self.clock)
         return self._discovery
+
+    def engines(self):
+        """Adding engine hosts (proxy/engineonboard.py), made at the first call."""
+        if self._engines is None:
+            from proxy import engineonboard
+            with self._reg:
+                if self._engines is None:
+                    self._engines = engineonboard.Onboarding(self, clock=self.clock)
+        return self._engines
 
     def wizard(self):
         """The Add Spark wizard's sessions (proxy/addspark.py), made at the first call."""
@@ -1177,6 +1188,15 @@ class Fleet:
 
     def _route(self, method, parts, q, body, who, now):
         v = CONTRACT
+        if parts[:1] == ["engines"]:
+            # SRV-827..833: adding an engine host (proxy/engineonboard.py); each refusal carries its
+            # code, its sentence and its fix (proxy/enginecodes.py)
+            from proxy import enginecodes
+            try:
+                return self.engines().handle(method, parts, q, body, who)
+            except enginecodes.OnboardError as exc:
+                e = exc.body()["error"]
+                raise FleetError(exc.status, e.pop("message"), e.pop("type"), extra=e)
         if parts[:1] == ["discovery"]:
             from proxy import discovery
             try:

@@ -35,6 +35,11 @@ messages unchanged gets the attacker certificates it holds no key for. Without t
 attacker gets one guess per run (SPAKE2's messages give nothing to test codes against offline),
 and the node allows 5 runs per code, for 5 minutes, then the code is spent: 5 in 10^6. The code is
 single-use: the first success closes the window.
+
+AN ENGINE HOST (SRV-829) pairs the same way: the group, w, the transcript, the confirmations and
+the code's limits are these, with its own identities (proxy/enginepair.py) and a sealed answer
+(`seal`, `open_seal`). contracts/engine-pair-v1/fixtures/spake2.json holds the engine's copy of the
+math to this one, node identities included; tests/test_engine_pair.py replays it here.
 """
 
 from __future__ import annotations
@@ -139,6 +144,63 @@ def _keys(ida: str, idb: str, pa: int, pb: int, k: int, w: int) -> tuple[bytes, 
 
 def _mac(key: bytes, tt: bytes) -> str:
     return hmac.new(key, tt, hashlib.sha256).hexdigest()
+
+
+# ====================================================================== shared with engine pairing
+
+# An engine host pairs by code with the same group, transcript and confirmations
+# (contracts/engine-pair-v1, its fixtures/spake2.json holds both sides equal; proxy/enginepair.py is
+# the controller's side). Its answer comes back sealed with the run's Ke.
+SEAL_INFO = b"TandemLLM engine pairing seal"
+NONCE_BYTES = 16
+w_of = _w
+run_keys = _keys
+confirm_mac = _mac
+element = _elem
+
+
+def ke_of(tt: bytes) -> bytes:
+    """Ke, the run's shared secret: the first half of SHA-256(TT)."""
+    return hashlib.sha256(tt).digest()[:16]
+
+
+def _seal_keys(ke: bytes) -> tuple[bytes, bytes]:
+    k = _hkdf(ke, SEAL_INFO + AAD, 64)
+    return k[:32], k[32:]
+
+
+def _stream(key: bytes, nonce: bytes, n: int) -> bytes:
+    out, i = b"", 0
+    while len(out) < n:
+        out += hmac.new(key, nonce + i.to_bytes(4, "big"), hashlib.sha256).digest()
+        i += 1
+    return out[:n]
+
+
+def seal(ke: bytes, plaintext: bytes, nonce: bytes) -> dict:
+    """{nonce, box, tag} in hex: `plaintext` encrypted and authenticated under Ke (engine-pair-v1's
+    seal: an HMAC-SHA256 stream, then an HMAC-SHA256 tag over nonce and box)."""
+    if len(nonce) != NONCE_BYTES:
+        raise ValueError(f"the nonce is {NONCE_BYTES} bytes")
+    ek, mk = _seal_keys(ke)
+    box = bytes(a ^ b for a, b in zip(plaintext, _stream(ek, nonce, len(plaintext))))
+    return {"nonce": nonce.hex(), "box": box.hex(),
+            "tag": hmac.new(mk, nonce + box, hashlib.sha256).hexdigest()}
+
+
+def open_seal(ke: bytes, sealed) -> bytes:
+    """The plaintext of `sealed`; ValueError when it does not read or its tag does not check
+    (the tag is checked before a byte is decrypted)."""
+    try:
+        nonce, box = bytes.fromhex(sealed["nonce"]), bytes.fromhex(sealed["box"])
+        tag = sealed["tag"]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("not a sealed answer") from None
+    ek, mk = _seal_keys(ke)
+    if len(nonce) != NONCE_BYTES or not isinstance(tag, str) or not tag.isascii() or \
+            not hmac.compare_digest(tag, hmac.new(mk, nonce + box, hashlib.sha256).hexdigest()):
+        raise ValueError("the seal does not check")
+    return bytes(a ^ b for a, b in zip(box, _stream(ek, nonce, len(box))))
 
 
 def new_code(n: int = CODE_LEN) -> str:

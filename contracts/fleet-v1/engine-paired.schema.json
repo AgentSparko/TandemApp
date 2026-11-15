@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-paired.schema.json",
+  "title": "an engine host added (`state` paired: pair/code, connect/password/confirm, connect/key/check) or, from connect/key/check only, not yet (`state` waiting, its finding)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "paired",
+        "waiting"
+      ]
+    },
+    "via": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "code",
+        "password",
+        "key",
+        null
+      ]
+    },
+    "engine": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "node": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "finding": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "contract_version",
+    "state",
+    "via",
+    "engine",
+    "node",
+    "finding"
+  ],
+  "additionalProperties": false
+}

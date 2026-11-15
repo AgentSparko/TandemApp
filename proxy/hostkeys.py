@@ -3,6 +3,7 @@
     keys = HostKeys(cfg)                       cfg: the config database (proxy/config.py)
     keys.create(host_id)                       {host_id, key_id, public, fingerprint}; a new pair
     keys.get(host_id)                          the same without making one; None when there is none
+    keys.put(host_id, pem, public)             keep a pair `generate()` made before (onboarding)
     keys.private(host_id)                      the OpenSSH private key, for the SSH adapter only
     keys.authorized_line(host_id, engine_dir, from_=None)   the engine host's authorized_keys line
     keys.delete(host_id)                       the pair and the host's HTTP token
@@ -125,6 +126,16 @@ class HostKeys:
         pem, pub = generate()
         kid = key_id_of(pub)
         self.cfg.put_host_key(host_id, kid, f"{pub} {kid}", pem, who=who)
+        return self.get(host_id)
+
+    def put(self, host_id: str, pem: str, public: str, who: str = "controller") -> dict:
+        """Keep a pair `generate` made earlier (SRV-829: onboarding makes it before the exchange
+        and keeps it only once the engine host took it)."""
+        parts = str(public).split()
+        if len(parts) < 2 or parts[0] != "ssh-ed25519" or "PRIVATE KEY" not in str(pem):
+            raise HostKeyError("not an ed25519 key pair")
+        kid = key_id_of(public)
+        self.cfg.put_host_key(_host(host_id), kid, f"{parts[0]} {parts[1]} {kid}", pem, who=who)
         return self.get(host_id)
 
     def private(self, host_id: str) -> str:

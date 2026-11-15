@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-pair-start.schema.json",
+  "title": "POST /v1/fleet/engines/pair/start: the pairing's id, the engine's window (no code) and the fingerprint the code will prove",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "pairing": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "open": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        },
+        "expires_in": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tries_left": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "open",
+        "state",
+        "expires_in",
+        "tries_left",
+        "fingerprint"
+      ],
+      "additionalProperties": false
+    },
+    "fingerprint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "advertised": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "expires_in": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "contract_version",
+    "pairing",
+    "address",
+    "port",
+    "window",
+    "fingerprint",
+    "advertised",
+    "key_id",
+    "expires_in"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine.schema.json",
+  "title": "GET /v1/fleet/engines/{id}: one engine host with its `status` over SSH (engine-ctl-v1's status answer), or the finding that says why there is none",
+  "$defs": {
+    "view": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ssh": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "port": {
+              "type": "integer"
+            },
+            "user": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "key_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "host",
+            "port",
+            "user",
+            "key_id"
+          ],
+          "additionalProperties": false
+        },
+        "host_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host_key_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "token": {
+              "type": "object",
+              "properties": {
+                "set": {
+                  "type": "boolean"
+                },
+                "last4": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sha256_6": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rotated_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "set",
+                "last4",
+                "sha256_6",
+                "rotated_at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "port",
+            "token"
+          ],
+          "additionalProperties": false
+        },
+        "via": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "paired_at": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "engine_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "finding": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "alias",
+        "address",
+        "ssh",
+        "host_key",
+        "host_key_type",
+        "http",
+        "via",
+        "paired_at",
+        "engine_version",
+        "mode",
+        "status",
+        "finding"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "alias": {
+      "type": "string"
+    },
+    "address": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": "integer"
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "user",
+        "key_id"
+      ],
+      "additionalProperties": false
+    },
+    "host_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "host_key_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "token": {
+          "type": "object",
+          "properties": {
+            "set": {
+              "type": "boolean"
+            },
+            "last4": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256_6": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rotated_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "set",
+            "last4",
+            "sha256_6",
+            "rotated_at"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "port",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "via": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "paired_at": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "engine_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "finding": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "contract_version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "alias",
+    "address",
+    "ssh",
+    "host_key",
+    "host_key_type",
+    "http",
+    "via",
+    "paired_at",
+    "engine_version",
+    "mode",
+    "status",
+    "finding",
+    "contract_version"
+  ],
+  "additionalProperties": false
+}
