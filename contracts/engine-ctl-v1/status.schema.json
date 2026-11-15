@@ -5,6 +5,10 @@
    "const": "engine-ctl-v1"
   },
   "version": {
+   "type": "string",
+   "pattern": "^1\\.[0-9]+$"
+  },
+  "engine_version": {
    "type": [
     "string",
     "null"
@@ -148,6 +152,25 @@
   },
   "config_error": {
    "type": "string"
+  },
+  "http": {
+   "type": "object",
+   "properties": {
+    "token": {
+     "type": "boolean"
+    },
+    "allow_from": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "token",
+    "allow_from"
+   ],
+   "additionalProperties": false
   }
  },
  "required": [
@@ -156,6 +179,7 @@
   "verb",
   "ok",
   "engine",
+  "engine_version",
   "mode",
   "engine_api",
   "install",

@@ -32,6 +32,11 @@ ledger. Its tables:
     engine_host_keys this controller's SSH key pair per engine host (SRV-839, proxy/hostkeys.py):
                      the public key and its id there, the private key as AES-256-GCM ciphertext
                      under the master key with the host id as associated data
+    engine_http_tokens  the engine's HTTP token per engine host (SRV-839): what `tandem remote
+                     token rotate` answered, AES-256-GCM ciphertext under the master key with
+                     `engine-http:<host id>` as associated data, its last 4 characters and a
+                     sha256 prefix for the page; the data plane sends it as the bearer of a
+                     TandemLLM backend on that host (`key_for`)
     meta             schema_version, created_at
 
 Migrations are forward only and keyed on meta.schema_version, as the ledger's are.
@@ -203,6 +208,9 @@ CREATE TABLE IF NOT EXISTS deployments (
 CREATE TABLE IF NOT EXISTS engine_host_keys (
   host_id TEXT PRIMARY KEY, key_id TEXT NOT NULL, public TEXT NOT NULL, ciphertext BLOB NOT NULL,
   nonce BLOB NOT NULL, master_key_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS engine_http_tokens (
+  host_id TEXT PRIMARY KEY, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
+  master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT, rotated_at INTEGER NOT NULL);
 """
 DEPLOYMENT_COLS = ("id", "name", "model", "pack", "type", "members", "stages", "options", "state",
                    "created_at", "updated_at")
@@ -281,6 +289,28 @@ def norm_url(url: str) -> str:
     if m and not m.group(2):
         u += "/v1"
     return u
+
+
+def url_host(url: str) -> str | None:
+    """The host of `url`, lower case and without brackets; None when it has none."""
+    from urllib.parse import urlsplit
+    try:
+        h = urlsplit(url or "").hostname
+    except ValueError:
+        return None
+    return h.lower() if h else None
+
+
+def is_loopback_host(host: str) -> bool:
+    """`localhost` or a loopback address (127.0.0.0/8, ::1): this machine's own engine."""
+    import ipaddress
+    h = (host or "").lower().strip("[]")
+    if h == "localhost" or h.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
 
 
 # The env fields of a backend: variable suffix -> (field, parser)
@@ -819,8 +849,23 @@ class ConfigDB:
                            (bid, ct, nonce, kid, h["last4"], h["sha256_6"], _now_ms()))
 
     def key_for(self, bid: str) -> str | None:
-        """The backend's key in plain text, for the relay's header and nothing else. The env's
-        first; None when there is none; SecretError when the stored one cannot be read."""
+        """The bearer the data plane sends to the backend, in plain text, for the relay's header
+        and nothing else: its own key (the env's first), else, for a TandemLLM backend on another
+        host, the HTTP token of the engine host it runs on (SRV-839, `engine_token_for`). None
+        when there is neither; SecretError when a stored one cannot be read."""
+        own = self.own_key(bid)
+        if own:
+            return own
+        with self._lock:
+            r = self._conn.execute("SELECT kind, url FROM backends WHERE id = ?",
+                                   (bid,)).fetchone()
+        if r is None or r[0] != "tandemllm":
+            return None
+        return self.engine_token_for(r[1])
+
+    def own_key(self, bid: str) -> str | None:
+        """The backend's own key (the env's first, else the stored one), never an engine host's
+        token: what a controller move carries as the backend's key."""
         if bid in self.env_keys:
             return self.env_keys[bid]
         with self._lock:
@@ -829,6 +874,79 @@ class ConfigDB:
         if r is None:
             return None
         return self.vault().decrypt(bid, bytes(r[0]), bytes(r[1]), r[2])
+
+    # ----------------------------------------------------------------- engine HTTP tokens (SRV-839)
+    def engine_host_for(self, url: str) -> str | None:
+        """The engine host over SSH whose engine `url` reaches: the fleet node of transport ssh
+        whose SSH address, `address` or endpoint host is the URL's host. None for a loopback
+        URL (the engine trusts this machine's own calls) and for any other host."""
+        host = url_host(url)
+        if not host or is_loopback_host(host):
+            return None
+        with self._lock:
+            rows = self._conn.execute("SELECT id, address, endpoint, trust FROM nodes WHERE "
+                                      "transport = 'ssh'").fetchall()
+        for nid, address, endpoint, trust in rows:
+            try:
+                t = json.loads(trust or "{}")
+            except ValueError:
+                t = {}
+            names = {str(x).lower().strip("[]") for x in (t.get("host"), address,
+                                                          url_host(endpoint or "")) if x}
+            if host in names:
+                return nid
+        return None
+
+    def engine_token_for(self, url: str) -> str | None:
+        """The HTTP token of the engine host `url` reaches (`engine_host_for`), or None."""
+        hid = self.engine_host_for(url)
+        return self.engine_token(hid) if hid else None
+
+    def put_engine_token(self, host_id: str, token: str, who: str = "controller") -> dict:
+        """An engine host's HTTP token, sealed under the master key with `engine-http:<host id>`
+        as associated data (a row copied onto another host does not open). Its hint."""
+        if not isinstance(token, str) or len(token) < 32 or not token.isprintable() or \
+                any(c.isspace() for c in token):
+            raise ConfigError("an engine's HTTP token is 32 or more printable characters",
+                              field="token")
+        ct, nonce, kid = self.vault().encrypt(f"engine-http:{host_id}", token)
+        h = vault_mod.hint(token)
+        with self._lock:
+            self._conn.execute("INSERT OR REPLACE INTO engine_http_tokens(host_id, ciphertext, "
+                               "nonce, master_key_id, last4, sha256_6, rotated_at) VALUES "
+                               "(?, ?, ?, ?, ?, ?, ?)",
+                               (host_id, ct, nonce, kid, h["last4"], h["sha256_6"], _now_ms()))
+            self._audit(who, "rotate", "engine_http_token", host_id, ["token"])
+            self._conn.commit()
+        return self.engine_token_hint(host_id)
+
+    def engine_token(self, host_id: str) -> str | None:
+        """The engine host's HTTP token in plain text, for the data plane's header and nothing
+        else; None when there is none; SecretError when it cannot be read."""
+        with self._lock:
+            r = self._conn.execute("SELECT ciphertext, nonce, master_key_id FROM "
+                                   "engine_http_tokens WHERE host_id = ?", (host_id,)).fetchone()
+        if r is None:
+            return None
+        return self.vault().decrypt(f"engine-http:{host_id}", bytes(r[0]), bytes(r[1]), r[2])
+
+    def engine_token_hint(self, host_id: str) -> dict:
+        """{set, last4, sha256_6, rotated_at} of an engine host's token; never the token."""
+        with self._lock:
+            r = self._conn.execute("SELECT last4, sha256_6, rotated_at FROM engine_http_tokens "
+                                   "WHERE host_id = ?", (host_id,)).fetchone()
+        if r is None:
+            return {"set": False, "last4": None, "sha256_6": None, "rotated_at": None}
+        return {"set": True, "last4": r[0], "sha256_6": r[1], "rotated_at": r[2]}
+
+    def delete_engine_token(self, host_id: str, who: str = "controller") -> bool:
+        with self._lock:
+            n = self._conn.execute("DELETE FROM engine_http_tokens WHERE host_id = ?",
+                                   (host_id,)).rowcount
+            if n:
+                self._audit(who, "delete", "engine_http_token", host_id)
+            self._conn.commit()
+        return bool(n)
 
     def key_hint(self, bid: str) -> dict:
         if bid in self.env_keys:

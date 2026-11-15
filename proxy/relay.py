@@ -166,9 +166,22 @@ class Relay:
         base = backend["url"].rstrip("/")
         if base.endswith("/v1"):
             base = base[:-3]
-        doc = self.fetch(base + BOARD)
+        hdrs = self.bearer(backend)
+        doc = self.fetch(base + BOARD, hdrs) if hdrs else self.fetch(base + BOARD)
         lanes = doc.get("lanes") if isinstance(doc, dict) else None
         return any(isinstance(x, dict) and x.get("relay_id") == rid for x in lanes or [])
+
+    def bearer(self, backend: dict) -> dict | None:
+        """The board read's Authorization: the backend's key, or its engine host's HTTP token
+        (SRV-839, ConfigDB.key_for); None without one."""
+        return self.bearer_of(backend["id"])
+
+    def bearer_of(self, bid: str) -> dict | None:
+        try:
+            key = self.svc.cfg.key_for(bid)
+        except Exception:                                          # noqa: BLE001
+            return None
+        return {"Authorization": f"Bearer {key}"} if key else None
 
     def pool(self, backend: dict) -> http1.Pool:
         key = (backend["url"], backend["timeouts"]["connect"])

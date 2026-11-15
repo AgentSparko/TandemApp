@@ -36,6 +36,18 @@ adapter talks to a fake agent over the same fake state. No network, no sshd, no 
  10  no private key in any log line, exception, argv, answer, fleet record, audit row, ledger
      row or the config database's bytes; no secret-looking value in a log line or an error
                                                                   test_no_secret_anywhere
+ 11  contract 1.1 on the local and ssh adapters: ext list, install (the wheel on stdin from a
+     file and from bytes, its sha256 and name passed, the engine's hash check, install_failed
+     exit 1), remove; upgrade plan by ref and by archive on stdin, apply with its confirm; token
+     rotate puts the token in the sealed store and answers without it; the node adapter
+     answers `unsupported` for each                               test_ctl_1_1_verbs
+ 12  the engine's HTTP token on the data plane: key_for gives it for a TandemLLM backend on that
+     engine host and never for loopback, another kind or a backend with its own key; a move's
+     export carries it sealed and the taker stores it; the relay sends it to an engine that
+     wants it (a fake engine that refuses without it); release drops it
+                                                                  test_http_token_data_plane
+ 13  no HTTP token and no wheel byte in any log line, error, answer, argv or call record
+                                                                  test_no_token_or_wheel_anywhere
 
     python tests/test_enginectl.py
 """
@@ -67,6 +79,10 @@ from proxy import secrets as vault_mod  # noqa: E402
 CTL_DIR = os.path.join(ROOT, "contracts", "engine-ctl-v1")
 SECRET = "hf_FIXTURE_secret_value_0123456789"
 HOST_ID = "eh-test-1"
+#: a made-up wheel: its bytes carry a marker no log, error or answer may hold
+WHEEL_MARK = b"WHEEL-BYTES-MARKER-7f3a9c"
+WHEEL = b"PK\x03\x04" + WHEEL_MARK * 64
+WHEEL_NAME = "tandemapp_ext-1.2.0-py3-none-any.whl"
 
 
 def ctl_ok(doc: dict, name: str) -> dict:
@@ -207,7 +223,7 @@ def test_the_grammar_is_the_contract():
         assert spec["arguments"] == args and spec["answer"] == answer, name
         assert os.path.isfile(os.path.join(CTL_DIR, answer)), answer
     by_class = {"usage": E.EXIT_USAGE, "refused": E.EXIT_REFUSED, "busy": E.EXIT_BUSY,
-                "internal": E.EXIT_INTERNAL}
+                "internal": E.EXIT_INTERNAL, "not_ok": E.EXIT_NOT_OK}
     want = {c: by_class[k] for k, codes in vj["errors"].items() for c in codes}
     assert want == E.ERRORS, set(want.items()) ^ set(E.ERRORS.items())
     assert sorted(vj["exit"]) == [str(i) for i in range(6)]
@@ -249,6 +265,27 @@ def test_bad_calls_run_nothing(tmp_path, monkeypatch):
             lambda: ctl.logs(lines=5001),
             lambda: ctl.logs(which="all"),
             lambda: ctl.follow_logs(which="kernel"),
+            # 1.1
+            lambda: ctl.ext_install(b"", name=WHEEL_NAME),
+            lambda: ctl.ext_install(WHEEL, name="not-a-wheel.zip"),
+            lambda: ctl.ext_install(WHEEL),                                 # bytes need a name
+            lambda: ctl.ext_install(WHEEL, name=WHEEL_NAME, sha256="0" * 64),
+            lambda: ctl.ext_install(WHEEL, name=WHEEL_NAME, sha256="xyz"),
+            lambda: ctl.ext_install(WHEEL, name=WHEEL_NAME, module="no-dashes"),
+            lambda: ctl.ext_install(os.path.join(str(tmp_path), "missing.whl")),
+            lambda: ctl.ext_install(str(tmp_path)),                         # a directory
+            lambda: ctl.ext_install(WHEEL, name=WHEEL_NAME, when="now", deadline=60),
+            lambda: ctl.ext_remove("-rf"),
+            lambda: ctl.ext_remove("tandemapp-ext", and_mode="chat"),
+            lambda: ctl.upgrade_plan(),
+            lambda: ctl.upgrade_plan(ref="v1", archive=b"tar"),
+            lambda: ctl.upgrade_plan(ref="--upload-pack=x"),
+            lambda: ctl.upgrade_plan(ref="main..evil"),
+            lambda: ctl.upgrade_plan(sha256="a" * 64),                       # no archive to send
+            lambda: ctl.upgrade_plan(archive=b"tar", sha256="a" * 64),
+            lambda: ctl.upgrade_apply(confirm="0123456789abcdef"),
+            lambda: ctl.upgrade_apply(ref="v1", confirm="nothex"),
+            lambda: ctl.token_rotate(store=None),
         ]
         for i, fn in enumerate(bad):
             e = raises(E.CtlBadCall, fn)
@@ -274,6 +311,7 @@ def _suite(rig: Rig, ctl: E.EngineHostControl, kind: str) -> str:
     check = (lambda d, n: d) if node else ctl_ok
     st = check(ctl.status(), "status")
     assert st["ok"] is True and st["engine"]["state"] == "healthy", st
+    assert st["engine_version"] == "0.15.4", st          # 1.1: the release, not `version`
     assert st["ctl"] == ("tandemnode" if node else E.CTL)
     j = check(ctl.stop(), "stop")
     assert j["job"]["kind"] == "stop", j
@@ -579,17 +617,30 @@ def test_error_mapping(tmp_path, monkeypatch):
             e = raises(cls, ctl.status)
             assert words in e.message, (name, rc, words, e.message)
             assert e.verb == "status" and e.host is not None, e.to_dict()
-        # another major; status alone carries the engine's release in `version` (its schema)
+        # another major; since 1.1 status's `version` is the contract's too (a 1.0 status put
+        # the engine's release there: refused), the release is `engine_version`
         rig.set(script={"mode get": {"exit": 0, "stdout": json.dumps(
             {**doc, "verb": "mode get", "version": "2.0", "ok": True})}})
         e = raises(E.CtlProtocol, ctl.mode_get)
         assert "speaks" in e.message and "'2.0'" in e.message, e.message
         script(json.dumps({**doc, "version": "0.15.4", "ok": True, "engine": {}}), 0)
-        assert ctl.status()["version"] == "0.15.4"
+        e = raises(E.CtlProtocol, ctl.status)
+        assert "speaks" in e.message and "'0.15.4'" in e.message, e.message
+        script(json.dumps({**doc, "version": "1.1", "engine_version": "0.15.5", "ok": True,
+                           "engine": {}}), 0)
+        assert ctl.status()["engine_version"] == "0.15.5"
         script(json.dumps({**doc, "version": "0.15.4", "ok": False,
                            "error": {"code": "internal", "message": "m"}}), 5)
         e = raises(E.CtlProtocol, ctl.status)
         assert "speaks" in e.message, e.message
+        # 1.1: exit 1 with an error is a failed install or remove; a code of another exit is not
+        script(json.dumps({**doc, "ok": False, "error": {"code": "install_failed",
+                                                         "message": "venv-wheel.sh exited 1"}}), 1)
+        e = raises(E.CtlNotOk, ctl.status)
+        assert e.code == "install_failed" and e.exit == 1, e.to_dict()
+        script(json.dumps({**doc, "ok": False, "error": {"code": "bad_value", "message": "x"}}), 1)
+        e = raises(E.CtlProtocol, ctl.status)
+        assert "disagree" in e.message, e.message
         # a timeout ends the call and its processes
         script(json.dumps({**doc, "ok": True}), 0, sleep=30)
         slow = mk(timeouts={"status": 1.5})
@@ -946,6 +997,260 @@ def test_no_secret_anywhere(tmp_path, monkeypatch):
     assert SECRET not in rows and not any(p in rows for p in pieces)
     return f"{len(errors)} log lines and errors, {len(other)} answers and records, the " \
            f"database's bytes: no key; no secret value in a log or an error"
+
+
+# ---------------------------------------------------------------------------- 11 contract 1.1
+
+def _ctl_1_1(rig: Rig, ctl: E.EngineHostControl, wheel_path: str, archive: str) -> None:
+    lst = ctl_ok(ctl.ext_list(), "ext list")
+    assert lst["extensions"] == [] and lst["host_ext_api"] == "3.1", lst
+    # the wheel from a file: its name from the path, its sha256 passed, the bytes on stdin
+    n = len(ftr.stdin_seen(rig.engine))
+    got = ctl_ok(ctl.ext_install(wheel_path, module="tandemapp_ext", when="idle", deadline=120),
+                 "ext install")
+    want = E.hashlib.sha256(WHEEL).hexdigest()
+    assert got["installed"]["sha256"] == want and got["checked"] == {"sha256": want,
+                                                                      "bytes": len(WHEEL)}, got
+    assert got["installed"]["wheel"] == WHEEL_NAME and got["restart_needed"] is True
+    assert ftr.stdin_seen(rig.engine)[n:] == [{"sha256": want, "bytes": len(WHEEL)}]
+    toks = rig.calls()[-1]["tokens"]
+    assert toks[:2] == ["ext", "install"] and toks[toks.index("--sha256") + 1] == want
+    assert toks[toks.index("--name") + 1] == WHEEL_NAME and "--when" in toks
+    # from bytes, with the caller's sha256 checked here first
+    other = WHEEL + b"!"
+    got = ctl_ok(ctl.ext_install(other, name="other_ext-0.1-py3-none-any.whl",
+                                 sha256=E.hashlib.sha256(other).hexdigest()), "ext install")
+    assert got["installed"]["dist"] == "other_ext", got
+    assert ftr.stdin_seen(rig.engine)[-1]["bytes"] == len(other)
+    lst = ctl_ok(ctl.ext_list(), "ext list")
+    assert [x["dist"] for x in lst["extensions"]] == ["other_ext", "tandemapp_ext"], lst
+    # the engine's own hash check (a wheel that changed on the way) and a failed install
+    rig.set(script={"ext install": {"exit": 3, "stdout": json.dumps({
+        "ctl": E.CTL, "version": "1.1", "verb": "ext install", "ok": False,
+        "error": {"code": "hash_mismatch", "message": "the bytes on stdin have another sha256",
+                  "checked": {"sha256": "0" * 64, "bytes": 3}}})}})
+    e = raises(E.CtlRefused, ctl.ext_install, WHEEL, name=WHEEL_NAME)
+    assert e.code == "hash_mismatch" and e.exit == 3, e.to_dict()
+    rig.set(script={}, install_fails=True)
+    e = raises(E.CtlNotOk, ctl.ext_install, WHEEL, name=WHEEL_NAME)
+    assert e.code == "install_failed" and e.exit == 1 and "venv-wheel" in e.message, e.to_dict()
+    rig.set(install_fails=False)
+    rm = ctl_ok(ctl.ext_remove("other_ext", and_mode="engine", when="idle"), "ext remove")
+    assert rm["removed"]["dist"] == "other_ext" and rig.calls()[-1]["tokens"][-1] == "other_ext"
+    e = raises(E.CtlRefused, ctl.ext_remove, "other_ext")
+    assert e.code == "not_installed", e.to_dict()
+    # upgrade: a plan by ref, a plan by an archive on stdin, the apply with its confirm
+    p = ctl_ok(ctl.upgrade_plan(ref="v0.15.5"), "upgrade plan")["plan"]
+    assert p["to"]["source"] == "ref" and p["to"]["ref"] == "v0.15.5", p
+    sha = E.hashlib.sha256(open(archive, "rb").read()).hexdigest()
+    pa = ctl_ok(ctl.upgrade_plan(archive=archive, sha256=sha), "upgrade plan")
+    assert pa["plan"]["to"]["sha256"] == sha and pa["checked"]["sha256"] == sha, pa
+    assert ftr.stdin_seen(rig.engine)[-1]["sha256"] == sha
+    j = ctl_ok(ctl.upgrade_apply(sha256=sha, confirm=pa["plan"]["confirm"], when="idle",
+                                 deadline=600), "upgrade apply")
+    assert j["job"]["kind"] == "upgrade" and j["job"]["upgrade"]["source"] == "archive", j
+    assert "--sha256" in rig.calls()[-1]["tokens"] and \
+        rig.stdin_count() == len(ftr.stdin_seen(rig.engine)), "apply sends no bytes"
+    e = raises(E.CtlRefused, ctl.upgrade_apply, ref="v0.15.5", confirm="ffffffffffffffff")
+    assert e.code == "confirm_mismatch", e.to_dict()
+    rig.set(busy=True)
+    raises(E.CtlBusy, ctl.upgrade_apply, ref="v0.15.5", confirm=p["confirm"])
+    rig.set(busy=False)
+    # token rotate: into the store, never back
+    stored = []
+    t = ctl.token_rotate(store=lambda tok: stored.append(tok) or {"set": True})
+    assert stored == [ftr.TOKEN] and t.pop("stored") is True and t.pop("hint") == {"set": True}
+    ctl_ok(dict(t, token="x" * 32), "token rotate")             # the rest is the engine's answer
+    t = ctl.token_rotate(store=lambda tok: rig.keys.put_http_token(HOST_ID, tok))
+    assert "token" not in t and t["hint"]["set"] and t["hint"]["last4"] == ftr.TOKEN[-4:], t
+    assert rig.cfg.engine_token(HOST_ID) == ftr.TOKEN
+
+    def broken(tok):
+        raise OSError("disk full")
+    e = raises(E.CtlInternal, ctl.token_rotate, store=broken)
+    assert e.code == "not_stored" and ftr.TOKEN not in str(e.to_dict()), e.to_dict()
+    assert ctl_ok(ctl.status(), "status")["http"] == {"token": True, "allow_from": None}
+
+
+def test_ctl_1_1_verbs(tmp_path, monkeypatch):
+    rig = Rig(str(tmp_path), monkeypatch)
+    rig.stdin_count = lambda: len(ftr.stdin_seen(rig.engine))
+    wheel_path = os.path.join(str(tmp_path), WHEEL_NAME)
+    with open(wheel_path, "wb") as f:
+        f.write(WHEEL)
+    archive = os.path.join(str(tmp_path), "tree.tar")
+    import tarfile
+    with tarfile.open(archive, "w") as tf:
+        info = tarfile.TarInfo("VERSION")
+        info.size = 7
+        tf.addfile(info, __import__("io").BytesIO(b"0.15.5\n"))
+    _ctl_1_1(rig, rig.local_ctl(), wheel_path, archive)
+    rig.set(ext={}, rotated=False)
+    ssh = rig.ssh_ctl()
+    try:
+        _ctl_1_1(rig, ssh, wheel_path, archive)
+    finally:
+        ssh.close()
+    assert all(c["original"] == shlex.join(c["tokens"]) for c in rig.calls()
+               if c["original"] is not None)
+    node = rig.node_ctl()
+    for fn in (node.ext_list, lambda: node.ext_install(WHEEL, name=WHEEL_NAME),
+               lambda: node.ext_remove("tandemapp_ext"), lambda: node.upgrade_plan(ref="v1"),
+               lambda: node.upgrade_apply(ref="v1", confirm="0123456789abcdef"),
+               lambda: node.token_rotate(store=lambda t: None)):
+        e = raises(E.CtlUnsupported, fn)
+        assert e.code == "unsupported" and "SSH" in e.message, e.to_dict()
+    # a wheel larger than the contract's limit is refused here, before anything runs
+    n = len(rig.calls())
+    monkeypatch.setattr(E, "WHEEL_MAX", 16)
+    raises(E.CtlBadCall, rig.local_ctl().ext_install, WHEEL, name=WHEEL_NAME)
+    assert len(rig.calls()) == n
+    return "ext list/install/remove, upgrade plan/apply, token rotate on local and ssh; node " \
+           "unsupported"
+
+
+# ---------------------------------------------------------------------------- 12 the data plane
+
+def test_http_token_data_plane(tmp_path, monkeypatch):
+    from proxy import ctlmove
+    from proxy import config as cfgm
+    rig = Rig(str(tmp_path), monkeypatch)
+    cfg = rig.cfg
+    # the loopback rule itself
+    for h in ("127.0.0.1", "127.8.9.10", "::1", "localhost", "a.localhost"):
+        assert cfgm.is_loopback_host(h), h
+    for h in ("192.0.2.7", "engine-a.example", "10.0.0.1", "::ffff:192.0.2.1"):
+        assert not cfgm.is_loopback_host(h), h
+    t = E.ssh_trust(host="engine-a.example", user="tandem", key_id=rig.key["key_id"],
+                    host_key_type=rig.host_type, host_key=rig.fp)
+    cfg.add_node({"id": HOST_ID, "alias": "engine-one", "transport": "ssh",
+                  "endpoint": "ssh://tandem@engine-a.example:22", "address": "192.0.2.7",
+                  "trust": t})
+    cfg.create_backend({"id": "eng", "kind": "tandemllm", "url": "http://engine-a.example:8000/v1"})
+    cfg.create_backend({"id": "eng-ip", "kind": "tandemllm", "url": "http://192.0.2.7:8000/v1"})
+    cfg.create_backend({"id": "keyed", "kind": "tandemllm", "url": "http://192.0.2.7:8001/v1",
+                        "key": "sk-fixture-OWNKEY0000"})
+    cfg.create_backend({"id": "local", "kind": "tandemllm", "url": "http://127.0.0.1:8000/v1"})
+    cfg.create_backend({"id": "vllm", "kind": "vllm", "url": "http://192.0.2.7:8002/v1"})
+    cfg.create_backend({"id": "elsewhere", "kind": "tandemllm", "url": "http://192.0.2.99:8000/v1"})
+    assert cfg.key_for("eng") is None, "no token stored yet"
+    raises(cfgm.ConfigError, cfg.put_engine_token, HOST_ID, "short")
+    raises(cfgm.ConfigError, cfg.put_engine_token, HOST_ID, "x" * 20 + " " + "y" * 20)
+    hint = rig.keys.put_http_token(HOST_ID, ftr.TOKEN)
+    assert hint["set"] and hint["last4"] == ftr.TOKEN[-4:] and ftr.TOKEN not in json.dumps(hint)
+    assert cfg.key_for("eng") == ftr.TOKEN and cfg.key_for("eng-ip") == ftr.TOKEN
+    assert cfg.key_for("keyed") == "sk-fixture-OWNKEY0000", "a backend's own key wins"
+    assert cfg.own_key("eng") is None and cfg.own_key("keyed") == "sk-fixture-OWNKEY0000"
+    for bid in ("local", "vllm", "elsewhere"):
+        assert cfg.key_for(bid) is None, bid
+    # sealed with the host id as associated data: a row copied to another host does not open
+    c = cfg._conn
+    row = c.execute("SELECT ciphertext, nonce, master_key_id FROM engine_http_tokens").fetchone()
+    assert ftr.TOKEN.encode() not in bytes(row[0])
+    c.execute("INSERT INTO engine_http_tokens VALUES ('eh-other', ?, ?, ?, NULL, NULL, 0)", row)
+    c.commit()
+    raises(vault_mod.SecretError, cfg.engine_token, "eh-other")
+    cfg.delete_engine_token("eh-other")
+    # a move carries it sealed inside the export, never in the database part
+    bundle = ctlmove.export(cfg, host_keys=[HOST_ID], ssh_root=rig.state)
+    assert bundle["host_keys"][HOST_ID]["http_token"] == ftr.TOKEN
+    assert "eng" not in bundle["keys"], "the token is no backend's key"
+    db = base64.b64decode(bundle["db"])
+    path = os.path.join(str(tmp_path), "export.sqlite3")
+    with open(path, "wb") as fh:
+        fh.write(db)
+    ex = sqlite3.connect(path)
+    assert ex.execute("SELECT COUNT(*) FROM engine_http_tokens").fetchone()[0] == 0
+    ex.close()
+    taker = config_mod.ConfigDB(os.path.join(str(tmp_path), "taker", "config.sqlite3"), env={},
+                                use_keychain=False).open()
+    troot = os.path.join(str(tmp_path), "taker", "controller")
+    os.makedirs(troot)
+    got = ctlmove.import_bundle(taker, bundle, os.path.join(troot, "ctl.crt"),
+                                os.path.join(troot, "ctl.key"), ssh_root=troot)
+    assert got["host_keys"] == 1 and taker.key_for("eng") == ftr.TOKEN
+    assert taker.engine_token_hint(HOST_ID)["sha256_6"] == hint["sha256_6"]
+    taker.close()
+    # release (HostKeys.delete) drops the token with the key pair
+    assert rig.keys.delete(HOST_ID) and cfg.engine_token(HOST_ID) is None
+    assert cfg.key_for("eng") is None
+    return "key_for: token for that host only, own key first, never loopback/other kind; " \
+           "sealed per host; carried by a move; dropped on release"
+
+
+def test_http_token_relay(monkeypatch):
+    """The relay, the board read and a model probe send the token to an engine that refuses
+    without it: a fake engine at 127.0.0.1 counted as another host (the loopback rule patched for
+    this test only), registered under an engine host over SSH."""
+    import fake_backend
+    from proxy import config as cfgm
+    from proxy_util import Proxy
+    tok = "engine-http-token-" + "abcdef0123456789" * 3
+    srv, port = fake_backend.start(models=["fake-remote"], key=tok)
+    monkeypatch.setattr(cfgm, "is_loopback_host", lambda h: False)
+    try:
+        with Proxy(env={"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
+                        "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{port}/v1"}) as px:
+            cfg = px.svc.cfg
+            st, _, out = px.post("/v1/chat/completions", {
+                "model": "fake-remote", "messages": [{"role": "user", "content": "FAKE_SAY hi"}]})
+            assert st in (401, 404, 502), (st, out[:200])
+            t = E.ssh_trust(host="127.0.0.1", user="tandem", key_id="tandemapp-0123456789",
+                            host_key_type="ssh-ed25519",
+                            host_key="SHA256:" + "A" * 43)
+            cfg.add_node({"id": "eh-relay", "alias": "engine-r", "transport": "ssh",
+                          "endpoint": "ssh://tandem@127.0.0.1:22", "address": "127.0.0.1",
+                          "trust": t})
+            cfg.put_engine_token("eh-relay", tok)
+            px.sync()
+            st, _, out = px.post("/v1/chat/completions", {
+                "model": "fake-remote", "messages": [{"role": "user", "content": "FAKE_SAY hi"}]})
+            assert st == 200, (st, out[:300])
+            assert srv.fake.last["headers"].get("Authorization") == f"Bearer {tok}"
+            assert px.svc.relay.bearer_of("eng") == {"Authorization": f"Bearer {tok}"}
+            assert tok not in "\n".join(px.logs)
+            rows = json.dumps(px.rows(), default=str)
+            assert tok not in rows
+    finally:
+        srv.shutdown()
+    return "refused without it; the completion, the board read and the probe carry it"
+
+
+# ---------------------------------------------------------------------------- 13 no token, no wheel
+
+def test_no_token_or_wheel_anywhere(tmp_path, monkeypatch):
+    rig = Rig(str(tmp_path), monkeypatch)
+    seen: list[str] = []
+    for ctl in (rig.local_ctl(), rig.ssh_ctl()):
+        seen.append(json.dumps(ctl.ext_install(WHEEL, name=WHEEL_NAME)))
+        seen.append(json.dumps(ctl.token_rotate(
+            store=lambda tok: rig.keys.put_http_token(HOST_ID, tok))))
+        # a failed install and a sha256 refused here: their errors name neither
+        rig.set(install_fails=True)
+        e = raises(E.CtlNotOk, ctl.ext_install, WHEEL, name=WHEEL_NAME)
+        seen += [str(e), json.dumps(e.to_dict())]
+        rig.set(install_fails=False)
+        seen.append(str(raises(E.CtlBadCall, ctl.ext_install, WHEEL, name=WHEEL_NAME,
+                               sha256="0" * 64)))
+        ctl.close()
+    seen += rig.logs
+    seen += [json.dumps(r) for r in rig.ssh_runs()]
+    seen += [json.dumps(c) for c in rig.calls()]
+    seen += [json.dumps(x) for x in ftr.stdin_seen(rig.engine)]
+    for r in rig.cfg._conn.execute("SELECT * FROM audit").fetchall():
+        seen.append(repr(r))
+    assert any("ext install (sha256 " in ln for ln in rig.logs), rig.logs
+    mark = WHEEL_MARK.decode()
+    for t in seen:
+        assert ftr.TOKEN not in t and mark not in t, t[:300]
+    rig.cfg.close()
+    raw = b""
+    d = os.path.dirname(rig.cfg.path)
+    for name in os.listdir(d):
+        with open(os.path.join(d, name), "rb") as fh:
+            raw += fh.read()
+    assert ftr.TOKEN.encode() not in raw and WHEEL_MARK not in raw
+    return f"{len(seen)} lines, answers and records: no token, no wheel byte"
 
 
 if __name__ == "__main__":

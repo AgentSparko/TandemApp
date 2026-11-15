@@ -46,7 +46,9 @@ A TAKE ACROSS HOSTS (SRV-841). The taker may run on a host with no engine (packa
     host) are folded into the export's users, their keys' hashes only;
   - an engine host over SSH goes along when the giver holds its key pair and pinned host key: both
     travel inside the sealed export, the taker stores the key under its own master key and pins
-    the host key under its trust root, the giver drops both after the commit (`carry`);
+    the host key under its trust root, the giver drops both after the commit (`carry`); the
+    engine's HTTP token for that host (SRV-839) travels the same way, stored under the taker's
+    master key; a backend's own key is `own_key`, never that token;
   - the deployments travel with the rest; a taker that gave a fleet away before forgets its own
     `moved_to`, so the original controller takes its fleet back the same way.
 
@@ -117,7 +119,8 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             cfg._conn.backup(dst)
             dst.close()
         c = sqlite3.connect(path)
-        for t in ("backend_secrets", "engine_host_keys", "add_sessions", "fleet_jobs", "audit"):
+        for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
+                  "fleet_jobs", "audit"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:
@@ -147,7 +150,7 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             if b["id"] in cfg.env_keys:
                 continue                          # the environment's: it stays with that env
             try:
-                k = cfg.key_for(b["id"])
+                k = cfg.own_key(b["id"])
             except Exception:                                        # noqa: BLE001
                 k = None
             if k:
@@ -164,6 +167,12 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
                 continue
             out["host_keys"][hid] = {"key_id": row["key_id"], "public": row["public"],
                                      "private": pem, "host_key_type": pin[0], "host_key": pin[1]}
+            try:
+                tok = cfg.engine_token(hid)
+            except Exception:                                        # noqa: BLE001
+                tok = None
+            if tok:
+                out["host_keys"][hid]["http_token"] = tok        # SRV-839: the engine's bearer
     return out
 
 
@@ -261,6 +270,8 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
             continue
         cfg.put_host_key(hid, h["key_id"], h["public"], h["private"], who=who)
         enginectl.pin_host_key(root, hid, h["host_key_type"], h["host_key"], replace=True)
+        if h.get("http_token"):
+            cfg.put_engine_token(hid, h["http_token"], who=who)
         hk += 1
     cfg._bump()
     cfg.log_audit(who, "import", "fleet", None, detail={

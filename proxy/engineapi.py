@@ -24,7 +24,7 @@ import re
 from proxy import _version
 
 #: the engine API version this TandemApp speaks (routes.json `version`)
-SPEAKS = "1.8"
+SPEAKS = "1.9"
 #: what an engine without the field speaks
 ASSUMED = "1.0"
 _FORM = re.compile(r"([0-9]+)\.([0-9]+)")

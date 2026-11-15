@@ -18,6 +18,12 @@ DIR/fake-state.json steers it (`state(dir)`, `set_state(dir, **kw)`):
     follow_lines  how many lines `logs --follow` writes; follow_wait: then it waits to be ended
     script        {verb: {exit, stdout, sleep}}: that verb answers exactly this (a wrong exit, a
                   broken answer, a slow one)
+    install_fails true: ext install reads and checks the wheel, then answers install_failed (exit 1)
+    token         the HTTP token `token rotate` answers (contract 1.1)
+
+The 1.1 verbs that read stdin (ext install, upgrade plan --sha256) check the bytes' sha256 against
+--sha256 as the engine does (hash_mismatch, exit 3) and record {sha256, bytes} in DIR/stdin.jsonl,
+never the bytes.
 
 DIR/calls.jsonl gets one line per call: {argv, original (SSH_ORIGINAL_COMMAND), tokens, env (the
 SSH_* names that were set), pid}.
@@ -32,10 +38,12 @@ import signal
 import sys
 import time
 
-CTL, VERSION = "engine-ctl-v1", "1.0"
+CTL, VERSION = "engine-ctl-v1", "1.1"
 VERBS = {"status": None, "start": None, "stop": None, "restart": None, "mode": ("get", "set"),
          "settings": ("get", "plan", "apply", "versions", "restore"), "logs": None,
-         "doctor": None, "unpair": None}
+         "doctor": None, "unpair": None, "ext": ("list", "install", "remove"),
+         "upgrade": ("plan", "apply"), "token": ("rotate",)}
+TOKEN = "fake-http-token-" + "0123456789abcdef" * 3
 CREATED = "2026-11-15T10:00:00Z"
 JOB_ID = "20261115T100000-abcdef"
 
@@ -52,7 +60,7 @@ def install(d: str, python: str | None = None) -> str:
                 f"{shlex.quote(os.path.abspath(__file__))} {shlex.quote(d)} \"$@\"\n")
     os.chmod(tandem, 0o755)
     set_state(d, engine="healthy", busy=False, doctor_ok=True, confirm="0123456789abcdef",
-              follow_lines=3, follow_wait=False, script={})
+              follow_lines=3, follow_wait=False, script={}, install_fails=False, token=TOKEN)
     return d
 
 
@@ -70,6 +78,31 @@ def set_state(d: str, **kw) -> dict:
     with open(os.path.join(d, "fake-state.json"), "w") as f:
         json.dump(s, f)
     return s
+
+
+def stdin_seen(d: str) -> list[dict]:
+    try:
+        with open(os.path.join(d, "stdin.jsonl")) as f:
+            return [json.loads(x) for x in f if x.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def _read_stdin(d: str, want: str, limit: int) -> dict:
+    import hashlib
+    data = sys.stdin.buffer.read(limit + 1)
+    if len(data) > limit:
+        raise Refuse("too_large", f"more than {limit >> 20} MiB on stdin", 3)
+    if not data:
+        raise Refuse("missing_argument", "nothing on stdin: the file goes there", 2)
+    got = hashlib.sha256(data).hexdigest()
+    with open(os.path.join(d, "stdin.jsonl"), "a") as f:
+        f.write(json.dumps({"sha256": got, "bytes": len(data)}) + "\n")
+    if got != want:
+        raise Refuse("hash_mismatch", f"the {len(data)} bytes on stdin have sha256 {got}, not "
+                                      f"{want}: nothing was written", 3,
+                     checked={"sha256": got, "bytes": len(data)})
+    return {"sha256": got, "bytes": len(data)}
 
 
 def calls(d: str) -> list[dict]:
@@ -131,16 +164,20 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
     if name in lifecycle and st.get("busy"):
         raise Refuse("busy", "another lifecycle job is acting; tandem remote status shows it", 4,
                      job=job("restart", "now", "acting"))
+    if name in lifecycle + ("upgrade apply",) and st.get("busy"):
+        raise Refuse("busy", "another lifecycle job is acting; tandem remote status shows it", 4,
+                     job=job("restart", "now", "acting"))
     if name == "status":
         healthy = st.get("engine") == "healthy"
         return {"engine": {"state": st.get("engine", "down"), "pid": 4242 if healthy else None,
                            "port": 8000, "health_code": 200 if healthy else None,
-                           "engine_api": "1.8" if healthy else None,
+                           "engine_api": "1.9" if healthy else None,
                            "version": "0.15.4" if healthy else None,
                            "model": "fake-model" if healthy else None,
                            "running_mode": "engine" if healthy else None,
                            "stopped_on_purpose": st.get("engine") == "down"},
-                "mode": "engine", "profile": None, "version": "0.15.4", "engine_api": "1.8",
+                "mode": "engine", "profile": None, "engine_version": "0.15.4", "engine_api": "1.9",
+                "http": {"token": bool(st.get("rotated")), "allow_from": None},
                 "install": True, "overlay": {"current": 0, "good": 0, "versions": 1, "file": False},
                 "hook": True, "job": None}, 0
     if name in ("start", "stop", "restart"):
@@ -187,6 +224,64 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
         return {"healthy": False, "checks": ["config", "modes"],
                 "findings": [{"code": "doctor.modes", "state": "problem", "text": "bin/tandem is "
                               "not executable", "fix": "tandem doctor restores the execute bits"}]}, 1
+    if name == "ext list":
+        ext = st.get("ext") or {}
+        return {"extensions": [{"module": v["module"], "source": "remote", "dist": k,
+                                "dist_version": v["version"], "name": k, "version": v["version"],
+                                "ext_api": "3.1", "imports": True, "accepted": True, "why": None,
+                                "configured": False, "wheel": v["wheel"], "sha256": v["sha256"],
+                                "installed_at": CREATED} for k, v in sorted(ext.items())],
+                "mode": "engine", "configured": None, "host_ext_api": "3.1"}, 0
+    if name == "ext install":
+        checked = _read_stdin(d, opts.get("--sha256", ""), 256 << 20)
+        wheel = opts.get("--name", "")
+        dist, version = wheel.split("-")[0], wheel.split("-")[1]
+        if st.get("install_fails"):
+            raise Refuse("install_failed", "ops/venv-wheel.sh install exited 1: no space left", 1,
+                         checked=checked)
+        mod = opts.get("--module") or dist.replace("-", "_")
+        ext = dict(st.get("ext") or {})
+        ext[dist] = {"module": mod, "version": version, "wheel": wheel, "sha256": checked["sha256"]}
+        set_state(d, ext=ext)
+        return {"installed": {"dist": dist, "version": version, "module": mod, "wheel": wheel,
+                              "sha256": checked["sha256"]},
+                "extension": {"name": dist, "version": version, "ext_api": "3.1", "imports": True,
+                              "accepted": True, "why": None},
+                "configured": False, "restart_needed": True, "checked": checked}, 0
+    if name == "ext remove":
+        dist = pos[0] if pos else ""
+        ext = dict(st.get("ext") or {})
+        if dist not in ext:
+            raise Refuse("not_installed", f"{dist} is not installed", 3)
+        gone = ext.pop(dist)
+        set_state(d, ext=ext)
+        return {"removed": {"dist": dist, "version": gone["version"], "module": gone["module"],
+                            "in_use": False, "registry": True}, "restart_needed": True}, 0
+    if name in ("upgrade plan", "upgrade apply"):
+        if ("--ref" in opts) == ("--sha256" in opts):
+            raise Refuse("missing_argument", f"{name} takes --ref REF or --sha256 HEX", 2)
+        checked = None
+        if name == "upgrade plan" and "--sha256" in opts:
+            checked = _read_stdin(d, opts["--sha256"], 512 << 20)
+        to = {"source": "ref", "ref": opts["--ref"]} if "--ref" in opts else \
+            {"source": "archive", "sha256": opts["--sha256"]}
+        plan = {"from": {"commit": "a" * 40, "version": "0.15.4", "engine_api": "1.9",
+                         "ctl": "1.1", "lock": None, "venv_lock": None},
+                "to": {**to, "commit": "b" * 40, "version": "0.15.5", "engine_api": "1.9",
+                       "ctl": "1.1", "lock": None},
+                "venv": "kept", "keeps": ["run/local.env"], "steps": ["fetch", "install", "start"],
+                "rollback": "the previous tree", "warnings": [], "confirm": st["confirm"]}
+        if name == "upgrade plan":
+            return {"plan": plan, **({"checked": checked} if checked else {})}, 0
+        if opts.get("--confirm") != st["confirm"]:
+            raise Refuse("confirm_mismatch", "the confirm token is not this plan's", 3)
+        j = job("upgrade", opts.get("--when", "idle"))
+        j["upgrade"] = {"source": to["source"], "from_commit": "a" * 40, "venv": "kept"}
+        return {"job": j, "follow": "tandem remote status", "upgrade": plan}, 0
+    if name == "token rotate":
+        set_state(d, rotated=True)
+        return {"token": st.get("token") or TOKEN, "rotated": True, "file": "run/http-token",
+                "effective": "within a second"}, 0
     if name == "unpair":
         if not key_id:
             raise Refuse("key_unknown", "this call's key is not known: nothing was removed", 3)

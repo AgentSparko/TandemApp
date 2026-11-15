@@ -5,7 +5,9 @@
     keys.get(host_id)                          the same without making one; None when there is none
     keys.private(host_id)                      the OpenSSH private key, for the SSH adapter only
     keys.authorized_line(host_id, engine_dir, from_=None)   the engine host's authorized_keys line
-    keys.delete(host_id)
+    keys.delete(host_id)                       the pair and the host's HTTP token
+    keys.put_http_token(host_id, token)        the engine's HTTP token (`tandem remote token
+    keys.http_token_hint(host_id)              rotate`), sealed; its hint, never the token
 
 ONE PAIR PER ENGINE HOST, ed25519, made with `cryptography` (already TandemApp's dependency): no
 ssh-keygen run, no key file written to make it. The private key (OpenSSH format, no passphrase) is
@@ -26,7 +28,13 @@ THE LINE for the paste-a-key path (the engine's docs/remote-control.md):
 on one line. DIR is the engine's install on that host (an absolute path of plain characters: no
 space, quote, backslash, `$` or comma), `from` a list of address patterns.
 
-WHAT LEAVES THIS MODULE: the public key, its id and fingerprint. `private` is for
+THE HTTP TOKEN (SRV-839, engine API 1.9): the bearer the engine wants from callers that are not on
+its own host. `tandem remote token rotate` answers it on the SSH channel once (enginectl
+`token_rotate`), and it goes straight to `put_http_token`: sealed in the config database's
+`engine_http_tokens` with `engine-http:<host id>` as associated data. The data plane reads it
+through ConfigDB.key_for for a TandemLLM backend on that host; nothing else does.
+
+WHAT LEAVES THIS MODULE: the public key, its id and fingerprint, the token's hint. `private` is for
 proxy/enginectl.py's key file; no log line, answer, audit row or fleet record holds it
 (tests/test_enginectl.py greps every output for it).
 """
@@ -133,4 +141,19 @@ class HostKeys:
         return key_line(got["public"], got["key_id"], engine_dir, from_)
 
     def delete(self, host_id: str, who: str = "controller") -> bool:
-        return self.cfg.delete_host_key(_host(host_id), who=who)
+        gone = self.cfg.delete_host_key(_host(host_id), who=who)
+        self.cfg.delete_engine_token(host_id, who=who)
+        return gone
+
+    # ------------------------------------------------------------------ the HTTP token (SRV-839)
+    def put_http_token(self, host_id: str, token: str, who: str = "controller") -> dict:
+        """The engine host's HTTP token, sealed; its hint {set, last4, sha256_6, rotated_at}."""
+        return self.cfg.put_engine_token(_host(host_id), token, who=who)
+
+    def http_token_hint(self, host_id: str) -> dict:
+        return self.cfg.engine_token_hint(_host(host_id))
+
+    def rotate_http_token(self, ctl, host_id: str, who: str = "controller") -> dict:
+        """`token rotate` on the engine host through `ctl` (enginectl), the new token stored here
+        before anything else sees it; the answer without the token, with its hint."""
+        return ctl.token_rotate(store=lambda tok: self.put_http_token(host_id, tok, who=who))

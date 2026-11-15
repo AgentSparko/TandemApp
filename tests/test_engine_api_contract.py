@@ -62,7 +62,10 @@ tests/test_engine_api_contract.py.
      install names --with-chat --app-wheel and the venv's tandem-node   test_additive_1_7
  13  1.8 (ENG-413 WP14): every 1.7 route is here (two marked relay_only); the page, the Chat
      tab's forward and the other backends are the controller's own families; the screens' old
-     paths left the list; the health example says SPEAKS             test_additive_1_8
+     paths left the list                                              test_additive_1_8
+ 14  1.9 (ENG-456) is additive: the 1.8 examples (compat/1.8/) validate, every 1.8 route is
+     still here, the two new ones are GET and PATCH /v1/engine/settings (group 9, no TandemApp
+     caller yet); the health example says SPEAKS                       test_additive_1_9
 
 Standard library only; the fake engines are threads on loopback ports.
 
@@ -321,7 +324,9 @@ def test_routes_json():
     bad = []
     for r in doc["routes"]:
         name = f"{r.get('method')} {r.get('path')}"
-        if r.get("method") not in ("GET", "POST") or not str(r.get("path", "")).startswith("/"):
+        # 1.9: PATCH /v1/engine/settings, the first route that is neither
+        if r.get("method") not in ("GET", "POST", "PATCH") or \
+                not str(r.get("path", "")).startswith("/"):
             bad.append(f"{name}: method or path")
         if r.get("group") not in range(1, 10):            # 1.5: group 9, the engine's screens
             bad.append(f"{name}: group")
@@ -739,8 +744,9 @@ def test_additive_1_5():
     gone = [r["path"] for r in _ex("compat/1.4/routes.json")["routes"]
             if (r["method"], r["path"], r.get("port")) not in now]
     assert not gone, gone
-    # group 9: each route replaces a screen the conductor served, and that screen leaves
-    g9 = [r for r in doc["routes"] if r["group"] == 9]
+    # group 9 of 1.5: each route replaces a screen the conductor served, and that screen leaves
+    # (1.9 adds the engine's own settings route, which replaces nothing)
+    g9 = [r for r in doc["routes"] if r["group"] == 9 and r["since"] == "1.5"]
     screens = {e["path"]: e for e in _ex("compat/1.7/routes.json")["engine_screens_until_eng413"]}
     assert len(g9) == 14 and all(r["path"].startswith("/v1/engine/") for r in g9), g9
     assert {r["replaces"] for r in g9} == set(screens), sorted({r["replaces"] for r in g9})
@@ -825,12 +831,12 @@ def test_additive_1_7():
 
 def test_additive_1_8():
     """ENG-413 WP14: 1.8 keeps every 1.7 route; the page, the Chat tab's forward and the other
-    backends left the engine and are the controller's own families; the health example says SPEAKS."""
+    backends left the engine and are the controller's own families."""
     def ok(doc, schema):
         return not contract_check.validate(doc, schema, root=CONTRACT)
     health = contract_check.load("health", CONTRACT)
-    old, doc = _ex("compat/1.7/routes.json"), _routes()
-    assert (old["version"], doc["version"]) == ("1.7", "1.8") == ("1.7", engineapi.SPEAKS)
+    old, doc = _ex("compat/1.7/routes.json"), _ex("compat/1.8/routes.json")   # 1.8 as it was
+    assert (old["version"], doc["version"]) == ("1.7", "1.8")
     assert [{k: v for k, v in r.items() if k != "relay_only"} for r in doc["routes"]] == old["routes"]
     relay = sorted(r["path"] for r in doc["routes"] if r.get("relay_only"))
     assert relay == ["/v1/embeddings", "/v1/responses"], relay
@@ -842,11 +848,35 @@ def test_additive_1_8():
     assert since and since[0]["paths"] == ["/v1/chat-app", "/v1/chat-app/*"], since
     for name in ("health.example.json", "health.stage-front.example.json", "health.stage-tail.example.json"):
         assert ok(_ex("compat/1.7/" + name), health), name
-    ex = _ex("health.example.json")
-    assert ok(ex, health) and ex["engine_api"] == engineapi.SPEAKS
+    ex = _ex("compat/1.8/health.example.json")
+    assert ok(ex, health) and ex["engine_api"] == "1.8"
     for said in ("1.0", "1.7", "1.8"):
         assert engineapi.read(dict(ex, engine_api=said))["ok"], said
-    return f"{len(doc['routes'])} routes as 1.7's, {len(fams)} controller families, SPEAKS {engineapi.SPEAKS}"
+    return f"{len(doc['routes'])} routes as 1.7's, {len(fams)} controller families"
+
+
+def test_additive_1_9():
+    """ENG-456: 1.9 keeps every 1.8 route and adds the engine's hot settings route (GET and PATCH
+    /v1/engine/settings); with no HTTP token and no allow-from list no answer changes."""
+    def ok(doc, schema):
+        return not contract_check.validate(doc, schema, root=CONTRACT)
+    health = contract_check.load("health", CONTRACT)
+    old, doc = _ex("compat/1.8/routes.json"), _routes()
+    assert (old["version"], doc["version"]) == ("1.8", "1.9") == ("1.8", engineapi.SPEAKS)
+    new = [r for r in doc["routes"] if r not in old["routes"]]
+    assert [r for r in doc["routes"] if r in old["routes"]] == old["routes"], "every 1.8 route"
+    assert sorted((r["method"], r["path"], r["group"], r["since"]) for r in new) == [
+        ("GET", "/v1/engine/settings", 9, "1.9"), ("PATCH", "/v1/engine/settings", 9, "1.9")], new
+    assert all(r["used_by"] == [] and r["consumer"] for r in new), new
+    assert {k: v for k, v in doc.items() if k not in ("version", "routes")} == \
+        {k: v for k, v in old.items() if k not in ("version", "routes")}, "nothing else changes"
+    for name in ("health.example.json", "health.stage-front.example.json", "health.stage-tail.example.json"):
+        assert ok(_ex("compat/1.8/" + name), health), name
+    ex = _ex("health.example.json")
+    assert ok(ex, health) and ex["engine_api"] == engineapi.SPEAKS
+    for said in ("1.0", "1.8", "1.9"):
+        assert engineapi.read(dict(ex, engine_api=said))["ok"], said
+    return f"{len(doc['routes'])} routes, 2 new in group 9, SPEAKS {engineapi.SPEAKS}"
 
 
 if __name__ == "__main__":

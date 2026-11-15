@@ -15,6 +15,13 @@ the engine host.
     ctl.unpair()                      ctl.settings_versions()
     ctl.close()                       ctl.settings_restore(n, confirm=, confirm_fingerprint=, ...)
 
+    since engine-ctl-v1 1.1:
+    ctl.ext_list()                    ctl.upgrade_plan(ref= | archive=, sha256=)
+    ctl.ext_install(wheel, name=, sha256=, module=, when=, deadline=)
+    ctl.ext_remove(dist, and_mode=, when=, deadline=)
+    ctl.upgrade_apply(confirm=, ref= | sha256=, when=, deadline=)
+    ctl.token_rotate(store=)          the new HTTP token goes to `store(token)`, never back
+
 THE CONTRACT is the engine's, contracts/engine-ctl-v1 (pinned, tests/test_contract_pin.py): one
 command line in, one JSON document out (JSON lines for `logs --follow`), an exit status. VERBS below
 is its verbs.json `verbs` table, held equal by tests/test_enginectl.py. Each method checks its
@@ -23,7 +30,20 @@ checked tokens with shlex.join (never by interpolation), and returns the answer 
 ssh and local adapters the engine's own document (`{ctl, version, verb, ok, ...}`, the verb's
 schema), for the node adapter the fields TandemNode knows in the same places (`ctl` "tandemnode").
 `doctor` returns its answer for exit 0 and 1 (`healthy` says which); everything else that is not
-exit 0 raises.
+exit 0 raises. Since 1.1 the envelope's `version` is the contract's on every verb; `status` names
+the engine's release in `engine_version`.
+
+BYTES ON STDIN (1.1): `ext install` sends a wheel (at most 256 MiB) and `upgrade plan` with an
+archive sends the tree (a tar or tar.gz, at most 512 MiB) on the call's stdin, from a file path or
+bytes. This side hashes them first and passes `--sha256` (and the wheel's `--name`); a sha256 the
+caller gave that is not the bytes' is CtlBadCall before anything runs. The engine checks the hash
+again before it writes anything. No log line, error or answer holds the bytes: the log names the
+sha256's first 12 digits and the size.
+
+THE HTTP TOKEN (1.1, engine API 1.9): `token rotate` answers the engine's new bearer on the SSH
+channel only. `token_rotate(store=)` hands it to `store` (proxy/hostkeys.py `put_http_token`, the
+sealed store) and returns the answer without it (`token` removed, `stored` true, `hint` what
+`store` returned). A `store` that fails is CtlInternal, and the token is gone: rotate again.
 
 ERRORS are typed and carry `kind`, `code`, `verb`, `exit` and `host` (`to_dict()` for an API):
 
@@ -67,8 +87,9 @@ the SSH_* variables of this process's own login removed so the engine reads the 
 
 THE NODE ADAPTER keeps an engine controllable through its TandemNode agent until its host is paired
 the new way: `status` is GET /node/engines/{id}, `start`, `stop` and `restart` (now only) are its
-POSTs, `logs` (the engine's log, no follow) its relay of /v1/dashboard/logs. Every other verb, and
-`restart` at idle or a time, `logs --follow` and `logs --which launcher`, is CtlUnsupported.
+POSTs, `logs` (the engine's log, no follow) its relay of /v1/dashboard/logs. Every other verb (the
+1.1 ext, upgrade and token verbs among them), and `restart` at idle or a time, `logs --follow` and
+`logs --which launcher`, is CtlUnsupported.
 
 SECRETS. No call logs an argument's value: a log line names the host, the verb, the settings keys,
 the exit and the time. The private key is never in an argv, an answer or an exception: what ssh
@@ -99,7 +120,7 @@ from proxy import sshonce
 
 CTL = "engine-ctl-v1"
 #: the engine-ctl-v1 version this TandemApp speaks (verbs.json `version`; a later 1.x engine is fine)
-SPEAKS = "1.0"
+SPEAKS = "1.1"
 
 #: exit statuses (verbs.json `exit`)
 EXIT_OK, EXIT_NOT_OK, EXIT_USAGE, EXIT_REFUSED, EXIT_BUSY, EXIT_INTERNAL = 0, 1, 2, 3, 4, 5
@@ -110,6 +131,15 @@ KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 MODULE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}(\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$")
 KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 CONFIRM_RE = re.compile(r"^[0-9a-f]{16}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+#: a wheel's file name (PEP 427), a distribution's name (PEP 508), a git ref: the engine's grammar
+WHEEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.]{0,99})-[A-Za-z0-9_.!+]{1,64}"
+                      r"(?:-[0-9][A-Za-z0-9_]{0,15})?-[A-Za-z0-9_.]{1,64}-[A-Za-z0-9_.]{1,64}"
+                      r"-[A-Za-z0-9_.]{1,128}\.whl$")
+DIST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$")
+REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+#: the most bytes a verb takes on stdin (verbs.json `stdin`)
+WHEEL_MAX, ARCHIVE_MAX = 256 << 20, 512 << 20
 DEADLINE = (10, 86400)
 LINES = (1, 5000)
 
@@ -132,6 +162,15 @@ VERBS: dict = {
               "--which": "enum:engine|launcher"}, "none", "logs.schema.json"),
     "doctor": ({}, "none", "doctor.schema.json"),
     "unpair": ({}, "none", "unpair.schema.json"),
+    # 1.1 (ENG-454, ENG-456)
+    "ext list": ({}, "none", "ext-list.schema.json"),
+    "ext install": ({"--sha256": "sha256", "--name": "wheel", "--module": "module", **_WHEN},
+                    "none", "ext-install.schema.json"),
+    "ext remove": ({"--and-mode": "enum:engine", **_WHEN}, "dist", "ext-remove.schema.json"),
+    "upgrade plan": ({"--ref": "ref", "--sha256": "sha256"}, "none", "upgrade-plan.schema.json"),
+    "upgrade apply": ({"--ref": "ref", "--sha256": "sha256", "--confirm": "confirm", **_WHEN},
+                      "none", "job.schema.json"),
+    "token rotate": ({}, "none", "token-rotate.schema.json"),
 }
 #: error code -> its exit status (verbs.json `errors`); a code of a later minor is taken as it comes
 ERRORS: dict = {
@@ -141,15 +180,21 @@ ERRORS: dict = {
     **{c: EXIT_REFUSED for c in ("no_command", "pty_refused", "forward_refused", "path_outside",
                                  "key_not_managed", "not_in_overlay", "no_change", "confirm_required",
                                  "confirm_mismatch", "hook_missing", "config_error", "unknown_version",
-                                 "key_unknown", "key_ambiguous")},
+                                 "key_unknown", "key_ambiguous", "hash_mismatch", "too_large",
+                                 "not_a_wheel", "no_extension", "not_an_install", "not_installed",
+                                 "ext_in_use", "bad_archive", "target_unsupported", "local_changes",
+                                 "fetch_failed", "unknown_ref", "not_planned")},
     "busy": EXIT_BUSY,
     "internal": EXIT_INTERNAL,
+    **{c: EXIT_NOT_OK for c in ("install_failed", "remove_failed")},
 }
 #: seconds a verb may take, connection included (lifecycle verbs answer at once with their job)
 TIMEOUTS: dict = {"status": 20.0, "start": 30.0, "stop": 30.0, "restart": 30.0, "mode get": 20.0,
                   "mode set": 30.0, "settings get": 30.0, "settings plan": 30.0,
                   "settings apply": 30.0, "settings versions": 20.0, "settings restore": 30.0,
-                  "logs": 30.0, "doctor": 120.0, "unpair": 20.0}
+                  "logs": 30.0, "doctor": 120.0, "unpair": 20.0, "ext list": 60.0,
+                  "ext install": 900.0, "ext remove": 300.0, "upgrade plan": 900.0,
+                  "upgrade apply": 30.0, "token rotate": 20.0}
 #: a settings key whose value is never written to a log or an error (as the engine's journal)
 SECRET_KEY = re.compile(r"(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|_KEY$|CREDENTIAL|BEARER|AUTH)")
 #: the SSH host key types a pin may name (sshonce.PREFER)
@@ -276,6 +321,8 @@ class Call:
     keys: list = field(default_factory=list)
     hide: list = field(default_factory=list)
     timeout: float = 30.0
+    stdin: object = None              # bytes, or the path of a file, sent on the call's stdin
+    sent: str = ""                    # what the log says of it: the sha256's head and the size
 
 
 def _bad(name: str, message: str) -> CtlBadCall:
@@ -373,9 +420,50 @@ def _changes(name: str, changes, unset) -> tuple[list, dict, list, list]:
     return toks, {"set": sets, "unset": unset}, keys, hide
 
 
+def _sha(name: str, opt: str, v) -> str:
+    if not isinstance(v, str) or not SHA256_RE.match(v.lower()):
+        raise _bad(name, f"{opt} takes the 64 hex digits of a sha256")
+    return v.lower()
+
+
+def _bytes(name: str, src, limit: int, what: str) -> tuple[object, str, int]:
+    """(what goes on stdin, its sha256, its size) of `src`: bytes, or the path of a file (read
+    here only to hash it; the call streams it from the file)."""
+    if isinstance(src, (bytes, bytearray, memoryview)):
+        data = bytes(src)
+        if not data:
+            raise _bad(name, f"the {what} is empty")
+        if len(data) > limit:
+            raise _bad(name, f"the {what} is larger than {limit >> 20} MiB")
+        return data, hashlib.sha256(data).hexdigest(), len(data)
+    if not isinstance(src, str) or not src:
+        raise _bad(name, f"the {what} is bytes or the path of a file")
+    try:
+        st = os.stat(src)
+    except OSError:
+        raise _bad(name, f"the {what} file cannot be read") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise _bad(name, f"the {what} is not a plain file")
+    if st.st_size == 0 or st.st_size > limit:
+        raise _bad(name, f"the {what} is empty or larger than {limit >> 20} MiB")
+    h = hashlib.sha256()
+    try:
+        with open(src, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        raise _bad(name, f"the {what} file cannot be read") from None
+    return os.path.abspath(src), h.hexdigest(), st.st_size
+
+
+def _sent(sha: str, size: int) -> str:
+    return f"sha256 {sha[:12]}, {size} bytes"
+
+
 def build(name: str, *, when=None, deadline=None, ext=None, mode=None, keys=None, changes=None,
           unset=None, confirm=None, confirm_fingerprint=None, version=None, follow=False,
-          lines=None, which=None) -> Call:
+          lines=None, which=None, data=None, wheel_name=None, sha256=None, module=None,
+          dist=None, and_mode=None, ref=None) -> Call:
     """The checked Call of verb `name`; CtlBadCall names what is wrong. Nothing runs here."""
     if name not in VERBS:
         raise _bad(name, f"no verb {name!r}")
@@ -383,7 +471,62 @@ def build(name: str, *, when=None, deadline=None, ext=None, mode=None, keys=None
     opts: dict = {}
     names: list = []
     hide: list = []
-    if name == "restart":
+    stdin, sent = None, ""
+    if name == "ext install":
+        stdin, got, size = _bytes(name, data, WHEEL_MAX, "wheel")
+        if sha256 is not None and _sha(name, "sha256", sha256) != got:
+            raise _bad(name, f"the wheel's sha256 is {got[:12]}..., not the one given")
+        if wheel_name is None and isinstance(stdin, str):
+            wheel_name = os.path.basename(stdin)
+        if not isinstance(wheel_name, str) or not WHEEL_RE.match(wheel_name):
+            raise _bad(name, "name is a wheel's file name (name-version-py3-none-any.whl)")
+        opts.update(sha256=got, name=wheel_name, bytes=size)
+        toks += ["--sha256", got, "--name", wheel_name]
+        if module is not None:
+            if not isinstance(module, str) or not MODULE_RE.match(module):
+                raise _bad(name, "module is a dotted module name")
+            opts["module"] = module
+            toks += ["--module", module]
+        sent = _sent(got, size)
+        _when_opts(name, when, deadline, toks, opts)
+    elif name == "ext remove":
+        if not isinstance(dist, str) or not DIST_RE.match(dist):
+            raise _bad(name, "dist is one distribution's name")
+        opts["dist"] = dist
+        if and_mode is not None:
+            if and_mode != "engine":
+                raise _bad(name, "and_mode is engine")
+            opts["and_mode"] = and_mode
+            toks += ["--and-mode", and_mode]
+        _when_opts(name, when, deadline, toks, opts)
+        toks.append(dist)
+    elif name in ("upgrade plan", "upgrade apply"):
+        if (ref is None) == (data is None and sha256 is None):
+            raise _bad(name, "give ref, or an archive (plan) or its sha256 (apply), one of them")
+        if ref is not None:
+            if not isinstance(ref, str) or not REF_RE.match(ref) or ".." in ref or "//" in ref \
+                    or ref.endswith((".lock", "/", ".")) or "@{" in ref:
+                raise _bad(name, "ref is a tag, a branch or a commit")
+            opts["ref"] = ref
+            toks += ["--ref", ref]
+        elif name == "upgrade plan":
+            if data is None:
+                raise _bad(name, "a plan by sha256 sends the archive: give archive")
+            stdin, got, size = _bytes(name, data, ARCHIVE_MAX, "archive")
+            if sha256 is not None and _sha(name, "sha256", sha256) != got:
+                raise _bad(name, f"the archive's sha256 is {got[:12]}..., not the one given")
+            opts.update(sha256=got, bytes=size)
+            toks += ["--sha256", got]
+            sent = _sent(got, size)
+        else:
+            if data is not None:
+                raise _bad(name, "apply sends no archive: the plan stored it; give its sha256")
+            opts["sha256"] = _sha(name, "sha256", sha256)
+            toks += ["--sha256", opts["sha256"]]
+        if name == "upgrade apply":
+            toks += ["--confirm", _confirm(name, "confirm", confirm)]
+            _when_opts(name, when, deadline, toks, opts)
+    elif name == "restart":
         _when_opts(name, when, deadline, toks, opts)
     elif name == "mode set":
         if mode not in ("engine", "chat"):
@@ -439,7 +582,7 @@ def build(name: str, *, when=None, deadline=None, ext=None, mode=None, keys=None
     if len(shlex.join(toks)) > MAX_LINE:
         raise _bad(name, f"the command is longer than {MAX_LINE} characters")
     return Call(name=name, tokens=toks, opts=opts, keys=names, hide=hide,
-                timeout=TIMEOUTS.get(name, 30.0))
+                timeout=TIMEOUTS.get(name, 30.0), stdin=stdin, sent=sent)
 
 
 def scrub(text: str, hide: list) -> str:
@@ -451,8 +594,9 @@ def scrub(text: str, hide: list) -> str:
 def parse_answer(name: str, rc: int, out: str, *, host: str | None = None,
                  hide: list | None = None) -> dict:
     """The engine's document for exit `rc`, or the typed error. Exit 0 is an answer; exit 1 is one
-    for doctor (CtlNotOk otherwise); 2 to 5 carry `error` {code, message}. Anything else, or an
-    answer that disagrees with its exit, is CtlProtocol."""
+    for doctor (CtlNotOk otherwise, with the `error` {code, message} of a failed ext install or
+    remove since 1.1); 2 to 5 carry `error` {code, message}. Anything else, or an answer that
+    disagrees with its exit, is CtlProtocol."""
     hide = hide or []
     ctx = {"verb": name, "exit": rc, "host": host}
     if rc not in (EXIT_OK, EXIT_NOT_OK, EXIT_USAGE, EXIT_REFUSED, EXIT_BUSY, EXIT_INTERNAL):
@@ -471,9 +615,9 @@ def parse_answer(name: str, rc: int, out: str, *, host: str | None = None,
         if doc["ok"] is not True or "error" in doc:
             raise CtlProtocol(f"{name}: exit 0 with an answer that is not ok", **ctx)
         return doc
-    if rc == EXIT_NOT_OK:
-        if doc["ok"] is not False or "error" in doc:
-            raise CtlProtocol(f"{name}: exit 1 with an answer that is ok or an error", **ctx)
+    if rc == EXIT_NOT_OK and "error" not in doc:
+        if doc["ok"] is not False:
+            raise CtlProtocol(f"{name}: exit 1 with an answer that is ok", **ctx)
         if name == "doctor":
             return doc
         raise CtlNotOk(f"{name}: answered, not ok", answer=doc, **ctx)
@@ -493,9 +637,7 @@ def _envelope(name: str, doc, ctx: dict) -> None:
     if not isinstance(doc, dict) or doc.get("ctl") != CTL or not isinstance(doc.get("ok"), bool):
         raise CtlProtocol(f"{name}: the answer is not an {CTL} document", **ctx)
     v = doc.get("version")
-    if name == "status" and doc.get("ok") is True:
-        pass        # status's body puts the engine's release in `version` (its schema: string|null)
-    elif not isinstance(v, str) or not re.fullmatch(r"1\.[0-9]+", v):
+    if not isinstance(v, str) or not re.fullmatch(r"1\.[0-9]+", v):
         raise CtlProtocol(f"{name}: the answer speaks {CTL} {str(v)[:20]!r}; this TandemApp speaks "
                           f"{SPEAKS} (any 1.x)", **ctx)
     if doc.get("verb") not in (name, None):
@@ -584,6 +726,57 @@ class EngineHostControl:
     def unpair(self) -> dict:
         return self._do(build("unpair"))
 
+    # ------------------------------------------------------------------ 1.1: ext, upgrade, token
+    def ext_list(self) -> dict:
+        return self._do(build("ext list"))
+
+    def ext_install(self, wheel, *, name: str | None = None, sha256: str | None = None,
+                    module: str | None = None, when=None, deadline: int | None = None) -> dict:
+        """Install a wheel (`wheel`: its path, or its bytes with `name`) into the engine's venv;
+        the engine takes it after a restart (`restart_needed`)."""
+        return self._do(build("ext install", data=wheel, wheel_name=name, sha256=sha256,
+                              module=module, when=when, deadline=deadline))
+
+    def ext_remove(self, dist: str, *, and_mode: str | None = None, when=None,
+                   deadline: int | None = None) -> dict:
+        return self._do(build("ext remove", dist=dist, and_mode=and_mode, when=when,
+                              deadline=deadline))
+
+    def upgrade_plan(self, *, ref: str | None = None, archive=None,
+                     sha256: str | None = None) -> dict:
+        """The plan of an upgrade to `ref`, or to `archive` (a tar or tar.gz of the tree: its path
+        or bytes; sent on stdin, `sha256` checked against it when given)."""
+        return self._do(build("upgrade plan", ref=ref, data=archive, sha256=sha256))
+
+    def upgrade_apply(self, *, confirm: str, ref: str | None = None, sha256: str | None = None,
+                      when=None, deadline: int | None = None) -> dict:
+        """The planned upgrade as a job (`ref`, or the planned archive's `sha256`)."""
+        return self._do(build("upgrade apply", ref=ref, sha256=sha256, confirm=confirm,
+                              when=when, deadline=deadline))
+
+    def token_rotate(self, *, store) -> dict:
+        """A new HTTP token on the engine host; `store(token)` keeps it (the sealed store) and
+        its return is the answer's `hint`. The answer comes back without the token."""
+        if not callable(store):
+            raise _bad("token rotate", "store is where the token goes (a callable)")
+        call = build("token rotate")
+        doc = self._do(call)
+        tok = doc.pop("token", None)
+        if not isinstance(tok, str) or len(tok) < 32:
+            raise CtlProtocol("token rotate: the answer holds no token", verb=call.name,
+                              host=self.label)
+        try:
+            hint = store(tok)
+        except Exception as exc:                                       # noqa: BLE001
+            self.log(f"[enginectl] {self.label}: token rotate -> the new token was not stored "
+                     f"({type(exc).__name__})")
+            raise CtlInternal(f"token rotate: the engine host rotated its token, but it could not "
+                              f"be stored here ({type(exc).__name__}); rotate it again",
+                              verb=call.name, code="not_stored", host=self.label) from None
+        doc["stored"] = True
+        doc["hint"] = hint if isinstance(hint, dict) else None
+        return doc
+
     def close(self) -> None:
         pass
 
@@ -601,7 +794,8 @@ class EngineHostControl:
     def _do(self, call: Call) -> dict:
         call.timeout = self.timeouts.get(call.name, call.timeout)
         t0 = time.monotonic()
-        what = call.name + (f" ({', '.join(call.keys)})" if call.keys else "")
+        what = call.name + (f" ({', '.join(call.keys)})" if call.keys else "") + \
+            (f" ({call.sent})" if call.sent else "")
         try:
             doc = self._run(call)
         except CtlError as exc:
@@ -642,17 +836,33 @@ def _kill(p: subprocess.Popen) -> None:
 
 
 def run_process(argv: list, *, timeout: float, env: dict, name: str,
-                host: str | None = None) -> tuple[int, str, str]:
-    """argv in its own session with stdin from /dev/null: (exit, stdout, stderr), or CtlTimeout
-    after `timeout` seconds with the whole process group killed."""
+                host: str | None = None, stdin=None) -> tuple[int, str, str]:
+    """argv in its own session: (exit, stdout, stderr), or CtlTimeout after `timeout` seconds with
+    the whole process group killed. stdin: /dev/null, or `stdin` (bytes, or a file's path that
+    is streamed from the file)."""
+    feed, src = None, subprocess.DEVNULL
     try:
-        p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        if isinstance(stdin, bytes):
+            feed, src = stdin, subprocess.PIPE
+        elif isinstance(stdin, str):
+            src = open(stdin, "rb")
+    except OSError:
+        raise CtlBadCall(f"{name}: the file to send cannot be read", verb=name,
+                         code="bad_call") from None
+    try:
+        p = subprocess.Popen(argv, stdin=src, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, env=env, start_new_session=True)
     except OSError as exc:
         raise CtlUnreachable(f"{name}: {os.path.basename(argv[0])} could not start "
                              f"({type(exc).__name__})", verb=name, host=host) from None
+    finally:
+        if src not in (subprocess.DEVNULL, subprocess.PIPE):
+            src.close()
     try:
-        out, err = p.communicate(timeout=timeout)
+        try:
+            out, err = p.communicate(input=feed, timeout=timeout)
+        except BrokenPipeError:                          # it ended before it read everything
+            out, err = p.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         _kill(p)
         try:
@@ -775,7 +985,7 @@ class LocalControl(EngineHostControl):
     def _run(self, call: Call) -> dict:
         self._check(call)
         rc, out, _err = run_process(self.argv(call), timeout=call.timeout, env=_env(),
-                                    name=call.name, host=self.label)
+                                    name=call.name, host=self.label, stdin=call.stdin)
         return parse_answer(call.name, rc, out, host=self.label, hide=call.hide)
 
     def _follow(self, call: Call) -> LogStream:
@@ -1185,7 +1395,7 @@ class SshControl(EngineHostControl):
         argv, hide = self._prepare(call)
         left = max(1.0, call.timeout - (time.monotonic() - t0))
         rc, out, err = run_process(argv, timeout=left, env=_env(), name=call.name,
-                                   host=self.label)
+                                   host=self.label, stdin=call.stdin)
         err = scrub(err, hide)
         if "Control socket connect" in err and _is_socket(self.control_path):
             # the master is gone (ssh connected directly): the next call starts a new one
@@ -1296,6 +1506,7 @@ class NodeControl(EngineHostControl):
                 state = "draining"
             job = v.get("job")
             return self._answer(call, {
+                "engine_version": h.get("version"),
                 "engine": {"state": state, "pid": v.get("pid"), "port": v.get("port"),
                            "health_code": h.get("http"), "engine_api": h.get("engine_api"),
                            "version": h.get("version"), "model": h.get("model"),

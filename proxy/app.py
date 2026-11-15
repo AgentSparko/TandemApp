@@ -1126,7 +1126,8 @@ def build(args, env=None) -> Service:
                   conductor=cond, monitor_base=base)
     STATE["svc"] = svc
     STATE["parallel"] = parallel_mod.ParallelBoard(live, cost=svc.live_cost,
-                                                   peers=svc.peer_backends)
+                                                   peers=svc.peer_backends,
+                                                   auth=svc.relay.bearer_of)
     STATE["fleet"] = fleet_mod.Fleet(svc, nodesource.LocalNode(
         hosts=lambda: (_hosts() or [None])[0], draining=lambda: bool(STATE.get("draining")),
         version=lambda: STATE.get("version", ""), logbuf=logbuf.BUFFER,
