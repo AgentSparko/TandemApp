@@ -4,6 +4,13 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 
 ## Unreleased
 
+### The engine without TandemApp
+
+- The engine carries no copy of TandemApp any more (ENG-413). TandemApp pins the engine's contracts at engine API 1.8 (`contracts/engine-api-v1/PIN`, `proxy.engineapi.SPEAKS`). In 1.8 the page, the Chat tab's forward and the other backends are this tree's controller's only: an engine answers them 404.
+- The extension registers no `/dashboard` route. Its routes are the conductor's, the library, the model's memory and Laya.
+- `tools/pair_suite.sh ENGINE OUT` runs the engine's pair tests, the engine with this tree's extension, against an engine checkout at the pinned commit.
+- New here from the engine: `tests/test_static.py` (the page's files), `tests/test_doc_words.py` (no model count, no bird words), the manual's conductor part (six chapters), and four tools that call the conductor's routes (`argloop_live`, `library_install`, `memory_replay`, `playtest_install`). The setup mocks link the engine's README for the other backends.
+
 ### TandemApp
 
 - A Split starts and serves from TandemApp (SRV-817): one model cut across two Sparks. The planner asks each Spark's engine for its estimate with the `split` block (engine API 1.2), picks the cut whose smaller headroom is largest, and states every number, the link and why each other cut lost. The two Sparks need an interface pair in one subnet: a fabric pair first, a LAN pair with a warning, because the data link is neither signed nor encrypted after its handshake. A start hands a link key to both node agents (each keeps it in a 0600 file), starts the front stage, then the tail, checks both stages and the link, and routes requests to the tail alone. A link that drops makes the deployment degraded: requests get 503 `stage_down` with `Retry-After` until the stages link again by themselves. Stop takes the tail first and removes the key. The controller does not switch a Spark's weight profile: set each Spark to the pack first. [app/docs/proxy.md](docs/proxy.md) has the rule and the states.

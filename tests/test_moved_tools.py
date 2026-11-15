@@ -1,4 +1,4 @@
-"""The tools that came from the engine's tools/ (ENG-413 WP10, SRV-821/822): TandemApp's own now.
+"""The tools that came from the engine's tools/ (ENG-413 WP10 and WP14, SRV-821/822): TandemApp's own now.
 
 They read only TandemApp's code (the conductor, its notes, the ledger's journal, chatd's render, the
 proxy's prices and fake backend), so they live here and run from this tree alone.
@@ -35,6 +35,12 @@ MOVED = {
     "memory_recall_check": "memory recall on the chat path",
     "prefill_reuse_e2e": "a Chat-tab run's prefix reuse, rendered as chatd renders it",
     "parallel_load": "N agent sessions at once through the proxy",
+    # ENG-413 WP14: HTTP clients of the conductor's own routes (/v1/conductor/*), which an engine
+    # serves only with this tree's extension
+    "argloop_live": "the tool-argument loop guard on a live engine with the extension",
+    "library_install": "the package library's files, packages and switch, through the conductor's routes",
+    "memory_replay": "a real session's transcript replayed into an engine with memory on",
+    "playtest_install": "the laya-playtest package and the inline lines, through the conductor's routes",
 }
 BLOCK = ("server", "engine", "models", "bench", "manual")
 

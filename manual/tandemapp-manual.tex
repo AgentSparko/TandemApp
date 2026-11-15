@@ -23,6 +23,16 @@ TandemApp is the dashboard, the proxy in front of engines and cloud APIs, the Ch
 \input{chapters/hosts}
 
 \partintro{%
+The conductor: the layer in front of the model that plans each turn and watches it run. Profiles and the router (\ref{ch:conductor}), packages, the skill library and the small decision models (\ref{ch:packages}), the session monitor (\ref{ch:monitor}), status lines, the voice and the shadow reader (\ref{ch:lines}), memory notes (\ref{ch:memory}), and the same conductor in front of other backends (\ref{ch:harness-proxy}). Nothing here changes the model's arithmetic; all of it changes what the model reads.}
+\part{The conductor}
+\input{chapters/conductor}
+\input{chapters/packages}
+\input{chapters/monitor}
+\input{chapters/lines}
+\input{chapters/memory}
+\input{chapters/harness-proxy}
+
+\partintro{%
 The reference. Chapter~\ref{ch:ref-app} is generated from TandemApp's code: every flag, variable, knob, route, header, error, metric and ledger column. Then troubleshooting by symptom (\ref{ch:troubleshooting}) and the changelog's TandemApp paragraphs (\ref{ch:changelog}). The glossary and the index follow.}
 \part{Reference}
 \input{chapters/ref-app}
