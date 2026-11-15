@@ -464,3 +464,128 @@ button.eh-row:disabled:not([aria-busy='true']) {
     min-width: 8.5ch;
   }
 }
+
+/* ---- the other ways: a password once, a key to paste (SRV-831) -------------------------------- */
+.eh-ways-seg {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+}
+.eh-ways-seg .seg-btn {
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+.eh-way-text {
+  max-width: 72ch;
+  margin: 10px 0 14px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.eh-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 6.5em minmax(0, 1fr);
+  gap: 10px 12px;
+  max-width: 760px;
+}
+.eh-target input {
+  width: 100%;
+}
+.eh-target input[readonly] {
+  opacity: 0.7;
+}
+.eh-folder {
+  grid-column: 1 / -1;
+}
+.eh-folder > summary {
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.eh-folder > label {
+  max-width: 460px;
+  margin-top: 8px;
+}
+.eh-form > .eh-actions:first-of-type {
+  margin-top: 14px;
+}
+.eh-hostkey {
+  max-width: 760px;
+  margin-top: 16px;
+}
+.eh-hostkey > p {
+  margin-bottom: 8px;
+  line-height: 1.9;
+}
+.eh-hostkey .eh-fp-v,
+.eh-hostkey .eh-fp-paste input {
+  background: var(--bg-inset);
+}
+.eh-pass {
+  max-width: 360px;
+  margin-top: 14px;
+}
+.eh-pass input {
+  width: 100%;
+}
+.eh-steps {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: eh-step;
+}
+.eh-steps > li {
+  position: relative;
+  min-width: 0;
+  padding-left: 34px;
+  counter-increment: eh-step;
+}
+.eh-steps > li::before {
+  content: counter(eh-step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  color: var(--ink-2);
+  font: 600 var(--fs-xs) var(--font-mono);
+}
+.eh-steps .eh-hostkey {
+  margin-top: 0;
+}
+.eh-line {
+  max-height: 9.5em;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.eh-copy-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .eh-target {
+    grid-template-columns: minmax(0, 1fr) 6.5em;
+  }
+  .eh-t-user {
+    grid-column: 1 / -1;
+  }
+  .eh-steps > li {
+    padding-left: 0;
+    padding-top: 28px;
+  }
+}
