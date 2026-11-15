@@ -1,0 +1,461 @@
+{
+ "$id": "settings-v1/common",
+ "description": "Shapes the other files share.",
+ "$defs": {
+  "scope": {
+   "enum": [
+    "app",
+    "backends",
+    "conductor",
+    "engine",
+    "hooks"
+   ]
+  },
+  "restart": {
+   "enum": [
+    "none",
+    "app",
+    "hot",
+    "engine"
+   ],
+   "description": "none: applied as it is; app: this controller restarts; hot: the running service reads it at once; engine: the engine restarts (scheduled, idle-gated)"
+  },
+  "key": {
+   "type": "object",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "type": {
+     "enum": [
+      "string",
+      "integer",
+      "number",
+      "boolean",
+      "enum",
+      "list",
+      "object",
+      "document",
+      "path",
+      "module",
+      "cidrs",
+      "secret"
+     ]
+    },
+    "restart": {
+     "$ref": "common.schema.json#/$defs/restart"
+    },
+    "fingerprint": {
+     "type": "boolean"
+    },
+    "secret": {
+     "type": "boolean"
+    },
+    "write_only": {
+     "type": "boolean"
+    },
+    "writable": {
+     "type": "boolean"
+    },
+    "nullable": {
+     "type": "boolean"
+    },
+    "default": {},
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "why": {
+     "type": "string"
+    },
+    "variable": {
+     "type": "string"
+    },
+    "text": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "key",
+    "type",
+    "restart",
+    "fingerprint",
+    "secret",
+    "write_only",
+    "writable",
+    "nullable",
+    "default"
+   ],
+   "additionalProperties": false,
+   "description": "one key of a scope's schema; a secret is write-only: its value is never answered"
+  },
+  "value": {
+   "type": "object",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {},
+    "set": {
+     "type": "boolean"
+    },
+    "source": {
+     "type": "string"
+    },
+    "variable": {
+     "type": "string"
+    },
+    "hint": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "label": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "key",
+    "value",
+    "set",
+    "source"
+   ],
+   "additionalProperties": false,
+   "description": "a key's value now and where it comes from; a secret's value is always null, `set` says whether one is stored"
+  },
+  "change": {
+   "type": "object",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "from": {},
+    "to": {},
+    "was_set": {
+     "type": "boolean"
+    },
+    "is_set": {
+     "type": "boolean"
+    },
+    "secret": {
+     "type": "boolean"
+    },
+    "restart": {
+     "$ref": "common.schema.json#/$defs/restart"
+    },
+    "fingerprint": {
+     "type": "boolean"
+    },
+    "diff": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string"
+       },
+       "before": {},
+       "after": {}
+      },
+      "required": [
+       "path",
+       "before",
+       "after"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "diff_count": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "key",
+    "from",
+    "to",
+    "was_set",
+    "is_set",
+    "secret",
+    "restart",
+    "fingerprint"
+   ],
+   "additionalProperties": false,
+   "description": "one key's change in a plan; a secret's from and to are null"
+  },
+  "part_plan": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "$ref": "common.schema.json#/$defs/scope"
+    },
+    "target": {
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "set",
+      "restore"
+     ]
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "changed": {
+     "type": "boolean"
+    },
+    "changes": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/change"
+     }
+    },
+    "restart": {
+     "$ref": "common.schema.json#/$defs/restart"
+    },
+    "restart_needed": {
+     "type": "boolean"
+    },
+    "fingerprint_keys": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "scope",
+    "target",
+    "kind",
+    "version",
+    "changed",
+    "changes",
+    "restart",
+    "restart_needed",
+    "fingerprint_keys",
+    "warnings"
+   ],
+   "additionalProperties": false
+  },
+  "restore_ref": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "$ref": "common.schema.json#/$defs/scope"
+    },
+    "target": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "scope",
+    "target",
+    "version"
+   ],
+   "additionalProperties": false
+  },
+  "error_brief": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "type": "string"
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "message"
+   ],
+   "additionalProperties": false
+  },
+  "part_result": {
+   "type": "object",
+   "properties": {
+    "scope": {
+     "$ref": "common.schema.json#/$defs/scope"
+    },
+    "target": {
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "set",
+      "restore"
+     ]
+    },
+    "state": {
+     "enum": [
+      "applied",
+      "scheduled",
+      "unchanged",
+      "failed",
+      "not_run"
+     ]
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "version_before": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "version_after": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "restore": {
+     "type": "array",
+     "items": {
+      "$ref": "common.schema.json#/$defs/restore_ref"
+     }
+    },
+    "restart": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "restart.schema.json"
+      }
+     ]
+    },
+    "error": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "common.schema.json#/$defs/error_brief"
+      }
+     ]
+    }
+   },
+   "required": [
+    "scope",
+    "target",
+    "kind",
+    "state",
+    "keys",
+    "version_before",
+    "version_after",
+    "restore",
+    "restart",
+    "error"
+   ],
+   "additionalProperties": false
+  },
+  "target": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "writable": {
+     "type": "boolean"
+    },
+    "why": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "transport": {
+     "enum": [
+      "ssh",
+      "http"
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "label",
+    "writable",
+    "why"
+   ],
+   "additionalProperties": false
+  },
+  "version": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "at": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "who": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "note": {
+     "type": "string"
+    },
+    "change_set": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "keys": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "current": {
+     "type": "boolean"
+    },
+    "good": {
+     "type": "boolean"
+    },
+    "values": {
+     "type": "object"
+    }
+   },
+   "required": [
+    "id",
+    "at",
+    "who",
+    "note",
+    "change_set",
+    "keys",
+    "current"
+   ],
+   "additionalProperties": false
+  }
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "type": "object",
+ "properties": {
+  "error": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "type": "string"
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "message"
+   ]
+  }
+ },
+ "required": [
+  "error"
+ ],
+ "additionalProperties": false,
+ "description": "every refusal: error.type one of scopes.json's errors, a sentence, and its facts (key, variable, plan, keys, errors)",
+ "$id": "settings-v1/error"
+}

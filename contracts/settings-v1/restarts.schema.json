@@ -1,0 +1,21 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "restarts": {
+   "type": "array",
+   "items": {
+    "$ref": "restart.schema.json"
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "restarts"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/settings/restarts, newest first",
+ "$id": "settings-v1/restarts"
+}

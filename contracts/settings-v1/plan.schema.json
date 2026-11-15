@@ -1,0 +1,62 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "change_set": {
+   "type": "string"
+  },
+  "parts": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/part_plan"
+   }
+  },
+  "changed": {
+   "type": "boolean"
+  },
+  "restart": {
+   "$ref": "common.schema.json#/$defs/restart"
+  },
+  "restart_needed": {
+   "type": "boolean"
+  },
+  "fingerprint_keys": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "needs_confirm": {
+   "type": "boolean"
+  },
+  "confirm": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "confirm_fingerprint": {
+   "type": [
+    "string",
+    "null"
+   ]
+  }
+ },
+ "required": [
+  "contract_version",
+  "change_set",
+  "parts",
+  "changed",
+  "restart",
+  "restart_needed",
+  "fingerprint_keys",
+  "needs_confirm",
+  "confirm",
+  "confirm_fingerprint"
+ ],
+ "additionalProperties": false,
+ "description": "a change set's plan: nothing written; one confirm for all parts, a second one when a key feeds an engine's disk-cache fingerprint",
+ "$id": "settings-v1/plan"
+}

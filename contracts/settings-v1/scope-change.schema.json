@@ -1,0 +1,36 @@
+{
+ "type": "object",
+ "properties": {
+  "target": {
+   "type": "string"
+  },
+  "set": {
+   "type": "object"
+  },
+  "unset": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "confirm": {
+   "type": "string"
+  },
+  "confirm_fingerprint": {
+   "type": "string"
+  },
+  "when": {
+   "type": "string"
+  },
+  "deadline_s": {
+   "type": "integer"
+  },
+  "note": {
+   "type": "string"
+  }
+ },
+ "required": [],
+ "additionalProperties": false,
+ "description": "the body of POST /v1/settings/{scope}/plan and /apply: one part",
+ "$id": "settings-v1/scope-change"
+}

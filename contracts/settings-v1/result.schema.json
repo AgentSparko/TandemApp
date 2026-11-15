@@ -1,0 +1,59 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "change_set": {
+   "type": "string"
+  },
+  "state": {
+   "enum": [
+    "applied",
+    "partial",
+    "failed",
+    "unchanged"
+   ]
+  },
+  "replayed": {
+   "type": "boolean"
+  },
+  "parts": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/part_result"
+   }
+  },
+  "applied": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "failed": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "not_run": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "change_set",
+  "state",
+  "replayed",
+  "parts",
+  "applied",
+  "failed",
+  "not_run"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/settings/apply (and a scope's apply or restore with its confirm): each part in dependency order; the first failure stops the set",
+ "$id": "settings-v1/result"
+}

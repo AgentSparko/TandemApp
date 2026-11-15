@@ -1,0 +1,200 @@
+{
+ "version": "1.0",
+ "scopes": [
+  {
+   "name": "app",
+   "order": 0,
+   "store": "proxy/appparts.py (the page's switches in the config database)",
+   "targets": "controller",
+   "restart": [
+    "none"
+   ]
+  },
+  {
+   "name": "backends",
+   "order": 1,
+   "store": "the config database: backends, routing rules, users (proxy/config.py)",
+   "targets": "controller",
+   "restart": [
+    "none"
+   ]
+  },
+  {
+   "name": "conductor",
+   "order": 2,
+   "store": "this controller's conductor documents (tandemapp/conductor/store.py), versioned",
+   "targets": "controller",
+   "restart": [
+    "hot"
+   ]
+  },
+  {
+   "name": "engine",
+   "order": 3,
+   "store": "each paired engine host's managed overlay through tandem remote settings (engine-ctl-v1), versioned; hot keys through PATCH /v1/engine/settings (engine API 1.9)",
+   "targets": "an engine host's fleet id (ssh), or http:<backend id> read-only",
+   "restart": [
+    "hot",
+    "engine"
+   ]
+  },
+  {
+   "name": "hooks",
+   "order": 4,
+   "store": "the hook registry's tables, through an adapter (empty until it is plugged in)",
+   "targets": "controller",
+   "restart": [
+    "none",
+    "engine"
+   ]
+  }
+ ],
+ "operations": [
+  "schema",
+  "get",
+  "plan",
+  "apply",
+  "versions",
+  "restore"
+ ],
+ "routes": [
+  {
+   "method": "GET",
+   "path": "/v1/settings",
+   "schema": "overview.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/{scope}/schema",
+   "schema": "schema.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/{scope}",
+   "schema": "values.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/{scope}/versions",
+   "schema": "versions.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/{scope}/plan",
+   "body": "scope-change.schema.json",
+   "schema": "plan.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/{scope}/apply",
+   "body": "scope-change.schema.json",
+   "schema": "result.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/{scope}/restore",
+   "body": "restore-body.schema.json",
+   "schema": "plan.schema.json | result.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/plan",
+   "body": "change-set.schema.json",
+   "schema": "plan.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/apply",
+   "body": "change-set.schema.json",
+   "schema": "result.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/restarts",
+   "schema": "restarts.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/restarts/{id}",
+   "schema": "restart.schema.json",
+   "rights": "dashboard"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/settings/restarts/{id}/cancel",
+   "schema": "restart.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/settings/audit",
+   "schema": "audit.schema.json",
+   "rights": "dashboard"
+  }
+ ],
+ "restart_classes": [
+  "none",
+  "app",
+  "hot",
+  "engine"
+ ],
+ "types": [
+  "string",
+  "integer",
+  "number",
+  "boolean",
+  "enum",
+  "list",
+  "object",
+  "document",
+  "path",
+  "module",
+  "cidrs",
+  "secret"
+ ],
+ "errors": {
+  "bad_request": 400,
+  "target_required": 400,
+  "unknown_field": 400,
+  "not_found": 404,
+  "no_scope": 404,
+  "no_target": 404,
+  "no_version": 404,
+  "no_restart": 404,
+  "confirm_required": 428,
+  "fingerprint_confirm_required": 428,
+  "stale_plan": 409,
+  "busy": 409,
+  "read_only": 409,
+  "too_late": 409,
+  "ended": 409,
+  "engine_busy": 409,
+  "engine_refused": 409,
+  "host_key_changed": 409,
+  "no_http": 409,
+  "unknown_key": 422,
+  "locked": 422,
+  "bad_value": 422,
+  "invalid_document": 422,
+  "restore_invalid": 422,
+  "store_refused": 422,
+  "engine_unreachable": 502,
+  "engine_failed": 502,
+  "engine_too_old": 502,
+  "engine_timeout": 504,
+  "unauthorized": 401,
+  "cross_site": 403,
+  "cross_origin": 403,
+  "json_only": 415
+ }
+}

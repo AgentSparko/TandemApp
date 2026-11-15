@@ -1,0 +1,88 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "rows": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "at": {
+      "type": "string"
+     },
+     "ts_ms": {
+      "type": "integer"
+     },
+     "who": {
+      "type": "string"
+     },
+     "action": {
+      "type": "string"
+     },
+     "object": {
+      "type": "string"
+     },
+     "object_id": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "scope": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "target": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "keys": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "change_set": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "result": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "at",
+     "ts_ms",
+     "who",
+     "action",
+     "object",
+     "object_id",
+     "scope",
+     "target",
+     "keys",
+     "change_set",
+     "result"
+    ],
+    "additionalProperties": false
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "rows"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/settings/audit[?change_set=&limit=]: newest first; keys are names, never values",
+ "$id": "settings-v1/audit"
+}

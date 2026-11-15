@@ -1,0 +1,76 @@
+{
+ "type": "object",
+ "properties": {
+  "changes": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "scope": {
+        "$ref": "common.schema.json#/$defs/scope"
+       },
+       "target": {
+        "type": "string"
+       },
+       "set": {
+        "type": "object"
+       },
+       "unset": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "required": [
+       "scope"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "properties": {
+       "scope": {
+        "$ref": "common.schema.json#/$defs/scope"
+       },
+       "target": {
+        "type": "string"
+       },
+       "restore": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "scope",
+       "restore"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "confirm": {
+   "type": "string"
+  },
+  "confirm_fingerprint": {
+   "type": "string"
+  },
+  "when": {
+   "type": "string"
+  },
+  "deadline_s": {
+   "type": "integer"
+  },
+  "note": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "changes"
+ ],
+ "additionalProperties": false,
+ "description": "the body of POST /v1/settings/plan and /apply: parts, at most one a scope and target; apply adds the plan's confirm (and confirm_fingerprint), and for engine parts when (now, idle, at=<ISO time>) and deadline_s",
+ "$id": "settings-v1/change-set"
+}

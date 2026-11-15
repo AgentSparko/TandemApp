@@ -8,8 +8,9 @@ The schemas are `contracts/dashboard-v1/<name>.schema.json` in TandemApp's tree
 (`app/contracts/dashboard-v1/` for a copy of this file in the repository root's tools/), the
 single source of truth the dashboard's mocks and this server are both held to. The validator is
 the subset of JSON Schema those files use -- `type` (one or a list, `integer` excluding booleans),
-`properties`, `required`, `additionalProperties: false`, `items`, `enum`, `const`, and `$ref`
-within a file or to a sibling file -- in the standard library, because the box has no pip. Exit 1
+`properties`, `required`, `additionalProperties: false`, `items`, `enum`, `const`, `anyOf`
+(settings-v1: valid when one branch is), and `$ref` within a file or to a sibling file -- in the
+standard library, because the box has no pip. Exit 1
 and one line per violation, with its JSON path, when the document does not validate.
 """
 
@@ -58,6 +59,10 @@ def validate(value, schema: dict, *, root: str = ROOT, doc: dict | None = None,
         node, base = _resolve(schema["$ref"], doc, root)
         return validate(value, node, root=root, doc=base, path=path)
     errs = []
+    if "anyOf" in schema:
+        tried = [validate(value, b, root=root, doc=doc, path=path) for b in schema["anyOf"]]
+        if all(tried):
+            return [f"{path}: matches no branch of anyOf ({min(tried, key=len)[0]})"]
     t = schema.get("type")
     if t is not None:
         types = t if isinstance(t, list) else [t]

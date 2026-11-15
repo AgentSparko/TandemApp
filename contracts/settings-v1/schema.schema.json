@@ -1,0 +1,40 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "scope": {
+   "$ref": "common.schema.json#/$defs/scope"
+  },
+  "target": {
+   "type": "string"
+  },
+  "writable": {
+   "type": "boolean"
+  },
+  "why": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "keys": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/key"
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "scope",
+  "target",
+  "writable",
+  "why",
+  "keys"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/settings/{scope}/schema[?target=]",
+ "$id": "settings-v1/schema"
+}

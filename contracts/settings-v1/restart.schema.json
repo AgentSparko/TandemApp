@@ -1,0 +1,173 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "id": {
+   "type": "string"
+  },
+  "host": {
+   "type": "string"
+  },
+  "alias": {
+   "type": "string"
+  },
+  "change_set": {
+   "type": "string"
+  },
+  "kind": {
+   "enum": [
+    "settings",
+    "restore"
+   ]
+  },
+  "who": {
+   "type": "string"
+  },
+  "state": {
+   "enum": [
+    "scheduled",
+    "draining",
+    "restarting",
+    "warming",
+    "done",
+    "failed",
+    "timeout",
+    "cancelled"
+   ]
+  },
+  "message": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "when": {
+   "type": "string"
+  },
+  "deadline_s": {
+   "type": [
+    "integer",
+    "null"
+   ]
+  },
+  "deadline_at": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "remaining_s": {
+   "type": [
+    "integer",
+    "null"
+   ]
+  },
+  "created_at": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "ended_at": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "job": {
+   "anyOf": [
+    {
+     "type": "null"
+    },
+    {
+     "type": "object"
+    }
+   ]
+  },
+  "backends": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "draining": {
+   "type": "boolean"
+  },
+  "warm": {
+   "anyOf": [
+    {
+     "type": "null"
+    },
+    {
+     "type": "object",
+     "properties": {
+      "ok": {
+       "type": "boolean"
+      },
+      "backends": {
+       "type": "object"
+      }
+     },
+     "required": [
+      "ok",
+      "backends"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  },
+  "restored": {
+   "anyOf": [
+    {
+     "type": "null"
+    },
+    {
+     "type": "object",
+     "properties": {
+      "version": {
+       "type": "integer"
+      },
+      "healthy": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "version",
+      "healthy"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  },
+  "can_cancel": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "id",
+  "host",
+  "alias",
+  "change_set",
+  "kind",
+  "who",
+  "state",
+  "message",
+  "when",
+  "deadline_s",
+  "deadline_at",
+  "remaining_s",
+  "created_at",
+  "ended_at",
+  "job",
+  "backends",
+  "draining",
+  "warm",
+  "restored",
+  "can_cancel"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/settings/restarts/{id} and POST .../cancel: an engine restart a change scheduled, with its countdown (remaining_s while it waits)",
+ "$id": "settings-v1/restart"
+}
