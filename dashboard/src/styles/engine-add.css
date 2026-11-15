@@ -589,3 +589,136 @@ button.eh-row:disabled:not([aria-busy='true']) {
     padding-top: 28px;
   }
 }
+
+/* ---- after pairing: the bare engine, a model, its download (SRV-833) -------------------------- */
+.eh-kv {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.eh-kv > div {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr);
+  gap: 12px;
+}
+.eh-kv dt {
+  color: var(--ink-2);
+}
+.eh-kv dd {
+  margin: 0;
+}
+.eh-engine .panel-title .icon {
+  width: 16px;
+  height: 16px;
+}
+.eh-choice {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--cobalt);
+  border-radius: var(--radius);
+  background: var(--cobalt-wash);
+}
+.eh-choice-g {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cobalt);
+  color: #fff;
+}
+.eh-choice-g .icon {
+  width: 13px;
+  height: 13px;
+}
+.eh-choice-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.eh-choice p + p {
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.eh-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eh-model {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 11px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  cursor: pointer;
+}
+.eh-model.is-on {
+  border-color: var(--cobalt);
+  background: var(--cobalt-wash);
+}
+.eh-model input {
+  width: 16px;
+  height: 16px;
+  margin: 3px 0 0;
+  accent-color: var(--cobalt);
+}
+.eh-model:has(input:focus-visible) {
+  box-shadow: var(--focus);
+}
+.eh-model-b {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.eh-model-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: var(--fs-md);
+}
+.eh-plan {
+  min-height: 1.5em;
+  margin-top: 12px;
+}
+.eh-actions + .xs,
+.eh-finding + [data-polling] {
+  margin-top: 8px;
+}
+.eh-prog-h {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-bottom: 7px;
+}
+.eh-prog-step {
+  font-weight: 600;
+}
+.eh-install .wz-prog {
+  height: 10px;
+  border-radius: 5px;
+}
+.eh-install .wz-prog + p {
+  margin-top: 8px;
+}
+.eh-install > .xs {
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .eh-kv > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
