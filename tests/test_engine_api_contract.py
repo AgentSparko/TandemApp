@@ -12,8 +12,9 @@ tests/test_engine_api_contract.py.
      tools/tandem_eval) and in every string or template literal of dashboard/src that starts
      with /v1/, /health, /metrics, /readyz, /_tandem, /s/ or /dashboard/ (`${...}` is {param},
      the query is dropped, a base matches as a prefix, all of it when text follows a {param}),
-     each falls in exactly one of routes, engine_screens_until_eng413, app_routes_via_engine
-     and app_families, or the test names file:line; planted unknown paths are caught
+     each falls in exactly one of routes, app_routes_via_engine and app_families (1.8: what left
+     the engine is the controller's own family), or the test names file:line; planted unknown
+     paths are caught
                                                                   test_every_literal_is_classified
   3  every route is used: a file of its used_by holds a literal for it, or a relay prefix
      covers it; nodeengines.RELAY is in the routes               test_every_route_is_used
@@ -56,9 +57,12 @@ tests/test_engine_api_contract.py.
      QSE_CHATD=node from 1.6, the tandem-node chat verbs, 3 starts an hour
                                                                   test_additive_1_6
  12  1.7 (ENG-413 WP7) is additive: the 1.6 examples (compat/1.6/) validate, the routes are 1.6's,
-     the health example says SPEAKS; node/control.json `chat` says the engine runs no chatd (node
+     1.7's health example says 1.7; node/control.json `chat` says the engine runs no chatd (node
      or off, on read as node, default off), TandemNode hands over within one major only, and the
      install names --with-chat --app-wheel and the venv's tandem-node   test_additive_1_7
+ 13  1.8 (ENG-413 WP14): every 1.7 route is here (two marked relay_only); the page, the Chat
+     tab's forward and the other backends are the controller's own families; the screens' old
+     paths left the list; the health example says SPEAKS             test_additive_1_8
 
 Standard library only; the fake engines are threads on loopback ports.
 
@@ -94,7 +98,7 @@ CLIENTS = ("proxy/nodeengines.py", "proxy/nodesource.py", "proxy/nodeagent.py",
            "tandemapp/parallel.py",
            "tandemapp/conductor/classify.py", "chatd/engine.py", "chatd/agent.py",
            "chatd/service.py", "chatd/skills.py", "chatd/tools.py", "tools/tandem_eval.py")
-LISTS = ("routes", "engine_screens_until_eng413", "app_routes_via_engine", "app_families")
+LISTS = ("routes", "app_routes_via_engine", "app_families")
 #: where an engine path starts in a literal: its beginning, or right after a `${...}`
 LEAD = re.compile(r"(?:^|(?<=\}))(/v1/|/health|/metrics|/readyz|/_tandem|/s/|/dashboard/)")
 #: the API root alone (a base URL's `/v1`) is no route
@@ -332,9 +336,6 @@ def test_routes_json():
         for u in r.get("used_by") or []:
             if not u.startswith("relay:") and not os.path.isfile(os.path.join(ROOT, u)):
                 bad.append(f"{name}: no {u}")
-    for e in doc["engine_screens_until_eng413"]:
-        if e.get("schema") and not os.path.isfile(os.path.join(CONTRACT, e["schema"])):
-            bad.append(f"screen {e['path']}: no {e['schema']}")
     for key in ("app_routes_via_engine", "app_families"):
         for e in doc[key]:
             c = e.get("contract")
@@ -644,7 +645,7 @@ def test_values_1_3():
     assert usage.TIER_OF == _ex("cache.json")["tier_of"]
     # 1.5 (ENG-413 WP5): the engine answers its screens itself, so no copy of its off texts is kept
     assert not hasattr(routes, "DECIDERS_OFF_WHY") and not hasattr(routes, "SHADOW_OFF_WHY")
-    assert not any("off_why" in e for e in _routes()["engine_screens_until_eng413"])
+    assert not any("off_why" in e for e in _ex("compat/1.7/routes.json")["engine_screens_until_eng413"])
     fams = {f["name"]: f for f in _ex("metrics-families.json")["families"]
             if f["name"] not in ENGINE_HOST_ONLY}
     reg = {m.name: m for m in metrics.REGISTRY._metrics}
@@ -740,7 +741,7 @@ def test_additive_1_5():
     assert not gone, gone
     # group 9: each route replaces a screen the conductor served, and that screen leaves
     g9 = [r for r in doc["routes"] if r["group"] == 9]
-    screens = {e["path"]: e for e in doc["engine_screens_until_eng413"]}
+    screens = {e["path"]: e for e in _ex("compat/1.7/routes.json")["engine_screens_until_eng413"]}
     assert len(g9) == 14 and all(r["path"].startswith("/v1/engine/") for r in g9), g9
     assert {r["replaces"] for r in g9} == set(screens), sorted({r["replaces"] for r in g9})
     assert all(e["leaves"].startswith("ENG-413 WP14") and e["after_eng413"].startswith("/v1/engine/")
@@ -796,15 +797,15 @@ def test_additive_1_7():
     for name in ("health.example.json", "health.stage-front.example.json",
                  "health.stage-tail.example.json"):
         assert ok(_ex("compat/1.6/" + name), health), name
-        a, b = _ex(name), _ex("compat/1.6/" + name)
+        a, b = _ex("compat/1.7/" + name), _ex("compat/1.6/" + name)
         assert {k: v for k, v in a.items() if k != "engine_api"} == \
             {k: v for k, v in b.items() if k != "engine_api"}, name
-    old, doc = _ex("compat/1.6/routes.json"), _routes()
-    assert (old["version"], doc["version"]) == ("1.6", "1.7") == ("1.6", engineapi.SPEAKS)
+    old, doc = _ex("compat/1.6/routes.json"), _ex("compat/1.7/routes.json")    # 1.7 as it was
+    assert (old["version"], doc["version"]) == ("1.6", "1.7")
     assert {k: v for k, v in doc.items() if k != "version"} == \
         {k: v for k, v in old.items() if k != "version"}, "1.7 changes no route"
-    ex = _ex("health.example.json")
-    assert ok(ex, health) and ex["engine_api"] == engineapi.SPEAKS
+    ex = _ex("compat/1.7/health.example.json")
+    assert ok(ex, health) and ex["engine_api"] == "1.7"
     for said in ("1.0", "1.6", "1.7"):
         assert engineapi.read(dict(ex, engine_api=said))["ok"], said
     with open(os.path.join(CONTRACT, "node", "control.json")) as f:
@@ -820,6 +821,32 @@ def test_additive_1_7():
     assert "--with-chat --app-wheel" in chat["update"] and "--runtime-only never" in chat["update"]
     return f"1.6 answers valid, {len(doc['routes'])} routes as 1.6's, chat: node or off, install " \
            f"{' '.join(chat['install']['flags'])}"
+
+
+def test_additive_1_8():
+    """ENG-413 WP14: 1.8 keeps every 1.7 route; the page, the Chat tab's forward and the other
+    backends left the engine and are the controller's own families; the health example says SPEAKS."""
+    def ok(doc, schema):
+        return not contract_check.validate(doc, schema, root=CONTRACT)
+    health = contract_check.load("health", CONTRACT)
+    old, doc = _ex("compat/1.7/routes.json"), _routes()
+    assert (old["version"], doc["version"]) == ("1.7", "1.8") == ("1.7", engineapi.SPEAKS)
+    assert [{k: v for k, v in r.items() if k != "relay_only"} for r in doc["routes"]] == old["routes"]
+    relay = sorted(r["path"] for r in doc["routes"] if r.get("relay_only"))
+    assert relay == ["/v1/embeddings", "/v1/responses"], relay
+    fams = {e["path"] for e in doc["app_families"]}
+    assert {"/dashboard/*", "/v1/chat-app", "/v1/chat-app/*", "/v1/config", "/v1/config/*",
+            "/v1/collect/*"} <= fams, sorted(fams)
+    assert "engine_screens_until_eng413" not in doc
+    since = [a for a in doc["answers"] if a.get("since") == "1.8"]
+    assert since and since[0]["paths"] == ["/v1/chat-app", "/v1/chat-app/*"], since
+    for name in ("health.example.json", "health.stage-front.example.json", "health.stage-tail.example.json"):
+        assert ok(_ex("compat/1.7/" + name), health), name
+    ex = _ex("health.example.json")
+    assert ok(ex, health) and ex["engine_api"] == engineapi.SPEAKS
+    for said in ("1.0", "1.7", "1.8"):
+        assert engineapi.read(dict(ex, engine_api=said))["ok"], said
+    return f"{len(doc['routes'])} routes as 1.7's, {len(fams)} controller families, SPEAKS {engineapi.SPEAKS}"
 
 
 if __name__ == "__main__":
