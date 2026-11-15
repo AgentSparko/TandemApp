@@ -11,7 +11,8 @@ the pinned commit (the CI job checks it out at that commit; a local clone works 
 
   1  PATH has the commit
   2  each folder's tree id in that commit is the PIN's
-  3  each folder's version in that commit (routes.json, ext.json, verbs.json) is the PIN's
+  3  each folder's version in that commit (routes.json, ext.json, verbs.json, the pairing
+     contract's README) is the PIN's
   4  each file of the copy here (PIN left out) is the engine's at that commit, byte for byte, and
      no file is missing on either side
 
@@ -25,6 +26,7 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -34,8 +36,21 @@ CONTRACTS = os.path.join(ROOT, "contracts")
 PIN = os.path.join(CONTRACTS, "engine-api-v1", "PIN")
 #: folder -> (the PIN key of its version, the file that carries the version)
 FOLDERS = {"engine-api-v1": ("engine_api", "routes.json"), "engine-ext-v1": ("ext_api", "ext.json"),
-           "engine-ctl-v1": ("ctl_api", "verbs.json")}
+           "engine-ctl-v1": ("ctl_api", "verbs.json"), "engine-pair-v1": ("pair_api", "README.md")}
 SKIP = {".git", "__pycache__", ".pytest_cache"}
+#: the pairing contract has no JSON with a version: its README says "its version is `1.0`"
+README_VERSION = re.compile(r"its version is `([0-9]+\.[0-9]+)`")
+
+
+def version_of(vfile: str, raw: bytes) -> str | None:
+    """The version a folder's version file states: a JSON file's `version`, a README's sentence."""
+    try:
+        if vfile.endswith(".json"):
+            return json.loads(raw)["version"]
+        m = README_VERSION.search(raw.decode("utf-8"))
+        return m.group(1) if m else None
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return None
 
 
 def read_pin(path: str = PIN) -> dict:
@@ -97,10 +112,7 @@ def check(engine: str, pin: dict | None = None) -> list[str]:
         if got != pin.get(folder):
             probs.append(f"{folder}: tree {got} at {commit[:12]}, PIN says {pin.get(folder)}")
         p = _git(engine, "show", f"{commit}:contracts/{folder}/{vfile}")
-        try:
-            version = json.loads(p.stdout)["version"] if p.returncode == 0 else None
-        except (ValueError, KeyError, TypeError):
-            version = None
+        version = version_of(vfile, p.stdout) if p.returncode == 0 else None
         if version != pin.get(key):
             probs.append(f"{folder}: {vfile} version {version!r} at {commit[:12]}, PIN says {pin.get(key)!r}")
         theirs = _engine(engine, commit, folder)

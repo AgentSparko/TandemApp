@@ -67,7 +67,7 @@ def _pin(repo: str, commit: str = "HEAD") -> dict:
     pin = {"engine_commit": commit}
     for folder, (key, vfile) in T.FOLDERS.items():
         pin[folder] = _git(repo, "rev-parse", f"{commit}:contracts/{folder}")
-        pin[key] = json.loads(_git(repo, "show", f"{commit}:contracts/{folder}/{vfile}"))["version"]
+        pin[key] = T.version_of(vfile, _git(repo, "show", f"{commit}:contracts/{folder}/{vfile}").encode())
     return pin
 
 

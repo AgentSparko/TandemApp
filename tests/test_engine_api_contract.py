@@ -857,7 +857,8 @@ def test_additive_1_8():
 
 def test_additive_1_9():
     """ENG-456: 1.9 keeps every 1.8 route and adds the engine's hot settings route (GET and PATCH
-    /v1/engine/settings); with no HTTP token and no allow-from list no answer changes."""
+    /v1/engine/settings) and, SEC-10, the pairing routes (/v1/engine/pair*, contracts/engine-pair-v1);
+    with no HTTP token, no allow-from list and no pairing window no answer changes."""
     def ok(doc, schema):
         return not contract_check.validate(doc, schema, root=CONTRACT)
     health = contract_check.load("health", CONTRACT)
@@ -866,7 +867,10 @@ def test_additive_1_9():
     new = [r for r in doc["routes"] if r not in old["routes"]]
     assert [r for r in doc["routes"] if r in old["routes"]] == old["routes"], "every 1.8 route"
     assert sorted((r["method"], r["path"], r["group"], r["since"]) for r in new) == [
-        ("GET", "/v1/engine/settings", 9, "1.9"), ("PATCH", "/v1/engine/settings", 9, "1.9")], new
+        ("GET", "/v1/engine/pair", 9, "1.9"), ("GET", "/v1/engine/settings", 9, "1.9"),
+        ("PATCH", "/v1/engine/settings", 9, "1.9"), ("POST", "/v1/engine/pair/1", 9, "1.9"),
+        ("POST", "/v1/engine/pair/2", 9, "1.9"), ("POST", "/v1/engine/pair/abandon", 9, "1.9"),
+        ("POST", "/v1/engine/pair/close", 9, "1.9"), ("POST", "/v1/engine/pair/open", 9, "1.9")], new
     assert all(r["used_by"] == [] and r["consumer"] for r in new), new
     assert {k: v for k, v in doc.items() if k not in ("version", "routes")} == \
         {k: v for k, v in old.items() if k not in ("version", "routes")}, "nothing else changes"
@@ -876,7 +880,7 @@ def test_additive_1_9():
     assert ok(ex, health) and ex["engine_api"] == engineapi.SPEAKS
     for said in ("1.0", "1.8", "1.9"):
         assert engineapi.read(dict(ex, engine_api=said))["ok"], said
-    return f"{len(doc['routes'])} routes, 2 new in group 9, SPEAKS {engineapi.SPEAKS}"
+    return f"{len(doc['routes'])} routes, 8 new in group 9, SPEAKS {engineapi.SPEAKS}"
 
 
 if __name__ == "__main__":

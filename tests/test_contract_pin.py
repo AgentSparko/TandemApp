@@ -1,7 +1,8 @@
 """TandemApp's copy of the engine's contracts is the one PIN names (ENG-427, QA ENG-428).
 
 The engine owns contracts/engine-api-v1, contracts/engine-ext-v1 and, since SRV-839,
-contracts/engine-ctl-v1 (`tandem remote`, the control verbs). TandemApp copies the folders whole
+contracts/engine-ctl-v1 (`tandem remote`, the control verbs) and contracts/engine-pair-v1 (pairing by
+code, the LAN advertisement). TandemApp copies the folders whole
 from one engine commit and writes contracts/engine-api-v1/PIN: the commit, each folder's version
 and the git tree id the folder has in that commit. Nobody edits the copy here; a new engine
 contract is a new copy and a new PIN. The folders are hashed from the files on disk as git hashes a
@@ -12,7 +13,7 @@ compares the PIN with the engine's own repository.
   2  each folder on disk (PIN left out) hashes to its tree id            test_the_copy_is_the_pinned_tree
   3  the versions are the files' own: routes.json's version is engine_api and
      proxy.engineapi.SPEAKS, ext.json's version is ext_api, verbs.json's
-     ctl_api                                                            test_the_versions_agree
+     ctl_api, the pairing README's pair_api                             test_the_versions_agree
   4  the hasher sees an edit, a new file, a removed file and a mode change;
      a cache file does not count                                        test_the_hasher_sees_every_edit
   5  in a checkout: HEAD's folders are what is on disk                  test_head_matches_the_disk
@@ -37,10 +38,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from proxy import engineapi  # noqa: E402
 from proxy_util import run  # noqa: E402
+from tools import engine_pin_check  # noqa: E402
 
 CONTRACTS = os.path.join(ROOT, "contracts")
 PIN = os.path.join(CONTRACTS, "engine-api-v1", "PIN")
-FOLDERS = ("engine-api-v1", "engine-ext-v1", "engine-ctl-v1")
+FOLDERS = ("engine-api-v1", "engine-ext-v1", "engine-ctl-v1", "engine-pair-v1")
 #: never part of a tree: git's own folder and Python's caches
 SKIP = {".git", "__pycache__", ".pytest_cache"}
 
@@ -97,10 +99,10 @@ def test_the_pin_reads():
     assert re.fullmatch(r"[0-9a-f]{40}", pin.get("engine_commit", "")), pin
     for name in FOLDERS:
         assert re.fullmatch(r"[0-9a-f]{40}", pin.get(name, "")), (name, pin)
-    for key in ("engine_api", "ext_api", "ctl_api"):
+    for key in ("engine_api", "ext_api", "ctl_api", "pair_api"):
         assert re.fullmatch(r"[0-9]+\.[0-9]+", pin.get(key, "")), (key, pin)
     return (f"engine {pin['engine_commit'][:12]}, engine API {pin['engine_api']}, "
-            f"ext {pin['ext_api']}, ctl {pin['ctl_api']}")
+            f"ext {pin['ext_api']}, ctl {pin['ctl_api']}, pair {pin['pair_api']}")
 
 
 def test_the_copy_is_the_pinned_tree():
@@ -127,7 +129,10 @@ def test_the_versions_agree():
     with open(os.path.join(CONTRACTS, "engine-ctl-v1", "verbs.json")) as f:
         ctl = json.load(f)
     assert ctl["ctl"] == "engine-ctl-v1" and pin["ctl_api"] == ctl["version"], (pin["ctl_api"], ctl)
-    return f"engine API {api} = SPEAKS, ext {ext}, ctl {ctl['version']}"
+    with open(os.path.join(CONTRACTS, "engine-pair-v1", "README.md"), "rb") as f:
+        pair = engine_pin_check.version_of("README.md", f.read())
+    assert pair and pin["pair_api"] == pair, (pin["pair_api"], pair)
+    return f"engine API {api} = SPEAKS, ext {ext}, ctl {ctl['version']}, pair {pair}"
 
 
 def test_the_hasher_sees_every_edit():
@@ -168,14 +173,14 @@ def test_head_matches_the_disk():
     if inside.returncode != 0 or os.path.realpath(inside.stdout.strip()) != os.path.realpath(ROOT):
         print("    (no checkout here: the disk is the copy under test)")
         return "no checkout"
-    for name in ("engine-ext-v1", "engine-ctl-v1"):
+    for name in ("engine-ext-v1", "engine-ctl-v1", "engine-pair-v1"):
         git = subprocess.run(["git", "-C", ROOT, "rev-parse", f"HEAD:contracts/{name}"],
                              capture_output=True, text=True)
         assert git.returncode == 0, f"HEAD has no contracts/{name}: {git.stderr.strip()}"
         got = git.stdout.strip()
         assert got == tree_id(os.path.join(CONTRACTS, name)), (name, got)
         assert got == read_pin()[name], (name, got)
-    return "HEAD's engine-ext-v1 and engine-ctl-v1 are the disk's"
+    return "HEAD's engine-ext-v1, engine-ctl-v1 and engine-pair-v1 are the disk's"
 
 
 if __name__ == "__main__":
