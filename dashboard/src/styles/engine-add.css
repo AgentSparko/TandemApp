@@ -722,3 +722,35 @@ button.eh-row:disabled:not([aria-busy='true']) {
     gap: 0;
   }
 }
+
+/* ---- the wizard: its stepper, the first message (VIS-278) ------------------------------------- */
+/* a step's heading takes the focus so a screen reader says where the page is; it is no control,
+   so it shows no ring */
+.eh-body h2[tabindex='-1']:focus-visible {
+  box-shadow: none;
+}
+.eh-stepper {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eh-stepper .wz-step {
+  cursor: default;
+}
+.eh-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.eh-first-form {
+  display: grid;
+  gap: 4px;
+  max-width: 680px;
+}
+.eh-first-form textarea {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}

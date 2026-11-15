@@ -37,15 +37,16 @@ const URL_OK = 'http://192.0.2.20:8000/v1';
 const test = (over: Partial<TestResult>): TestResult => ({ ok: false, status: null, latency_ms: null, error: null, models: [], reason: null, ...over });
 
 describe('Get started: the three ways in', () => {
-  it('connect a server, add a Spark, install the engine, in that order', () => {
-    expect(PATHS.map((p) => p.id)).toEqual(['server', 'spark', 'engine']);
-    expect(PATHS.map((p) => p.title)).toEqual(['Connect a server', 'Add a Spark', 'Install the TandemLLM engine']);
-    // the form is on the page; the other two lead to the wizard that pairs and installs
-    expect(PATHS.map((p) => p.href)).toEqual([null, '#/add-spark', '#/add-spark']);
+  it('add an engine, connect a server, add a Spark, in that order', () => {
+    expect(PATHS.map((p) => p.id)).toEqual(['engine', 'server', 'spark']);
+    expect(PATHS.map((p) => p.title)).toEqual(['Add an engine', 'Connect a server', 'Add a Spark']);
+    // the form is on the page; an engine leads to the setup wizard (VIS-278), a Spark to Add Spark
+    expect(PATHS.map((p) => p.href)).toEqual(['#/add-engine', null, '#/add-spark']);
   });
-  it('a fleet with no member opens on it; a member or a route given keeps the page asked for', () => {
-    expect(landing('', [])).toBe('start');
-    expect(landing('#/', [])).toBe('start');
+  it('a fleet with no member opens on the setup wizard, Get started one link away; a member or a route given keeps the page asked for', () => {
+    expect(landing('', [])).toBe('add-engine');
+    expect(landing('#/', [])).toBe('add-engine');
+    expect(landing('#/start', [])).toBeNull();
     expect(landing('#/usage', [])).toBeNull();
     expect(landing('', [{ id: 'backend.bench', class: 'backend' }])).toBeNull();
     expect(landing('', [{ id: 'desk' }])).toBeNull();
@@ -54,7 +55,7 @@ describe('Get started: the three ways in', () => {
     expect(parseHash('#/start').view).toBe('start');
     expect(sectionOf('start')).toBe('start');
     expect(crumb('start')).toEqual({ group: 'Settings', label: 'Get started' });
-    expect(MENU.find((g) => g.label === 'Settings')!.items.map((i) => i.id)).toEqual(['start', 'add-spark', 'app']);
+    expect(MENU.find((g) => g.label === 'Settings')!.items.map((i) => i.id)).toEqual(['start', 'add-engine', 'add-spark', 'app']);
   });
 });
 

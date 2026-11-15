@@ -47,6 +47,7 @@ import type { SettingsSection } from './settings';
 import { SECTIONS } from './settings';
 import { clientMsgId, localId, type Attachment, type Capabilities, type ChatSettings, type Conversation, type ConversationSummary, type ConversationUi, type Folder, type PaneKind, type PaneRef, type Preset, type PackageInfo, type Prompt, type SandboxFile, type StampedEvent, type ToolInfo, type WebSearchProvider } from './types';
 import { RunToken } from '../lib/run-token';
+import { firstMessage } from '../lib/router';
 
 const LS = {
   /** where the panes docked before they were windows: a new pane goes there */
@@ -356,7 +357,19 @@ export class QseChat extends LightElement {
     this.globalSub = b.subscribeGlobal((ev) => void this.onGlobal(ev));
     await this.loadList();
     if (!this.boots.live(run)) return;   // left while the list loaded: open no chat stream
-    await this.openFromRoute();
+    const first = firstMessage(this.params);
+    if (first) await this.sendFirst(first);
+    else await this.openFromRoute();
+  }
+
+  /** VIS-278: the setup wizard's last step hands its first message over (#/chat?first=...): a new
+   *  chat, the message sent in it. The new chat's own route replaces the one that carried the
+   *  message, so a reload sends nothing again. */
+  private async sendFirst(text: string): Promise<void> {
+    if (this.section) return;
+    this.detach();
+    this.conv = null;
+    await this.send(text, []);
   }
 
   private async loadList(): Promise<void> {

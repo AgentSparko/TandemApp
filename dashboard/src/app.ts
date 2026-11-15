@@ -108,7 +108,7 @@ function perfTabs(on: 'live' | 'requests' | 'history', parallel: number | null =
   </div>`;
 }
 
-/** the hash the page was opened with: an empty one on a fleet with no member opens Get started (SRV-749) */
+/** the hash the page was opened with: an empty one on a fleet with no member opens the setup wizard (VIS-278) */
 const START_HASH = location.hash;
 
 @customElement('qse-app')
@@ -516,7 +516,8 @@ export class QseApp extends LightElement {
         this.fleet = f;
         if (f && !this.landed) {
           this.landed = true;
-          if (landing(START_HASH, f.nodes) === 'start') navigate('start');
+          const first = landing(START_HASH, f.nodes);
+          if (first) navigate(first);
           void fleet
             .controller()
             .then((v) => (this.movedTo = v.moved_to))

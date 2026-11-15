@@ -25,7 +25,7 @@ describe('the menu', () => {
       ['Monitor', ['Overview', 'Performance', 'Usage', 'Hardware', 'Events & Alerts']],
       ['Fleet', ['Sparks', 'Models', 'API']],
       ['Tune', ['Conductor', 'Playground', 'Dev']],
-      ['Settings', ['Get started', 'Add Spark', 'App']],
+      ['Settings', ['Get started', 'Add engine', 'Add Spark', 'App']],
     ]);
     expect(MONITOR).toEqual(['overview', 'performance', 'usage', 'hardware', 'events']);
     expect(PHONE_BAR).toEqual(['chat', 'overview', 'performance']);
@@ -75,7 +75,7 @@ describe('sub-pages', () => {
     expect(c.filter((x) => x.startsWith('*'))).toEqual(['*Memory #/conductor?screen=memory']);
   });
   it('a section without sub-pages has none', () => {
-    for (const h of ['#/chat/abc', '#/usage', '#/overview', '#/events', '#/dev', '#/playground', '#/add-spark', '#/app']) expect(subs(h), h).toEqual([]);
+    for (const h of ['#/chat/abc', '#/usage', '#/overview', '#/events', '#/dev', '#/playground', '#/add-engine', '#/add-spark', '#/app']) expect(subs(h), h).toEqual([]);
   });
 });
 

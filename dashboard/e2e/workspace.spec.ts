@@ -24,6 +24,7 @@ const PAGES: [section: string, title: string][] = [
   ['conductor', 'Conductor'],
   ['playground', 'Targets'],
   ['dev', 'This box'],
+  ['add-engine', 'Add engine'],
   ['add-spark', 'Add Spark'],
   ['app', 'This device'],
 ];

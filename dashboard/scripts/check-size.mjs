@@ -83,6 +83,12 @@
 // 622 KB with both on one line (2026-11-13: 621.1 KB, 635,979 bytes): a Split's view and Get started
 // together, plus the Models tiles that count a Split's stages and the plan's measured table (410
 // bytes). Room looked for first: no style rule is left that no page uses. One budget for both.
+// 643 KB with the setup wizard (VIS-278, SRV-827, SRV-829, SRV-831, SRV-833, 2026-11-15: 641.8 KB, 657,202 bytes,
+// from 621.3 KB): Add engine, pairing by code, the other ways, the model step and the first message, with the
+// engine host routes' client and the steps' logic, in a chunk of their own (17.6 KB js, 2.6 KB css) that loads
+// when Add engine opens; the route, the menu entry and the first message's hand-over to Chat in the chunks that
+// had their kind. Room looked for first: the hand-over's two functions sit with the routes, so no chunk of its
+// own carries them.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

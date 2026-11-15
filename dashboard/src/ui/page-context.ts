@@ -113,6 +113,8 @@ function box(d: PageData): TemplateResult {
 }
 
 const STEPS = ['Find', 'Connect', 'Check', 'Install', 'Link', 'Name', 'Done'];
+/** the setup wizard's steps (VIS-278, lib/engine-wizard.ts) */
+const ENGINE_STEPS = ['Add engine', 'Pair', 'Model', 'First message'];
 
 /** The sidebar of a page: its title and its sections. */
 export function pageContext(section: Section, d: PageData): ContextContent {
@@ -146,6 +148,8 @@ export function pageContext(section: Section, d: PageData): ContextContent {
       return { title: 'Targets', body: html`${sec('Endpoint', copyField(`${endpoint()}/chat/completions`))}${sec('Models', f ? html`<dl class="kv">${f.deployments.map((x) => html`<div><dt>${x.name}</dt><dd><code class="small">${x.api_id}</code></dd></div>`)}</dl>` : html`<p class="small"><code>TandemLLM</code>, the model this box serves.</p>`)}` };
     case 'dev':
       return { title: 'This box', body: html`${sec('Engine', box(d))}${sec('Today', today(d.summary))}` };
+    case 'add-engine':
+      return { title: 'Add engine', body: html`${sec('Steps', html`<ol class="ctx-steps">${ENGINE_STEPS.map((s) => html`<li>${s}</li>`)}</ol><p class="muted small">On the engine host, <code>tandem pair</code> shows a new code.</p>`)}${sec('Fleet', sparks(f))}` };
     case 'add-spark':
       return { title: 'Add Spark', body: html`${sec('Steps', html`<ol class="ctx-steps">${STEPS.map((s) => html`<li>${s}</li>`)}</ol><p class="muted small">You can leave and come back; the controller keeps the state (step 5).</p>`)}${sec('Fleet', sparks(f))}` };
     case 'app':

@@ -172,7 +172,7 @@ describe('the sidebars on every page (VIS-256)', () => {
   it('every page has its own content: a title of its own and sections from what the shell reads', () => {
     vi.stubGlobal('location', { origin: 'http://box:8000' });
     onTestFinished(() => void vi.unstubAllGlobals());
-    const sections: Section[] = ['overview', 'performance', 'usage', 'hardware', 'events', 'sparks', 'models', 'api', 'conductor', 'playground', 'dev', 'add-spark', 'app'];
+    const sections: Section[] = ['overview', 'performance', 'usage', 'hardware', 'events', 'sparks', 'models', 'api', 'conductor', 'playground', 'dev', 'add-engine', 'add-spark', 'app'];
     const f = { nodes: [node('desk', 1), node('r3', 4, 'alert', 'thermal')], deployments: [], alerts: [alert('a1', 'r3')], tps: { desk: 40 }, gateway: false } as FleetState;
     const data = { route: { view: 'overview', path: [], params: new URLSearchParams() }, fleet: f, summary: null, meta: { version: '0.15.0', code: null }, layouts: [], theme: 'dark', toggleTheme: () => {} } as unknown as PageData;
     const titles = sections.map((s) => pageContext(s, { ...data, route: { ...data.route, view: s } } as PageData).title);

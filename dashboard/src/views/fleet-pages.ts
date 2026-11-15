@@ -1,7 +1,8 @@
 // <qse-fleet-page>: TandemApp's new pages (VIS-242, concept §8), one chunk loaded when one of them
 // opens. Overview, Hardware and Events & Alerts (VIS-248, views/monitor/) and Sparks with its
 // topology and each Spark's page (VIS-250, views/fleet/) are built, and Add Spark (VIS-246,
-// views/fleet/wizard.ts, a chunk of its own that loads when it opens) and App (OPS-234, the controller's
+// views/fleet/wizard.ts, a chunk of its own that loads when it opens), the setup wizard (VIS-278: Add
+// engine, views/fleet/engine-wizard.ts, its own chunk too) and App (OPS-234, the controller's
 // host and its move: views/fleet/app-settings.ts, a chunk of its own too) and Models (VIS-252: the
 // deployments, Serve a model with its placement step, the weights matrix: views/fleet/models.ts,
 // serve.ts, weights.ts); API still shows its head, what it will hold and the step that builds it.
@@ -46,6 +47,9 @@ const PAGES: Partial<Record<View, PageDef>> = {
 /** The Add Spark wizard: its own chunk; the element upgrades in place once it has loaded. */
 let wizardChunk: Promise<unknown> | null = null;
 const loadWizard = () => (wizardChunk ??= import('./fleet/wizard'));
+/** The setup wizard (VIS-278): Add engine, pairing, the model step, the first message; its own chunk */
+let engineChunk: Promise<unknown> | null = null;
+const loadEngineWizard = () => (engineChunk ??= import('./fleet/engine-wizard'));
 /** Get started (SRV-749): the ways into a fleet and the connect-a-server form, its own chunk */
 let startChunk: Promise<unknown> | null = null;
 const loadStart = () => (startChunk ??= import('./fleet/start'));
@@ -62,6 +66,10 @@ export class QseFleetPage extends LightElement {
     if (this.view === 'overview') return html`<qse-overview .summary=${this.summary}></qse-overview>`;
     if (this.view === 'hardware') return html`<qse-hardware></qse-hardware>`;
     if (this.view === 'events') return html`<qse-events></qse-events>`;
+    if (this.view === 'add-engine') {
+      void loadEngineWizard();
+      return html`<qse-engine-wizard .path=${this.path}></qse-engine-wizard>`;
+    }
     if (this.view === 'add-spark') {
       void loadWizard();
       return html`<qse-add-spark></qse-add-spark>`;

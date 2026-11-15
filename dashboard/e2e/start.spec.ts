@@ -31,10 +31,13 @@ test.describe('Get started and backends in the fleet', () => {
     await fresh(request, 'fleet4');
   });
 
-  test('First run without a Spark: it offers connect a server, add a Spark and install the engine', async ({ page, request }, info) => {
+  test('First run without a Spark: the setup wizard opens, and Get started offers an engine, a server and a Spark', async ({ page, request }, info) => {
     await fresh(request, 'empty');
     await page.goto('./?fleet=empty');
-    await expect(page).toHaveURL(/#\/start$/, { timeout: 10_000 });
+    // VIS-278: the first open is the setup wizard; Get started is one link away
+    await expect(page).toHaveURL(/#\/add-engine$/, { timeout: 10_000 });
+    await page.locator('qse-engine-wizard [data-else] a[href="#/start"]').click();
+    await expect(page).toHaveURL(/#\/start$/);
     const head = page.locator('.page-head[data-page="start"]');
     await expect(head).toHaveAttribute('data-first-run', 'true');
     await expect(head.locator('h1')).toHaveText('Get started');
@@ -42,9 +45,9 @@ test.describe('Get started and backends in the fleet', () => {
     await expect(paths).toHaveCount(3);
     await expect(page.locator('[data-path="server"]')).toContainText('Connect a server');
     await expect(page.locator('[data-path="spark"]')).toContainText('Add a Spark');
-    await expect(page.locator('[data-path="engine"]')).toContainText('Install the TandemLLM engine');
+    await expect(page.locator('[data-path="engine"]')).toContainText('Add an engine');
     await expect(page.locator('[data-path="spark"]')).toHaveAttribute('href', '#/add-spark');
-    await expect(page.locator('[data-path="engine"]')).toHaveAttribute('href', '#/add-spark');
+    await expect(page.locator('[data-path="engine"]')).toHaveAttribute('href', '#/add-engine');
     await expect(page.locator('[data-connect]')).toHaveCount(0);
     expect(await noSideScroll(page)).toBe(true);
     await shot(page, 'first-run', info.project.name);
