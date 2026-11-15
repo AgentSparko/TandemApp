@@ -44,7 +44,9 @@ touched.
 
 MAINTENANCE (VIS-250): a backend on a drained node (`svc.drain_of`, proxy/fleetops.py) takes no
 new request: the route's fallbacks are tried, and with none left the client gets a 503
-`node_draining` with `Retry-After: 30`. A request already relayed there runs to its end.
+`node_draining` with `Retry-After: 30`. A request already relayed there runs to its end. A backend
+whose engine host restarts for a settings change (`svc.restart_drain_of`, SRV-845) is drained the
+same way until it is back.
 
 THE FLEET (SRV-731, proxy/deployments.py): a backend on a fleet node (`svc.locate`) names the node
 and its deployment in the answer, `X-Tandem-Node` (the node's alias) and `X-Tandem-Deployment`,
@@ -225,7 +227,7 @@ class Relay:
                     "invalid_request_error", "unsupported_route")).encode())
                 i += 1
                 continue
-            drained = self.svc.drain_of(bid)
+            drained = self.svc.drain_of(bid) or self.svc.restart_drain_of(bid)
             if drained is not None:
                 rec.upstream_status = None
                 last = (503, "Service Unavailable", [("Retry-After", str(DRAIN_RETRY_S))],

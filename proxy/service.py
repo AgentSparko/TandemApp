@@ -172,6 +172,9 @@ class Service:
         self.harness = None
         # the backend's drained node, or None (TandemApp's fleet sets it, proxy/fleetops.py)
         self.drain_of = lambda bid: None
+        # the backend's engine host while a settings change restarts it (SRV-845,
+        # proxy/settingsengine.py), or None: the gateway answers as for a drained node
+        self.restart_drain_of = lambda bid: None
         # SRV-731 (proxy/deployments.py, set by TandemApp's fleet): the route of a deployment's
         # model (None: the table routes it), the model list with each deployment once, and the
         # node and deployment of a backend for the answer's headers and the ledger row
