@@ -28,6 +28,8 @@ describe('pickBackend', () => {
     ['403 forbidden from chatd', () => answer(403, { error: { type: 'forbidden', message: "chatd answers the engine server's forward only" } }), 'chatd_refused', 403, "chatd answers the engine server's forward only"],
     ['404', () => answer(404, '', 'text/plain'), 'no_chat_routes', 404, ''],
     ['503 setup_mode', () => answer(503, { error: { type: 'setup_mode', message: 'the box is in setup mode' } }), 'setup_mode', 503, 'the box is in setup mode'],
+    // OPS-288: TandemApp's Chat switched off (a new install's default)
+    ['503 chat_off', () => answer(503, { error: { type: 'chat_off', message: 'Chat is off on this TandemApp.' } }), 'app_chat_off', 503, 'Chat is off on this TandemApp.'],
     ['200 HTML', () => answer(200, '<!doctype html><title>x</title>', 'text/html'), 'not_an_engine', 200, ''],
     ['500', () => answer(500, { error: { type: 'server_error', message: 'boom' } }), 'server_error', 500, 'boom'],
     ['502 from a proxy, not JSON', () => answer(502, '<html>Bad Gateway</html>', 'text/html'), 'server_error', 502, ''],
@@ -104,8 +106,10 @@ describe('pickBackend', () => {
     expect(classifyProbe(502, true, null)?.cause).toBe('server_error');
   });
 
-  it('a failed live call says chatd went away only for a 502 chat_unavailable', () => {
+  it('a failed live call says chatd went away only for a 502 chat_unavailable or a 503 chat_off', () => {
     expect(isChatDown({ status: 502, body: { error: { type: 'chat_unavailable', message: 'x' } } })).toBe(true);
+    expect(isChatDown({ status: 503, body: { error: { type: 'chat_off', message: 'x' } } })).toBe(true);
+    expect(isChatDown({ status: 503, body: { error: { type: 'setup_mode', message: 'x' } } })).toBe(false);
     expect(isChatDown({ status: 502, body: '<html>' })).toBe(false);
     expect(isChatDown({ status: 500, body: { error: { type: 'chat_unavailable' } } })).toBe(false);
     expect(isChatDown(new Error('x'))).toBe(false);
@@ -137,10 +141,16 @@ describe('the panel', () => {
     expect(off.lead).toContain('Engine only');
     expect(off.lead).toContain('Turn on Chat (beta) in the Setup Guide');
     expect(off.link?.href).toBe('#/setup');
+    // OPS-288: TandemApp's Chat off: a plain state, the way on is the App page's switch
+    const appOff = downText(at('app_chat_off'));
+    expect(appOff.title).toBe('Chat is off.');
+    expect(appOff.lead).toContain('Settings → App');
+    expect(appOff.link).toEqual({ href: '#/app', label: 'Switch it on' });
+    expect(appOff.command).toBeUndefined();
   });
 
   it('never words the panel after the message', () => {
-    for (const cause of ['chatd_down', 'chatd_refused', 'no_chat_routes', 'setup_mode', 'not_an_engine', 'server_error', 'offline', 'chat_off'] as ChatDownCause[]) {
+    for (const cause of ['chatd_down', 'chatd_refused', 'no_chat_routes', 'setup_mode', 'not_an_engine', 'server_error', 'offline', 'chat_off', 'app_chat_off'] as ChatDownCause[]) {
       expect(downText(at(cause, 'one'))).toEqual(downText(at(cause, 'chatd is fine, use the mock')));
     }
   });

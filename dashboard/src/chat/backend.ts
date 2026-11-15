@@ -200,8 +200,9 @@ export interface PreviewReport {
  *  not_an_engine  200 that is not JSON: a static server or a proxy's index.html
  *  server_error   any other status (a proxy's 502 page included)
  *  offline        the fetch failed: no server reached
- *  chat_off       /health says `mode: "engine"` (OPS-260): the box serves the engine alone; no chat route is asked */
-export type ChatDownCause = 'chatd_down' | 'chatd_refused' | 'no_chat_routes' | 'setup_mode' | 'not_an_engine' | 'server_error' | 'offline' | 'chat_off';
+ *  chat_off       /health says `mode: "engine"` (OPS-260): the box serves the engine alone; no chat route is asked
+ *  app_chat_off   503 `chat_off` (OPS-288): TandemApp's Chat is switched off (Settings → App) */
+export type ChatDownCause = 'chatd_down' | 'chatd_refused' | 'no_chat_routes' | 'setup_mode' | 'not_an_engine' | 'server_error' | 'offline' | 'chat_off' | 'app_chat_off';
 export interface ChatDown {
   cause: ChatDownCause;
   /** the HTTP status, null when nothing answered */
@@ -223,6 +224,7 @@ export function classifyProbe(status: number, json: boolean, body: unknown): Cha
   if (status === 403 && type === 'forbidden') return at('chatd_refused');
   if (status === 404) return at('no_chat_routes');
   if (status === 503 && type === 'setup_mode') return at('setup_mode');
+  if (status === 503 && type === 'chat_off') return at('app_chat_off');
   return at('server_error');
 }
 
@@ -230,7 +232,9 @@ export function classifyProbe(status: number, json: boolean, body: unknown): Cha
  *  went away: the tab shows its banner and probes again, instead of a toast per call. */
 export function isChatDown(e: unknown): boolean {
   const x = e as { status?: unknown; body?: unknown } | null;
-  return !!x && x.status === 502 && classifyProbe(502, true, x.body)?.cause === 'chatd_down';
+  if (!x || (x.status !== 502 && x.status !== 503)) return false;
+  const cause = classifyProbe(x.status, true, x.body)?.cause;
+  return cause === 'chatd_down' || cause === 'app_chat_off';
 }
 
 /** GET /v1/chat-app/capabilities: null when the chat API answers, else why not. OPS-260: /health first;

@@ -280,7 +280,7 @@ describe('fleet contract', () => {
   const q = (s = '') => new URLSearchParams(s);
 
   it('has a schema per route, and they are strict', () => {
-    expect(Object.keys(fleet).sort()).toEqual(['action', 'action-plan', 'action-result', 'add', 'add-connect', 'add-link', 'add-patch', 'add-run', 'add-session', 'add-start', 'add-target', 'alert', 'alerts', 'app', 'app-password', 'app-password-body', 'controller', 'deployment', 'deployment-action', 'deployment-deleted', 'deployment-job', 'deployment-new', 'deployment-patch', 'deployment-plan', 'deployments', 'discovered', 'discovery', 'discovery-address', 'discovery-start', 'engine', 'engine-connect-check-body', 'engine-connect-confirm-body', 'engine-connect-key', 'engine-connect-key-body', 'engine-connect-plan', 'engine-connect-plan-body', 'engine-discover', 'engine-discover-body', 'engine-error', 'engine-finding', 'engine-mode', 'engine-mode-body', 'engine-models', 'engine-pair-abandon', 'engine-pair-abandon-body', 'engine-pair-code-body', 'engine-pair-start', 'engine-pair-start-body', 'engine-paired', 'engine-probe', 'engine-probe-body', 'engine-progress', 'engine-pull', 'engine-pull-body', 'engines', 'error', 'events', 'fleet-config', 'handover', 'handover-commit', 'health', 'health-finding', 'health-fix', 'health-fix-body', 'health-target', 'host', 'hostkey', 'import', 'import-plan', 'import-result', 'layout', 'link-test', 'links', 'logs', 'memory', 'metrics', 'move', 'move-job', 'move-plan', 'node', 'node-patch', 'nodes', 'pair', 'pair-ssh', 'placement', 'placement-request', 'release', 'rule', 'rule-patch', 'rules', 'sample', 'scan-consent', 'session', 'setup-confirm', 'ssh-line', 'ssh-target', 'take', 'topology', 'trust', 'update', 'update-job', 'update-plan', 'update-start', 'weights', 'weights-copy', 'weights-deleted', 'weights-job', 'weights-plan']);
+    expect(Object.keys(fleet).sort()).toEqual(['action', 'action-plan', 'action-result', 'add', 'add-connect', 'add-link', 'add-patch', 'add-run', 'add-session', 'add-start', 'add-target', 'alert', 'alerts', 'app', 'app-part-body', 'app-part-plan', 'app-parts', 'app-password', 'app-password-body', 'controller', 'deployment', 'deployment-action', 'deployment-deleted', 'deployment-job', 'deployment-new', 'deployment-patch', 'deployment-plan', 'deployments', 'discovered', 'discovery', 'discovery-address', 'discovery-start', 'engine', 'engine-connect-check-body', 'engine-connect-confirm-body', 'engine-connect-key', 'engine-connect-key-body', 'engine-connect-plan', 'engine-connect-plan-body', 'engine-discover', 'engine-discover-body', 'engine-error', 'engine-finding', 'engine-mode', 'engine-mode-body', 'engine-models', 'engine-pair-abandon', 'engine-pair-abandon-body', 'engine-pair-code-body', 'engine-pair-start', 'engine-pair-start-body', 'engine-paired', 'engine-probe', 'engine-probe-body', 'engine-progress', 'engine-pull', 'engine-pull-body', 'engines', 'error', 'events', 'fleet-config', 'handover', 'handover-commit', 'health', 'health-finding', 'health-fix', 'health-fix-body', 'health-target', 'host', 'hostkey', 'import', 'import-plan', 'import-result', 'layout', 'link-test', 'links', 'logs', 'memory', 'metrics', 'move', 'move-job', 'move-plan', 'node', 'node-patch', 'nodes', 'pair', 'pair-ssh', 'placement', 'placement-request', 'release', 'rule', 'rule-patch', 'rules', 'sample', 'scan-consent', 'session', 'setup-confirm', 'ssh-line', 'ssh-target', 'take', 'topology', 'trust', 'update', 'update-job', 'update-plan', 'update-start', 'weights', 'weights-copy', 'weights-deleted', 'weights-job', 'weights-plan']);
     // SRV-827..833: the engine host routes; a refusal needs its code, its sentence and its fix
     expect(fleet['engine-pair-code-body']({ pairing: 'a' })).toBe(false);
     expect(fleet['engine-pull-body']({ model: 'm', force: true })).toBe(false);
@@ -315,6 +315,11 @@ describe('fleet contract', () => {
     expect(fleet['node-patch']({ owner: 'x' })).toBe(false);
     expect(fleet.nodes({ contract_version: '1.0', nodes: [{ id: 'x' }] })).toBe(false);
     expect(fleet.metrics({ contract_version: '1.0', source: 'all', metric: 'watts', unit: 'W', agg: 'sum', range: '6h', step_s: 150, t0: 0, cap: null, series: [] })).toBe(false);
+    // OPS-288: a switch is {on} or {on, confirm}, nothing else
+    expect(fleet['app-part-body']({ on: true })).toBe(true);
+    expect(fleet['app-part-body']({ on: 'yes' })).toBe(false);
+    expect(fleet['app-part-body']({ on: true, confirm: '' })).toBe(false);
+    expect(fleet['app-part-body']({ on: true, force: true })).toBe(false);
     expect(fleet.layout({ page: 'overview', device: 'watch', rail: { open: true, w: 1 }, ctx: { open: true, w: 1 }, windows: [], docks: { right: { f: 0.3, act: null }, bottom: { f: 0.3, act: null } } })).toBe(false);
   });
 
@@ -370,6 +375,7 @@ describe('fleet contract', () => {
         // 6.3b: App settings (the password block is the mock server's)
         fcheck('app', { ...get('/v1/fleet/app'), password: { set: false, password: false, token: false, set_at: null, min_length: 12, max_length: 1024, this_machine: true } });
         fcheck('fleet-config', get('/v1/fleet/app/export'));
+        fcheck('app-parts', get('/v1/fleet/app/parts'));
       }
       // discovery (SRV-727): before a run, a run, the scan, add by address, the ssh line
       const call = (method: string, path: string, body: unknown, at: number, qs = '') => {

@@ -5,11 +5,13 @@
 // sends. The steps after pairing live at #/add-engine/<engine host>: a reload, or another device,
 // opens them again, a running download included. A step that is refused for want of the admin
 // password brings the controller's sign-in to the top of the page. The other ways into a fleet
-// (a server by its URL, a Spark with TandemNode) stay one link away.
+// (a server by its URL, a Spark with TandemNode) stay one link away. With Chat off (OPS-288: a new
+// TandemApp's default) the last step offers the Playground and the switch instead of the Chat tab.
 
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { EngineView, PairStart, PairedView } from '../../api/engines';
+import { fleet as fleetApi } from '../../api/fleet';
 import { refreshContext, registerContext, type ContextContent } from '../../lib/context';
 import { FIRST_DEFAULT, STEP_LABEL, WIZARD_STEPS, engineHash, firstRun, headOf, stepOf, stepper, type Screen } from '../../lib/engine-wizard';
 import { chatHash } from '../../lib/router';
@@ -42,6 +44,8 @@ export class QseEngineWizard extends LightElement {
   @state() private readyId: string | null = null;
   @state() private text = FIRST_DEFAULT;
   @state() private askedSignIn = false;
+  /** OPS-288: whether this TandemApp's Chat is on (null: not read yet, or an older controller) */
+  @state() private chatOn: boolean | null = null;
   private first: boolean | null = null;
   private unsub: (() => void)[] = [];
   private shown: Screen | null = null;
@@ -136,6 +140,11 @@ export class QseEngineWizard extends LightElement {
   updated(): void {
     const s = this.screen;
     if (s === this.shown) return;
+    if (s === 'chat')
+      void fleetApi
+        .parts()
+        .then((p) => (this.chatOn = p.chat.on))
+        .catch(() => (this.chatOn = null));
     const was = this.shown;
     this.shown = s;
     refreshContext();
@@ -180,7 +189,7 @@ export class QseEngineWizard extends LightElement {
       case 'after':
         return html`<qse-engine-after .engineId=${id} .engine=${this.engine} .method=${this.method} .announce=${this.moved}></qse-engine-after>`;
       case 'chat':
-        return html`<div class="eh-chat">${chatView(this.engine, this.text, { text: (v) => (this.text = v), send: () => this.send() }, this.method)}</div>`;
+        return html`<div class="eh-chat">${chatView(this.engine, this.text, { text: (v) => (this.text = v), send: () => this.send() }, this.method, this.chatOn)}</div>`;
     }
   }
 

@@ -89,6 +89,10 @@
 // when Add engine opens; the route, the menu entry and the first message's hand-over to Chat in the chunks that
 // had their kind. Room looked for first: the hand-over's two functions sit with the routes, so no chunk of its
 // own carries them.
+// 647 KB with What runs here (OPS-288, VIS-280, 2026-11-15: 645.6 KB, 661,074 bytes, from 641.8 KB): the App
+// page's switches for Chat and the conductor with their plan dialog, the engine hosts' own mode, the backends
+// and MCP servers with disable and remove, the Chat tab's Chat-is-off state and the wizard's Playground step.
+// Room looked for first: the panel sits in the App page's chunk, and the words are one module the tests share.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

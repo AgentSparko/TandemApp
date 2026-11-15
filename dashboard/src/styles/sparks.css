@@ -987,6 +987,39 @@ qse-fleet-page .drain-ink,
   background: transparent;
   border-style: dashed;
 }
+/* OPS-288: What runs here: the connected things, one row each with its actions */
+.app-parts-h {
+  margin: 18px 0 6px;
+}
+.app-parts-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.app-parts-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+  min-width: 0;
+}
+.app-parts-list > li > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app-parts-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .app-perm-head {
   display: flex;
   justify-content: space-between;

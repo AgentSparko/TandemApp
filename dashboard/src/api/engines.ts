@@ -316,7 +316,8 @@ export interface EnginesApi {
   passwordConfirm(plan: string, password: string, hostKey: string): Promise<PairedView>;
   keyNew(b: SshTargetBody): Promise<ConnectKey>;
   keyCheck(plan: string, hostKey?: string): Promise<PairedView>;
-  setMode(id: string): Promise<ModeView>;
+  /** the engine host's own mode: bare engine (the default) or its chat mode */
+  setMode(id: string, mode?: 'engine' | 'chat'): Promise<ModeView>;
   models(id: string): Promise<ModelsView>;
   pull(id: string, b: { model: string; profile?: string; dry_run?: boolean }): Promise<PullView>;
   progress(id: string, job?: string): Promise<ProgressView>;
@@ -342,7 +343,7 @@ export function enginesApi(send: Send): EnginesApi {
     passwordConfirm: (plan, password, host_key) => call('POST', '/connect/password/confirm', { plan, password, host_key }),
     keyNew: (b) => call('POST', '/connect/key/new', b),
     keyCheck: (plan, host_key) => call('POST', '/connect/key/check', host_key ? { plan, host_key } : { plan }),
-    setMode: (id) => call('POST', `${one(id)}/mode`, {}),
+    setMode: (id, mode) => call('POST', `${one(id)}/mode`, mode ? { mode } : {}),
     models: (id) => call('GET', `${one(id)}/models`),
     pull: (id, b) => call('POST', `${one(id)}/models/pull`, b),
     progress: (id, job) => call('GET', `${one(id)}/models/progress${job ? `?job=${encodeURIComponent(job)}` : ''}`),

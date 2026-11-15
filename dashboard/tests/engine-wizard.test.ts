@@ -99,6 +99,22 @@ describe('the last step', () => {
     expect(t).toContain(`${e.alias} is paired`);
     expect(t).toContain('href="#/add-engine"');
     expect(text(chatView(e, '   ', { text: () => undefined, send: () => undefined }))).toMatch(/data-act="send" \?disabled=true/);
+    // Chat on, or not read: the same step
+    expect(text(chatView(e, FIRST_DEFAULT, { text: () => undefined, send: () => undefined }, 'code', true))).toContain('Send in Chat');
+  });
+
+  it('OPS-288: with Chat off (a new TandemApp) the step offers the Playground and the switch, not the Chat tab', async () => {
+    const r = rig();
+    const s = await r.api.pairStart({ address: M.tailnet });
+    const e = (await r.api.pairCode(s.pairing, M.code)).engine!;
+    const t = text(chatView(e, FIRST_DEFAULT, { text: () => undefined, send: () => undefined }, 'code', false));
+    expect(t).toContain('Try the engine');
+    expect(t).toContain('data-chat="off"');
+    expect(t).toContain('href="#/playground"');
+    expect(t).toContain('href="#/app"');
+    expect(t).not.toContain('Send in Chat');
+    expect(t).not.toContain('data-in="first"');
+    expect(t).toContain(`${e.alias} serves Qwen3.8-Flash-Next.`);
   });
 });
 

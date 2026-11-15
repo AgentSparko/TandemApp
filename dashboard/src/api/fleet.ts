@@ -1275,6 +1275,45 @@ export interface AppSetup {
   first_page: 'add_engine' | null;
 }
 
+/** OPS-288: what this TandemApp runs (proxy/appparts.py, GET /v1/fleet/app/parts). A new install
+ *  is bare: Chat and the conductor off, no MCP server; each is switched here by an admin, and the
+ *  switch wins over the install's setting from then on (`switched`). */
+export type PartId = 'chat' | 'conductor';
+export interface AppParts {
+  contract_version: string;
+  chat: {
+    on: boolean;
+    switched: boolean;
+    /** what the install said (TANDEM_CHAT) */
+    install: 'off' | 'external' | 'own';
+    /** who runs chatd while Chat is on */
+    runner: 'own' | 'external' | null;
+    running: boolean | null;
+    /** an own chatd's sandbox runtime: a socket, the cluster, or none (chat without its sandbox tools) */
+    sandbox: 'socket' | 'none' | 'kubernetes' | null;
+    note: string | null;
+  };
+  conductor: { on: boolean; switched: boolean; install: 'off' | 'on'; dir: string | null };
+  /** the engine hosts paired over SSH: each one's own mode is switched on its page (POST /v1/fleet/engines/{id}/mode) */
+  engines: { id: string; alias: string }[];
+  backends: { id: string; label: string | null; kind: string; enabled: boolean; env: boolean }[];
+  /** the MCP servers are chatd's: listed through the Chat tab's API while Chat is on */
+  mcp: { where: 'chat'; available: boolean };
+  /** the answer of an applied switch */
+  done?: { part: PartId; on: boolean; said: string };
+}
+
+/** POST /v1/fleet/app/parts/{part} {on}: what the switch changes, and its confirm */
+export interface PartPlan {
+  contract_version: string;
+  part: PartId;
+  on: boolean;
+  changed: boolean;
+  needs_confirm: boolean;
+  confirm: string | null;
+  changes: string[];
+}
+
 /** GET /v1/fleet/app/export: the fleet's configuration as a file, secrets left out. */
 export interface FleetConfigFile {
   kind: 'tandemapp-fleet-config';
@@ -1466,6 +1505,10 @@ export const fleet = {
   exportConfig: () => request<FleetConfigFile>('/v1/fleet/app/export'),
   importPlan: (config: unknown, mode: ImportMode) => request<ImportPlan>('/v1/fleet/app/import', post({ config, mode })),
   importApply: (config: unknown, mode: ImportMode, confirm: string) => request<ImportResult>('/v1/fleet/app/import/apply', post({ config, mode, confirm })),
+  // OPS-288: what this TandemApp runs, switched with a plan and its confirm
+  parts: () => request<AppParts>('/v1/fleet/app/parts'),
+  planPart: (part: PartId, on: boolean) => request<PartPlan>(`/v1/fleet/app/parts/${part}`, post({ on })),
+  switchPart: (part: PartId, on: boolean, confirm: string) => request<AppParts | PartPlan>(`/v1/fleet/app/parts/${part}`, post({ on, confirm })),
   session: () => request<FleetSession>('/v1/fleet/session'),
   signIn: (password: string) => request<void>('/v1/fleet/session', post({ token: password }), 'none'),
   signOut: () => request<void>('/v1/fleet/session', { method: 'DELETE' }, 'none'),

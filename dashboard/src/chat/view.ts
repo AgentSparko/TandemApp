@@ -405,7 +405,11 @@ export class QseChat extends LightElement {
     if (this.lost) return;
     this.lost = true;
     this.startReprobe(async () => {
-      if (await probeChat()) return false;
+      const d = await probeChat();
+      // OPS-288: Chat was switched off while the tab was open: the panel says so
+      if (d?.cause === 'app_chat_off') this.down = d;
+      if (d) return false;
+      this.down = null;
       this.lost = false;
       this.stopReprobe();
       await this.loadList();

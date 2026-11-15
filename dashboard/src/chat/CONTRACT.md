@@ -503,8 +503,8 @@ Designer requests (2026-10-12, after building the UI against v0.2; the mock does
    200 without it as a static fallback (vite's `index.html`): the mock on the dev server only,
    elsewhere the "does not serve the chat API" state. Since VIS-179 every answer but the chat API's
    is a named state chosen by the status and `error.type` (502 `chat_unavailable`, 403 `forbidden`,
-   404, 503 `setup_mode`, other, no answer; `backend.ts` `classifyProbe`); the mock loads only for
-   `?chat=mock` and the dev server.
+   404, 503 `setup_mode`, 503 `chat_off` for a TandemApp whose Chat is switched off, other, no
+   answer; `backend.ts` `classifyProbe`); the mock loads only for `?chat=mock` and the dev server.
 2. Pane ids. `PATCH /conversations/{id}` `{ui}` with panes that carry no `id`: the server assigns one
    and answers with `ui.changed` so every device sees the same ids. The client sends `kind:ref` as a
    provisional id when it has none; the server may keep it.

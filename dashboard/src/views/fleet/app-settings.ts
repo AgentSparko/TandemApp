@@ -18,7 +18,8 @@
 // fallback and its button (Check now asks macOS once; notifications are this browser's). Fleet
 // configuration: Export downloads the file (secrets left out, the page lists which); Import reads a
 // file, shows the controller's plan item by item (merge or replace) and applies it with the plan's
-// confirm.
+// confirm. What runs here (OPS-288: Chat, the conductor, the engines' own mode, what is connected,
+// each switched with its plan) is its own element, app-parts.ts.
 
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -32,6 +33,7 @@ import { LightElement } from '../../ui/base';
 import { nodeChip } from '../../ui/node-chip';
 import { signInCard } from '../monitor/bits';
 import { checkSession } from '../monitor/data';
+import './app-parts';
 import '../../styles/sparks.css';
 
 const FOLLOW_S = 5;
@@ -591,7 +593,7 @@ export class QseAppSettings extends LightElement {
 
   render() {
     const v = this.view;
-    const head = html`<header class="page-head" data-page="app"><div class="eyebrow">Settings</div><h1>App</h1><p class="page-sub">Where TandemApp’s controller runs, its API, who may change the fleet, and its configuration.</p></header>`;
+    const head = html`<header class="page-head" data-page="app"><div class="eyebrow">Settings</div><h1>App</h1><p class="page-sub">Where TandemApp’s controller runs, what it runs, its API, who may change the fleet, and its configuration.</p></header>`;
     if (!v) return html`${head}${this.loadErr ? html`<p class="page-soon">${this.loadErr}</p>` : html`<div class="skeleton" style="height:240px"></div>`}`;
     const p = this.plan;
     const a = this.app;
@@ -600,6 +602,7 @@ export class QseAppSettings extends LightElement {
       ${v.moved_to ? this.moved(v.moved_to) : nothing}
       ${this.hostPanel(v)}
       ${this.takePanel(v)}
+      <qse-app-parts></qse-app-parts>
       ${a ? html`${this.servicePanel(a)}${this.passwordPanel(a)}${this.permPanel(a)}${this.configPanel(a)}` : this.msg.app ? html`<p class="small err-ink">${this.msg.app}</p>` : nothing}
       <dialog class="act-dialog" aria-labelledby="import-title" data-dialog="import" @close=${() => ((this.iplan = null), (this.file = null), (this.msg = { ...this.msg, imp: '' }))}>
         <form method="dialog" class="act-body" @submit=${(e: Event) => (e.preventDefault(), void this.applyImport())}>

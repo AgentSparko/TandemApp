@@ -4,9 +4,11 @@
 // the plan's confirm: 428 without, 409 spent or the fleet changed). The admin password
 // (/v1/fleet/app/password) is the mock server's (mock/server.ts): it holds the sessions. Mock-only:
 // a deployment record the file has and this fleet not is a conflict (the mock makes no records
-// from a file), and the export's member engines are null.
+// from a file), and the export's member engines are null. What runs here (/v1/fleet/app/parts,
+// OPS-288) starts bare as a new install does: Chat and the conductor off, no backend, no engine host
+// over SSH; a switch takes its plan's confirm (409 stale_plan for one that no longer matches).
 
-import type { AppPermission, AppService, AppSetup, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout } from '../src/api/fleet.ts';
+import type { AppParts, AppPermission, AppService, AppSetup, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout, PartId, PartPlan } from '../src/api/fleet.ts';
 import { FLEET_CONTRACT } from '../src/api/fleet.ts';
 import type { MockFleet } from './fleet.ts';
 
@@ -38,6 +40,9 @@ export class MockApp {
   private tokens = new Map<string, { file: string; mode: ImportMode; state: string; until: number }>();
   private seq = 0;
   settings: Record<string, unknown> = {};
+  /** OPS-288: what runs here, bare as a new install */
+  on: Record<PartId, boolean> = { chat: false, conductor: false };
+  switched: Record<PartId, boolean> = { chat: false, conductor: false };
 
   constructor(private fleet: MockFleet) {}
 
@@ -257,8 +262,43 @@ export class MockApp {
     return { status: 200, body: out };
   }
 
+  parts(): AppParts {
+    const on = this.on.chat;
+    return {
+      contract_version: FLEET_CONTRACT,
+      chat: { on, switched: this.switched.chat, install: 'off', runner: on ? 'own' : null, running: on ? true : null, sandbox: on ? 'none' : null, note: on ? 'No sandbox runtime on this host: chats run without their sandbox tools (files, shell, browser).' : 'Chat is off: no chatd runs here and the Chat tab says so.' },
+      conductor: { on: this.on.conductor, switched: this.switched.conductor, install: 'off', dir: this.on.conductor ? '~/.tandemllm/conductor' : null },
+      engines: [],
+      backends: [],
+      mcp: { where: 'chat', available: on },
+    };
+  }
+
+  private partPlan(part: PartId, on: boolean): PartPlan {
+    const name = part === 'chat' ? 'Chat' : 'The conductor';
+    if (this.on[part] === on) return { contract_version: FLEET_CONTRACT, part, on, changed: false, needs_confirm: false, confirm: null, changes: [`${name} is ${on ? 'on' : 'off'} already: nothing changes.`] };
+    const changes = part === 'chat'
+      ? on ? ['chatd starts on this host and is watched here.', 'The Chat tab opens.'] : ['chatd stops; the chats stay.', 'The Chat tab says Chat is off.']
+      : on ? ['The conductor runs in front of the backends from the next request.'] : ['Every backend is relayed as it is.'];
+    return { contract_version: FLEET_CONTRACT, part, on, changed: true, needs_confirm: true, confirm: `part-${part}-${on ? 1 : 0}-${this.on[part] ? 1 : 0}`, changes };
+  }
+
+  switchPart(part: string, body: unknown): Reply {
+    if (part !== 'chat' && part !== 'conductor') return bad(404, 'not_found', `no part '${part}': chat or conductor`);
+    const b = body as { on?: unknown; confirm?: unknown } | null;
+    if (!b || typeof b !== 'object' || typeof b.on !== 'boolean' || Object.keys(b).some((k) => k !== 'on' && k !== 'confirm') || ('confirm' in b && typeof b.confirm !== 'string')) return bad(400, 'bad_request', 'the body is {on: true|false, confirm?}');
+    const plan = this.partPlan(part, b.on);
+    if (!('confirm' in b) || !plan.changed) return { status: 200, body: plan };
+    if (b.confirm !== plan.confirm) return bad(409, 'stale_plan', 'the state changed since this plan, or the confirm is not its: plan again');
+    this.on[part] = b.on;
+    this.switched[part] = true;
+    return { status: 200, body: { ...this.parts(), done: { part, on: b.on, said: b.on ? 'switched on' : 'switched off' } } };
+  }
+
   handle(method: string, parts: string[], body: unknown, now: number): Reply {
     const p = parts.slice(1);
+    if (method === 'GET' && p.join('/') === 'parts') return { status: 200, body: this.parts() };
+    if (method === 'POST' && p.length === 2 && p[0] === 'parts') return this.switchPart(p[1], body);
     if (method === 'GET' && !p.length) return { status: 200, body: this.view() };
     if (method === 'POST' && p.join('/') === 'permissions/local-network') {
       this.fleet.discovery.checkLan();
