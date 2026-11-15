@@ -282,3 +282,146 @@ qse-engine-after,
     justify-content: center;
   }
 }
+
+/* ---- find: the engines on the network, an address (SRV-827) ----------------------------------- */
+.eh-guide-again {
+  margin-top: 10px;
+  line-height: 1.9;
+}
+.eh-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.eh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eh-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
+}
+button.eh-row {
+  cursor: pointer;
+}
+button.eh-row:hover:not(:disabled),
+button.eh-row[aria-busy='true'] {
+  border-color: var(--cobalt);
+  background: var(--cobalt-wash);
+}
+button.eh-row:disabled:not([aria-busy='true']) {
+  opacity: 0.6;
+  cursor: default;
+}
+.eh-row.is-in {
+  background: transparent;
+}
+.eh-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.eh-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.eh-row-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.eh-row-addr {
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-row-fp {
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+.eh-row-go {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--cobalt-hi);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.eh-row-go .icon {
+  width: 16px;
+  height: 16px;
+}
+.eh-item > .eh-finding {
+  margin-top: 6px;
+}
+.eh-list-note {
+  margin-top: 10px;
+}
+.eh-addr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5em;
+  gap: 10px 12px;
+  align-items: end;
+}
+.eh-addr input {
+  width: 100%;
+}
+.eh-addr > .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+[data-form-error]:empty {
+  display: none;
+}
+[data-form-error] {
+  margin-top: 8px;
+}
+.eh-ways,
+.eh-else,
+.eh-more {
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .eh-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .eh-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .eh-row-go {
+    justify-content: flex-start;
+  }
+  .eh-addr > .btn {
+    justify-self: stretch;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eh-row {
+    transition: none;
+  }
+}
