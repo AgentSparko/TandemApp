@@ -1262,6 +1262,17 @@ export interface AppView {
   service: AppService;
   export: { kind: 'tandemapp-fleet-config'; version: 1; secrets: 'excluded'; excluded: string[] };
   password: PasswordState;
+  setup: AppSetup;
+}
+
+/** OPS-282: the first run's wizard opens while nothing serves here (no engine host, no other node,
+ *  no backend on); proxy/fleethealth.py setup_state */
+export interface AppSetup {
+  needs_setup: boolean;
+  engines: number;
+  nodes: number;
+  backends: number;
+  first_page: 'add_engine' | null;
 }
 
 /** GET /v1/fleet/app/export: the fleet's configuration as a file, secrets left out. */

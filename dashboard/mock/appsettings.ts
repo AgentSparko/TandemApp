@@ -6,7 +6,7 @@
 // a deployment record the file has and this fleet not is a conflict (the mock makes no records
 // from a file), and the export's member engines are null.
 
-import type { AppPermission, AppService, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout } from '../src/api/fleet.ts';
+import type { AppPermission, AppService, AppSetup, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout } from '../src/api/fleet.ts';
 import { FLEET_CONTRACT } from '../src/api/fleet.ts';
 import type { MockFleet } from './fleet.ts';
 
@@ -78,7 +78,18 @@ export class MockApp {
   }
 
   view(): Omit<AppView, 'password'> {
-    return { contract_version: FLEET_CONTRACT, platform: this.mac ? 'mac' : 'linux', release: '0.15.1', permissions: this.permissions(), service: this.service(), export: { kind: KIND, version: 1, secrets: 'excluded', excluded: EXCLUDED } };
+    return { contract_version: FLEET_CONTRACT, platform: this.mac ? 'mac' : 'linux', release: '0.15.1', permissions: this.permissions(), service: this.service(), export: { kind: KIND, version: 1, secrets: 'excluded', excluded: EXCLUDED }, setup: this.setup() };
+  }
+
+  /** OPS-282: as proxy/fleethealth.py setup_state: engine hosts (SSH), other nodes, backends on no node */
+  private setup(): AppSetup {
+    const here = this.fleet.hereId();
+    const doc = this.fleet.handle('GET', '/v1/fleet/nodes', new URLSearchParams(), null).body as { nodes: { id: string; transport: string }[]; backends: unknown[] };
+    const engines = doc.nodes.filter((n) => n.transport === 'ssh').length;
+    const nodes = doc.nodes.filter((n) => n.transport !== 'ssh' && n.id !== here).length;
+    const backends = doc.backends.length;
+    const needs = engines === 0 && nodes === 0 && backends === 0;
+    return { needs_setup: needs, engines, nodes, backends, first_page: needs ? 'add_engine' : null };
   }
 
   // ---- the file --------------------------------------------------------------------------------
