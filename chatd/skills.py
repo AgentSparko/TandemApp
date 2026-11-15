@@ -16,12 +16,18 @@ chat. A server without the library (another engine, a cloud backend) lists no sk
 modes change nothing.
 
 USER SKILLS: a .zip with a SKILL.md folder (`POST /packages/upload`). chatd checks it (one folder,
-no path outside it, no links, size limits, frontmatter `name` and `description`), unpacks it under
-`<data>/skills/<name>/` and installs it through the engine's packages document
-(`PUT /v1/conductor/packages`): that folder in `skill_dirs`, the skill as `skill:<name>` with
-`library: true`, so the library, the router and the lookup drafter's index all see it. A name the
-engine already has from elsewhere is refused; a skill uploaded here again is replaced, and
-`DELETE /packages/<name>` takes it out of the document and off the disk.
+no path outside it, no links, size limits, frontmatter `name` and `description`), keeps it under
+`<data>/skills/<name>/` (its own copy: what marks the skill as the user's) and installs it through
+the conductor's packages document (`PUT /v1/conductor/packages`) as an inline package: SKILL.md's
+text after its frontmatter is the package's `body` (at most BODY_MAX characters), with
+`library: true`, so the library, the router and the lookup drafter's index all see it. SRV-843: the
+document is the one of the conductor chatd's engine base reaches (the controller's own when chatd
+runs on the controller's host, proxy/chatengine.py), which may run on another host than chatd, so
+nothing is installed by a path any more: no folder of chatd's goes into `skill_dirs`, and one an
+earlier install put there is taken out at the next change. Only SKILL.md travels (the library
+serves that file's text and nothing else of a skill's folder). A name the conductor already has
+from elsewhere is refused; a skill uploaded here again is replaced, and `DELETE /packages/<name>`
+takes it out of the document and off the disk.
 
 PROMPTS are slash commands with a template ({{CLIPBOARD}}, {{selection}}, {{input}} filled on the
 device); a chat's `prompt_id` makes one its system prompt. PRESETS are a model, a prompt, an
@@ -50,6 +56,9 @@ SKILL_ZIP_MAX = 10 * 1024 * 1024
 SKILL_UNPACKED_MAX = 20 * 1024 * 1024
 SKILL_FILES_MAX = 200
 SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+#: an inline package's body at most (tandemapp/conductor/schema.py `_TEXT`)
+BODY_MAX = 200000
+_FRONT = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(\r?\n|\Z)", re.S)
 
 
 def multipart_file(content_type: str, body: bytes, field: str = "file") -> tuple[str, bytes]:
@@ -71,6 +80,13 @@ def frontmatter(text: str) -> dict:
         if sep and k.strip() and not k.startswith((" ", "\t")):
             out[k.strip()] = v.strip().strip('"').strip("'")
     return out
+
+
+def skill_body(text: str) -> str:
+    """SKILL.md's text after its frontmatter: an inline package's body (the conductor strips the
+    frontmatter of a skill it reads from a file the same way)."""
+    m = _FRONT.match(text)
+    return (text[m.end():] if m else text).strip("\n") + "\n"
 
 
 def unpack_skill(data: bytes) -> tuple[dict, dict[str, bytes]]:
@@ -116,6 +132,11 @@ def unpack_skill(data: bytes) -> tuple[dict, dict[str, bytes]]:
                          "and `-`, at most 64")
     if not 8 <= len(desc) <= 600:
         raise ValueError("the frontmatter needs a `description` of 8 to 600 characters")
+    body = skill_body(files["SKILL.md"].decode("utf-8"))
+    if not body.strip():
+        raise ValueError("SKILL.md has no text after its frontmatter")
+    if len(body) > BODY_MAX:
+        raise ValueError(f"SKILL.md's text may be at most {BODY_MAX:,} characters")
     return meta, files
 
 
@@ -225,9 +246,16 @@ class SkillsMixin:
         if st != 200:
             err = (obj or {}).get("error") if isinstance(obj, dict) else None
             msg = err.get("message") if isinstance(err, dict) else str(err or "")
+            if st in (400, 422):
+                raise self._api(400, "bad_skill", f"the conductor refused the skill: {msg}".strip())
             raise self._api(409 if st == 409 else 502, "engine",
                             f"the engine refused the packages change (HTTP {st}) {msg}".strip())
         self._lib_cache = None
+
+    def _own_dirs(self, doc: dict) -> list:
+        """`skill_dirs` without this chatd's folder (SRV-843: skills go as bodies)."""
+        return [d for d in doc.get("skill_dirs") or []
+                if os.path.normpath(os.path.expanduser(d)) != self.skills_dir]
 
     def upload_skill(self, content_type: str, body: bytes) -> dict:
         try:
@@ -241,11 +269,7 @@ class SkillsMixin:
         ours = os.path.isdir(target)
         if name in (doc.get("packages") or {}) and not ours:
             raise self._api(409, "taken", f"the engine already has a package named {name}")
-        dirs = list(doc.get("skill_dirs") or [])
-        if self.skills_dir not in dirs:
-            if len(dirs) >= 8:
-                raise self._api(409, "full", "the packages document has 8 skill folders already")
-            dirs.append(self.skills_dir)
+        dirs = self._own_dirs(doc)
         tmp = target + ".new"
         shutil.rmtree(tmp, ignore_errors=True)
         for rel, blob in files.items():
@@ -258,11 +282,11 @@ class SkillsMixin:
         if ours:
             os.rename(target, old)
         os.rename(tmp, target)
-        text = files["SKILL.md"].decode("utf-8")
+        body = skill_body(files["SKILL.md"].decode("utf-8"))
         pkgs = dict(doc.get("packages") or {})
         pkgs[name] = {"title": str(meta.get("title") or name)[:80], "kind": "skill",
-                      "source": f"skill:{name}", "description": meta["description"], "body": "",
-                      "max_tokens": min(32768, max(256, len(text) // 2)), "enabled": True,
+                      "source": "inline", "description": meta["description"], "body": body,
+                      "max_tokens": min(32768, max(256, len(body) // 2)), "enabled": True,
                       "library": True}
         try:
             self._put_packages(version, {**doc, "skill_dirs": dirs, "packages": pkgs},
@@ -286,8 +310,8 @@ class SkillsMixin:
                                               "with the engine are switched off, not deleted")
         version, doc = self._packages_doc()
         pkgs = {k: v for k, v in (doc.get("packages") or {}).items() if k != name}
-        self._put_packages(version, {**doc, "packages": pkgs}, f"chat: removed the user skill "
-                                                                f"{name}")
+        self._put_packages(version, {**doc, "skill_dirs": self._own_dirs(doc), "packages": pkgs},
+                           f"chat: removed the user skill {name}")
         shutil.rmtree(target, ignore_errors=True)
         self.store.run("DELETE FROM tool_prefs WHERE tool = ?", ("pkg:" + name,))
 

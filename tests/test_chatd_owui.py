@@ -2,8 +2,8 @@
 (three fixtures in tests/fixtures/owui, no personal data), schemas from the type hints and the
 docstrings, Valves as settings with write-only secrets, a call that runs the method through the
 runner (a sandbox played on the host here; the Spark's box test runs it in a real one), filters
-refused; a skill zip checked, unpacked and installed through the engine's packages document, and
-taken out again. CPU only.
+refused; a skill zip checked, unpacked and installed through the packages document as an inline
+body (SRV-843: never by a path into skill_dirs), and taken out again. CPU only.
 
 Run: python -m pytest -q tests/test_chatd_owui.py
 """
@@ -254,9 +254,12 @@ def test_a_skill_installs_through_the_packages_document_and_comes_out_again():
         pkg = c.ok("POST", "/packages/upload", raw=body, headers={"Content-Type": ct})
         assert pkg["id"] == "tea-timer" and pkg["user"] is True
         doc = state["doc"]
-        assert c.svc.skills_dir in doc["skill_dirs"]
-        assert doc["packages"]["tea-timer"]["source"] == "skill:tea-timer"
-        assert doc["packages"]["tea-timer"]["library"] is True
+        # SRV-843: the text goes as the package's body; no folder of chatd's in skill_dirs
+        assert doc["skill_dirs"] == ["~/.config/opencode/skills"], doc["skill_dirs"]
+        p = doc["packages"]["tea-timer"]
+        assert p["source"] == "inline" and p["library"] is True, p
+        assert p["body"] == skills.skill_body(SKILL) and "---" not in p["body"].splitlines()[0]
+        assert "name: tea-timer" not in p["body"]
         assert open(os.path.join(c.svc.skills_dir, "tea-timer", "ref", "table.md")).read() == \
             "oolong 3 min"
         assert [p["id"] for p in c.ok("GET", "/skills")] == ["tea-timer"]
@@ -275,6 +278,48 @@ def test_a_skill_installs_through_the_packages_document_and_comes_out_again():
         assert "tea-timer" not in state["doc"]["packages"]
         assert not os.path.exists(os.path.join(c.svc.skills_dir, "tea-timer"))
         assert state["puts"][0] == "chat: the user skill tea-timer"
+    finally:
+        c.close()
+
+
+def test_a_skill_goes_as_a_body_and_an_old_folder_leaves_skill_dirs():
+    """SRV-843: the conductor may run on another host than chatd, so a skill is its text, never
+    a path: a folder of chatd's that an earlier install put into skill_dirs leaves it at the next
+    change; SKILL.md with no text, or more than BODY_MAX characters, is refused."""
+    c = Chat()
+    try:
+        state = engine_with_packages(c)
+        state["doc"]["skill_dirs"].append(c.svc.skills_dir)
+        state["doc"]["packages"]["old-one"] = {
+            "title": "old-one", "kind": "skill", "source": "skill:old-one",
+            "description": "A skill installed by its folder.", "body": "", "max_tokens": 256,
+            "enabled": True, "library": True}
+        ct, body = multipart("tea.zip", skill_zip({"SKILL.md": SKILL}))
+        c.ok("POST", "/packages/upload", raw=body, headers={"Content-Type": ct})
+        assert state["doc"]["skill_dirs"] == ["~/.config/opencode/skills"], state["doc"]
+        assert state["doc"]["packages"]["tea-timer"]["body"] == "Green: 2 minutes at 80 C.\n"
+        assert skills.skill_body("no frontmatter\n") == "no frontmatter\n"
+        for text, words in (("---\nname: empty\ndescription: nothing below it\n---\n\n",
+                             "no text"),
+                            ("---\nname: huge\ndescription: far too long a body\n---\n" +
+                             "x" * (skills.BODY_MAX + 1), "at most")):
+            st, err, _ = c.call("POST", "/packages/upload", raw=multipart(
+                "s.zip", skill_zip({"SKILL.md": text}))[1], headers={"Content-Type": ct})
+            assert st == 400 and words in err["error"]["message"], err
+        # a conductor that refuses the text (a literal address of its own routes): 400, not 502
+        real = c.svc.engine.request
+
+        def refusing(method, path, body=None, headers=None, timeout=10.0):
+            if method == "PUT" and path == "/v1/conductor/packages":
+                return 400, {"error": {"message": "$.packages.x.body: calls TandemLLM at a "
+                                                  "literal address"}}
+            return real(method, path, body, headers, timeout)
+        c.svc.engine.request = refusing
+        st, err, _ = c.call("POST", "/packages/upload", raw=multipart(
+            "s.zip", skill_zip({"SKILL.md": SKILL.replace("tea-timer", "tea-two")}))[1],
+            headers={"Content-Type": ct})
+        assert st == 400 and "refused the skill" in err["error"]["message"], err
+        assert not os.path.exists(os.path.join(c.svc.skills_dir, "tea-two"))
     finally:
         c.close()
 
