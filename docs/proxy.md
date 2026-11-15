@@ -13,24 +13,7 @@ Backends in this release:
 
 The proxy only observes in this release. It never changes a request's meaning: it sets the model id the backend knows, and it asks a stream for its usage frame when the client did not (then it drops that frame before the client). The conductor's features (task class, effort, packages, the loop and tool checks) come to foreign backends in a later release. Their switches are already stored per model.
 
-## Two ways to run it
-
-### Inside the engine's server
-
-`server/app.py --backends ~/.tandemllm/config.sqlite3` serves the engine's own model as before and relays every request whose model belongs to a backend. A relayed request runs on its own thread and never takes the engine's lock or a place in its queue, so a slow cloud answer cannot hold up the engine and the engine's queue cannot hold up a cloud answer. On the :8000 service, set `QSE_BACKENDS` in `ops/serve.env` and restart; empty means off, and the service is exactly what it was.
-
-First live run, 2026-10-07 on the test board (0.4.1-test), with DeepSeek as the one backend:
-
-    # once: the backend and its key into the config database (the key encrypted, AES-256-GCM;
-    # the master key is secrets.key beside the database, mode 0600), from the Backends screen or
-    # ConfigDB.create_backend({"id": "deepseek", "kind": "deepseek", "key": ...})
-    # ops/serve.env:
-    QSE_BACKENDS=${HOME}/.qwen38-spark-engine/backends/config.sqlite3
-    TANDEM_BACKENDS=deepseek
-    TANDEM_BACKEND_DEEPSEEK_KIND=deepseek
-    TANDEM_BACKEND_DEEPSEEK_URL=https://api.deepseek.com/v1
-
-Setting the kind and the URL in the environment locks them on the Backends screen. Without an admin password anyone who reaches the port can edit a backend, and a URL changed to another host would receive the key in the `Authorization` header; with the URL locked that edit answers 422. The key itself stays in the database, never in serve.env. The start log says `[proxy] on: ..., 1 backends (deepseek); TandemLLM stays the engine's`. Measured through the LAN reverse proxy: `/v1/models` listed `TandemLLM`, `deepseek-flash` and `deepseek-v4-pro`; streamed answers carried the reasoning in `reasoning_content` with `thinking` on and none with it off; time to first token 0.65 to 0.85 s; Open WebUI and opencode picked the DeepSeek models from the same connection as `TandemLLM`; a DeepSeek request sent while the engine was decoding a request of its own got its first token in 0.77 s, as when the engine was idle. Every row is in the ledger with its cost.
+## Running it
 
 ### On its own
 
@@ -64,6 +47,23 @@ Then open `http://127.0.0.1:8080/dashboard/#/usage`.
 
 The config database, the usage ledger and the key file (when `TANDEM_SECRETS_KEY` is not set) live in the `/data` volume. Inside the container the server binds 0.0.0.0, so what the outside reaches is what `-p` publishes: `127.0.0.1:8080` for this machine, a LAN address for a local network. Turn the login on (`TANDEM_DASHBOARD_LOGIN=on` and `TANDEM_ADMIN_TOKEN`) before you publish it to anything but loopback. Failed logins are throttled per client: a fronting proxy's `X-Real-IP` is believed only when the TCP peer is loopback, or names itself in `TANDEM_TRUSTED_PROXY`. With `-p`, a proxy on the host does not reach the container from loopback: Docker forwards its connection from the bridge's gateway, 172.17.0.1 on the default bridge, so that gateway address goes into `TANDEM_TRUSTED_PROXY`; without it every client behind the proxy shares one bucket. The proxy must set `X-Real-IP` itself (`proxy_set_header X-Real-IP $remote_addr;` in nginx): a proxy that passes the client's own header on lets the client pick its bucket. The container runs as an unprivileged user and answers its health check on `/health`.
 
+### Moving from the engine's relay
+
+Up to engine API 1.7 the engine's own server could relay too: `server/app.py --backends <config database>`, `QSE_BACKENDS` in its `ops/serve.env`, ran this code inside the engine's process. Since 1.8 the engine relays to nothing, and its start refuses any `QSE_BACKENDS` but empty or off with one line that says what to do. The config database it used is this controller's format, so the backends move in one command:
+
+    tandem-app import-backends --from ~/.qwen38-spark-engine/backends/config.sqlite3            # what it would copy
+    tandem-app import-backends --from ~/.qwen38-spark-engine/backends/config.sqlite3 --write    # copy it
+
+Run it with the controller's own settings (`--env-file`, `--config-db`), so each key is stored under the controller's master key. It copies every backend the controller does not have yet: the row as stored, its key (read with the old file's key file, or `TANDEM_SECRETS_KEY`), its models with their prices, public ids and conductor switches, and the routing rules that name it, after the controller's own. A backend id the controller has is left as it is. A key it cannot read is left out and named; no key is printed. `--disabled` stores every imported backend off, so they can go on at the moment the engine stops relaying. Restart the controller after `--write`.
+
+Three things stay in the old file, which the import reads from a copy and never writes to:
+
+- The users and their keys. `TANDEM_API_USERS_FROM=<that file>` makes the controller check them there, read only (the data plane, below). The engine no longer checks them on its own port, so the clients' OpenAI routes go through the controller.
+- A backend the engine's environment declared (`TANDEM_BACKENDS`, `TANDEM_BACKEND_<ID>_*` in its `serve.env`) is copied as a row. Its variables, and a key that lived only there, move to the controller's env file by hand; the import names them.
+- Settings, the audit log and the nodes.
+
+Then turn the engine's line off with `tandem doctor --retire-backends` on the engine's box. It keeps the old line as a comment under a dated note (the engine's docs/operations.md, "Other backends moved to TandemApp").
+
 ### The built page
 
 The page (`dashboard/dist/`) is a build output and not in git. CI builds it on every pull request (`.github/workflows/dashboard-dist.yml`: `npm ci`, the type check, vitest, the build, the size budget, a second build that must give the same hash) and hands it to the jobs that package it. `tools/dashboard_bundle.py` is the one tool every install path uses:
@@ -90,6 +90,7 @@ Up to 0.15.0 the image was `tandemllm-dash` and the volume `tandem-dash`; the vo
 | `tandem-app check` | reads the environment and a copy of the config database through the schema and prints what would run: the backends, their key hints and locked fields, the rules, the page, the listen address. It writes nothing and exits 1 on an error that names the variable |
 | `tandem-app secrets init` | makes the master key file beside the config database (0600) when no master key answers; `secrets status` says which source answers |
 | `tandem-app backends list` | the backends, one line each, from a copy of the database |
+| `tandem-app import-backends --from FILE [--write] [--disabled]` | an engine's old relay database (its `QSE_BACKENDS`) into this one; without `--write` it shows what it would copy and writes nothing ([above](#moving-from-the-engines-relay)) |
 | `tandem-app hostcollect` | the remote host collector (below) |
 | `tandem-app launch vllm\|sglang` | starts vLLM or SGLang with TandemLLM's plugin inside and registers it as a backend (below) |
 | `tandem-app service install\|uninstall\|status` | the controller as a background service of the user: a launchd agent on macOS, a systemd user unit on Linux (below) |
@@ -297,7 +298,7 @@ A client sees what the engine gave it before, with no change on its side:
 | long thinking | no idle cut while the engine still works on the request: when the first-byte (600 s) or idle (120 s) wait runs out, the relay asks the engine's board (`/v1/dashboard/parallel`) whether it still holds the request under the relay's lane id, and waits another span while it does. The engine's own request timeout ends a request; a client that leaves still closes the upstream within a quarter second. An engine whose board does not answer the controller (a remote engine with the dashboard login on) is cut at the timeouts as before |
 | counted once | a request is a row in the controller's ledger and one in the engine's, never added up. The controller's row holds the engine's answer id (`upstream_request`, ledger schema 12), which is the `request_id` of the engine's row: the two join on it. Usage reads one ledger at a time and says which; a page whose `/v1/models` answer carries `X-Tandem-Gateway` reads the controller's by default, one Spark too, with the engine's a click away (the Chat tab's requests go to the engine straight and are in its ledger) |
 
-The engine's relays stay its own: a DeepSeek model the engine relays is listed and answered through the controller as the engine lists and answers it, and both ledgers have the row. The relay may try the engine again on a 429 or 503 before any byte (twice at most, after its `Retry-After`), as it does for every backend.
+An engine before engine API 1.8 could relay to backends of its own: a DeepSeek model such an engine relays is listed and answered through the controller as the engine lists and answers it, and both ledgers have the row. A 1.8 engine relays nothing; [Moving from the engine's relay](#moving-from-the-engines-relay) brings those backends here. The relay may try the engine again on a 429 or 503 before any byte (twice at most, after its `Retry-After`), as it does for every backend.
 
 The controller's settings for a box (`app.env`):
 

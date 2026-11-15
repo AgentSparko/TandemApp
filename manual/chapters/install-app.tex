@@ -27,6 +27,7 @@ The page opens on Setup\index{Setup screen} while no backend exists: add one, te
 \code{tandem-app check} & reads the environment and a copy of the config database through the schema and prints what would run: backends, key hints, locked fields, routing rules, the listen address. Writes nothing; exits 1 on an error that names the variable \\
 \code{tandem-app secrets init} & makes the master key file beside the config database (mode 0600) when no master key answers; \code{secrets status} says which source answers \\
 \code{tandem-app backends list} & one line per backend, from a copy of the database \\
+\code{tandem-app import-backends --from <file>} & an engine's old relay database into this one; \code{--write} copies, without it nothing is written (Section~\ref{sec:import-backends}) \\
 \code{tandem-app hostcollect} & the remote host collector (Section~\ref{sec:hostcollect}) \\
 \code{tandem-app launch vllm|sglang} & starts vLLM or SGLang with TandemLLM's plugin and registers it as a backend (Section~\ref{sec:launch}) \\
 \code{tandem-app version} & the installed version \\
@@ -93,9 +94,9 @@ conductor documents & the harness's profiles, router, packages and journal & \co
 \end{tabularx}
 \end{table}
 
-\section{The proxy inside the engine's server}
+\section{Moving from the engine's relay}\label{sec:import-backends}
 
-The engine's own server can relay too. Start it with \code{--backends <config database>} (\code{QSE_BACKENDS}\index{qsebackends@\texttt{QSE\_BACKENDS}} in \code{serve.env}; empty means off). It then serves its own model as before and relays every request whose model belongs to a backend. A relayed request runs on its handler's own thread and never takes the engine's lock or a place in its queue, so a slow cloud answer cannot hold up the engine, and the engine's queue cannot hold up a cloud answer. With \code{--backends}\index{backends@\texttt{-\kern0pt-backends}} off the engine loads none of the proxy's code and serves exactly as without it.
+Up to engine API 1.7 the engine's own server could relay too, with \code{--backends <config database>}\index{backends@\texttt{-\kern0pt-backends}} (\code{QSE_BACKENDS}\index{qsebackends@\texttt{QSE\_BACKENDS}} in its \code{serve.env}). Since 1.8 the engine relays to nothing, and its start refuses any other value than empty or off with one line that says what to do. That config database is this controller's format, so \code{tandem-app import-backends --from <file>} shows what it would copy and \code{--write} copies it: each backend the controller does not have yet, with its key under the controller's master key, its models and its routing rules. The users stay in the old file, which the import never writes; \code{TANDEM_API_USERS_FROM} makes the controller check their keys there. \code{--disabled} stores the backends off, to turn on at the switch. Then \code{tandem doctor --retire-backends} on the engine's box turns its line into a dated comment. \code{docs/proxy.md} has the details.
 
 \section{The fleet}\label{sec:fleet}\index{fleet}
 

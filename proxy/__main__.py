@@ -7,6 +7,9 @@
                                                      and what would run; writes nothing
     tandem-app secrets init | status                 the master key for keys at rest
     tandem-app backends list                         the backends, their keys' hints and locks
+    tandem-app import-backends --from FILE [--write] [--disabled]
+                                                     an engine's old relay (its QSE_BACKENDS) into
+                                                     this database (proxy/backends_import.py)
     tandem-app hostcollect [--host 0.0.0.0 ...]      the remote host collector (P1.5)
     tandem-app launch vllm|sglang --model M --port P [-- engine args]
                                                      the engine with TandemLLM's plugin, registered
@@ -135,8 +138,8 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
-COMMANDS = ("serve", "check", "secrets", "backends", "hostcollect", "launch", "service", "package",
-            "password", "version")
+COMMANDS = ("serve", "check", "secrets", "backends", "import-backends", "hostcollect", "launch", "service",
+            "package", "password", "version")
 
 
 def main(argv=None) -> None:
@@ -188,7 +191,18 @@ def main(argv=None) -> None:
         ap.add_argument("action", choices=("init", "status"))
     elif cmd == "backends":
         ap.add_argument("action", choices=("list",))
+    elif cmd == "import-backends":
+        # ENG-413 WP14b: an engine's old relay (QSE_BACKENDS) into this controller's database
+        ap.add_argument("--from", dest="from_db", required=True,
+                        help="the engine's config database, its QSE_BACKENDS (read from a copy, never written)")
+        ap.add_argument("--write", action="store_true",
+                        help="write into --config-db; without it, show what would be written")
+        ap.add_argument("--disabled", action="store_true",
+                        help="store every imported backend off, to turn on at the switch")
     args = ap.parse_args(argv)
+    if cmd == "import-backends":
+        from proxy import backends_import
+        raise SystemExit(backends_import.main(args))
     from proxy import cli
     raise SystemExit(getattr(cli, cmd)(args))
 
