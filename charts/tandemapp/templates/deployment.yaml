@@ -168,9 +168,14 @@ spec:
             {{- range $k, $v := .Values.mcpBridge.env }}
             - {name: {{ $k }}, value: {{ $v | toString | quote }}}
             {{- end }}
+          # the bridge listens on the pod's loopback only; a tcpSocket probe dials the pod's address
+          # and never reaches it, so the probe connects from inside the container instead
           livenessProbe:
-            tcpSocket: {port: {{ .Values.mcpBridge.port }}}
+            exec:
+              command: [python3, -c, "import socket; socket.create_connection(('127.0.0.1', {{ .Values.mcpBridge.port }}), 3).close()"]
+            initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 5
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
