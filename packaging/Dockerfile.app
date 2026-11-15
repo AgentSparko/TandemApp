@@ -19,10 +19,13 @@
 # --network host every address of the machine: then set TANDEM_HOST=127.0.0.1 or an admin password
 # (TANDEM_ADMIN_TOKEN). With no admin password every route is open (docs/proxy.md).
 #
-# Chat runs in the container (TANDEM_CHAT=own). Its sandboxes are off until a container runtime's
-# socket is mounted at /run/tandem/sandbox.sock (packaging/container-start.sh writes chatd.env), and
-# the health page says so: for example `-v /var/run/docker.sock:/run/tandem/sandbox.sock
-# --group-add <the socket's group id>`, or a rootless Podman socket with `--user` of its owner.
+# A new container runs bare (OPS-288): the gateway in front of the engines it pairs, Chat and the
+# conductor off until an admin switches them on in Settings, App. Chat then runs in the container
+# (packaging/container-start.sh records the choice in /data/container.env; a /data an older image
+# made keeps chat on). Its sandboxes need a container runtime's socket at /run/tandem/sandbox.sock
+# (chatd.env says where), else chat runs without its sandbox tools and the health page says so:
+# for example `-v /var/run/docker.sock:/run/tandem/sandbox.sock --group-add <the socket's group
+# id>`, or a rootless Podman socket with `--user` of its owner.
 #
 # The System view's host collector sees the container, not the machine. For the machine and the
 # processes behind backends on it, run the container with `--pid=host` (and `--gpus all` for
@@ -72,7 +75,6 @@ ENV TANDEM_CONFIG_DB=/data/config.sqlite3 \
     TANDEM_APP_STATE=/data \
     TANDEM_HOST=0.0.0.0 \
     TANDEM_PORT=8080 \
-    TANDEM_CHAT=own \
     TANDEM_CONDUCTOR=off \
     TANDEM_NODE_AGENT=off \
     PYTHONUNBUFFERED=1

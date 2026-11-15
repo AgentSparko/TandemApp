@@ -57,7 +57,7 @@ cat /etc/ssl/certs/ca-certificates.crt > "$ROOT/ca/bundle.pem.next"
 if [ -s /etc/tandemapp/trust/ca.pem ]; then cat /etc/tandemapp/trust/ca.pem >> "$ROOT/ca/bundle.pem.next"; fi
 mv "$ROOT/ca/bundle.pem.next" "$ROOT/ca/bundle.pem"
 
-# chatd's env file (chat.mode own); the controller reads <state>/chatd.env
+# chatd's env file (chat.mode own or off: read once Chat is on); the controller reads <state>/chatd.env
 if [ -f /etc/tandemapp/config/chatd.env ]; then
   install -m 600 /etc/tandemapp/config/chatd.env "$ROOT/state/chatd.env"
   # sandbox.mode kubernetes: chatd finds its own pod (node, address, owner of the sandbox pods)

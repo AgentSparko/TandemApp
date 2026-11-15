@@ -26,7 +26,18 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
    Read it into your password manager, never into a log:
    kubectl -n {{ .Release.Namespace }} get secret {{ include "tandemapp.secretName" . }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d | pbcopy
 
-5. Chat: chatd is {{ if eq .Values.chat.mode "own" }}this pod's own ({{ .Values.persistence.mountPath }}/{{ .Values.chat.dataDir }}){{ else }}external (another host runs it){{ end }}.
+{{- $chat := include "tandemapp.chatMode" . }}
+{{- $cond := include "tandemapp.conductor" . }}
+5. What runs: the gateway{{ if ne $cond "off" }}, the conductor ({{ $cond }}){{ end }}{{ if ne $chat "off" }}, Chat{{ end }}.
+{{- if eq $chat "off" }}
+   Chat is off: an admin switches it on in Settings, App, What runs here (chatd then runs in this
+   pod, {{ .Values.persistence.mountPath }}/{{ .Values.chat.dataDir }}). The page's switch wins over chat.mode from then on.
+{{- else }}
+   Chat: chatd is {{ if eq $chat "own" }}this pod's own ({{ .Values.persistence.mountPath }}/{{ .Values.chat.dataDir }}){{ else }}external (another host runs it){{ end }}.
+{{- end }}
+{{- if eq $cond "off" }}
+   The conductor is off: switched on the same way.
+{{- end }}
    Sandboxes: {{ .Values.sandbox.mode }}.
 {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
    Each chat's sandbox is a pod in this namespace ({{ .Values.sandbox.kubernetes.image }}, pull

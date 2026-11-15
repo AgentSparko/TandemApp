@@ -1,5 +1,6 @@
 # TandemApp's controller on Kubernetes: one pod with the controller (gateway, usage ledger, fleet,
-# page) and, with chat.mode own, its chatd as a child process. No image is built: a stock Python
+# page) and, once Chat is on, its chatd as a child process. The defaults are bare (OPS-288): the
+# gateway only, no chat, no conductor, no MCP bridge; each is switched on from the page or here. No image is built: a stock Python
 # image runs the code of a release archive that an init container unpacks into the volume, with a
 # virtualenv made there from the archive's own wheels (scripts/make-archive.sh builds the archive).
 
@@ -65,8 +66,11 @@ controller:
   extraEnvFrom: []
   # more env entries (valueFrom allowed)
   extraEnv: []
-  # the conductor's documents: a path under the volume, or "off"
-  conductor: conductor
+  # the conductor's documents: a path under the volume, an absolute path, or "off". Empty (the
+  # default, OPS-288): off on a new install, the running controller's on an upgrade, so a
+  # changed default never flips a running release. Switched on and off from the page too
+  # (Settings, App, What runs here), which wins from then on.
+  conductor: ""
   resources:
     requests:
       cpu: 200m
@@ -95,11 +99,14 @@ auth:
   secretKey: admin-token
   create: true
 
-# -- Chat: who runs chatd. external: another host does (the Chat tab forwards to chat.url).
-# own: this pod's controller starts and watches chatd, with the variables below as its env file
-# (<state>/chatd.env, written by the init container at every start).
+# -- Chat: who runs chatd. off: nobody, the Chat tab says Chat is off until an admin switches it
+# on from the page (Settings, App, What runs here: chatd then runs in this pod with the env file
+# below). own: this pod's controller starts and watches chatd, with the variables below as its env
+# file (<state>/chatd.env, written by the init container at every start). external: another host
+# does (the Chat tab forwards to QSE_CHAT_URL). Empty (the default, OPS-288): off on a new install,
+# the running controller's mode on an upgrade. The page's switch wins over this value once used.
 chat:
-  mode: external
+  mode: ""
   # chatd's data folder under the volume (QSE_CHAT_DATA)
   dataDir: data/chat
   # more lines of chatd.env (QSE_CHAT_MAX_RUNS, QSE_SANDBOX_MEM_GB, ...), as a map
@@ -112,7 +119,8 @@ sandbox:
   #   pod. Needs persistence.hostPath.path == persistence.mountPath, and the socket's ACL open to
   #   podSecurityContext.runAsUser.
   # kubernetes: chatd makes each chat's sandbox a pod in this namespace through the Kubernetes API
-  #   (chatd/k8s.py). Needs chat.mode own. The image must be on the node (ops/sandbox/build-k8s.sh)
+  #   (chatd/k8s.py). Needs chat.mode own or off (switched on from the page). The image must be on
+  #   the node (ops/sandbox/build-k8s.sh)
   mode: "off"
   podmanSocket:
     # the folder on the node that holds podman.sock (/run/user/<uid>/podman)

@@ -17,13 +17,16 @@ WHAT IT DOES, in order (each step says what it did; `--dry-run` says what it wou
      --wheels DIR installs offline from a folder of wheels. The release's `venv` links to it.
   4  the state dir (--state-dir, default ~/.tandemllm, mode 0700): a fresh master key
      (secrets.key, 32 random bytes, mode 0600) unless one is there or app.env names
-     TANDEM_SECRETS_KEY; app.env (mode 0600) on the first run with the address and port, chatd
-     here (TANDEM_CHAT=own), no conductor and no TandemNode agent; later runs change only the
-     address and port they are given. An address that is not loopback (--listen) gets an admin
+     TANDEM_SECRETS_KEY; app.env (mode 0600) on the first run with the address and port and
+     nothing else running (OPS-288, bare: TANDEM_CHAT=off, TANDEM_CONDUCTOR=off, no TandemNode
+     agent; Chat and the conductor are switched on in Settings, App, What runs here, or with
+     --chat own); later runs change only the address, port and --chat they are given. An address that is not loopback (--listen) gets an admin
      token (TANDEM_ADMIN_TOKEN, never printed) and the page's sign-in, unless an admin password or
-     token is set already. chatd.env (2 GiB and 2 running sandboxes) when there is none.
+     token is set already. chatd.env (2 GiB and 2 running sandboxes) when there is none: read
+     only once Chat is on.
   5  --with-sandbox (Linux, with sudo): ops/sandbox/install.sh, rootless Podman under its own user
      with its socket, egress table and the ACLs on chatd's folders; chatd.env gets its socket.
+     It switches nothing on: the sandboxes are used once Chat is on.
      Then the memory cgroup is checked: when the kernel does not cap a container's memory, the
      fix is printed (on a Raspberry Pi, cgroup_enable=memory in cmdline.txt); no boot file is
      edited here.
@@ -45,7 +48,8 @@ A re-run with the same release changes nothing that runs while it answers health
 unit or plist, the same release): idempotent. Old releases stay; the summary says how many.
 
     bash packaging/install.sh [--prefix DIR] [--state-dir DIR] [--listen ADDR] [--port N]
-        [--service auto|systemd|launchd|process|none] [--with-sandbox] [--venv DIR]
+        [--service auto|systemd|launchd|process|none] [--chat off|own|external]
+        [--with-sandbox] [--venv DIR]
         [--wheels DIR] [--bundle-url URL --bundle-sha256 HEX | --build-page] [--python PY]
         [--wait S] [--dry-run]
 
@@ -349,15 +353,23 @@ def check_listen(host: str) -> str:
                    f"host's)", 2) from None
 
 
+CHAT_LINE = {
+    "off": "# Chat is off (no chatd): an admin switches it on in Settings, App, What runs here;\n"
+           "# from then on that switch wins over this line\n",
+    "own": "# chatd on this host, started and watched by the controller (<state dir>/chatd.env)\n",
+    "external": "# chatd runs elsewhere: the Chat tab forwards to QSE_CHAT_URL\n",
+}
+
+
 def app_env_text(host: str, port: int, chat: str) -> str:
     return (f"# TandemApp's controller (packaging/install.sh, {time.strftime('%Y-%m-%d')}): one "
             f"KEY=VALUE a line, mode 0600.\n"
             f"# packaging/app.env.example lists every variable; run the installer again with "
             f"--listen or --port to move it.\n"
             f"TANDEM_HOST={host}\nTANDEM_PORT={port}\n"
-            f"# chatd on this host, started and watched by the controller (<state dir>/chatd.env)\n"
+            f"{CHAT_LINE[chat]}"
             f"TANDEM_CHAT={chat}\n"
-            f"# a bare engine: the conductor is switched on in the settings\n"
+            f"# a bare engine: the conductor is switched on in Settings, App, What runs here\n"
             f"TANDEM_CONDUCTOR=off\n"
             f"# no TandemNode agent on this machine\n"
             f"TANDEM_NODE_AGENT=off\n")
@@ -394,7 +406,7 @@ def ensure_state(state: str, a, dry: bool) -> dict:
     os.makedirs(os.path.join(state, "logs"), mode=0o700, exist_ok=True)
     changed = False
     if new:
-        write_private(envf, app_env_text(host, port, a.chat or "own"))
+        write_private(envf, app_env_text(host, port, a.chat or "off"))
         changed = True
         say(f"wrote {envf}")
     else:
@@ -750,8 +762,10 @@ def parser() -> argparse.ArgumentParser:
                          "loopback makes an admin token")
     ap.add_argument("--port", type=int, default=None, help=f"default {DEFAULT_PORT}, or app.env's")
     ap.add_argument("--service", choices=MANAGERS, default="auto")
-    ap.add_argument("--chat", choices=("own", "external"), default=None,
-                    help="who runs chatd (a new app.env: own)")
+    ap.add_argument("--chat", choices=("off", "own", "external"), default=None,
+                    help="who runs chatd: off (a new app.env: no chat until it is switched on "
+                         "from the page), own (this host) or external; a later run with it "
+                         "changes app.env")
     ap.add_argument("--with-sandbox", action="store_true",
                     help="Linux: rootless Podman for chatd's sandboxes (sudo once)")
     ap.add_argument("--venv", default=None, help="use this venv (Python 3.11+, cryptography, "
@@ -858,6 +872,9 @@ def install(a) -> int:
         if st["lan"]:
             print(f"  From another machine: http://<this host's address>:{st['port']}/; sign in "
                   f"with TANDEM_ADMIN_TOKEN from {os.path.join(state, 'app.env')}")
+    if (read_env(os.path.join(state, "app.env")).get("TANDEM_CHAT") or "external") == "off":
+        print("  Runs:    the gateway only; Chat and the conductor are switched on in Settings, "
+              "App" + (" (the sandboxes are ready for Chat)" if a.with_sandbox else ""))
     print(f"  State:   {state}  (app.env, the databases, the master key secrets.key)")
     print(f"  Release: {os.path.join(prefix, 'current')} -> releases/{rid}"
           + (f"  ({len(olds)} older kept)" if olds else ""))

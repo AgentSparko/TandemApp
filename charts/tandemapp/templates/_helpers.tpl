@@ -51,9 +51,47 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-admin" (include "tandemapp.fullname" .)) .Values.auth.existingSecret -}}
 {{- end -}}
 
-{{/* the conductor's folder: an absolute path, a path under the volume, or off */}}
+{{/* TANDEM_CHAT and TANDEM_CONDUCTOR of the controller this release runs now (an upgrade), as
+JSON; {} on a new install and wherever the cluster is not asked (helm template, lint) */}}
+{{- define "tandemapp.runningEnv" -}}
+{{- $out := dict -}}
+{{- $d := lookup "apps/v1" "Deployment" .Release.Namespace (include "tandemapp.fullname" .) -}}
+{{- if $d -}}
+{{- range $d.spec.template.spec.containers -}}
+{{- if eq .name "controller" -}}
+{{- range .env -}}
+{{- if and (has .name (list "TANDEM_CHAT" "TANDEM_CONDUCTOR")) (hasKey . "value") -}}
+{{- $_ := set $out .name .value -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
+{{/* who runs chatd (OPS-288): chat.mode when set; empty, the running controller's TANDEM_CHAT on
+an upgrade, else off (a new install starts bare) */}}
+{{- define "tandemapp.chatMode" -}}
+{{- $m := toString (.Values.chat.mode | default "") -}}
+{{- if not $m -}}
+{{- $run := include "tandemapp.runningEnv" . | fromJson -}}
+{{- $m = toString (get $run "TANDEM_CHAT" | default "off") -}}
+{{- if not (has $m (list "off" "external" "own")) -}}
+{{- $m = "off" -}}
+{{- end -}}
+{{- end -}}
+{{- $m -}}
+{{- end -}}
+
+{{/* the conductor's folder: an absolute path, a path under the volume, or off. Empty
+(OPS-288): the running controller's TANDEM_CONDUCTOR on an upgrade, else off */}}
 {{- define "tandemapp.conductor" -}}
-{{- $c := toString .Values.controller.conductor -}}
+{{- $c := toString (.Values.controller.conductor | default "") -}}
+{{- if not $c -}}
+{{- $run := include "tandemapp.runningEnv" . | fromJson -}}
+{{- $c = toString (get $run "TANDEM_CONDUCTOR" | default "off") -}}
+{{- end -}}
 {{- if or (eq $c "off") (hasPrefix "/" $c) -}}
 {{- $c -}}
 {{- else -}}
@@ -69,15 +107,16 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if and .Values.release.archive.url (not .Values.release.archive.sha256) -}}
 {{- fail "release.archive.sha256 is required with release.archive.url" -}}
 {{- end -}}
-{{- if not (has .Values.chat.mode (list "external" "own")) -}}
-{{- fail "chat.mode is external or own" -}}
+{{- if not (has (toString (.Values.chat.mode | default "")) (list "" "off" "external" "own")) -}}
+{{- fail "chat.mode is off, external or own (empty: off on a new install, kept on an upgrade)" -}}
 {{- end -}}
+{{- $chat := include "tandemapp.chatMode" . -}}
 {{- if not (has (toString .Values.sandbox.mode) (list "off" "podman-socket" "kubernetes")) -}}
 {{- fail "sandbox.mode is off, podman-socket or kubernetes" -}}
 {{- end -}}
 {{- if eq (toString .Values.sandbox.mode) "kubernetes" -}}
-{{- if ne .Values.chat.mode "own" -}}
-{{- fail "sandbox.mode kubernetes needs chat.mode own (chatd in this pod makes the sandbox pods)" -}}
+{{- if eq $chat "external" -}}
+{{- fail "sandbox.mode kubernetes needs chat.mode own or off (chatd in this pod makes the sandbox pods)" -}}
 {{- end -}}
 {{- if not .Values.sandbox.kubernetes.image -}}
 {{- fail "sandbox.mode kubernetes needs sandbox.kubernetes.image" -}}

@@ -10,10 +10,11 @@ data:
 {{ .Files.Get "files/init.sh" | indent 4 }}
   mcp-stdio-http.py: |-
 {{ .Files.Get "files/mcp-stdio-http.py" | indent 4 }}
-  {{- if eq .Values.chat.mode "own" }}
+  {{- if has (include "tandemapp.chatMode" .) (list "own" "off") }}
   chatd.env: |
     # chatd's env file, written to <state>/chatd.env by the init container (chart values chat.*,
-    # sandbox.*). No secret goes here: chatd's forward key lives in its data folder.
+    # sandbox.*), read while Chat is on (chat.mode own, or switched on from the page). No secret
+    # goes here: chatd's forward key lives in its data folder.
     QSE_CHAT_DATA={{ printf "%s/%s" .Values.persistence.mountPath .Values.chat.dataDir }}
     # chatd gets few of the controller's variables: the CA bundle for its https MCP servers
     SSL_CERT_FILE={{ printf "%s/ca/bundle.pem" .Values.persistence.mountPath }}

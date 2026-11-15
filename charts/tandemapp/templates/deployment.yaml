@@ -104,7 +104,7 @@ spec:
             - {name: TANDEM_HOST, value: "0.0.0.0"}
             - {name: TANDEM_PORT, value: {{ .Values.controller.port | quote }}}
             - {name: TANDEM_CONDUCTOR, value: {{ include "tandemapp.conductor" . | quote }}}
-            - {name: TANDEM_CHAT, value: {{ .Values.chat.mode | quote }}}
+            - {name: TANDEM_CHAT, value: {{ include "tandemapp.chatMode" . | quote }}}
             - {name: HOME, value: {{ printf "%s/home" $root | quote }}}
             - {name: SSL_CERT_FILE, value: {{ printf "%s/ca/bundle.pem" $root | quote }}}
             - name: TANDEM_ADMIN_TOKEN

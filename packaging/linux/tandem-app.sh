@@ -20,9 +20,11 @@
 #
 # Defaults for a host with no engine, each only when neither the environment nor the env file
 # sets it: TANDEM_NODE_AGENT=off (no TandemNode agent on this machine to read it through) and
-# TANDEM_CONDUCTOR=off (a bare engine; the conductor is switched on in the settings). Chat stays
-# TANDEM_CHAT=external until the env file says own: then this controller starts and watches chatd
-# here with its own env file (proxy/appchat.py, packaging/linux/chatd.env.example).
+# TANDEM_CONDUCTOR=off (a bare engine; the conductor is switched on in the settings). Chat is
+# TANDEM_CHAT's: off (what packaging/install.sh writes), external when unset, or own: then this
+# controller starts and watches chatd here with its own env file (proxy/appchat.py,
+# packaging/linux/chatd.env.example). The page's switches (Settings, App, What runs here,
+# proxy/appparts.py) win over both once used.
 set -eu
 HERE="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE="${TANDEM_APP_STATE:-$HOME/.tandemllm}"

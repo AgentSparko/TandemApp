@@ -15,8 +15,10 @@ stopped at the end.
   1  Given a Linux box or a Mac, When the user runs the install command, Then the page answers and
      runs as a background service; Given a TandemApp with no engine, When the user opens the page,
      Then the wizard opens at "Add engine" (the app view's setup.needs_setup, first_page add_engine)
-     And chat sandboxes are off with no socket, and the health page says so
-                                                                  test_install_and_wizard_flag
+     And it runs bare (OPS-288): Chat off (TANDEM_CHAT=off, the Chat tab's routes 503 chat_off, no
+     chat or sandbox finding on the health page), the conductor off, nothing connected; Chat
+     switched on from the page (plan, confirm) runs chatd here, and with no socket the health
+     page says chat sandboxes are off                             test_install_and_wizard_flag
   2  a second run with the same release changes nothing that runs (same pid, the release there
      already); a new release is switched to and restarted, the old one kept; a release that does
      not come up is switched back and the run fails with its log; --listen beyond loopback writes
@@ -33,8 +35,9 @@ stopped at the end.
      built before the egress table, the boot unit, the ACLs for the container's uid, the memory
      check; the installer's dry run names the sudo command; the memory note's words
                                                                   test_sandbox_plan
-  7  the container: the Dockerfile carries the OpenSSH client, chat here, the start script and
-     /data; the start script writes chatd.env once with the sandbox socket's path
+  7  the container: the Dockerfile carries the OpenSSH client, the start script and /data; the
+     start script writes chatd.env once with the sandbox socket's path, and container.env once:
+     Chat off on a new /data, own on one an older image made, -e TANDEM_CHAT winning (OPS-288)
                                                                   test_container_files
   8  the image built and run (TANDEM_TEST_DOCKER=1 with docker): /health, the wizard flag, ssh,
      sandboxes off                                                test_container_build
@@ -209,6 +212,18 @@ def wait_for(fn, timeout: float = 30.0, every: float = 0.5):
         time.sleep(every)
 
 
+def post_json(port: int, path: str, body: dict) -> dict:
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+    try:
+        c.request("POST", path, json.dumps(body), {"Content-Type": "application/json"})
+        r = c.getresponse()
+        raw = r.read()
+    finally:
+        c.close()
+    assert r.status == 200, (path, r.status, raw[:400])
+    return json.loads(raw)
+
+
 def releases(box: Box) -> list[str]:
     return sorted(x for x in os.listdir(os.path.join(box.prefix, "releases")) if ".part-" not in x)
 
@@ -236,7 +251,7 @@ def test_install_and_wizard_flag(tmp_path):
         assert os.stat(envf).st_mode & 0o777 == 0o600
         env = inst.read_env(envf)
         assert env["TANDEM_HOST"] == "127.0.0.1" and env["TANDEM_PORT"] == str(box.port)
-        assert env["TANDEM_CHAT"] == "own" and env["TANDEM_CONDUCTOR"] == "off"
+        assert env["TANDEM_CHAT"] == "off" and env["TANDEM_CONDUCTOR"] == "off"
         assert env["TANDEM_NODE_AGENT"] == "off" and "TANDEM_ADMIN_TOKEN" not in env
         keyf = os.path.join(box.state, "secrets.key")
         assert os.stat(keyf).st_mode & 0o777 == 0o600
@@ -251,6 +266,24 @@ def test_install_and_wizard_flag(tmp_path):
             os.path.realpath(VENV)
         assert not os.path.exists(os.path.join(box.prefix, "current", "tests"))
         assert not os.path.exists(os.path.join(box.prefix, "current", "dashboard", "src"))
+        # OPS-288: bare. Chat off: its routes say so, no chatd, no chat finding; nothing connected
+        st, _, b = box.get("/v1/chat-app/capabilities")
+        assert st == 503 and json.loads(b)["error"]["type"] == "chat_off", (st, b[:300])
+        parts = box.json("/v1/fleet/app/parts")
+        assert (parts["chat"]["on"], parts["conductor"]["on"], parts["backends"], parts["engines"],
+                parts["mcp"]["available"]) == (False, False, [], [], False), parts
+        h = box.json("/v1/fleet/health/controller?fresh=1")
+        assert h["chat"] == "off" and not [f for f in h["findings"] if f["code"] in (
+            "chatd_down", "chatd_silent", "chat_unreachable", "sandbox_off",
+            "sandbox_unreachable", "sandbox_no_image", "no_memory_cgroup")], h
+        assert {c["check"]: c["ok"] for c in h["checks"]}["chatd"] is None, h["checks"]
+        assert not os.path.exists(os.path.join(box.state, "chat", "chatd.pid"))
+        # switched on from the page: the plan, then its confirm
+        plan = post_json(box.port, "/v1/fleet/app/parts/chat", {"on": True})
+        assert plan["changed"] and plan["confirm"], plan
+        done = post_json(box.port, "/v1/fleet/app/parts/chat", {"on": True,
+                                                                "confirm": plan["confirm"]})
+        assert done["chat"]["on"] and done["chat"]["sandbox"] == "none", done
         # chat: the controller runs chatd; with no socket the health page says sandboxes are off
         def chat_up():
             st, _, b = box.get("/v1/fleet/health/controller?fresh=1")
@@ -552,9 +585,11 @@ def test_container_files(tmp_path):
     assert "COPY packaging/container-start.sh /usr/local/lib/tandemapp/container-start.sh" in df
     assert 'ENTRYPOINT ["/bin/sh", "/usr/local/lib/tandemapp/container-start.sh"]' in df
     assert 'CMD ["serve", "--no-keychain"]' in df and 'VOLUME ["/data"]' in df
-    for k in ("TANDEM_CHAT=own", "TANDEM_CONDUCTOR=off", "TANDEM_NODE_AGENT=off",
+    for k in ("TANDEM_CONDUCTOR=off", "TANDEM_NODE_AGENT=off",
               "TANDEM_APP_STATE=/data", "TANDEM_CONFIG_DB=/data/config.sqlite3"):
         assert k in df, k
+    # OPS-288: the image sets no chat mode: the start script chooses it for its /data
+    assert "TANDEM_CHAT=own" not in df
     assert "rm -rf" not in df
     assert "!packaging/container-start.sh" in ign
     # every COPY source is let in by the dockerignore
@@ -568,13 +603,30 @@ def test_container_files(tmp_path):
     fakebin = os.path.join(str(tmp_path), "bin")
     os.makedirs(fakebin)
     with open(os.path.join(fakebin, "tandem-app"), "w") as f:
-        f.write('#!/bin/sh\necho "ran: $*"\n')
+        f.write('#!/bin/sh\necho "ran: $*"\necho "chat: $TANDEM_CHAT" >&2\n')
     os.chmod(os.path.join(fakebin, "tandem-app"), 0o755)
     data = os.path.join(str(tmp_path), "data")
     env = {"PATH": fakebin + ":/usr/bin:/bin", "TANDEM_APP_STATE": data}
     r = subprocess.run(["sh", script, "serve", "--no-keychain"], env=env, capture_output=True,
                        text=True)
     assert r.returncode == 0 and r.stdout.strip() == "ran: serve --no-keychain", r
+    # OPS-288: a new /data starts with Chat off, recorded once
+    assert r.stderr.strip() == "chat: off", r
+    assert inst.read_env(os.path.join(data, "container.env"))["TANDEM_CHAT"] == "off"
+    assert os.stat(os.path.join(data, "container.env")).st_mode & 0o777 == 0o600
+    # -e TANDEM_CHAT wins over it, and changes nothing recorded
+    r = subprocess.run(["sh", script, "serve"], env=dict(env, TANDEM_CHAT="own"),
+                       capture_output=True, text=True)
+    assert r.stderr.strip() == "chat: own", r
+    assert inst.read_env(os.path.join(data, "container.env"))["TANDEM_CHAT"] == "off"
+    # a /data an older image made (its config database there, no choice recorded) keeps chat on
+    old = os.path.join(str(tmp_path), "old-data")
+    os.makedirs(old)
+    open(os.path.join(old, "config.sqlite3"), "w").close()
+    r = subprocess.run(["sh", script, "serve"], env=dict(env, TANDEM_APP_STATE=old),
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and r.stderr.strip() == "chat: own", r
+    assert inst.read_env(os.path.join(old, "container.env"))["TANDEM_CHAT"] == "own"
     chatf = os.path.join(data, "chatd.env")
     assert inst.read_env(chatf)["QSE_SANDBOX_SOCKET"] == "/run/tandem/sandbox.sock"
     assert os.stat(chatf).st_mode & 0o777 == 0o600 and os.path.isdir(os.path.join(data, "logs"))
@@ -582,7 +634,7 @@ def test_container_files(tmp_path):
         f.write("QSE_SANDBOX_MEM_GB=3\n")
     subprocess.run(["sh", script, "serve"], env=env, capture_output=True)
     assert inst.read_env(chatf)["QSE_SANDBOX_MEM_GB"] == "3", "written once, kept after"
-    return "ssh, chat here, the start script, chatd.env once"
+    return "ssh, the start script, chatd.env once, Chat off on a new /data and kept on an old one"
 
 
 def test_container_build(tmp_path):
@@ -614,15 +666,17 @@ def test_container_build(tmp_path):
             c.request("GET", path)
             return json.loads(c.getresponse().read())
         assert get("/v1/fleet/app")["setup"]["needs_setup"] is True
+        # OPS-288: a new container runs bare: Chat off, no chat or sandbox finding
         h = get("/v1/fleet/health/controller")
-        assert any(f["code"] == "sandbox_off" and f["facts"]["path"] == "/run/tandem/sandbox.sock"
-                   for f in h["findings"]), h["findings"]
+        assert h["chat"] == "off" and not any(f["code"].startswith(("sandbox", "chat"))
+                                              for f in h["findings"]), h["findings"]
+        assert get("/v1/fleet/app/parts")["chat"]["on"] is False
         r = subprocess.run(["docker", "exec", name, "ssh", "-V"], capture_output=True, text=True)
         assert r.returncode == 0 and "OpenSSH" in r.stderr, r
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         subprocess.run(["docker", "rmi", tag], capture_output=True)
-    return "built, /health, the wizard flag, sandboxes off, ssh inside"
+    return "built, /health, the wizard flag, bare (Chat off), ssh inside"
 
 
 def test_venv_from_the_index(tmp_path):
