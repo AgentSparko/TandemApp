@@ -24,6 +24,10 @@ serves on one port:
                                    /v1/chat/completions through this gateway for a page whose
                                    /v1/* is an engine's (VIS-254, the Playground's targets;
                                    `X-Tandem-Pin: <node>` pins a deployment's member)
+    GET  /v1/fleet/chat, POST /v1/fleet/chat/{start,stop,restart}
+                                   chatd on this controller's host with `--chat own`
+                                   (proxy/appchat.py, SRV-841); `external` (the default): someone
+                                   else runs it and /v1/chat-app/* goes to QSE_CHAT_URL
     GET  /metrics                  the proxy's families in the Prometheus text format
     GET  /health                   {"status": "ok"}; the full body for the admin or the machine
     *    /v1/conductor/*           the conductor's documents, journal and sessions (P4, with
@@ -638,6 +642,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed(route):
             return
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
+        if parts[:1] == ["chat"]:
+            # SRV-841: chatd on this controller's host (`--chat own`, proxy/appchat.py)
+            from proxy import appchat
+            chat = STATE.get("chat")
+            code, out = (chat.handle(method, parts, config_api._who(self, STATE["svc"]))
+                         if chat is not None else appchat.handle_external(method, parts))
+            return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
         code, out = STATE["fleet"].handle(method, path, q, body,
                                           who=config_api._who(self, STATE["svc"]))
         if code == 200 and parts in (["app"], ["app", "permissions", "local-network"]):
@@ -1113,11 +1124,43 @@ def build(args, env=None) -> Service:
         log=lambda m: print(m, flush=True), agent=node_agent(env),
         store=fleet_store(args, cfg))
     STATE["fleet"].local_node = env.get("TANDEM_LOCAL_NODE", "on") != "off"
+    chat_of(args, cfg, env)
     # the sampler: it sleeps while nothing is in flight (the live stream and the parallel view's
     # once-a-second sample; before 0.3.32 the standalone proxy never started it)
     live.start()
     STATE.pop("dashboard_api", None)
     return svc
+
+
+def gateway_url(host: str, port: int) -> str:
+    """This controller as a client on its own host reaches it: a wildcard bind on loopback."""
+    h = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
+    return f"http://{'[' + h + ']' if ':' in h else h}:{port}"
+
+
+def chat_of(args, cfg, env):
+    """SRV-841: who runs chatd (`--chat`, TANDEM_CHAT). `external` (the default): someone else,
+    the forward goes to QSE_CHAT_URL as before. `own`: this controller, on its own host, with its
+    own env file (proxy/appchat.py); the forward goes to that chatd."""
+    from proxy import appchat
+    mode = getattr(args, "chat", None) or "external"
+    if mode not in appchat.MODES:
+        raise SystemExit(f"--chat is one of {', '.join(appchat.MODES)}")
+    STATE["chat"] = None
+    chat_forward.configure()
+    if mode != "own":
+        return None
+    try:
+        chat = appchat.AppChat.load(os.path.dirname(cfg.path), env=env,
+                                    log=lambda m: print(m, flush=True))
+    except ValueError as exc:
+        raise SystemExit(f"[chat] {exc}")
+    port = getattr(args, "port", 0) or 0
+    if port:
+        chat.gateway = gateway_url(getattr(args, "host", "127.0.0.1"), port)
+    chat_forward.configure(url=chat.url, data=chat.data, key=chat.forward_key)
+    STATE["chat"] = chat
+    return chat
 
 
 def fleet_store(args, cfg):
@@ -1235,6 +1278,12 @@ def serve(args) -> None:
     if svc.cfg.empty():
         print(f"[proxy] no backend yet: open http://{args.host}:{args.port}/dashboard/ for the "
               f"Setup screen, or set TANDEM_BACKENDS", flush=True)
+    chat = STATE.get("chat")
+    if chat is not None:
+        chat.gateway = chat.gateway or gateway_url(args.host, srv.server_address[1])
+        print(f"[chat] chatd is this controller's: {chat.url}, data {chat.data}, engine "
+              f"{chat.engine_url()}, env file {chat.env_path}", flush=True)
+        chat.start_watcher()
     import signal
 
     def drain(signum, frame):
@@ -1246,6 +1295,8 @@ def serve(args) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        if STATE.get("chat") is not None:
+            STATE["chat"].close()                # chatd keeps running: a chat run outlives this
         STATE["fleet"].stop()
         svc.stop()
         if led is not None:

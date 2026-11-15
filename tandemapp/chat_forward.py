@@ -22,7 +22,9 @@ module is the engine server's side of that: the auth check, then a byte forward.
 
 The key: QSE_CHAT_FORWARD_KEY (secrets.env, ops/make-secrets.sh), else the file chatd writes on its
 first start, `<QSE_CHAT_DATA or ~/.tandemllm/chat>/forward.key`. chatd: QSE_CHAT_URL, default
-http://127.0.0.1:8016. This module imports nothing of the engine; the standalone front
+http://127.0.0.1:8016. A controller that runs chatd itself (`tandem-app serve --chat own`,
+proxy/appchat.py) sets its chatd's address, data folder and key here with `configure`, over the
+process environment. This module imports nothing of the engine; the standalone front
 (`python -m chatd.front`) uses it the same way.
 """
 
@@ -46,19 +48,39 @@ _DROP = {"connection", "keep-alive", "proxy-connection", "proxy-authorization", 
          "x-tandem-password-set", "x-tandem-signed-in"}
 
 
+# SRV-841: what `configure` set (a controller's own chatd); None reads the environment
+_OWN: dict = {}
+
+
+def configure(url: str | None = None, data: str | None = None, key=None) -> None:
+    """The chatd this server forwards to, over QSE_CHAT_URL, QSE_CHAT_DATA and
+    QSE_CHAT_FORWARD_KEY: `key` is a string or a callable that reads it at each request.
+    No argument at all clears it."""
+    _OWN.clear()
+    _OWN.update({k: v for k, v in (("url", url), ("data", data), ("key", key)) if v})
+
+
 def wanted(path: str) -> bool:
     p = path.split("?")[0]
     return p == PREFIX or p.startswith(PREFIX + "/")
 
 
 def data_dir(env=None) -> str:
+    if env is None and _OWN.get("data"):
+        return _OWN["data"]
     env = os.environ if env is None else env
     return os.path.expanduser(env.get("QSE_CHAT_DATA") or "~/.tandemllm/chat")
 
 
 def forward_key(env=None) -> str | None:
-    env = os.environ if env is None else env
-    k = (env.get("QSE_CHAT_FORWARD_KEY") or "").strip()
+    if env is None and _OWN:
+        # a controller's own chatd: its env file's key, else its data folder's, never this
+        # process's QSE_CHAT_FORWARD_KEY (another chatd's)
+        k = _OWN.get("key")
+        k = (k() if callable(k) else k) or ""
+    else:
+        env = os.environ if env is None else env
+        k = (env.get("QSE_CHAT_FORWARD_KEY") or "").strip()
     if k:
         return k
     try:
@@ -70,7 +92,8 @@ def forward_key(env=None) -> str | None:
 
 def target(env=None) -> tuple[str, int]:
     env = os.environ if env is None else env
-    u = urllib.parse.urlsplit(env.get("QSE_CHAT_URL") or "http://127.0.0.1:8016")
+    u = urllib.parse.urlsplit(_OWN.get("url") or env.get("QSE_CHAT_URL") or
+                              "http://127.0.0.1:8016")
     return u.hostname or "127.0.0.1", u.port or 8016
 
 

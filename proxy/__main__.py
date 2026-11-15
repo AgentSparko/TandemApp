@@ -132,6 +132,11 @@ def parser() -> argparse.ArgumentParser:
                     help="seconds a client may take to send its request, or stay idle between "
                          "requests, before the connection is closed (an answer has no timeout); "
                          "0 for none; TANDEM_IDLE_TIMEOUT_S")
+    ap.add_argument("--chat", default=env.get("TANDEM_CHAT", "external"),
+                    choices=("external", "own"),
+                    help="who runs chatd, the Chat tab's service: external (TandemNode, an "
+                         "engine's launchers or a unit; the default) or own (this controller, on "
+                         "its own host, with <state dir>/chatd.env: proxy/appchat.py); TANDEM_CHAT")
     ap.add_argument("--conductor-defaults", default="shipped", choices=("shipped", "builtin"),
                     help="what a new conductor directory starts with")
     ap.add_argument("--verbose", action="store_true")
