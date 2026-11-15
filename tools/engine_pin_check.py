@@ -11,7 +11,7 @@ the pinned commit (the CI job checks it out at that commit; a local clone works 
 
   1  PATH has the commit
   2  each folder's tree id in that commit is the PIN's
-  3  each folder's version in that commit (routes.json, ext.json) is the PIN's
+  3  each folder's version in that commit (routes.json, ext.json, verbs.json) is the PIN's
   4  each file of the copy here (PIN left out) is the engine's at that commit, byte for byte, and
      no file is missing on either side
 
@@ -33,7 +33,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTRACTS = os.path.join(ROOT, "contracts")
 PIN = os.path.join(CONTRACTS, "engine-api-v1", "PIN")
 #: folder -> (the PIN key of its version, the file that carries the version)
-FOLDERS = {"engine-api-v1": ("engine_api", "routes.json"), "engine-ext-v1": ("ext_api", "ext.json")}
+FOLDERS = {"engine-api-v1": ("engine_api", "routes.json"), "engine-ext-v1": ("ext_api", "ext.json"),
+           "engine-ctl-v1": ("ctl_api", "verbs.json")}
 SKIP = {".git", "__pycache__", ".pytest_cache"}
 
 

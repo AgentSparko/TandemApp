@@ -2,7 +2,7 @@
 
 The job fetches the engine at the commit contracts/engine-api-v1/PIN names and checks the copy
 here against it. Here the engine is a made-up repository in a temp folder that holds this tree's
-own copy of both folders, so nothing reaches the real engine.
+own copy of the folders, so nothing reaches the real engine.
 
   1  a PIN made from the engine's commit (its tree ids and versions) passes; --commit prints the
      PIN's commit                                                 test_a_matching_engine_passes
