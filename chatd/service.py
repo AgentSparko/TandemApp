@@ -49,7 +49,7 @@ from chatd.verify import summary as verify_summary
 from chatd import websearch
 from chatd.websearch import WebSearchMixin
 from chatd.engine import Engine, LiveTail
-from chatd.sandbox import Sandboxes
+from chatd.sandbox import Sandboxes, make as make_sandboxes
 from chatd.snapshots import Snapshots
 from chatd.workspace import PathError, Workspace
 from chatd.events import RESET_BEHIND, Fanout, Subscriber, as_json
@@ -272,10 +272,10 @@ class Service(AgentMixin, PanesMixin, PreviewMixin, TerminalsMixin, SkillsMixin,
         self._no_peek_until = 0.0
         self.live = LiveTail(self.engine, self._runs_on)
         self.stopping = threading.Event()
-        self.sandboxes = sandboxes or Sandboxes(data_dir, log=self.log,
-                                                on_change=self._sandbox_changed,
-                                                network_mode=self._network_mode,
-                                                release=self.engine.release_memory)
+        self.sandboxes = sandboxes or make_sandboxes(data_dir, log=self.log,
+                                                     on_change=self._sandbox_changed,
+                                                     network_mode=self._network_mode,
+                                                     release=self.engine.release_memory)
         self.snaps = Snapshots(os.path.join(data_dir, "snapshots"))
         self._library: tuple[float, bool] | None = None
         from chatd.mcp import Mcp

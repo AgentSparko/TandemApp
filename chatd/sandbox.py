@@ -276,6 +276,32 @@ def _proc_starttime(pid: int) -> int | None:
         return None
 
 
+def _proc_cgroup(pid: int) -> str | None:
+    """The cgroup v2 path of a process (`0::<path>` in /proc/<pid>/cgroup), as this process's
+    cgroup namespace sees it; None on cgroup v1 or when it cannot be read."""
+    try:
+        with open(f"/proc/{pid}/cgroup") as fh:
+            for line in fh:
+                if line.startswith("0::"):
+                    path = line[3:].strip()
+                    return path if path.startswith("/") and "/.." not in path else None
+    except OSError:
+        pass
+    return None
+
+
+def _oom_kill_count(path: str) -> int | None:
+    try:
+        with open(path) as fh:
+            for line in fh:
+                k, _, v = line.partition(" ")
+                if k == "oom_kill":
+                    return int(v)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 FRAME_CAP = 64 << 20
 
 
@@ -414,6 +440,7 @@ class Box:
         self.lock = threading.RLock()
         self.mem: tuple[float, int | None] = (0.0, None)   # (when read, bytes in use)
         self.restarted = False               # its container was gone: the next result says so
+        self.cgroup: tuple[str, str] | None = None   # (container, its memory.events)
 
 
 class Sandboxes:
@@ -542,21 +569,42 @@ class Sandboxes:
 
     def oom_kills(self, cid: str) -> int | None:
         """How many processes the kernel has killed at this sandbox's memory limit: `oom_kill` in
-        its cgroup's memory.events (cgroup v2, Docker's systemd or cgroupfs layout); None where
-        the file cannot be read (another runtime, cgroup v1)."""
-        ctr = self.box(cid).container
+        its cgroup's memory.events (cgroup v2); None where the file cannot be read (cgroup v1, a
+        cgroup out of this process's view). The cgroup is the one the container's first process
+        is in (/proc/<pid>/cgroup, the pid from the engine's inspect), so Docker, Podman (rootful
+        or rootless) and any other runtime are read alike; Docker's two fixed layouts stay as the
+        fallback. It read only those two before: on Podman a kill at the limit was a generic
+        failure."""
+        b = self.box(cid)
+        ctr = b.container
         if not ctr:
             return None
-        for path in (f"{CGROUP}/system.slice/docker-{ctr}.scope/memory.events",
-                     f"{CGROUP}/docker/{ctr}/memory.events"):
-            try:
-                with open(path) as fh:
-                    for line in fh:
-                        k, _, v = line.partition(" ")
-                        if k == "oom_kill":
-                            return int(v)
-            except (OSError, ValueError):
-                continue
+        if b.cgroup is None or b.cgroup[0] != ctr:
+            found = self._cgroup_of(ctr)
+            if found is None:
+                return None
+            b.cgroup = (ctr, found)
+        return _oom_kill_count(b.cgroup[1])
+
+    def _cgroup_of(self, ctr: str) -> str | None:
+        """The memory.events file of the container's cgroup, or None."""
+        tried = []
+        try:
+            st, info = self.engine.call("GET", f"/containers/{ctr}/json", timeout=5)
+            pid = int(((info or {}).get("State") or {}).get("Pid") or 0) \
+                if st == 200 and isinstance(info, dict) else 0
+        except (OSError, ValueError, TypeError):
+            pid = 0
+        if pid > 0:
+            rel = _proc_cgroup(pid)
+            if rel is not None:
+                tried.append(os.path.join(CGROUP, rel.lstrip("/"), "memory.events"))
+        tried += [f"{CGROUP}/system.slice/docker-{ctr}.scope/memory.events",
+                  f"{CGROUP}/docker/{ctr}/memory.events",
+                  f"{CGROUP}/machine.slice/libpod-{ctr}.scope/memory.events"]
+        for path in tried:
+            if _oom_kill_count(path) is not None:
+                return path
         return None
 
     def status(self, cid: str) -> dict:
@@ -946,6 +994,14 @@ class Sandboxes:
             except (ProcessLookupError, PermissionError):
                 pass
 
+    def resize(self, exec_id: str, cols: int, rows: int) -> None:
+        """A TTY exec's window size (the user's terminal)."""
+        try:
+            self.engine.call("POST", f"/exec/{exec_id}/resize?h={int(rows)}&w={int(cols)}",
+                             timeout=5)
+        except OSError:
+            pass
+
     # ------------------------------------------------------------------ the guard
     def guard_once(self) -> str | None:
         """One look: what it did, for the tests and the log."""
@@ -981,6 +1037,22 @@ class Sandboxes:
 
     def touch(self, cid: str) -> None:
         self.box(cid).last_used = self.clock()
+
+
+def backend_name(env=None) -> str:
+    """`QSE_SANDBOX_BACKEND`: docker (the container engine's API on a socket, Docker's or
+    Podman's; the default) or kubernetes (a pod per sandbox, chatd/k8s.py)."""
+    env = os.environ if env is None else env
+    name = (env.get("QSE_SANDBOX_BACKEND") or "docker").strip().lower()
+    return name if name in ("docker", "kubernetes") else "docker"
+
+
+def make(data_dir: str, **kw) -> Sandboxes:
+    """The sandboxes of the configured backend; both keep the one interface of `Sandboxes`."""
+    if backend_name() == "kubernetes":
+        from chatd.k8s import KubeSandboxes
+        return KubeSandboxes(data_dir, **kw)
+    return Sandboxes(data_dir, **kw)
 
 
 def _du(path: str) -> int:

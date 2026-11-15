@@ -197,8 +197,7 @@ class Terminal:
 
     def resize(self, cols: int, rows: int) -> None:
         try:
-            self.svc.sandboxes.engine.call("POST", f"/exec/{self.exec_id}/resize?h={int(rows)}"
-                                                   f"&w={int(cols)}", timeout=5)
+            self.svc.sandboxes.resize(self.exec_id, cols, rows)
         except OSError:
             pass
 
