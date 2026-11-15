@@ -23,6 +23,9 @@
                                                      the controller's admin password on this
                                                      machine, without the current one (the way
                                                      back from a lost one; proxy/adminpw.py)
+    tandem-app chat-move --from USER@HOST:PATH [--plan] [--replace]
+                                                     chatd's data folder from another host to this
+                                                     controller's chatd (proxy/chatmove.py, SRV-843)
     tandem-app version
 
 `python -m proxy` takes the same commands; with none it serves, so `python -m proxy --port 8080`
@@ -144,7 +147,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = ("serve", "check", "secrets", "backends", "import-backends", "hostcollect", "launch", "service",
-            "package", "password", "version")
+            "package", "password", "chat-move", "version")
 
 
 def main(argv=None) -> None:
@@ -172,6 +175,9 @@ def main(argv=None) -> None:
     if cmd == "package":
         from proxy import nodeinstall
         raise SystemExit(nodeinstall.package_main(argv))
+    if cmd == "chat-move":
+        from proxy import chatmove
+        raise SystemExit(chatmove.main(argv))
     if cmd == "version":
         from proxy import _version
         print(f"{_version.DIST} {_version.release() or 'unknown'} "
