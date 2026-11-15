@@ -33,6 +33,12 @@ serves on one port:
                                    what this TandemApp runs, switched from the page (OPS-288,
                                    proxy/appparts.py): Chat and the conductor on or off, with a
                                    plan and its confirm; the page's switch wins over the install's
+    *    /v1/settings/*            one settings interface over the stores (SRV-845,
+                                   proxy/settings.py, contracts/settings-v1): the scopes app,
+                                   backends, conductor, engine and hooks, each with schema, get,
+                                   plan, apply, versions and restore; change sets across scopes;
+                                   the engine restarts they schedule; the audit. Reads as the
+                                   dashboard, plans and writes as the configuration
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -350,6 +356,8 @@ class Handler(BaseHTTPRequestHandler):
             return config_api.handle(self, STATE["svc"], "GET", path, None)
         if path.startswith("/v1/fleet/"):
             return self._fleet("GET", path, None)
+        if path == "/v1/settings" or path.startswith("/v1/settings/"):
+            return self._settings("GET", path, None)
         if path in ("/health", "/healthz", "/v1/health"):
             code = 503 if STATE.get("draining") else 200
             out = {"status": "draining" if STATE.get("draining") else "ok"}
@@ -468,6 +476,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._gateway(raw, t_arrival)
         if path.startswith("/v1/fleet/"):
             return self._fleet("POST", path, raw)
+        if path == "/v1/settings" or path.startswith("/v1/settings/"):
+            return self._settings("POST", path, raw)
         try:
             body = json.loads(raw or b"{}")
         except (ValueError, RecursionError) as exc:
@@ -579,6 +589,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._body_error(exc)
         if path.startswith("/v1/fleet/"):
             return self._fleet(method, path, raw)
+        if path == "/v1/settings" or path.startswith("/v1/settings/"):
+            return self._settings(method, path, raw)
         try:
             body = json.loads(raw) if raw else None
         except (ValueError, RecursionError) as exc:
@@ -717,6 +729,33 @@ class Handler(BaseHTTPRequestHandler):
         if code == 200 and parts == ["app", "export"]:
             extra += (("Content-Disposition", 'attachment; filename="tandemapp-fleet-config.json"'),)
         return self._json(code, out, extra_headers=extra)
+
+    # ----------------------------------------------------------------- settings (SRV-845)
+    def _settings(self, method: str, path: str, raw: bytes | None) -> None:
+        """`/v1/settings/*` (proxy/settings.py): reads under the dashboard's rule; a plan, an
+        apply, a restore and a cancel under the configuration's (the admin from another machine),
+        from the page itself (a JSON body, not another site or origin)."""
+        st = STATE.get("settings")
+        if st is None:
+            return self._json(404, {"error": {"type": "not_found",
+                                              "message": "no settings interface here"}})
+        if method != "GET":
+            bad = auth_mod.same_origin_json(self.headers)
+            if bad is not None:
+                return self._json(bad[0], {"error": {"type": bad[1], "message": bad[2]}})
+        if not self._allowed("dashboard" if method == "GET" else "conductor_write"):
+            return
+        body = None
+        if raw:
+            try:
+                body = json.loads(raw)
+            except (ValueError, RecursionError) as exc:
+                return self._json(400, {"error": {"type": "bad_request",
+                                                  "message": f"bad json: {exc}"}})
+        parts = [unquote(x) for x in path.rstrip("/").split("/")[3:]]
+        q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
+        code, out = st.handle(method, parts, q, body, config_api._who(self, STATE["svc"]))
+        return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
 
     # ----------------------------------------------------------------- the admin password (6.3b)
     def _password_view(self) -> dict:
@@ -1193,11 +1232,85 @@ def build(args, env=None) -> Service:
                                     install_conductor=getattr(args, "conductor_config", "off"),
                                     state_dir=state_dir, app=AppSide(args, cfg, env, led),
                                     log=lambda m: print(m, flush=True))
+    STATE["settings"] = settings_of(cfg, svc, STATE["parts"], state_dir)
     # the sampler: it sleeps while nothing is in flight (the live stream and the parallel view's
     # once-a-second sample; before 0.3.32 the standalone proxy never started it)
     live.start()
     STATE.pop("dashboard_api", None)
     return svc
+
+
+def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=None, warm=None,
+                hot_patch=None, rows=None, poll_s: float | None = None):
+    """SRV-845: the settings interface over this controller's stores (proxy/settings.py). The
+    keyword arguments replace a part for a test (an engine host's control, its backends, the
+    warm-up, the hot route); each default is the fleet's own."""
+    from proxy import settings as settings_mod
+    from proxy import settingscopes, settingsengine
+
+    def fleet():
+        return STATE["fleet"]
+
+    def audit(who, action, obj_id, keys, cs, result, detail=None):
+        d = {"result": result, **{k: v for k, v in (detail or {}).items() if v is not None}}
+        with cfg.change_set(cs):
+            cfg.log_audit(who, action, "settings", obj_id, detail=d, fields=keys or None)
+
+    def tandem_backends_on(host_id):
+        return [b["id"] for b in cfg.backends()
+                if b["kind"] == "tandemllm" and cfg.engine_host_for(b["url"]) == host_id]
+
+    def warm_one(bid, model):
+        return fleet().deps.warm(bid, model)
+
+    def http_only():
+        return [{"id": f"http:{b['id']}", "label": b.get("label") or b["id"], "backend": b}
+                for b in cfg.backends()
+                if b["kind"] == "tandemllm" and cfg.engine_host_for(b["url"]) is None]
+
+    def http_read(item):
+        try:
+            key = cfg.key_for(item["backend"]["id"])
+        except Exception:                                            # noqa: BLE001
+            key = None
+        return settingsengine.http_read(item["backend"], key)
+
+    def patch_hot(row, body):
+        from proxy import enginecodes
+        try:
+            return fleet().engines()._raw(row, "PATCH", "/v1/engine/settings", body)
+        except enginecodes.OnboardError as exc:
+            raise settings_mod.SettingsError(502, "engine_unreachable",
+                                             f"PATCH /v1/engine/settings: {exc.code}") from None
+
+    def conductor_store():
+        from proxy import appparts
+        from tandemapp.conductor import store as store_mod
+        cond = STATE.get("conductor")
+        if cond is not None:
+            return cond.store, True
+        root = appparts.conductor_root(appparts._Fake({appparts.KEYS["conductor"]: "on"}),
+                                       parts.install_conductor, state_dir)
+        return store_mod.Store(root), False
+
+    ctl_for = ctl_for or (lambda row: fleet().engines().ctl(row))
+    restarts = settingsengine.Restarts(
+        ctl_for=ctl_for, backends_of=backends_of or tandem_backends_on, warm=warm or warm_one,
+        audit=audit, log=lambda m: svc.log(m),
+        **({"poll_s": poll_s} if poll_s is not None else {}))
+    svc.restart_drain_of = restarts.drained
+    scopes = {
+        "app": settingscopes.AppScope(cfg, parts),
+        "backends": settingscopes.BackendsScope(cfg),
+        "conductor": settingscopes.ConductorScope(conductor_store),
+        "engine": settingsengine.EngineScope(
+            rows=rows or (lambda: fleet().engines()._ssh_rows()), ctl_for=ctl_for,
+            restarts=restarts, http_only=http_only, http_read=http_read,
+            hot_patch=hot_patch or patch_hot),
+        "hooks": settingscopes.HooksScope(cfg),
+    }
+    return settings_mod.Settings(cfg, scopes, restarts=restarts,
+                                 log=lambda m: print(m, flush=True))
 
 
 def gateway_url(host: str, port: int) -> str:
