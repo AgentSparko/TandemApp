@@ -719,7 +719,7 @@ class Sandboxes:
             except (Unavailable, OSError) as exc:
                 b.state, b.error = "error", str(exc)
                 self._changed(b)
-                raise Unavailable(str(exc)) from None
+                raise Unavailable(str(exc), getattr(exc, "data", None)) from None
             b.state, b.stopped_reason = "running", None
             b.started = b.last_used = self.clock()
             self._proxy(b)

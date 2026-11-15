@@ -298,14 +298,15 @@ class WebSocket:
         self.buf = bytearray(first)
         self.lock = threading.Lock()
         self.closed = False
+        self.eof = False
         self._frag: tuple[int, bytearray] | None = None
 
     def fileno(self) -> int:
         return self.sock.fileno()
 
     def pending(self) -> bool:
-        return bool(self.buf) or (isinstance(self.sock, ssl.SSLSocket) and
-                                  self.sock.pending() > 0)
+        return self.eof or bool(self.buf) or (isinstance(self.sock, ssl.SSLSocket) and
+                                              self.sock.pending() > 0)
 
     def send(self, opcode: int, payload: bytes) -> None:
         mask = secrets.token_bytes(4)
@@ -325,7 +326,11 @@ class WebSocket:
             self.sock.sendall(head + mask + body)
 
     def read(self, timeout: float) -> list[tuple[int, bytes]] | None:
-        """The whole frames that arrived within `timeout` s ([] when none); None at the end."""
+        """The whole frames that arrived within `timeout` s ([] when none); None at the end,
+        after every frame that came before it."""
+        if self.eof:
+            frames = self._parse()
+            return frames or None
         if not self.pending():
             r, _, _ = select.select([self.sock], [], [], timeout)
             if not r:
@@ -344,7 +349,9 @@ class WebSocket:
                 except OSError:
                     pass
         if d == b"":
-            return None
+            self.eof = True                 # the frames still in the buffer go first
+            frames = self._parse()
+            return frames or None
         if d:
             self.buf += d
         return self._parse()
@@ -717,6 +724,7 @@ class KubeSandboxes(Sandboxes):
         if self.egress is None:
             self.egress = TcpProxy("0.0.0.0", self.egress_port, self._egress_lookup, self.log)
             self.egress.start()
+            self.egress_port = self.egress.port      # 0 asks for any free port (tests)
 
     def _egress_lookup(self, ip: str):
         with self.lock:
@@ -1142,6 +1150,20 @@ class KubeSandboxes(Sandboxes):
                 self.stop(b.cid, "idle")
                 return f"idle {b.cid}"
         return None
+
+    def _gave_up(self, b: Box, why: str, spent: float) -> Unavailable:
+        """The wait's end (other chats' sandboxes hold every place): the reason, for the model,
+        the chat and the Sandbox panel. No memory numbers: the scheduler holds those here."""
+        b.state, b.error = "stopped", f"did not start after {spent:.0f} s: {why}"
+        self._changed(b)
+        self.log(f"[sandbox] {b.cid} not started after {spent:.0f} s ({why})")
+        return Unavailable(
+            f"no sandbox for this call: after waiting {spent:.0f} s it still could not start "
+            f"({why}). The command did not run. Do not call bash or render_page again for now: "
+            "answer with what you already have, or without tools, and tell the user the sandbox "
+            "could not start because other chats' sandboxes are busy.",
+            {"sandbox": {"reason": "busy", "why": why, "waited_s": round(spent),
+                         "limit_gib": self.limit_bytes / GiB}})
 
     def ensure(self, cid: str, cancel: threading.Event | None = None, on_wait=None) -> str:
         if not self.available():

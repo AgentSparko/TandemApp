@@ -247,6 +247,12 @@ class TcpProxy:
                 c.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n"
                           b"Content-Length: " + str(len(msg)).encode() +
                           b"\r\nConnection: close\r\n\r\n" + msg)
+                # what the client sent is read, not left behind: a close with unread bytes is a
+                # reset, and the client could lose the answer
+                c.shutdown(socket.SHUT_WR)
+                c.settimeout(2)
+                while c.recv(CHUNK):
+                    pass
             except OSError:
                 pass
             try:
