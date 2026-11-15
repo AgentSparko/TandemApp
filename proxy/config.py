@@ -11,7 +11,8 @@ ledger. Its tables:
     routing_rules    ordered glob patterns: a model id that matches goes to the rule's backend
     users            the proxy's own API keys: a label, the key's sha256, a 4-character hint
     settings         small JSON values (the dashboard's choices)
-    audit            who changed what and when, field names only, never a value of a key
+    audit            who changed what and when, field names only, never a value of a key; the
+                     settings change set a row belongs to (SRV-845, `change_set`)
     nodes            TandemApp's fleet (SRV-723): one row per node, its id, alias, identity colour,
                      icon, tags, class, how the controller reaches it (transport, endpoint,
                      address, trust), what it is (hw, dmi, serial) and its maintenance drain;
@@ -37,6 +38,8 @@ ledger. Its tables:
                      `engine-http:<host id>` as associated data, its last 4 characters and a
                      sha256 prefix for the page; the data plane sends it as the bearer of a
                      TandemLLM backend on that host (`key_for`)
+    settings_versions  the versions of a settings scope that has none of its own (SRV-845,
+                     proxy/settings.py): the scope's values after each change, never a secret
     meta             schema_version, created_at
 
 Migrations are forward only and keyed on meta.schema_version, as the ledger's are.
@@ -208,6 +211,10 @@ CREATE TABLE IF NOT EXISTS deployments (
 CREATE TABLE IF NOT EXISTS engine_host_keys (
   host_id TEXT PRIMARY KEY, key_id TEXT NOT NULL, public TEXT NOT NULL, ciphertext BLOB NOT NULL,
   nonce BLOB NOT NULL, master_key_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS settings_versions (
+  scope TEXT NOT NULL, target TEXT NOT NULL, n INTEGER NOT NULL, at_ms INTEGER NOT NULL, who TEXT,
+  change_set TEXT, note TEXT, keys TEXT NOT NULL DEFAULT '[]', doc TEXT NOT NULL,
+  PRIMARY KEY (scope, target, n));
 CREATE TABLE IF NOT EXISTS engine_http_tokens (
   host_id TEXT PRIMARY KEY, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
   master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT, rotated_at INTEGER NOT NULL);
@@ -231,7 +238,9 @@ ADDED = (("models", "price_offpeak", "TEXT"),
          # SEC-4: what a node's pairing, take-over or release did (JSON, never a secret)
          ("audit", "detail", "TEXT"),
          # VIS-250: a node in maintenance (drained): {since, by} as JSON, NULL when it serves
-         ("nodes", "drain", "TEXT"))
+         ("nodes", "drain", "TEXT"),
+         # SRV-845: the settings change set an audit row belongs to
+         ("audit", "change_set", "TEXT"))
 
 
 def _inflight_col(v) -> int:
@@ -528,6 +537,7 @@ class ConfigDB:
         self.schema_was: int | None = None
         self._seen: dict[int, int] = {}        # user id -> last seen ms, flushed once a minute
         self._seen_flushed = 0.0
+        self._cs = threading.local()           # the settings change set this thread applies
 
     # ----------------------------------------------------------------- lifecycle
     def open(self) -> "ConfigDB":
@@ -600,16 +610,33 @@ class ConfigDB:
     def _audit(self, who: str | None, action: str, obj: str, oid: str | None,
                fields=None, detail: dict | None = None) -> None:
         self._conn.execute("INSERT INTO audit(ts_ms, who, action, object, object_id, fields, "
-                           "detail) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                           "detail, change_set) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                            (_now_ms(), who, action, obj, oid,
                             json.dumps(sorted(fields)) if fields else None,
-                            json.dumps(detail, sort_keys=True) if detail else None))
+                            json.dumps(detail, sort_keys=True) if detail else None,
+                            getattr(self._cs, "id", None)))
+
+    def change_set(self, cs_id: str | None):
+        """`with cfg.change_set(id):` every audit row this thread writes inside carries the settings
+        change set's id (SRV-845, proxy/settings.py), whichever store method writes it."""
+        cfg = self
+
+        class _Scope:
+            def __enter__(self):
+                self.was = getattr(cfg._cs, "id", None)
+                cfg._cs.id = cs_id
+                return cfg
+
+            def __exit__(self, *exc):
+                cfg._cs.id = self.was
+        return _Scope()
 
     def log_audit(self, who: str | None, action: str, obj: str, oid: str | None,
-                  detail: dict | None = None) -> None:
-        """An audit row of its own (a node's pairing, take-over or release, SEC-4)."""
+                  detail: dict | None = None, fields=None) -> None:
+        """An audit row of its own (a node's pairing, take-over or release, SEC-4; a settings
+        change, SRV-845: `fields` its keys, never a value)."""
         with self._lock:
-            self._audit(who, action, obj, oid, detail=detail)
+            self._audit(who, action, obj, oid, fields, detail=detail)
             self._conn.commit()
 
     # ----------------------------------------------------------------- the env overlay
@@ -1158,6 +1185,28 @@ class ConfigDB:
 
     def set_rules(self, rules: list[dict], who: str = "gui") -> list[dict]:
         """Replace the ordered list. A rule the environment sets must come back unchanged."""
+        envs = self.check_rules(rules)
+        with self._lock:
+            c = self._conn
+            c.execute("DELETE FROM routing_rules WHERE source != 'env'")
+            for pos, r in enumerate(rules):
+                if r.get("id") in envs:
+                    c.execute("UPDATE routing_rules SET position = ? WHERE id = ?",
+                              (pos, r["id"]))
+                else:
+                    c.execute("INSERT INTO routing_rules(position, pattern, backend_id, enabled, "
+                              "source) VALUES (?, ?, ?, ?, 'gui')",
+                              (pos, r["pattern"], r["backend"], int(r.get("enabled", True))))
+            self._audit(who, "replace", "routing_rules", None, ["rules"])
+            c.commit()
+            self._bump()
+        return self.rules()
+
+    def check_rules(self, rules: list[dict]) -> dict:
+        """set_rules' checks without the write (a settings plan runs them too): ConfigError, else
+        the environment's rules by id."""
+        if not isinstance(rules, list) or not all(isinstance(r, dict) for r in rules):
+            raise ConfigError("rules is a list of {pattern, backend, enabled}", field="rules")
         clean = [{k: v for k, v in r.items() if k in ("pattern", "backend", "enabled")}
                  for r in rules]
         errs = schema.validate(clean, "rules")
@@ -1184,21 +1233,7 @@ class ConfigDB:
             if r["backend"] not in known:
                 raise ConfigError(f"rules[{i}].backend: no backend '{r['backend']}'",
                                   field=f"rules[{i}].backend")
-        with self._lock:
-            c = self._conn
-            c.execute("DELETE FROM routing_rules WHERE source != 'env'")
-            for pos, r in enumerate(rules):
-                if r.get("id") in envs:
-                    c.execute("UPDATE routing_rules SET position = ? WHERE id = ?",
-                              (pos, r["id"]))
-                else:
-                    c.execute("INSERT INTO routing_rules(position, pattern, backend_id, enabled, "
-                              "source) VALUES (?, ?, ?, ?, 'gui')",
-                              (pos, r["pattern"], r["backend"], int(r.get("enabled", True))))
-            self._audit(who, "replace", "routing_rules", None, ["rules"])
-            c.commit()
-            self._bump()
-        return self.rules()
+        return envs
 
     # ----------------------------------------------------------------- users and their keys
     def users(self) -> list[dict]:
@@ -1566,14 +1601,60 @@ class ConfigDB:
             self._conn.commit()
             self._bump()
 
-    def audit(self, limit: int = 50) -> list[dict]:
+    def audit(self, limit: int = 50, change_set: str | None = None,
+              objects: tuple | None = None) -> list[dict]:
+        """The newest audit rows; `change_set` keeps one settings change set's rows, `objects`
+        rows of these objects or of any change set (the settings audit, SRV-845)."""
+        where, args = [], []
+        if change_set is not None:
+            where.append("change_set = ?")
+            args.append(change_set)
+        if objects:
+            where.append(f"(object IN ({', '.join('?' * len(objects))}) OR change_set IS NOT NULL)")
+            args += list(objects)
+        sql = ("SELECT ts_ms, who, action, object, object_id, fields, detail, change_set FROM audit"
+               + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY id DESC LIMIT ?")
         with self._lock:
-            rows = self._conn.execute("SELECT ts_ms, who, action, object, object_id, fields, "
-                                      "detail FROM audit ORDER BY id DESC LIMIT ?",
-                                      (limit,)).fetchall()
+            rows = self._conn.execute(sql, (*args, limit)).fetchall()
         return [{"ts_ms": t, "who": w, "action": a, "object": o, "object_id": i,
-                 "fields": json.loads(f) if f else None, "detail": json.loads(d) if d else None}
-                for t, w, a, o, i, f, d in rows]
+                 "fields": json.loads(f) if f else None, "detail": json.loads(d) if d else None,
+                 "change_set": cs}
+                for t, w, a, o, i, f, d, cs in rows]
+
+    # ----------------------------------------------------------------- settings versions (SRV-845)
+    def settings_versions(self, scope: str, target: str, limit: int = 50) -> list[dict]:
+        """The stored versions of a settings scope, newest first."""
+        with self._lock:
+            rows = self._conn.execute("SELECT n, at_ms, who, change_set, note, keys, doc FROM "
+                                      "settings_versions WHERE scope = ? AND target = ? ORDER BY "
+                                      "n DESC LIMIT ?", (scope, target, limit)).fetchall()
+        return [{"n": n, "at_ms": at, "who": w, "change_set": cs, "note": note,
+                 "keys": json.loads(k or "[]"), "doc": json.loads(d)}
+                for n, at, w, cs, note, k, d in rows]
+
+    def settings_version(self, scope: str, target: str, n: int) -> dict | None:
+        with self._lock:
+            r = self._conn.execute("SELECT n, at_ms, who, change_set, note, keys, doc FROM "
+                                   "settings_versions WHERE scope = ? AND target = ? AND n = ?",
+                                   (scope, target, n)).fetchone()
+        if r is None:
+            return None
+        return {"n": r[0], "at_ms": r[1], "who": r[2], "change_set": r[3], "note": r[4],
+                "keys": json.loads(r[5] or "[]"), "doc": json.loads(r[6])}
+
+    def add_settings_version(self, scope: str, target: str, doc: dict, *, who: str | None,
+                             change_set: str | None, note: str, keys=()) -> int:
+        """A new version of a scope's values (the caller leaves every secret out). Its number."""
+        with self._lock:
+            r = self._conn.execute("SELECT MAX(n) FROM settings_versions WHERE scope = ? AND "
+                                   "target = ?", (scope, target)).fetchone()
+            n = (r[0] or 0) + 1
+            self._conn.execute("INSERT INTO settings_versions(scope, target, n, at_ms, who, "
+                               "change_set, note, keys, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               (scope, target, n, _now_ms(), who, change_set, note[:200],
+                                json.dumps(sorted(keys)), json.dumps(doc, sort_keys=True)))
+            self._conn.commit()
+        return n
 
     def empty(self) -> bool:
         """No backend at all: the dashboard opens on the Setup screen."""
