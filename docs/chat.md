@@ -80,6 +80,15 @@ chatd keeps the value in the chat's settings (`priority`, through `PATCH /conver
 
 ## Starting and stopping
 
+**On TandemApp's own host** chatd is the controller's (`TANDEM_CHAT=own`, `proxy/appchat.py`). A new
+TandemApp starts with Chat off (OPS-288): no chatd runs, and the Chat tab says "Chat is off" with a
+link to Settings, App, What runs here, where an admin switches it on (and off) with a plan and its
+confirm. Switched on, the controller starts chatd with `<state dir>/chatd.env` and watches it; with
+no sandbox runtime chat works without its sandbox tools, and the page and the health page say so.
+Switched off, chatd stops as a hand stop and every chat route answers 503 `chat_off`. The switch is
+kept in the controller's config database and wins over `TANDEM_CHAT` once used
+([install.md](install.md)). The rest of this section is about an engine box.
+
 chatd runs beside the engine, and on an engine box TandemNode, TandemApp's agent there, owns it
 (SRV-823). Since engine API 1.7 the engine has no chatd launcher: `ops/start.sh`,
 `ops/watchdog.sh` and `bin/tandem` never start or stop it, and the engine's `QSE_CHATD` is `node`
