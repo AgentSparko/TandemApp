@@ -28,6 +28,9 @@ serves on one port:
                                    chatd on this controller's host with `--chat own`
                                    (proxy/appchat.py, SRV-841); `external` (the default): someone
                                    else runs it and /v1/chat-app/* goes to QSE_CHAT_URL
+    *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
+                                   conductor, and the chat engine's facts, live rows, cache
+                                   routes and tokenizer (proxy/chatengine.py, SRV-843)
     GET  /metrics                  the proxy's families in the Prometheus text format
     GET  /health                   {"status": "ok"}; the full body for the admin or the machine
     *    /v1/conductor/*           the conductor's documents, journal and sessions (P4, with
@@ -328,6 +331,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if chat_forward.route(self, "GET", STATE["auth"]):     # the Chat tab's chatd (SRV-343)
             return
+        if self._chat_engine("GET"):
+            return
         raw = self.path.split("?")[0]
         if raw == "/dashboard" or raw.startswith("/dashboard/"):
             return static.serve(self, self.path, STATE.get("dashboard_dir"))
@@ -392,6 +397,22 @@ class Handler(BaseHTTPRequestHandler):
             return laya_api.handle_get(self, STATE["laya"], STATE)
         return self._json(404, {"error": {"message": f"no route {path}", "type": "not_found"}})
 
+    def _chat_engine(self, method: str) -> bool:
+        """SRV-843: `/chat-engine/...` (proxy/chatengine.py), the engine chatd calls. The prefix
+        comes off; a route the controller's own answers as it is goes on (False), the rest is
+        answered here (True)."""
+        from proxy import chatengine
+        rest = chatengine.strip(self.path)
+        if rest is None:
+            return False
+        self.path = rest
+        path, _, query = rest.partition("?")
+        path = path.rstrip("/") or "/"
+        if chatengine.passes(method, path):
+            return False
+        chatengine.handle(self, STATE, method, path, query)
+        return True
+
     def _conductor(self, method: str, body=None):
         cond = STATE.get("conductor")
         if cond is None:
@@ -424,6 +445,8 @@ class Handler(BaseHTTPRequestHandler):
         if self._strip_session():
             return
         if chat_forward.route(self, "POST", STATE["auth"]):
+            return
+        if self._chat_engine("POST"):
             return
         path = self.path.split("?")[0].rstrip("/")
         t_arrival = time.perf_counter()
@@ -539,6 +562,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _write(self, method: str):
         if chat_forward.route(self, method, STATE["auth"]):
+            return
+        if self._chat_engine(method):
             return
         path = self.path.split("?")[0].rstrip("/")
         if self._fleet_too_big(path):
@@ -1171,6 +1196,13 @@ def chat_of(args, cfg, env):
     if port:
         chat.gateway = gateway_url(getattr(args, "host", "127.0.0.1"), port)
     chat_forward.configure(url=chat.url, data=chat.data, key=chat.forward_key)
+    # SRV-843: chatd's engine is this gateway; whether the chat engine runs here sizes its
+    # sandboxes, and once the controller has users chatd gets a key of its own
+    from proxy import chatengine
+    svc = STATE.get("svc")
+    if svc is not None:
+        chat.engine_here = lambda: chatengine.engine_here(svc)
+        chat.users = cfg
     STATE["chat"] = chat
     return chat
 
