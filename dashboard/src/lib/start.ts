@@ -1,4 +1,4 @@
-// Get started (SRV-749): the three ways into a fleet and the connect-a-server form's rules, kept
+// Get started (SRV-749, VIS-278): the three ways into a fleet and the connect-a-server form's rules, kept
 // pure so they can be tested; the page is views/fleet/start.ts. A server is tested before it is
 // saved; a failed test saves nothing until the user says to save it anyway.
 
@@ -12,12 +12,13 @@ export interface StartPath {
   href: string | null;
 }
 
-/** The ways in, in the order a newcomer needs them. `engine` is where installing the TandemLLM
- *  engine from TandemApp starts; today that is Add Spark's install step. */
+/** The ways in, in the order a newcomer needs them. `engine` is the setup wizard (VIS-278): a
+ *  machine that runs the TandemLLM engine, paired by the code its install printed. `spark` is a
+ *  host that runs TandemNode, or one to install it on (Add Spark). */
 export const PATHS: StartPath[] = [
+  { id: 'engine', title: 'Add an engine', text: 'A machine that runs the TandemLLM engine. Install it there with one command, type the code it prints here, and TandemApp gives it a model.', href: '#/add-engine' },
   { id: 'server', title: 'Connect a server', text: 'A server you already run, or a cloud API, by its URL. Any OpenAI-compatible server works.', href: null },
-  { id: 'spark', title: 'Add a Spark', text: 'Pair a Spark on your network. TandemApp then reads its hardware and manages its engine.', href: '#/add-spark' },
-  { id: 'engine', title: 'Install the TandemLLM engine', text: 'On a machine with an NVIDIA GPU. Add Spark installs TandemLLM there; the Setup Guide then loads a model.', href: '#/add-spark' },
+  { id: 'spark', title: 'Add a Spark', text: 'A Spark that runs TandemNode, or a machine to install it on. TandemApp then reads its hardware and manages its engine.', href: '#/add-spark' },
 ];
 
 /** why a URL cannot be tested yet; null when it can */

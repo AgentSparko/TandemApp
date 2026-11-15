@@ -51,7 +51,7 @@ describe('the default windows of each page', () => {
     expect(kinds('hardware')).toEqual(['terminal@bottom']);
     expect(fresh('hardware').windows[0].ref).toEqual({ node: null });
     expect(kinds('dev')).toEqual(['terminal@right', 'diff@right']);
-    for (const p of ['chat', 'performance', 'usage', 'events', 'sparks', 'models', 'api', 'conductor', 'playground', 'add-spark', 'app']) expect(kinds(p), p).toEqual([]);
+    for (const p of ['chat', 'performance', 'usage', 'events', 'sparks', 'models', 'api', 'conductor', 'playground', 'add-engine', 'add-spark', 'app']) expect(kinds(p), p).toEqual([]);
     expect(CHAT_DEFAULTS).toEqual(['terminal', 'files', 'preview']);
   });
   it('the first window of each dock shows; the shares are the page’s; nothing saved yet', () => {

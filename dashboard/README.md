@@ -95,6 +95,8 @@ The model is `mock/setup/qwen3.8-27b.json`, `models/qwen3.8-27b/model.yaml` as `
 
 The mock also answers TandemApp's fleet API (`/v1/fleet/*`, contract in `contracts/fleet-v1/`, `mock/fleet.ts`): nodes, links, topology, deployments, per-node metric series, memory, events, alerts with acknowledgement, rules and window layouts. It is seeded (the same seed answers the same at the same instant) and moves with the clock. The scenario is chosen per request, in this order: the `qse_fleet` cookie that `?fleet=<scenario>` on the page URL sets (`/dashboard/?fleet=node-down`), then `POST /__mock/fleet {"scenario": ...}` (`{"reset": true}` starts the scenarios' clocks again), then `TANDEM_MOCK_FLEET=<scenario> npm run dev:mock`, then `fleet4`. A scenario's clock starts at its first request.
 
+Adding an engine host (`/v1/fleet/engines/*`, `mock/enginehosts.ts`) answers in every scenario; `?fleet=empty` is the first run, where the page opens on the setup wizard. Its devices are listed at the top of that file: `192.0.2.80` pairs with the code `482913`, `192.0.2.81` shows no code at the first try, `192.0.2.82` is too old for a code (the other ways take it: `spark` / `spark-pass`), `gpu-box.tailnet.example` is found by its address only. `POST /__mock/fleet {"engineFail": "<route>:<code>"}` makes one of its routes answer a code of `contracts/fleet-v1/engine-codes.json` until `{"engineFail": "<route>:"}` clears it; `{"engineJob": "fail"}` stops the next model install in its download.
+
 | scenario | what it plays |
 |-|-|
 | `fleet1` | one Spark (`Desk`) serving the main model and Wren, the controller on it: today's single box |

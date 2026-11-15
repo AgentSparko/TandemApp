@@ -265,7 +265,8 @@ describe('mock responses validate', () => {
 // at the start, after R-3 went off (node-down) and after the thermal alert fired (alert-thermal).
 describe('fleet contract', () => {
   const FDIR = join(__dirname, '..', '..', 'contracts', 'fleet-v1');
-  const fajv = new Ajv2020({ allErrors: true, strict: true });
+  // allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
+  const fajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
   const fleet: Record<string, ReturnType<typeof fajv.compile>> = {};
   for (const f of readdirSync(FDIR)) {
     if (f.endsWith('.schema.json')) fleet[f.replace('.schema.json', '')] = fajv.compile(JSON.parse(readFileSync(join(FDIR, f), 'utf8')));
@@ -279,7 +280,12 @@ describe('fleet contract', () => {
   const q = (s = '') => new URLSearchParams(s);
 
   it('has a schema per route, and they are strict', () => {
-    expect(Object.keys(fleet).sort()).toEqual(['action', 'action-plan', 'action-result', 'add', 'add-connect', 'add-link', 'add-patch', 'add-run', 'add-session', 'add-start', 'add-target', 'alert', 'alerts', 'app', 'app-password', 'app-password-body', 'controller', 'deployment', 'deployment-action', 'deployment-deleted', 'deployment-job', 'deployment-new', 'deployment-patch', 'deployment-plan', 'deployments', 'discovered', 'discovery', 'discovery-address', 'discovery-start', 'error', 'events', 'fleet-config', 'handover', 'handover-commit', 'host', 'hostkey', 'import', 'import-plan', 'import-result', 'layout', 'link-test', 'links', 'logs', 'memory', 'metrics', 'move', 'move-job', 'move-plan', 'node', 'node-patch', 'nodes', 'pair', 'pair-ssh', 'placement', 'placement-request', 'release', 'rule', 'rule-patch', 'rules', 'sample', 'scan-consent', 'session', 'setup-confirm', 'ssh-line', 'ssh-target', 'take', 'topology', 'trust', 'update', 'update-job', 'update-plan', 'update-start', 'weights', 'weights-copy', 'weights-deleted', 'weights-job', 'weights-plan']);
+    expect(Object.keys(fleet).sort()).toEqual(['action', 'action-plan', 'action-result', 'add', 'add-connect', 'add-link', 'add-patch', 'add-run', 'add-session', 'add-start', 'add-target', 'alert', 'alerts', 'app', 'app-password', 'app-password-body', 'controller', 'deployment', 'deployment-action', 'deployment-deleted', 'deployment-job', 'deployment-new', 'deployment-patch', 'deployment-plan', 'deployments', 'discovered', 'discovery', 'discovery-address', 'discovery-start', 'engine', 'engine-connect-check-body', 'engine-connect-confirm-body', 'engine-connect-key', 'engine-connect-key-body', 'engine-connect-plan', 'engine-connect-plan-body', 'engine-discover', 'engine-discover-body', 'engine-error', 'engine-finding', 'engine-mode', 'engine-mode-body', 'engine-models', 'engine-pair-abandon', 'engine-pair-abandon-body', 'engine-pair-code-body', 'engine-pair-start', 'engine-pair-start-body', 'engine-paired', 'engine-probe', 'engine-probe-body', 'engine-progress', 'engine-pull', 'engine-pull-body', 'engines', 'error', 'events', 'fleet-config', 'handover', 'handover-commit', 'host', 'hostkey', 'import', 'import-plan', 'import-result', 'layout', 'link-test', 'links', 'logs', 'memory', 'metrics', 'move', 'move-job', 'move-plan', 'node', 'node-patch', 'nodes', 'pair', 'pair-ssh', 'placement', 'placement-request', 'release', 'rule', 'rule-patch', 'rules', 'sample', 'scan-consent', 'session', 'setup-confirm', 'ssh-line', 'ssh-target', 'take', 'topology', 'trust', 'update', 'update-job', 'update-plan', 'update-start', 'weights', 'weights-copy', 'weights-deleted', 'weights-job', 'weights-plan']);
+    // SRV-827..833: the engine host routes; a refusal needs its code, its sentence and its fix
+    expect(fleet['engine-pair-code-body']({ pairing: 'a' })).toBe(false);
+    expect(fleet['engine-pull-body']({ model: 'm', force: true })).toBe(false);
+    expect(fleet['engine-error']({ error: { type: 'wrong_code', message: 'x' } })).toBe(false);
+    expect(fleet['engine-error']({ error: { type: 'wrong_code', code: 'wrong_code', message: 'x', fix: 'y', tries_left: 3 } })).toBe(true);
     expect(fleet['deployment-new']({ model: 'm', type: 'single' })).toBe(false);
     expect(fleet['deployment-new']({ model: 'm', type: 'pool', members: ['a'] })).toBe(false);
     expect(fleet['deployment-patch']({})).toBe(false);

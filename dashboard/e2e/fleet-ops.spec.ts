@@ -32,11 +32,12 @@ test.describe('TandemApp alone, its controller, the fleet update', () => {
     await fresh(request, 'fleet4');
   });
 
-  test('Install on a Mac: the first open with no Spark lands on Get started, Add Spark one step away; a route given is kept', async ({ page, request }, info) => {
+  test('Install on a Mac: the first open with no Spark lands on the setup wizard, Add Spark one step away; a route given is kept', async ({ page, request }, info) => {
     await fresh(request, 'empty');
     await page.goto('./?fleet=empty');
-    await expect(page).toHaveURL(/#\/start$/, { timeout: 10_000 });
-    await page.locator('qse-start [data-path="spark"]').click();
+    // VIS-278: the first open is the setup wizard, at Add engine
+    await expect(page).toHaveURL(/#\/add-engine$/, { timeout: 10_000 });
+    await page.locator('qse-engine-wizard [data-else] a[href="#/add-spark"]').click();
     await expect(page).toHaveURL(/#\/add-spark$/);
     await expect(page.locator('qse-add-spark .wz-stepper')).toBeVisible({ timeout: 10_000 });
     if (info.project.name === 'chromium-desktop') await shot(page, 'first-open-add-spark');

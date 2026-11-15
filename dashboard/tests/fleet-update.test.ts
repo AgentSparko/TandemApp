@@ -13,7 +13,8 @@ import { apiOf, followUrl, hostChoices, landing, moveFormError, moveWords, newPa
 import { jobProgress, mixedTitle, mixedVersions, needsUpdate, normVersion, order, releaseOf, type PlanNode } from '../src/lib/fleet-update.ts';
 
 const FDIR = join(__dirname, '..', '..', 'contracts', 'fleet-v1');
-const ajv = new Ajv2020({ allErrors: true, strict: true });
+// allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
+const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
 const schema: Record<string, ReturnType<typeof ajv.compile>> = {};
 for (const f of readdirSync(FDIR)) if (f.endsWith('.schema.json')) schema[f.replace('.schema.json', '')] = ajv.compile(JSON.parse(readFileSync(join(FDIR, f), 'utf8')));
 function valid<T>(name: string, data: T): T {
@@ -209,12 +210,12 @@ describe('the controller host', () => {
     expect(m.handle('GET', '/v1/fleet/controller/move', q('to=desk'), null, at(30)).body).toMatchObject({ allowed: false, blocked: 'this controller moved already: open the new one' });
   });
 
-  it('Gherkin "Install on a Mac": the first open with no Spark lands on Get started; a route given is kept', () => {
+  it('Gherkin "Install on a Mac": the first open with no Spark lands on the setup wizard (VIS-278); a route given is kept', () => {
     const e = new MockFleet({ seed: 42, scenario: 'empty', now: T0 / 1000 });
     const nodes = (e.handle('GET', '/v1/fleet/nodes', q(), null, at(0)).body as { nodes: FleetNode[] }).nodes;
     expect(nodes).toEqual([]);
-    expect(landing('', nodes)).toBe('start');
-    expect(landing('#/', nodes)).toBe('start');
+    expect(landing('', nodes)).toBe('add-engine');
+    expect(landing('#/', nodes)).toBe('add-engine');
     expect(landing('#/usage', nodes)).toBeNull();
     expect(landing('', [{ id: 'desk' }])).toBeNull();
     const v = valid('controller', e.handle('GET', '/v1/fleet/controller', q(), null, at(0)).body as ControllerView);

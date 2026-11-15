@@ -12,7 +12,8 @@ import { apiBase, request } from './client';
 export const FLEET_CONTRACT = '1.0';
 
 export type NodeStatus = 'up' | 'draining' | 'off' | 'alert';
-export type Transport = 'lan' | 'tunnel';
+/** `ssh`: an engine host with no TandemNode, controlled over SSH (SRV-829) */
+export type Transport = 'lan' | 'tunnel' | 'ssh';
 
 /** What a node's agent read about the box. A field the probe could not read is null, never guessed. */
 export interface NodeInventory {

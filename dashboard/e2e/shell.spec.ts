@@ -157,6 +157,7 @@ const PAGES: [section: string, selector: string, crumb: RegExp][] = [
   ['playground', 'qse-playground', /Tune\s*\/\s*Playground/],
   ['dev', 'qse-dev', /Tune\s*\/\s*Dev/],
   ['start', '.page-head[data-page="start"]', /Settings\s*\/\s*Get started/],
+  ['add-engine', '.page-head[data-page="add-engine"]', /Settings\s*\/\s*Add engine/],
   ['add-spark', '.page-head[data-page="add-spark"]', /Settings\s*\/\s*Add Spark/],
   ['app', '.page-head[data-page="app"]', /Settings\s*\/\s*App/],
 ];

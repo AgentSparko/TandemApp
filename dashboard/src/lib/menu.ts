@@ -6,7 +6,7 @@
 import type { Route, View } from './router';
 import { currentScope, scopeParams } from './scope';
 
-export type Section = 'chat' | 'overview' | 'performance' | 'usage' | 'hardware' | 'events' | 'sparks' | 'models' | 'api' | 'conductor' | 'playground' | 'dev' | 'add-spark' | 'start' | 'app';
+export type Section = 'chat' | 'overview' | 'performance' | 'usage' | 'hardware' | 'events' | 'sparks' | 'models' | 'api' | 'conductor' | 'playground' | 'dev' | 'add-engine' | 'add-spark' | 'start' | 'app';
 
 export interface MenuItem {
   id: Section;
@@ -52,6 +52,8 @@ export const MENU: MenuGroup[] = [
     items: [
       // SRV-749: the three ways into a fleet (a server by URL, a Spark, the engine); the first open
       { id: 'start', label: 'Get started' },
+      // VIS-278: the setup wizard: an engine host by the code it printed; the first open
+      { id: 'add-engine', label: 'Add engine' },
       { id: 'add-spark', label: 'Add Spark' },
       { id: 'app', label: 'App' },
     ],

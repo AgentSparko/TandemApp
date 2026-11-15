@@ -1,0 +1,756 @@
+/* The setup wizard and Settings → Add engine (VIS-278; SRV-827, SRV-829, SRV-831, SRV-833). It
+   stands on the Add Spark wizard's stylesheet (wizard.css: the stepper, the code field, the progress
+   bar, the pills) and adds what is its own: a finding's card, a fingerprint to compare, and the
+   slip, the engine host's last printed lines as rows the page fills in. Phone: every grid stacks,
+   the buttons take the row. */
+
+/* ---- shared: a finding, a fingerprint, the slip ---------------------------------------------- */
+qse-engine-wizard,
+qse-engine-find,
+qse-engine-pair,
+qse-engine-connect,
+qse-engine-after,
+.eh-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.eh-wrap {
+  overflow-wrap: anywhere;
+}
+.eh-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cobalt-hi);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.eh-link:hover {
+  text-decoration: underline;
+}
+.eh-h3 {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.eh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 10px;
+}
+.eh-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+}
+.eh-copy .icon {
+  width: 16px;
+  height: 16px;
+}
+/* a command wraps where the page is narrow: a phone shows all of it */
+.eh-cmd > code {
+  overflow-wrap: anywhere;
+}
+.eh-cmd > .btn {
+  vertical-align: middle;
+}
+.eh-finding {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.eh-finding.is-err {
+  border-color: color-mix(in srgb, var(--err) 55%, transparent);
+  background: var(--err-wash);
+}
+.eh-finding.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: var(--warn-wash);
+}
+.eh-finding.is-info {
+  border-color: var(--cobalt-dim);
+  background: var(--cobalt-wash);
+}
+.eh-finding-g {
+  display: flex;
+  padding-top: 1px;
+}
+.is-err > .eh-finding-g {
+  color: var(--err);
+}
+.is-warn > .eh-finding-g {
+  color: var(--warn-ink);
+}
+.is-info > .eh-finding-g {
+  color: var(--cobalt-hi);
+}
+.eh-finding-b {
+  min-width: 0;
+}
+.eh-finding-m {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.eh-finding-f {
+  margin-top: 2px;
+  color: var(--ink);
+  opacity: 0.86;
+}
+.eh-finding code {
+  background: var(--bg-inset);
+}
+.eh-facts {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+.eh-facts > div {
+  display: grid;
+  grid-template-columns: 10.5em minmax(0, 1fr);
+  gap: 10px;
+}
+.eh-facts dt {
+  color: var(--ink-2);
+}
+.eh-facts dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.eh-fp {
+  min-width: 0;
+}
+.eh-fp-v {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 6px 7px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+}
+.eh-fp-t {
+  color: var(--ink-2);
+}
+.eh-fp[data-compare='same'] .eh-fp-v {
+  border-color: var(--ok);
+  box-shadow: inset 0 0 0 1px var(--ok-wash);
+}
+.eh-fp[data-compare='different'] .eh-fp-v {
+  border-color: var(--err);
+  box-shadow: inset 0 0 0 1px var(--err-wash);
+}
+.eh-fp-paste {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-fp-paste input {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.eh-fp-paste + p {
+  margin-top: 5px;
+}
+/* inside the slip the values are set in the fixed-width face; the words around them are not */
+.eh-fp-paste > span,
+.eh-fp > p,
+.eh-slip-v .btn {
+  font-family: var(--font-ui);
+}
+
+/* the slip: a terminal's last lines, the same three on both screens */
+.eh-slip {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-inset);
+  overflow: hidden;
+}
+.eh-slip-h {
+  display: flex;
+  gap: 9px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  font: var(--fs-xs) / 1.5 var(--font-mono);
+}
+.eh-slip-p {
+  color: var(--orange);
+  font-weight: 700;
+}
+.eh-slip-rows {
+  margin: 0;
+}
+.eh-slip-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 37em) minmax(0, 1fr);
+  gap: 6px 18px;
+  align-items: start;
+  padding: 11px 14px;
+}
+.eh-slip-row + .eh-slip-row {
+  border-top: 1px solid var(--rule);
+}
+.eh-slip-row > dt {
+  padding-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-slip-row.is-have > dt::before {
+  content: '✓ ';
+  color: var(--ok);
+}
+.eh-slip-v {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+}
+.eh-slip-hint {
+  margin: 0;
+  padding-top: 2px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+/* the row the page waits for: orange is what is live right now */
+.eh-slip-row.is-now {
+  background: var(--cobalt-wash);
+}
+.eh-slip-row.is-now::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--orange);
+}
+.eh-ghost {
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 760px) {
+  .eh-slip-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .eh-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .eh-foot {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .eh-foot .btn {
+    justify-content: center;
+  }
+}
+@media (max-width: 640px) {
+  .eh-actions > .btn-primary {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+/* ---- find: the engines on the network, an address (SRV-827) ----------------------------------- */
+.eh-guide-again {
+  margin-top: 10px;
+  line-height: 1.9;
+}
+.eh-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.eh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eh-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
+}
+button.eh-row {
+  cursor: pointer;
+}
+button.eh-row:hover:not(:disabled),
+button.eh-row[aria-busy='true'] {
+  border-color: var(--cobalt);
+  background: var(--cobalt-wash);
+}
+button.eh-row:disabled:not([aria-busy='true']) {
+  opacity: 0.6;
+  cursor: default;
+}
+.eh-row.is-in {
+  background: transparent;
+}
+.eh-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.eh-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.eh-row-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.eh-row-addr {
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.eh-row-fp {
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+.eh-row-go {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--cobalt-hi);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.eh-row-go .icon {
+  width: 16px;
+  height: 16px;
+}
+.eh-item > .eh-finding {
+  margin-top: 6px;
+}
+.eh-list-note {
+  margin-top: 10px;
+}
+.eh-addr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5em;
+  gap: 10px 12px;
+  align-items: end;
+}
+.eh-addr input {
+  width: 100%;
+}
+.eh-addr > .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+[data-form-error]:empty {
+  display: none;
+}
+[data-form-error] {
+  margin-top: 8px;
+}
+.eh-ways,
+.eh-else,
+.eh-more {
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .eh-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .eh-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .eh-row-go {
+    justify-content: flex-start;
+  }
+  .eh-addr > .btn {
+    justify-self: stretch;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eh-row {
+    transition: none;
+  }
+}
+
+/* ---- pair: the code (SRV-829) ----------------------------------------------------------------- */
+.eh-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.eh-code-row .wz-code {
+  padding: 6px 4px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+.eh-code-row .wz-code:disabled {
+  opacity: 0.5;
+}
+.eh-code-row .btn {
+  min-height: 46px;
+  padding-inline: 20px;
+  font-size: var(--fs-base);
+}
+.eh-left {
+  color: var(--orange-hi);
+  font-weight: 600;
+}
+.eh-pair-diff {
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .eh-code-row .wz-code {
+    flex: 1;
+    width: auto;
+    min-width: 8.5ch;
+  }
+}
+
+/* ---- the other ways: a password once, a key to paste (SRV-831) -------------------------------- */
+.eh-ways-seg {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+}
+.eh-ways-seg .seg-btn {
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+.eh-way-text {
+  max-width: 72ch;
+  margin: 10px 0 14px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+.eh-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 6.5em minmax(0, 1fr);
+  gap: 10px 12px;
+  max-width: 760px;
+}
+.eh-target input {
+  width: 100%;
+}
+.eh-target input[readonly] {
+  opacity: 0.7;
+}
+.eh-folder {
+  grid-column: 1 / -1;
+}
+.eh-folder > summary {
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.eh-folder > label {
+  max-width: 460px;
+  margin-top: 8px;
+}
+.eh-form > .eh-actions:first-of-type {
+  margin-top: 14px;
+}
+.eh-hostkey {
+  max-width: 760px;
+  margin-top: 16px;
+}
+.eh-hostkey > p {
+  margin-bottom: 8px;
+  line-height: 1.9;
+}
+.eh-hostkey .eh-fp-v,
+.eh-hostkey .eh-fp-paste input {
+  background: var(--bg-inset);
+}
+.eh-pass {
+  max-width: 360px;
+  margin-top: 14px;
+}
+.eh-pass input {
+  width: 100%;
+}
+.eh-steps {
+  display: grid;
+  gap: 18px;
+  max-width: 760px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: eh-step;
+}
+.eh-steps > li {
+  position: relative;
+  min-width: 0;
+  padding-left: 34px;
+  counter-increment: eh-step;
+}
+.eh-steps > li::before {
+  content: counter(eh-step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  color: var(--ink-2);
+  font: 600 var(--fs-xs) var(--font-mono);
+}
+.eh-steps .eh-hostkey {
+  margin-top: 0;
+}
+.eh-line {
+  max-height: 9.5em;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.eh-copy-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .eh-target {
+    grid-template-columns: minmax(0, 1fr) 6.5em;
+  }
+  .eh-t-user {
+    grid-column: 1 / -1;
+  }
+  .eh-steps > li {
+    padding-left: 0;
+    padding-top: 28px;
+  }
+}
+
+/* ---- after pairing: the bare engine, a model, its download (SRV-833) -------------------------- */
+.eh-kv {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.eh-kv > div {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr);
+  gap: 12px;
+}
+.eh-kv dt {
+  color: var(--ink-2);
+}
+.eh-kv dd {
+  margin: 0;
+}
+.eh-engine .panel-title .icon {
+  width: 16px;
+  height: 16px;
+}
+.eh-choice {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--cobalt);
+  border-radius: var(--radius);
+  background: var(--cobalt-wash);
+}
+.eh-choice-g {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cobalt);
+  color: #fff;
+}
+.eh-choice-g .icon {
+  width: 13px;
+  height: 13px;
+}
+.eh-choice-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.eh-choice p + p {
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.eh-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eh-model {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 11px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  cursor: pointer;
+}
+.eh-model.is-on {
+  border-color: var(--cobalt);
+  background: var(--cobalt-wash);
+}
+.eh-model input {
+  width: 16px;
+  height: 16px;
+  margin: 3px 0 0;
+  accent-color: var(--cobalt);
+}
+.eh-model:has(input:focus-visible) {
+  box-shadow: var(--focus);
+}
+.eh-model-b {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.eh-model-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: var(--fs-md);
+}
+.eh-plan {
+  min-height: 1.5em;
+  margin-top: 12px;
+}
+.eh-actions + .xs,
+.eh-finding + [data-polling] {
+  margin-top: 8px;
+}
+.eh-prog-h {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-bottom: 7px;
+}
+.eh-prog-step {
+  font-weight: 600;
+}
+.eh-install .wz-prog {
+  height: 10px;
+  border-radius: 5px;
+}
+.eh-install .wz-prog + p {
+  margin-top: 8px;
+}
+.eh-install > .xs {
+  margin-top: 10px;
+}
+
+@media (max-width: 640px) {
+  .eh-kv > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
+/* ---- the wizard: its stepper, the first message (VIS-278) ------------------------------------- */
+/* a step's heading takes the focus so a screen reader says where the page is; it is no control,
+   so it shows no ring */
+.eh-body h2[tabindex='-1']:focus-visible {
+  box-shadow: none;
+}
+.eh-stepper {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eh-stepper .wz-step {
+  cursor: default;
+}
+.eh-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.eh-first-form {
+  display: grid;
+  gap: 4px;
+  max-width: 680px;
+}
+.eh-first-form textarea {
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}

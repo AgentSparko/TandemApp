@@ -425,6 +425,15 @@ An engine host runs the engine only; the controller reaches it over SSH with a k
 
 **Errors** are one table, `proxy/enginecodes.py` (`contracts/fleet-v1/engine-codes.json`): each refusal has a stable `code`, one sentence and its `fix`, filled from the facts the call knows (the address and port tried, both fingerprints, the tries left). The health page shows the same.
 
+**The page.** Settings, Add engine is the setup wizard (`#/add-engine`; code: `dashboard/src/views/fleet/engine-wizard.ts` and `views/fleet/engine/`, their logic in `dashboard/src/lib/engine-*.ts`), and the first page of a controller with no member. Four steps:
+
+1. *Add engine.* What to look for on the engine host (the code, the fingerprint and the address its install printed), the engines the LAN advertises with name, version, address and fingerprint, and an address field for an engine the search does not see. An engine already in the fleet says so and leads to its own steps.
+2. *Pair.* The address and the fingerprint the page has, beside the terminal's, and the 6-digit code. The fingerprint can be compared by pasting the terminal's. A wrong code says the tries left; a code that ran out asks for `tandem pair` and takes the new one with one button; a host key that is not the one shown stops with both fingerprints. Other ways (a password once, a key line to paste) stand in for this step when there is no code.
+3. *Model.* The engine host as it answers, the bare engine preselected, the engine's models, a model's plan (how much it downloads, or that the weights are on its disk) and the install with its step, the GB so far and the steps done. The steps after pairing live at `#/add-engine/<engine host id>`: a reload, or another device, opens them again, a running download included.
+4. *First message.* One message, handed to the Chat tab (`#/chat?first=...`), which sends it in a new chat.
+
+Every refusal shows the table's sentence and its fix where it happened, with the facts on lines of their own. A 401 of the controller's guard brings the controller's sign-in to the top of the page.
+
 ## Add Spark: the wizard
 
 Settings → Add Spark walks Find, Connect, Check, Install, Link, Name and Done (code: `proxy/addspark.py`, `dashboard/src/views/fleet/wizard.ts`; the routes in `contracts/fleet-v1`). Its session lives in the config database (`add_sessions`), one active at a time, so a reload, a restart of the controller, or another device opens it at its step. A step with nothing to do is skipped and says why: Install when every device runs the fleet's release already, Link with fewer than two new Sparks on the LAN.
@@ -452,7 +461,7 @@ Settings → Add Spark walks Find, Connect, Check, Install, Link, Name and Done 
 
 `service install` writes `~/Library/LaunchAgents/org.tandemllm.app.plist` (started at login, kept alive, its log in `<state dir>/logs/tandem-app.log`) or `~/.config/systemd/user/tandemapp.service` (enabled, restarted on failure), runs `<its Python> -m proxy serve` with `--host` (default 127.0.0.1), `--port` (8080), the state dir's files (`--state-dir`, default `~/.tandemllm`) and `--env-file` when given, and waits until `/health` answers. `--name` gives the label or unit another name, so a second controller can run beside the first. A Linux user unit stops at logout unless the user lingers (`loginctl enable-linger`); status says so. A controller that listens beyond loopback needs `TANDEM_ADMIN_TOKEN` in its env file. `uninstall` leaves nothing loaded and no file of the service; the registry, the ledger and the keys in the state dir stay.
 
-The first open of the page without a route, on a controller with no member yet (no Spark, no backend), lands on Get started (Settings): connect a server by its URL, add a Spark, or install the TandemLLM engine on a machine (Add Spark's install step). A route in the link is kept.
+The first open of the page without a route, on a controller with no member yet (no engine, no Spark, no backend), lands on the setup wizard (Settings, Add engine; **The page** under Adding an engine host). Get started (Settings) keeps the other ways in one link away: connect a server by its URL, or add a Spark that runs TandemNode. A route in the link is kept.
 
 **The controller's host** (App settings, `GET /v1/fleet/controller`, code: `proxy/ctlmove.py`). The controller must stay on for the API to stay up, so a Spark is the better host; a Mac can run it, and the host-sleep rule and the page say what its sleep costs. Moving it to a Spark reads a plan first (`GET /v1/fleet/controller/move?to=<node>&port=`: the new API URL, each node and what happens to it, what stays) and runs with the plan's confirm:
 

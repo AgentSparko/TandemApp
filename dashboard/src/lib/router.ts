@@ -1,5 +1,6 @@
 // Hash routing: #/usage?client=k:…&range=90d. Reload keeps the page and its filters. Every view has
-// a path below it: #/chat/<id>, #/chat/settings/<section> (VIS-99), #/sparks/<node> (VIS-242). Three
+// a path below it: #/chat/<id>, #/chat/settings/<section> (VIS-99), #/sparks/<node> (VIS-242),
+// #/add-engine/<engine host> (VIS-278: the setup wizard's steps after pairing). Three
 // of today's views are sub-pages of a TandemApp section (concept §4) and live below it: the System
 // view at #/hardware/system, Backends at #/api/backends and the setup guide at #/models/serve, with
 // its own path below that (#/models/serve/<model>/<step>, VIS-78). The old hashes (#/system,
@@ -22,10 +23,11 @@ export type View =
   | 'conductor'
   | 'playground'
   | 'dev'
+  | 'add-engine'
   | 'add-spark'
   | 'start'
   | 'app';
-export const VIEWS: View[] = ['chat', 'overview', 'performance', 'usage', 'hardware', 'system', 'events', 'sparks', 'models', 'setup', 'api', 'backends', 'conductor', 'playground', 'dev', 'add-spark', 'start', 'app'];
+export const VIEWS: View[] = ['chat', 'overview', 'performance', 'usage', 'hardware', 'system', 'events', 'sparks', 'models', 'setup', 'api', 'backends', 'conductor', 'playground', 'dev', 'add-engine', 'add-spark', 'start', 'app'];
 /** the page an unknown or empty hash opens (Usage before VIS-242) */
 export const HOME: View = 'overview';
 
@@ -128,6 +130,22 @@ export function setParams(patch: Record<string, string | null | undefined>): voi
   const next = routeHash(r);
   if (location.hash !== next) history.replaceState(null, '', next);
   window.dispatchEvent(new HashChangeEvent('hashchange'));
+}
+
+/** the longest first message a route carries to Chat */
+export const FIRST_MAX = 2000;
+
+/** The hash that opens Chat and sends `text` there as the first message (VIS-278: the setup
+ *  wizard's last step hands it over). */
+export function chatHash(text: string): string {
+  const t = text.trim().slice(0, FIRST_MAX);
+  return t ? `#/chat?first=${encodeURIComponent(t)}` : '#/chat';
+}
+
+/** The first message a route hands to Chat; null when it carries none. */
+export function firstMessage(params: URLSearchParams): string | null {
+  const t = (params.get('first') ?? '').trim().slice(0, FIRST_MAX);
+  return t || null;
 }
 
 /** Calls `fn` on every hash change, after an old hash was rewritten. */

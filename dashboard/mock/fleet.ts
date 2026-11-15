@@ -87,6 +87,7 @@ import type {
 } from '../src/api/fleet.ts';
 import { EVENT_TYPES, FLEET_CONTRACT, METRICS, NODE_ACTIONS, RANGES, WINDOW_KINDS } from '../src/api/fleet.ts';
 import { MockWizard } from './addspark.ts';
+import { MockEngineHosts } from './enginehosts.ts';
 import { MockDeploy, mockSplitPlan } from './deploy.ts';
 import { MockSetupRelay } from './setup-relay.ts';
 import { MockOps } from './fleetops.ts';
@@ -575,6 +576,8 @@ export class MockFleet {
   readonly discovery: MockDiscovery;
   /** the Add Spark wizard's session (mock/addspark.ts) */
   readonly wizard: MockWizard;
+  /** adding an engine host: what the LAN advertises, pairing, the model step (mock/enginehosts.ts) */
+  readonly engines: MockEngineHosts;
   /** the fleet update and the controller's host (mock/fleetops.ts) */
   readonly ops: MockOps;
   /** the deployment records, the placement planner and the weights (mock/deploy.ts, SRV-731) */
@@ -598,6 +601,7 @@ export class MockFleet {
     this.f = build(this.scenario, this.t0);
     this.discovery = new MockDiscovery({ onMac: this.f.host.may_sleep, host: this.f.host.address, nodes: () => this.f.nodes.map((n) => n.node) });
     this.wizard = new MockWizard(this);
+    this.engines = new MockEngineHosts(this);
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
@@ -1051,6 +1055,32 @@ export class MockFleet {
     return this.nodes(now).find((x) => x.id === id)!;
   }
 
+  /** An engine host that was paired (mock/enginehosts.ts): a member reached over SSH, with no
+   *  TandemNode there, so no certificate and no inventory; idle, the next free colour. Paired again,
+   *  it is the same member. */
+  admitEngineHost(o: { id: string; alias: string; address: string; version: string; via: 'code' | 'ssh'; host_key: string }, now: number): FleetNode {
+    const pairing: NodePairing = { state: 'paired', via: o.via, fingerprint: null, paired_at: now, host_key: o.host_key };
+    const had = this.f.nodes.find((n) => n.node.id === o.id);
+    if (had) had.node = { ...had.node, version: o.version, pairing };
+    else {
+      const used = new Set(this.f.nodes.map((n) => n.node.colour));
+      const sim: NodeSim = {
+        node: {
+          id: o.id, alias: o.alias, colour: [1, 2, 3, 4, 5, 6, 7, 8].find((c) => !used.has(c)) ?? 1, icon: 'desk', tags: [], class: 'spark', hw: 'unknown', dmi: 'unknown', owned: true,
+          transport: 'ssh', address: o.address, version: o.version, since: now, lease_end: null, cost_per_hour: null,
+          inventory: { serial: null, os: null, kernel: null, driver: null, cuda: null, cx7: null, disk: null, nics: null }, pairing,
+        },
+        curve: o.id, busyFrom: Number.POSITIVE_INFINITY, idleMem: 6.4, plan: { weights: 17.2, kv: 48, cache: 8, other: 4.6, page: 12.4, ceiling: 112, peak: 104.8 },
+        ttft: [310, 280], gpuSpan: 94, fabric: false, rtt: [0.42, 0.18], heatFrom: null, throttleFrom: null, offFrom: null,
+      };
+      this.f.nodes.push(sim);
+      if (this.f.infra.some((i) => i.id === 'lan')) this.f.links.push({ id: `lan-${o.id}`, a: 'lan', b: o.id, kind: 'lan', speed: 'SSH', rtt_ms: 0.4, mtu: 1500, state: 'up', note: 'SSH, its host key pinned' });
+      this.f.events.push({ at: now, item: { id: `e-pair-${o.id}`, type: 'node', severity: null, node: o.id, deployment: null, text: `${o.alias} paired by ${o.via === 'code' ? 'code' : 'SSH'}`, detail: `engine host at ${o.address}; SSH host key ${o.host_key} pinned` } });
+    }
+    this.audit.unshift({ t: now, action: 'pair', node: o.id, who: 'dashboard session', via: o.via, fingerprint: null, detail: `engine host paired at ${o.address}` });
+    return this.nodes(now).find((x) => x.id === o.id)!;
+  }
+
   /** App settings' import (6.3b): a node the file has and this fleet not, added unpaired at its
    *  address (off until Add Spark pairs it); its colour when no node has it, else the next free. */
   importNode(n: { id: string; alias: string; colour?: number; icon?: FleetNode['icon']; tags?: string[]; address: string }, now: number): void {
@@ -1320,6 +1350,7 @@ export class MockFleet {
     const v = FLEET_CONTRACT;
     if (parts[0] === 'discovery') return this.discovery.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'add') return this.wizard.handle(method, parts, body, nowMs);
+    if (parts[0] === 'engines') return this.engines.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'update') return this.ops.handleUpdate(method, parts, q, body, now);
     if (parts[0] === 'controller') return this.ops.handleController(method, parts, q, body, now);
     if (parts[0] === 'app') return this.app.handle(method, parts, body, now);
