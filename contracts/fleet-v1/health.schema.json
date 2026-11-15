@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health.schema.json",
+  "title": "GET /v1/fleet/health[?fresh=1]: the worst state, the first run's setup flag, this controller, every engine host over SSH and the pairing codes the engines refused in the last 10 minutes, each with its findings; actions is every button's label, whether it changes something and whether it needs a confirm",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "checked_at": {
+      "type": "number"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ]
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "needs_setup": {
+          "type": "boolean"
+        },
+        "engines": {
+          "type": "integer"
+        },
+        "nodes": {
+          "type": "integer"
+        },
+        "backends": {
+          "type": "integer"
+        },
+        "first_page": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "add_engine",
+            null
+          ]
+        }
+      },
+      "required": [
+        "needs_setup",
+        "engines",
+        "nodes",
+        "backends",
+        "first_page"
+      ],
+      "additionalProperties": false
+    },
+    "controller": {
+      "$ref": "health-target.schema.json"
+    },
+    "engines": {
+      "type": "array",
+      "items": {
+        "$ref": "health-target.schema.json"
+      }
+    },
+    "pairings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "at": {
+            "type": "number"
+          },
+          "finding": {
+            "$ref": "health-finding.schema.json"
+          }
+        },
+        "required": [
+          "address",
+          "port",
+          "at",
+          "finding"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "type": "object",
+      "properties": {
+        "retry": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "start": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "rotate_token": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "upgrade": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "restart_chatd": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "re_pair": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "pick_model": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        },
+        "add_engine": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
+                "retry",
+                "start",
+                "rotate_token",
+                "upgrade",
+                "restart_chatd",
+                "re_pair",
+                "pick_model",
+                "add_engine"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "changes": {
+              "type": "boolean"
+            },
+            "confirm": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "changes",
+            "confirm"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "retry",
+        "start",
+        "rotate_token",
+        "upgrade",
+        "restart_chatd",
+        "re_pair",
+        "pick_model",
+        "add_engine"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contract_version",
+    "checked_at",
+    "state",
+    "setup",
+    "controller",
+    "engines",
+    "pairings",
+    "actions"
+  ],
+  "additionalProperties": false
+}

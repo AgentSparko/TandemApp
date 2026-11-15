@@ -1,6 +1,6 @@
 {
-  "title": "every code a /v1/fleet/engines/* refusal or finding carries: its HTTP status, the sentence and the fix, {name} a fact the answer names (proxy/enginecodes.py; the health page reads the same)",
-  "version": "1.0",
+  "title": "every code a /v1/fleet/engines/* refusal or finding carries: its HTTP status, the sentence and the fix, {name} a fact the answer names (proxy/enginecodes.py); `findings` is what the health page (/v1/fleet/health, proxy/fleethealth.py) shows of the codes it finds: the severity and the action, `actions` each action's button",
+  "version": "1.1",
   "codes": {
     "bad_request": {
       "status": 400,
@@ -191,6 +191,249 @@
       "status": 409,
       "message": "{node} is not an engine host TandemApp reaches over SSH.",
       "fix": "Pair the engine host by code under Add engine."
+    },
+    "engine_loading": {
+      "status": 503,
+      "message": "The engine on {host} is {state} and does not serve yet.",
+      "fix": "Wait until it serves; a large model takes some minutes to load."
+    },
+    "no_model": {
+      "status": 409,
+      "message": "The engine on {host} serves no model yet.",
+      "fix": "Pick a model in Add engine's model step; TandemApp downloads it there."
+    },
+    "engine_api_unsupported": {
+      "status": 409,
+      "message": "The engine on {host} speaks engine API {engine_api}; this TandemApp speaks {speaks}.",
+      "fix": "Install the TandemApp release made for that engine, or the engine release this TandemApp names."
+    },
+    "no_engine": {
+      "status": 409,
+      "message": "No engine is connected yet.",
+      "fix": "Install the engine on its host, then pair it under Add engine."
+    },
+    "chatd_down": {
+      "status": 503,
+      "message": "chatd, the Chat tab's service, is not running.",
+      "fix": "Restart it; if it stops again, its log says why ({path})."
+    },
+    "chatd_silent": {
+      "status": 503,
+      "message": "chatd runs but does not answer.",
+      "fix": "Restart it; if it hangs again, its log says why ({path})."
+    },
+    "chat_unreachable": {
+      "status": 502,
+      "message": "The Chat tab's service at {address} does not answer.",
+      "fix": "Start chatd where it runs, or let TandemApp run it here (TANDEM_CHAT=own in app.env)."
+    },
+    "sandbox_off": {
+      "status": 409,
+      "message": "Chat sandboxes are off: no container runtime socket is at {path}.",
+      "fix": "Give chatd a socket: install with --with-sandbox, set QSE_SANDBOX_SOCKET in chatd.env, or mount a socket into TandemApp's container."
+    },
+    "sandbox_unreachable": {
+      "status": 502,
+      "message": "The container runtime at {path} does not answer.",
+      "fix": "Check that its service runs and that this user may open the socket."
+    },
+    "sandbox_no_image": {
+      "status": 409,
+      "message": "The sandbox image {image} is not in the container runtime.",
+      "fix": "Build it as the runtime's user: bash ops/sandbox/build.sh podman."
+    },
+    "no_memory_cgroup": {
+      "status": 409,
+      "message": "The kernel does not cap a container's memory here, so a sandbox has no memory limit.",
+      "fix": "Turn the memory controller on: on a Raspberry Pi add cgroup_enable=memory cgroup_memory=1 to /boot/firmware/cmdline.txt and reboot."
+    },
+    "disk_low": {
+      "status": 507,
+      "message": "Only {free_gb} GB are free at {path}.",
+      "fix": "Free some space there: TandemApp wants {need_gb} GB."
+    },
+    "backend_down": {
+      "status": 502,
+      "message": "The backend {backend} does not answer: {detail}",
+      "fix": "Check that it runs and that its address and key are right; Backends tests it."
+    },
+    "not_offered": {
+      "status": 409,
+      "message": "{node} does not need that fix now.",
+      "fix": "Check again, then use a button the health page shows."
+    },
+    "too_many_fixes": {
+      "status": 429,
+      "message": "{node} had too many fixes in the last minute.",
+      "fix": "Wait a minute, then try again."
+    }
+  },
+  "findings": {
+    "ssh_unreachable": {
+      "severity": "error",
+      "action": "retry"
+    },
+    "host_key_changed": {
+      "severity": "error",
+      "action": "re_pair"
+    },
+    "not_paired": {
+      "severity": "error",
+      "action": "re_pair"
+    },
+    "ctl_failed": {
+      "severity": "error",
+      "action": "retry"
+    },
+    "engine_down": {
+      "severity": "error",
+      "action": "start"
+    },
+    "engine_loading": {
+      "severity": "info",
+      "action": null
+    },
+    "engine_too_old": {
+      "severity": "warning",
+      "action": "upgrade"
+    },
+    "engine_api_unsupported": {
+      "severity": "error",
+      "action": null
+    },
+    "no_model": {
+      "severity": "warning",
+      "action": "pick_model"
+    },
+    "http_blocked": {
+      "severity": "error",
+      "action": "retry"
+    },
+    "not_allowed": {
+      "severity": "error",
+      "action": null
+    },
+    "not_an_engine": {
+      "severity": "error",
+      "action": "retry"
+    },
+    "token_missing": {
+      "severity": "error",
+      "action": "rotate_token"
+    },
+    "token_refused": {
+      "severity": "error",
+      "action": "rotate_token"
+    },
+    "wrong_code": {
+      "severity": "warning",
+      "action": "re_pair"
+    },
+    "code_spent": {
+      "severity": "warning",
+      "action": "re_pair"
+    },
+    "no_window": {
+      "severity": "warning",
+      "action": "re_pair"
+    },
+    "host_key_mismatch": {
+      "severity": "error",
+      "action": "re_pair"
+    },
+    "rate_limited": {
+      "severity": "warning",
+      "action": null
+    },
+    "no_engine": {
+      "severity": "info",
+      "action": "add_engine"
+    },
+    "chatd_down": {
+      "severity": "error",
+      "action": "restart_chatd"
+    },
+    "chatd_silent": {
+      "severity": "error",
+      "action": "restart_chatd"
+    },
+    "chat_unreachable": {
+      "severity": "warning",
+      "action": null
+    },
+    "sandbox_off": {
+      "severity": "warning",
+      "action": null
+    },
+    "sandbox_unreachable": {
+      "severity": "warning",
+      "action": null
+    },
+    "sandbox_no_image": {
+      "severity": "warning",
+      "action": null
+    },
+    "no_memory_cgroup": {
+      "severity": "warning",
+      "action": null
+    },
+    "disk_low": {
+      "severity": "warning",
+      "action": null
+    },
+    "backend_down": {
+      "severity": "warning",
+      "action": "retry"
+    }
+  },
+  "actions": {
+    "retry": {
+      "label": "Check again",
+      "changes": false,
+      "confirm": false,
+      "route": "dashboard"
+    },
+    "start": {
+      "label": "Start",
+      "changes": true,
+      "confirm": false,
+      "route": "setup"
+    },
+    "rotate_token": {
+      "label": "Rotate the token",
+      "changes": true,
+      "confirm": false,
+      "route": "fleet_trust"
+    },
+    "upgrade": {
+      "label": "Upgrade",
+      "changes": true,
+      "confirm": true,
+      "route": "fleet_trust"
+    },
+    "restart_chatd": {
+      "label": "Restart chatd",
+      "changes": true,
+      "confirm": false,
+      "route": "conductor_write"
+    },
+    "re_pair": {
+      "label": "How to pair again",
+      "changes": false,
+      "confirm": false,
+      "route": "dashboard"
+    },
+    "pick_model": {
+      "label": "Pick a model",
+      "changes": false,
+      "confirm": false,
+      "route": "dashboard"
+    },
+    "add_engine": {
+      "label": "Add engine",
+      "changes": false,
+      "confirm": false,
+      "route": "dashboard"
     }
   }
 }

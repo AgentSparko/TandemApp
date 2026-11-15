@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-fix-body.schema.json",
+  "title": "the body of POST /v1/fleet/health/{id}/fix: the action a finding offers (retry always); upgrade takes ref (else TANDEM_ENGINE_REF) and, after its plan, the plan's confirm; when for Start's and an upgrade's restart (idle by default)",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "start",
+        "rotate_token",
+        "upgrade",
+        "restart_chatd",
+        "re_pair",
+        "pick_model",
+        "add_engine"
+      ]
+    },
+    "ref": {
+      "type": "string"
+    },
+    "confirm": {
+      "type": "string"
+    },
+    "when": {
+      "type": "string",
+      "enum": [
+        "now",
+        "idle"
+      ]
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "additionalProperties": false
+}

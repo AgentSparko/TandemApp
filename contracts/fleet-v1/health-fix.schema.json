@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-fix.schema.json",
+  "title": "POST /v1/fleet/health/{id}/fix: what the fix did (job: the engine's or chatd's job; result: the rotated token's hint, an upgrade's plan; guide: the steps of an action that changes nothing), the target checked again, the finding the action was for if it is still there (null: cleared)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "start",
+        "rotate_token",
+        "upgrade",
+        "restart_chatd",
+        "re_pair",
+        "pick_model",
+        "add_engine"
+      ]
+    },
+    "done": {
+      "type": "boolean"
+    },
+    "needs_confirm": {
+      "type": "boolean"
+    },
+    "job": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "guide": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "open": {
+          "type": "string",
+          "enum": [
+            "add_engine",
+            "model"
+          ]
+        },
+        "engine": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pinned": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offered": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "open",
+        "engine",
+        "address",
+        "pinned",
+        "offered",
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "target": {
+      "$ref": "health-target.schema.json"
+    },
+    "finding": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "cleared": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "id",
+    "action",
+    "done",
+    "needs_confirm",
+    "job",
+    "result",
+    "guide",
+    "target",
+    "finding",
+    "cleared"
+  ],
+  "additionalProperties": false
+}
