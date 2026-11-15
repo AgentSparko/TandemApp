@@ -23,6 +23,14 @@ DIR/fake-state.json steers it (`state(dir)`, `set_state(dir, **kw)`):
     mode          the mode `mode get` and `status` say (engine); `mode set` writes it
     inferred      true: `mode get` says the mode was read from an empty QSE_MODE
     model         the model `status` says a healthy engine serves ("fake-model"; null: none yet)
+    sim           true: the settings verbs, status, start and restart run a small model of the
+                  managed overlay (SRV-845): SIM_SCHEMA's keys, versions with `current` and `good`,
+                  plan tokens bound to the base version as the engine's are, the second token for
+                  a key that feeds the fingerprint, and a lifecycle job that each `status` call
+                  moves one step along `sim_steps` (default waiting, acting, done; a step
+                  `failed_start` fails the start and puts the version back, `timeout` fails the
+                  wait with nothing changed); `sim_hold` true keeps the job where it is; a `start`
+                  replaces a job that waits, and is busy while one acts
 
 The 1.1 verbs that read stdin (ext install, upgrade plan --sha256) check the bytes' sha256 against
 --sha256 as the engine does (hash_mismatch, exit 3) and record {sha256, bytes} in DIR/stdin.jsonl,
@@ -162,7 +170,248 @@ def opts_of(rest: list[str]) -> tuple[dict, list]:
     return opts, pos
 
 
+# ---------------------------------------------------------------------------- the overlay model
+SIM_SCHEMA = {
+    "MAX_QUEUE": {"default": "16", "type": "integer", "restart": "engine", "fingerprint": False,
+                  "managed": True},
+    "QSE_ALLOW_FROM": {"default": "", "type": "cidrs", "restart": "hot", "fingerprint": False,
+                       "managed": True},
+    "QWEN38_PREFIX_CHUNK": {"default": "2048", "type": "integer", "restart": "engine",
+                            "fingerprint": True, "managed": True},
+    "QSE_MODE": {"default": "engine", "type": "enum", "restart": "engine", "fingerprint": False,
+                 "managed": True, "values": ["engine", "chat"]},
+    "HF_TOKEN": {"default": None, "type": "string", "restart": "engine", "fingerprint": False,
+                 "managed": False, "why": "may hold a secret"},
+    "PORT": {"default": "8000", "type": "integer", "restart": "engine", "fingerprint": False,
+             "managed": False, "why": "the install's"},
+}
+SIM_SECRET = "hf_" + "s3cr3t" * 6
+
+
+def _sim(st: dict) -> dict:
+    vs = st.get("sim_versions") or [{"n": 0, "at": CREATED, "note": "empty", "set": {},
+                                     "sha256": "0" * 64}]
+    return {"versions": vs, "current": st.get("sim_current", 0), "good": st.get("sim_good", 0),
+            "job": st.get("sim_job"), "schema": st.get("sim_schema") or SIM_SCHEMA}
+
+
+def _set_of(m: dict, n: int) -> dict:
+    for v in m["versions"]:
+        if v["n"] == n:
+            return dict(v["set"])
+    raise Refuse("unknown_version", f"no overlay version {n}", 3)
+
+
+def _effective(m: dict, overlay: dict) -> dict:
+    out = {}
+    for k, spec in m["schema"].items():
+        if k in overlay:
+            out[k] = overlay[k]
+        elif k == "HF_TOKEN":
+            out[k] = SIM_SECRET
+        elif spec["default"] is not None:
+            out[k] = spec["default"]
+    return out
+
+
+def _tok(kind: str, base: int, values: dict) -> str:
+    import hashlib
+    blob = json.dumps([kind, base, sorted(values.items())], separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def _sim_plan(m: dict, new: dict) -> dict:
+    base = m["current"]
+    old = _set_of(m, base)
+    if new == old:
+        raise Refuse("no_change", "the overlay already holds exactly these values", 3)
+    before, after = _effective(m, old), _effective(m, new)
+    effect = []
+    for k in sorted(m["schema"]):
+        a, b = (k in before, before.get(k)), (k in after, after.get(k))
+        if a != b:
+            effect.append({"key": k, "from": before.get(k), "to": after.get(k), "was_set": a[0],
+                           "is_set": b[0], "restart": m["schema"][k]["restart"],
+                           "fingerprint": m["schema"][k]["fingerprint"]})
+    fp = [e["key"] for e in effect if e["fingerprint"]]
+    out = {"base": base, "overlay": [{"key": k, "from": old.get(k), "to": new.get(k)}
+                                     for k in sorted(set(old) | set(new)) if old.get(k) != new.get(k)],
+           "effect": effect, "shadowed": [], "fingerprint_keys": fp,
+           "restart_needed": any(e["restart"] == "engine" for e in effect),
+           "confirm": _tok("plan", base, new), "warnings": []}
+    if fp:
+        out["confirm_fingerprint"] = _tok("fingerprint", base, new)
+        out["warnings"].append(f"{', '.join(fp)} feed the disk cache's fingerprint")
+    return out
+
+
+def _sim_target(m: dict, pos: list, unsets: list) -> dict:
+    new = _set_of(m, m["current"])
+    for k in unsets:
+        if k not in m["schema"]:
+            raise Refuse("unknown_key", f"not a settings key: {k}", 2)
+        if k not in new:
+            raise Refuse("not_in_overlay", f"--unset {k}: the overlay does not set it", 3)
+        del new[k]
+    for p in pos:
+        k, _, v = p.partition("=")
+        if k not in m["schema"]:
+            raise Refuse("unknown_key", f"not a settings key: {k}", 2)
+        if not m["schema"][k]["managed"]:
+            raise Refuse("key_not_managed", f"{k} is not managed: {m['schema'][k].get('why')}", 3)
+        new[k] = v
+    return new
+
+
+def _sim_check(p: dict, opts: dict) -> None:
+    c = opts.get("--confirm")
+    if c != p["confirm"]:
+        raise Refuse("confirm_required" if c is None else "confirm_mismatch",
+                     "apply needs --confirm with the token of a plan of exactly these changes", 3)
+    if "confirm_fingerprint" in p and opts.get("--confirm-fingerprint") != p["confirm_fingerprint"]:
+        raise Refuse("confirm_required", "these changes make the disk cache miss", 3)
+
+
+def _sim_job(d: str, st: dict, m: dict, kind: str, when: str | None, deadline, overlay=None) -> dict:
+    cur = m["job"]
+    if cur and cur["state"] == "acting":
+        raise Refuse("busy", "another lifecycle job is acting; tandem remote status shows it", 4,
+                     job=cur)
+    if cur and cur["state"] == "waiting":
+        cur.update(state="cancelled", ended_at=CREATED, message=f"replaced by a {kind} call")
+    made = int(st.get("sim_made", 0)) + 1
+    j = job(kind, when, "waiting")
+    j["id"] = f"20261115T10{made // 60:02d}{made % 60:02d}-abcdef"
+    if deadline is not None and j["when"]["mode"] != "now":
+        j["when"]["deadline_s"] = int(deadline)
+    if overlay is not None:
+        j["overlay"] = overlay
+    steps = list(st.get("sim_steps") or ["waiting", "acting", "done"])
+    if j["when"]["mode"] == "now" and steps and steps[0] == "waiting":
+        steps = [x for x in steps if x != "waiting"] or ["done"]
+    j["state"] = "acting" if steps[0] == "acting" else "waiting"
+    set_state(d, sim_made=made, sim_job=dict(j, _steps=steps, _i=0),
+              **({"sim_versions": m["versions"]} if "sim_versions" not in st else {}))
+    return j
+
+
+def _public(j: dict | None) -> dict | None:
+    return None if j is None else {k: v for k, v in j.items() if not k.startswith("_")}
+
+
+def _sim_step(d: str, st: dict) -> dict | None:
+    m = _sim(st)
+    j = m["job"]
+    if j is None or j["state"] in ("done", "failed", "cancelled", "lost") or st.get("sim_hold"):
+        return j
+    i = min(j["_i"] + 1, len(j["_steps"]) - 1)
+    step = j["_steps"][i]
+    j["_i"] = i
+    upd = {}
+    if step in ("waiting", "acting"):
+        j["state"] = step
+    elif step == "timeout":
+        j.update(state="failed", ended_at=CREATED, message="1 request still ran after the deadline "
+                                                           "(600 s); nothing changed")
+    elif step in ("done", "failed_start"):
+        ov = j.get("overlay")
+        vs = list(m["versions"])
+        if ov is not None:
+            n = max(v["n"] for v in vs) + 1
+            vs.append({"n": n, "at": CREATED, "note": ov.get("note", "settings apply"),
+                       "set": ov["values"], "sha256": "%064x" % n})
+            ov["to"] = n
+            upd.update(sim_versions=vs)
+        if step == "done":
+            j.update(state="done", ended_at=CREATED, message="healthy")
+            if ov is not None:
+                upd.update(sim_current=ov["to"], sim_good=ov["to"])
+        else:
+            back = ov["from"] if ov else m["good"]
+            j.update(state="failed", ended_at=CREATED,
+                     message=f"the engine did not reach /health with overlay version "
+                             f"{(ov or {}).get('to')}; version {back} is back and the engine answers",
+                     restored={"version": back, "healthy": True})
+            upd.update(sim_current=back)
+    set_state(d, sim_job=j, **upd)
+    return j
+
+
+def sim_answer(d: str, st: dict, name: str, opts: dict, pos: list) -> tuple[dict, int]:
+    m = _sim(st)
+    if name == "status":
+        j = _sim_step(d, st)
+        m = _sim(state(d))
+        healthy = st.get("engine", "healthy") == "healthy"
+        return {"engine": {"state": "healthy" if healthy else "down", "pid": 4242 if healthy else None,
+                           "port": 8000, "health_code": 200 if healthy else None,
+                           "engine_api": "1.9", "version": "0.15.4",
+                           "model": st.get("model", "fake-model") if healthy else None,
+                           "running_mode": "engine" if healthy else None, "stopped_on_purpose": False},
+                "mode": "engine", "profile": None, "engine_version": "0.15.4", "engine_api": "1.9",
+                "http": {"token": True, "allow_from": None}, "install": True,
+                "overlay": {"current": m["current"], "good": m["good"],
+                            "versions": len(m["versions"]), "file": m["current"] > 0},
+                "hook": True, "job": _public(j)}, 0
+    if name in ("start", "restart"):
+        j = _sim_job(d, st, m, name, opts.get("--when"), None)
+        cur = state(d)["sim_job"]
+        cur.update(state="done", ended_at=CREATED, message="already healthy")
+        set_state(d, sim_job=cur)
+        return {"job": _public(cur), "follow": "tandem remote status"}, 0
+    if name == "settings get":
+        eff = _effective(m, _set_of(m, m["current"]))
+        over = _set_of(m, m["current"])
+        keys = pos or sorted(m["schema"])
+        rows = []
+        for k in keys:
+            if k not in m["schema"]:
+                raise Refuse("unknown_key", f"not a settings key: {k}", 2)
+            spec = m["schema"][k]
+            row = {"key": k, "set": k in eff, "value": eff.get(k),
+                   "source": "managed" if k in over else "local" if k == "HF_TOKEN" else
+                   "install" if k == "PORT" else "default", "type": spec["type"],
+                   "managed": spec["managed"], "restart": spec["restart"],
+                   "fingerprint": spec["fingerprint"]}
+            if spec["default"] is not None:
+                row["default"] = spec["default"]
+            if spec.get("values"):
+                row["values"] = spec["values"]
+            if spec.get("why"):
+                row["why"] = spec["why"]
+            rows.append(row)
+        return {"keys": rows, "overlay": {"current": m["current"], "good": m["good"],
+                                          "versions": len(m["versions"]), "file": m["current"] > 0},
+                "hook": True}, 0
+    if name == "settings plan":
+        return {"plan": _sim_plan(m, _sim_target(m, pos, opts.get("--unset") or []))}, 0
+    if name == "settings apply":
+        new = _sim_target(m, pos, opts.get("--unset") or [])
+        p = _sim_plan(m, new)
+        _sim_check(p, opts)
+        j = _sim_job(d, st, m, "settings", opts.get("--when", "idle"), opts.get("--deadline"),
+                     overlay={"from": m["current"], "values": new, "note": "settings apply"})
+        return {"job": j, "follow": "tandem remote status", "plan": p}, 0
+    if name == "settings versions":
+        return {"current": m["current"], "good": m["good"], "versions": m["versions"]}, 0
+    if name == "settings restore":
+        n = int(pos[0]) if pos else -1
+        new = _set_of(m, n)
+        p = _sim_plan(m, new)
+        _sim_check(p, opts)
+        j = _sim_job(d, st, m, "restore", opts.get("--when", "idle"), opts.get("--deadline"),
+                     overlay={"from": m["current"], "values": new, "note": f"restore of version {n}"})
+        return {"job": j, "follow": "tandem remote status"}, 0
+    raise Refuse("unknown_verb", f"unknown verb {name!r}", 2)
+
+
+SIM_VERBS = ("status", "start", "restart", "settings get", "settings plan", "settings apply",
+             "settings versions", "settings restore")
+
+
 def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | None) -> tuple[dict, int]:
+    if st.get("sim") and name in SIM_VERBS:
+        return sim_answer(d, st, name, opts, pos)
     lifecycle = ("start", "stop", "restart", "mode set", "settings apply", "settings restore")
     if name in lifecycle and st.get("busy"):
         raise Refuse("busy", "another lifecycle job is acting; tandem remote status shows it", 4,
