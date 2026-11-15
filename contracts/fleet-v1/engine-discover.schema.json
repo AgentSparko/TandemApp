@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-discover.schema.json",
+  "title": "POST /v1/fleet/engines/discover (a new browse) and GET (the last one): the engines that answered for _tandem._tcp, each with what its advertisement says (never verified: the code or the user proves the fingerprint), whether the LAN could be asked, and its finding when not",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "engines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": "string"
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "port": {
+            "type": "integer"
+          },
+          "fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified": {
+            "const": false
+          },
+          "node": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "alias": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "instance",
+          "version",
+          "address",
+          "addresses",
+          "port",
+          "fingerprint",
+          "verified",
+          "node",
+          "alias"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "browsed_at": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "seconds": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "lan": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "denied",
+        "failed",
+        "not_run"
+      ]
+    },
+    "finding": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "contract_version",
+    "engines",
+    "browsed_at",
+    "seconds",
+    "lan",
+    "finding"
+  ],
+  "additionalProperties": false
+}

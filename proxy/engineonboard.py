@@ -5,6 +5,11 @@
 
     GET  /v1/fleet/engines                        the engine hosts this controller reaches over SSH
     GET  /v1/fleet/engines/{id}                   one of them, with its `status` over SSH
+    POST /v1/fleet/engines/discover {seconds?, interface?}
+                                                  browse the LAN for `_tandem._tcp` (SRV-827);
+                                                  GET answers the last browse
+    POST /v1/fleet/engines/probe {address, port?} one address typed by hand (a tailnet's too):
+                                                  does an engine answer, is a window open
     POST /v1/fleet/engines/pair/start {address, port?, fingerprint?, name?}
                                                   the engine's pairing window read (GET
                                                   /v1/engine/pair); a pairing id and a new key
@@ -13,6 +18,18 @@
                                                   the exchange (proxy/enginepair.py); on success
                                                   the host is in the fleet: `state` paired
     POST /v1/fleet/engines/pair/abandon {pairing} the started pairing and its key pair forgotten
+
+FINDING THE ENGINE (SRV-827). `discover` asks the LAN once (proxy/mdns.py's Browser: a legacy
+unicast query from an ephemeral port, so nothing binds 5353; IPv4) for `_tandem._tcp.local` and
+lists each instance with what its TXT says: `name`, `version`, `port` (the engine's HTTP port) and
+`fp` (the SSH host key's fingerprint, the one `tandem pair` prints), and the addresses its A records
+name. Nothing else of the TXT is passed on. An advertisement proves nothing: each row is
+`verified` false, and the fingerprint it shows is proven only by the code (pairing checks it
+against the window's) or by the user (the other ways). `node` names the fleet node that already
+pins that fingerprint. With macOS's Local Network permission off the answer says so (`lan`
+denied, its finding) and the address field stays; `probe` reads one address the user typed (a
+LAN or tailnet name or address, any port): whether an engine answers, its pairing window's state
+and fingerprint, or the finding that says why not, in a 200 either way.
 
 PAIRING BY CODE. `start` reads the window (open, its tries, the host key's fingerprint) and makes
 this controller's ed25519 key pair for the host (proxy/hostkeys.py `generate`): it stays in memory
@@ -53,9 +70,12 @@ import secrets
 import threading
 import time
 
-from proxy import enginecodes, enginectl, enginepair, hostkeys
+from proxy import enginecodes, enginectl, enginepair, hostkeys, mdns
 
 CONTRACT = "1.0"
+SERVICE = "_tandem._tcp.local"
+BROWSE_S = 2.0
+BROWSE_MAX_S = 5.0
 PAIR_TTL_S = 600.0
 TRIES_PER_MIN = 10
 MAX_PENDING = 32
@@ -139,10 +159,13 @@ def ctl_error(exc: enginectl.CtlError, *, host: str | None = None, port: int | N
 
 
 class Onboarding:
-    def __init__(self, fleet, *, clock=time.time, window=None):
+    def __init__(self, fleet, *, clock=time.time, window=None, browser=None):
         self.fleet = fleet
         self.clock = clock
         self.window = window or (lambda address, port: enginepair.Window(address, port))
+        self.browser = browser or mdns.Browser()
+        self._found: dict = {"engines": [], "browsed_at": None, "seconds": None, "lan": "not_run",
+                             "finding": None}
         self._pending: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._tries: collections.deque = collections.deque()
@@ -204,6 +227,10 @@ class Onboarding:
         sub = parts[1:]
         if method == "GET" and sub == []:
             return self.list_view()
+        if sub == ["discover"] and method in ("GET", "POST"):
+            return self.discover(body if method == "POST" else None, run=method == "POST")
+        if method == "POST" and sub == ["probe"]:
+            return self.probe(body)
         if method == "POST" and sub == ["pair", "start"]:
             return self.pair_start(body, who)
         if method == "POST" and sub == ["pair", "code"]:
@@ -326,6 +353,103 @@ class Onboarding:
         return {"contract_version": CONTRACT, "state": "paired", "via": via,
                 "engine": self.view(row, status, finding),
                 "node": self.fleet.node_view(row, self.clock()), "finding": None}
+
+    # ------------------------------------------------------------------ finding the engine
+    def _pinned(self, fp: str | None) -> dict | None:
+        if not fp:
+            return None
+        return next((n for n in self._ssh_rows() if (n["trust"] or {}).get("host_key") == fp), None)
+
+    def advert(self, svc: dict) -> dict | None:
+        """One browse answer as the page lists it: the TXT's name, version, port and fingerprint
+        and the A records' addresses, nothing else; None for an instance with no address."""
+        txt = svc.get("txt") or {}
+        addrs = []
+        for a in svc.get("addresses") or []:
+            try:
+                addrs.append(str(ipaddress.IPv4Address(a)))
+            except ValueError:
+                continue
+        if not addrs:
+            return None
+        try:
+            port = int(txt.get("port") or svc.get("port") or enginepair.DEFAULT_PORT)
+        except (TypeError, ValueError):
+            port = svc.get("port") or enginepair.DEFAULT_PORT
+        if not 0 < port < 65536:
+            return None
+        fp = txt.get("fp")
+        fp = fp if isinstance(fp, str) and enginepair.FP_RE.match(fp) else None
+        name = "".join(c for c in str(txt.get("name") or svc.get("instance") or "")
+                       if c.isprintable())[:63] or addrs[0]
+        version = txt.get("version")
+        version = "".join(c for c in version if c.isprintable())[:32] if isinstance(version, str) \
+            else None
+        node = self._pinned(fp)
+        return {"name": name, "instance": str(svc.get("instance") or "")[:63], "version": version,
+                "address": addrs[0], "addresses": addrs, "port": port, "fingerprint": fp,
+                "verified": False, "node": node["id"] if node else None,
+                "alias": node["alias"] if node else None}
+
+    def discover(self, body, *, run: bool) -> dict:
+        if not run:
+            return {"contract_version": CONTRACT, **self._found}
+        b = _fields(body if body is not None else {}, {"seconds", "interface"})
+        secs = b.get("seconds", BROWSE_S)
+        if not isinstance(secs, (int, float)) or isinstance(secs, bool) or \
+                not 0.2 <= secs <= BROWSE_MAX_S:
+            raise ERR("bad_request", f"seconds is from 0.2 to {BROWSE_MAX_S:g}")
+        iface = b.get("interface")
+        if iface is not None:
+            try:
+                iface = str(ipaddress.IPv4Address(iface))
+            except (ValueError, TypeError):
+                raise ERR("bad_request", "interface is the IPv4 address of a LAN interface") from None
+        lan, finding, found = "ok", None, []
+        try:
+            got = self.browser.browse([SERVICE], float(secs), iface=iface)
+        except mdns.LanDenied:
+            lan, finding, got = "denied", enginecodes.finding("lan_denied"), []
+        except OSError as exc:
+            lan, finding, got = "failed", enginecodes.finding("lan_failed", type(exc).__name__), []
+        seen = set()
+        for svc in got:
+            a = self.advert(svc)
+            if a is not None and (a["address"], a["port"]) not in seen:
+                seen.add((a["address"], a["port"]))
+                found.append(a)
+        self._found = {"engines": found, "browsed_at": round(self.clock(), 3), "seconds": secs,
+                       "lan": lan, "finding": finding}
+        self.log(f"[engines] LAN browse for {SERVICE}: {len(found)} found ({lan})")
+        return {"contract_version": CONTRACT, **self._found}
+
+    def probe(self, body) -> dict:
+        b = _fields(body, {"address", "port"}, ("address",))
+        address = _address(b["address"])
+        port = _port(b.get("port"), enginepair.DEFAULT_PORT)
+        out = {"contract_version": CONTRACT, "address": address, "port": port, "reachable": False,
+               "engine": False, "pairing": None, "fingerprint": None, "node": None, "finding": None}
+        w = self.window(address, port)
+        try:
+            st = w.status()
+        except enginecodes.OnboardError as exc:
+            out["reachable"] = exc.code != "unreachable"
+            if exc.code == "pairing_unsupported" and w.health() is None:
+                exc = ERR("not_an_engine", exc.detail, address=address, port=port)
+            out["engine"] = exc.code in ("pairing_unsupported", "no_window", "rate_limited")
+            out["finding"] = exc.finding()
+            return out
+        out.update(reachable=True, engine=True, fingerprint=st.get("fingerprint"),
+                   pairing={"open": st["open"], "state": st["state"],
+                            "expires_in": st.get("expires_in"), "tries_left": st.get("tries_left"),
+                            "fingerprint": st.get("fingerprint")})
+        node = self._pinned(st.get("fingerprint"))
+        out["node"] = node["id"] if node else None
+        if not st["open"]:
+            out["finding"] = enginecodes.finding(
+                "code_spent" if st["state"] in ("expired", "spent", "paired", "confirming")
+                else "no_window", state=st["state"], address=address, port=port)
+        return out
 
     # ------------------------------------------------------------------ pairing by code
     def pair_start(self, body, who: str) -> dict:
