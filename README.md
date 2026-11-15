@@ -42,7 +42,7 @@ unit on Linux). `tandem-app check` prints what would run without starting anythi
 | `packages/` | the texts the conductor ships with |
 | `packaging/` | the build backend, Dockerfile and Homebrew formula |
 | `tests/`, `tools/` | the test suite and the tools |
-| `docs/` | documentation |
+| `docs/`, `manual/` | documentation and the manual (LaTeX) |
 
 ## Tests
 
@@ -51,7 +51,7 @@ unit on Linux). `tandem-app check` prints what would run without starting anythi
 
 ## Documentation
 
-[docs/proxy.md](docs/proxy.md) covers configuration, the fleet, TandemNode and the data plane.
+[docs/README.md](docs/README.md) lists the pages: [docs/proxy.md](docs/proxy.md) covers configuration, the fleet, TandemNode and the data plane, and the others the dashboard, the Chat tab, the conductor and its chat mode inside the engine. The manual is `manual/tandemapp-manual.tex`; `make` in `manual/` builds the PDF. [CHANGELOG.md](CHANGELOG.md) lists the changes.
 
 ## License
 
