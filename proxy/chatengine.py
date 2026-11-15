@@ -199,13 +199,13 @@ def handle(handler, state: dict, method: str, path: str, query: str) -> None:
         st, raw = call(svc, b, "GET", path + (f"?{query}" if query else ""))
         return _pass(handler, st, raw)
     if method == "POST" and (path in CACHE or path == "/v1/tokenize"):
+        try:
+            raw = handler._read_raw()            # read whole first: the connection stays in step
+        except http_body.BodyError as exc:
+            return handler._body_error(exc)
         ok, _user = svc.authorize(handler)
         if not ok:
             return None
-        try:
-            raw = handler._read_raw()
-        except http_body.BodyError as exc:
-            return handler._body_error(exc)
         try:
             body = json.loads(raw or b"{}")
         except (ValueError, RecursionError):
@@ -215,6 +215,8 @@ def handle(handler, state: dict, method: str, path: str, query: str) -> None:
             return handler._json(400, {"error": {"type": "invalid_request_error",
                                                  "message": "the body is a JSON object"}})
         return _post(handler, svc, b, path, body)
+    if method != "GET":
+        handler.close_connection = True         # a body this route never read ends the connection
     return handler._json(404, {"error": {"type": "not_found",
                                          "message": f"no route {method} {PREFIX}{path}"}})
 

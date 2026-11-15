@@ -224,6 +224,21 @@ def test_the_chat_engine_routes(monkeypatch):
             assert st == 200 and tok["tokens"] == 7, tok
             assert _req(px.port, "GET", P + "/v1/bogus")[0] == 404
             assert _req(px.port, "POST", P + "/v1/bogus", {})[0] == 404
+            # a body a refusal never read ends the connection: a request sent after it on the
+            # same connection is never read as the rest of that body
+            import socket
+            sk = socket.create_connection(("127.0.0.1", px.port), timeout=10)
+            sk.sendall(b"POST /chat-engine/v1/bogus HTTP/1.1\r\nHost: x\r\nContent-Length: 5"
+                       b"\r\nContent-Type: application/json\r\n\r\nabcde"
+                       b"GET /chat-engine/v1/models HTTP/1.1\r\nHost: x\r\n\r\n")
+            got = b""
+            while True:
+                chunk = sk.recv(65536)
+                if not chunk:
+                    break
+                got += chunk
+            sk.close()
+            assert got.count(b"HTTP/1.1 ") == 1 and got.startswith(b"HTTP/1.1 404"), got[:200]
             # every call that reached the engine carried its token (the open /health aside)
             assert eng.seen and all(a == f"Bearer {TOKEN}" for m, p, a in eng.seen
                                     if not p.startswith("/health")), eng.seen
@@ -630,10 +645,28 @@ def test_chat_move_over_ssh():
                     "[ \"$#\" -eq 1 ] || { echo 'one command expected' >&2; exit 64; }\n"
                     "exec /bin/sh -c \"$1\"\n")
         os.chmod(stub, 0o755)
-        chat = appchat.AppChat.load(state, env={"HOME": b})
+        chat = appchat.AppChat.load(state, env={"HOME": b, "PATH": os.environ.get("PATH", "")})
         source = chatmove.Source(f"tandem@engine-host.example:{src}", port=2222, ssh=stub)
         assert str(source) == f"tandem@engine-host.example:{src}"
-        out = chatmove.move(source, chat, start=False, log=lambda m: None)
+        # a chatd runs here; a move whose copy fails starts it again on its own folder
+        assert chat.start()[0] == 0 and chat.status()["running"]
+        broken = chatmove.Source(f"tandem@engine-host.example:{src}", port=2222,
+                                 ssh=os.path.join(bindir, "ssh-no-tar"))
+        with open(broken.ssh_bin, "w") as f:
+            f.write(open(stub).read().replace('exec /bin/sh -c "$1"',
+                                              'case "$1" in tar*) exit 2;; esac\n'
+                                              'exec /bin/sh -c "$1"'))
+        os.chmod(broken.ssh_bin, 0o755)
+        try:
+            chatmove.move(broken, chat, replace=True, start=False, log=lambda m: None)
+            raise AssertionError("a failed copy must be refused")
+        except chatmove.MoveError as exc:
+            assert "tar on the source exited 2" in exc.message, exc.message
+        assert chat.status()["running"], "the chatd here runs again"
+        assert not [p for p in os.listdir(state) if ".moving-" in p]
+        out = chatmove.move(source, chat, replace=True, start=False, log=lambda m: None)
+        assert not chat.status()["running"] and os.path.isdir(out["kept"]), out
+        assert ".before-move-" in out["kept"]
         assert out["counts"]["conversations"] == 2 and out["mcp_secrets"]["sealed_again"] == 1
         runs = open(seen).read().splitlines()
         assert len(runs) >= 4 and all("-o BatchMode=yes" in r and "-p 2222" in r and
@@ -641,6 +674,7 @@ def test_chat_move_over_ssh():
         assert any(" tar -C " in r for r in runs) and any(" cat -- " in r for r in runs)
         assert MCP_SECRET not in "\n".join(runs)
     finally:
+        _stop_here(os.path.join(b, ".tandemllm"))
         fk[0].shutdown()
         shutil.rmtree(a, ignore_errors=True)
         shutil.rmtree(b, ignore_errors=True)

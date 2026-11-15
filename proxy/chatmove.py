@@ -17,7 +17,8 @@ only) or on this host. In order:
      names and transports, whether the master key beside it (`../secrets.key`) is there. A chatd
      that runs is refused: stop it first (`tandem-node chat stop`, or its unit), so the database
      is still and the open runs end `interrupted`. `--plan` stops here and prints the plan.
-  2  STOP the chatd here when it runs (a hand stop: the controller's watcher holds it).
+  2  STOP the chatd here when it runs (a hand stop: the controller's watcher holds it); a move
+     that fails before step 6 starts it again on its own folder.
   3  COPY: `tar -C PATH -cf - .` on the source, read here into `<data>.moving-<stamp>` member by
      member: plain files, folders and links that stay inside the folder (tarfile's data filter);
      a socket, a device or a link that points outside is left out and counted. chatd.pid,
@@ -258,13 +259,20 @@ def copy(src: Source, dest: str) -> dict:
                 n += 1
                 size += m.size if m.isreg() else 0
     except (tarfile.TarError, OSError) as exc:
+        failed = type(exc).__name__
+        p.stdout.close()                       # tar ends at its next write
+    else:
+        failed = None
+    try:
+        rc = p.wait(timeout=30)
+    except subprocess.TimeoutExpired:
         p.kill()
-        raise MoveError(f"the copy failed ({type(exc).__name__})") from None
-    finally:
         rc = p.wait()
-    if rc not in (0, 1):                       # 1: GNU tar's "file changed as we read it"
+    if rc > 1:                                 # 1: GNU tar's "file changed as we read it"
         err = p.stderr.read().decode(errors="replace").strip().splitlines()[-1:] or [""]
         raise MoveError(f"tar on the source exited {rc} ({err[0][:200]})")
+    if failed:
+        raise MoveError(f"the copy failed ({failed})")
     return {"members": n, "bytes": size, "left_out": sorted(left)}
 
 
@@ -414,6 +422,9 @@ def move(src: Source, chat, *, plan: bool = False, replace: bool = False, start:
             out["mcp_secrets"] = reseal(os.path.join(stage, DB), old, new, without_mcp_secrets)
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)            # our own staging folder only
+        if out["here_running"]:
+            rc, msg = chat.run_action("start")              # the chatd here as it was
+            log(f"[chat-move] the move failed; the chatd here: {msg}")
         raise
     if os.path.lexists(dest):
         if has_chats(dest):
