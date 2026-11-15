@@ -1,6 +1,6 @@
-# the build context is app/; the image needs pyproject.toml, VERSION, MANIFEST.in, the license
+# the build context is the tree's root; the image needs pyproject.toml, VERSION, MANIFEST.in, the license
 # files, docs/proxy.md, proxy/, chatd/ and its launcher ops/chatd.sh (OPS-250), tandemapp/, packages/,
-# the build backend, the bundle tool
+# the build backend, the container's start script (OPS-282), the bundle tool
 # and the dashboard's sources (its Node stage builds dashboard/dist, OPS-246) only
 *
 !pyproject.toml
@@ -16,6 +16,7 @@
 !tandemapp/
 !packages/
 !packaging/tandemapp_build.py
+!packaging/container-start.sh
 !tools/dashboard_bundle.py
 !dashboard/
 dashboard/node_modules

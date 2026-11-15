@@ -60,6 +60,27 @@
     },
     "alias": {
       "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string"
+    },
+    "free_gb": {
+      "type": "number"
+    },
+    "need_gb": {
+      "type": "number"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "engine_api": {
+      "type": "string"
+    },
+    "speaks": {
+      "type": "string"
     }
   },
   "required": [

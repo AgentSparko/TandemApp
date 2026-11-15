@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-finding.schema.json",
+  "title": "one finding of the health page (SRV-835, proxy/fleethealth.py): a code of engine-codes.json, its severity, the sentence and the fix filled from the facts, the action its button runs (null: none; a changed host key never gets one that connects), the facts as values and the other side's own words in detail",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "enum": [
+        "ssh_unreachable",
+        "host_key_changed",
+        "not_paired",
+        "ctl_failed",
+        "engine_down",
+        "engine_loading",
+        "engine_too_old",
+        "engine_api_unsupported",
+        "no_model",
+        "http_blocked",
+        "not_allowed",
+        "not_an_engine",
+        "token_missing",
+        "token_refused",
+        "wrong_code",
+        "code_spent",
+        "no_window",
+        "host_key_mismatch",
+        "rate_limited",
+        "no_engine",
+        "chatd_down",
+        "chatd_silent",
+        "chat_unreachable",
+        "sandbox_off",
+        "sandbox_unreachable",
+        "sandbox_no_image",
+        "no_memory_cgroup",
+        "disk_low",
+        "backend_down"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ]
+    },
+    "sentence": {
+      "type": "string"
+    },
+    "fix": {
+      "type": "string"
+    },
+    "action": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "retry",
+            "start",
+            "rotate_token",
+            "upgrade",
+            "restart_chatd",
+            "re_pair",
+            "pick_model",
+            "add_engine"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "changes": {
+          "type": "boolean"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "changes",
+        "confirm"
+      ],
+      "additionalProperties": false
+    },
+    "facts": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "host": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "tries_left": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "integer"
+        },
+        "expected": {
+          "type": "string"
+        },
+        "offered": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "job": {
+          "type": "string"
+        },
+        "node": {
+          "type": "string"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "free_gb": {
+          "type": "number"
+        },
+        "need_gb": {
+          "type": "number"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "engine_api": {
+          "type": "string"
+        },
+        "speaks": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "detail": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "severity",
+    "sentence",
+    "fix",
+    "action",
+    "facts"
+  ],
+  "additionalProperties": false
+}

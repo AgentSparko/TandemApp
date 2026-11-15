@@ -182,6 +182,9 @@ JOB_RE = re.compile(r"^[0-9]{8}T[0-9]{6}-[0-9a-f]{6}$")
 ENDED = ("done", "failed", "rolled_back", "cancelled")
 TRIES_PER_MIN = 10
 MAX_PENDING = 32
+#: SRV-835: a refused code stays on the health page this long, with the fix ("run `tandem pair`")
+REFUSED_S = 600.0
+REFUSALS = ("wrong_code", "code_spent", "no_window", "host_key_mismatch", "rate_limited")
 HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9-]{1,63})*\.?$")
 PENDING_RE = re.compile(r"^[0-9a-f]{32}$")
 ERR = enginecodes.error
@@ -297,6 +300,7 @@ class Onboarding:
         self._pending: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._tries: collections.deque = collections.deque()
+        self._refused: dict[tuple, dict] = {}
 
     @property
     def cfg(self):
@@ -349,6 +353,27 @@ class Onboarding:
             if len(self._tries) >= TRIES_PER_MIN:
                 raise ERR("too_many")
             self._tries.append(now)
+
+    # ------------------------------------------------------------------ refused codes (SRV-835)
+    def note_refusal(self, address: str, port: int, exc: enginecodes.OnboardError) -> None:
+        """A code the engine refused, kept REFUSED_S for the health page (its finding: never the
+        code itself); a later pairing of that address clears it."""
+        if exc.code not in REFUSALS:
+            return
+        now = self.clock()
+        with self._lock:
+            self._refused[(address, port)] = {"address": address, "port": port, "at": now,
+                                              "error": exc}
+            for k in sorted(self._refused, key=lambda k: self._refused[k]["at"])[:-MAX_PENDING]:
+                del self._refused[k]
+
+    def refusals(self) -> list[dict]:
+        """The refused codes of the last REFUSED_S, newest first: {address, port, at, error}."""
+        now = self.clock()
+        with self._lock:
+            for k in [k for k, v in self._refused.items() if now - v["at"] > REFUSED_S]:
+                del self._refused[k]
+            return sorted((dict(v) for v in self._refused.values()), key=lambda v: -v["at"])
 
     # ------------------------------------------------------------------ the routes
     def handle(self, method: str, parts: list[str], q: dict, body, who: str) -> dict:
@@ -851,12 +876,15 @@ class Onboarding:
             if exc.code == "host_key_mismatch":
                 self._drop(b["pairing"])
             self.log(f"[engines] pairing with {address}:{port} refused: {exc.code}")
+            err = exc
             if exc.code == "no_window":
                 # `start` saw it open: the window expired, was spent or closed since (an engine
                 # answers a network caller 401 once no window is open, whichever ended it)
-                raise ERR("code_spent", exc.detail, state="closed", address=address,
-                          port=port) from None
-            raise
+                err = ERR("code_spent", exc.detail, state="closed", address=address, port=port)
+            self.note_refusal(address, port, err)
+            if err is exc:
+                raise
+            raise err from None
         finally:
             code = b["code"] = None
         primary = enginepair.parse_key(ans["host_key"])
@@ -873,6 +901,8 @@ class Onboarding:
                         key_id=item["key_id"], host_type=primary[0], host_fp=host_fp, via="code",
                         http_port=ans["http_port"], name=item.get("name"), who=who, method="code")
         self._drop(b["pairing"])
+        with self._lock:
+            self._refused.pop((address, port), None)
         return self.paired(row, "code")
 
     # ------------------------------------------------------------------ the other ways

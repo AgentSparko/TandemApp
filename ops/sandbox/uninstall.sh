@@ -8,7 +8,10 @@ echo "1. containers and the image"
 $ENGINE ps -aq --filter label=tandem.chat | xargs -r $ENGINE rm -f
 $ENGINE rmi tandem-sandbox:1 2>/dev/null || true
 [ "$(id -u)" = 0 ] || { echo "the rest needs sudo"; exit 0; }
+systemctl disable --now tandem-sbx-nft.service 2>/dev/null
+rm -f /etc/systemd/system/tandem-sbx-nft.service && systemctl daemon-reload
 nft delete table inet tandem_sbx 2>/dev/null; rm -f /etc/nftables.d/tandem-sbx.nft
+rm -f "$(getent passwd tandem-sbx | cut -d: -f6)/.config/systemd/user/podman.socket.d/tandem-owner.conf"
 read -r -p "Type delete to remove the user tandem-sbx and the chats' workspaces: " ok
 if [ "$ok" = delete ]; then
     loginctl disable-linger tandem-sbx 2>/dev/null

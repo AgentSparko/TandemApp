@@ -1,5 +1,5 @@
-"""What went wrong with an engine host, in words a page can show (SRV-827..833; the health page,
-C4, reads the same table).
+"""What went wrong with an engine host, in words a page can show (SRV-827..833), and what the
+health page finds (SRV-835, proxy/fleethealth.py): one table.
 
     raise enginecodes.error("wrong_code", tries_left=3)
     enginecodes.finding("key_not_installed", user="u", host="h")   a 200 answer's finding
@@ -124,15 +124,58 @@ CATALOG: dict[str, tuple[int, str, str]] = {
                       "Pick a model from the list."),
     "not_ssh": (409, "{node} is not an engine host TandemApp reaches over SSH.",
                 "Pair the engine host by code under Add engine."),
+    # the health page (SRV-835): an engine host's state, then the controller's own
+    "engine_loading": (503, "The engine on {host} is {state} and does not serve yet.",
+                       "Wait until it serves; a large model takes some minutes to load."),
+    "no_model": (409, "The engine on {host} serves no model yet.",
+                 "Pick a model in Add engine's model step; TandemApp downloads it there."),
+    "engine_api_unsupported": (409, "The engine on {host} speaks engine API {engine_api}; this "
+                                    "TandemApp speaks {speaks}.",
+                               "Install the TandemApp release made for that engine, or the engine "
+                               "release this TandemApp names."),
+    "no_engine": (409, "No engine is connected yet.",
+                  "Install the engine on its host, then pair it under Add engine."),
+    "chatd_down": (503, "chatd, the Chat tab's service, is not running.",
+                   "Restart it; if it stops again, its log says why ({path})."),
+    "chatd_silent": (503, "chatd runs but does not answer.",
+                     "Restart it; if it hangs again, its log says why ({path})."),
+    "chat_unreachable": (502, "The Chat tab's service at {address} does not answer.",
+                         "Start chatd where it runs, or let TandemApp run it here "
+                         "(TANDEM_CHAT=own in app.env)."),
+    "sandbox_off": (409, "Chat sandboxes are off: no container runtime socket is at {path}.",
+                    "Give chatd a socket: install with --with-sandbox, set QSE_SANDBOX_SOCKET in "
+                    "chatd.env, or mount a socket into TandemApp's container."),
+    "sandbox_unreachable": (502, "The container runtime at {path} does not answer.",
+                            "Check that its service runs and that this user may open the socket."),
+    "sandbox_no_image": (409, "The sandbox image {image} is not in the container runtime.",
+                         "Build it as the runtime's user: bash ops/sandbox/build.sh podman."),
+    "no_memory_cgroup": (409, "The kernel does not cap a container's memory here, so a sandbox "
+                              "has no memory limit.",
+                         "Turn the memory controller on: on a Raspberry Pi add "
+                         "cgroup_enable=memory cgroup_memory=1 to /boot/firmware/cmdline.txt and "
+                         "reboot."),
+    "disk_low": (507, "Only {free_gb} GB are free at {path}.",
+                 "Free some space there: TandemApp wants {need_gb} GB."),
+    "backend_down": (502, "The backend {backend} does not answer: {detail}",
+                     "Check that it runs and that its address and key are right; Backends tests "
+                     "it."),
+    "not_offered": (409, "{node} does not need that fix now.",
+                    "Check again, then use a button the health page shows."),
+    "too_many_fixes": (429, "{node} had too many fixes in the last minute.",
+                       "Wait a minute, then try again."),
 }
 
 #: the facts a sentence may name (never a secret)
 FACTS = ("address", "port", "host", "user", "dir", "tries_left", "state", "retry_after",
-         "expected", "offered", "pinned", "model", "job", "node", "alias")
+         "expected", "offered", "pinned", "model", "job", "node", "alias",
+         # the health page (SRV-835)
+         "path", "image", "free_gb", "need_gb", "backend", "engine_api", "speaks")
 _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "address": "the address",
             "host": "the engine host", "user": "the user", "dir": "the engine's folder",
             "detail": "no reason given", "expected": "one", "offered": "another",
-            "pinned": "another", "model": "asked for", "node": "This node"}
+            "pinned": "another", "model": "asked for", "node": "This node",
+            "state": "starting", "path": "its folder", "image": "tandem-sandbox:1", "free_gb": "a few", "need_gb": "5",
+            "backend": "named", "engine_api": "another version", "speaks": "another"}
 
 
 class _Facts(dict):

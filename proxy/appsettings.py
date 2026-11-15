@@ -59,7 +59,7 @@ import sys
 import threading
 import time
 
-from proxy import _version
+from proxy import _version, fleethealth
 
 CONTRACT = "1.0"
 KIND = "tandemapp-fleet-config"
@@ -386,7 +386,9 @@ class AppSettings:
                                            files=self._files(), system_rules=system),
                 "service": svc,
                 "export": {"kind": KIND, "version": 1, "secrets": "excluded",
-                           "excluded": EXCLUDED}}
+                           "excluded": EXCLUDED},
+                # OPS-282: the page opens the first run's wizard while nothing serves here
+                "setup": fleethealth.setup_state(self.fleet)}
 
     def check_lan(self, now: float) -> dict:
         self.fleet.discover().check_lan()

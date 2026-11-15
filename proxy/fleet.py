@@ -342,6 +342,8 @@ class Fleet:
         self._discovery = None
         self._wizard = None
         self._engines = None
+        self._health = None
+        self.chat = None                        # the chatd this controller owns (proxy/appchat.py)
         self._tunnels = None
         self._claimed_by = None                 # the agent told it is this fleet's own node
         self.local_node = True                  # TANDEM_LOCAL_NODE=off: this machine is no node
@@ -377,6 +379,15 @@ class Fleet:
                 if self._engines is None:
                     self._engines = engineonboard.Onboarding(self, clock=self.clock)
         return self._engines
+
+    def health(self):
+        """The health page's checks and fixes (proxy/fleethealth.py), made at the first call."""
+        if self._health is None:
+            from proxy import fleethealth
+            with self._reg:
+                if self._health is None:
+                    self._health = fleethealth.Health(self, clock=self.clock)
+        return self._health
 
     def wizard(self):
         """The Add Spark wizard's sessions (proxy/addspark.py), made at the first call."""
@@ -1194,6 +1205,14 @@ class Fleet:
             from proxy import enginecodes
             try:
                 return self.engines().handle(method, parts, q, body, who)
+            except enginecodes.OnboardError as exc:
+                e = exc.body()["error"]
+                raise FleetError(exc.status, e.pop("message"), e.pop("type"), extra=e)
+        if parts[:1] == ["health"]:
+            # SRV-835: what is wrong with each engine host and this controller, and the fixes
+            from proxy import enginecodes
+            try:
+                return self.health().handle(method, parts, q, body, who)
             except enginecodes.OnboardError as exc:
                 e = exc.body()["error"]
                 raise FleetError(exc.status, e.pop("message"), e.pop("type"), extra=e)

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/app.schema.json",
-  "title": "GET /v1/fleet/app (200; POST /v1/fleet/app/permissions/local-network answers it too): App settings' state: each permission the controller can read (A14), how it runs as a service, what an export holds, the admin password's state",
+  "title": "GET /v1/fleet/app (200; POST /v1/fleet/app/permissions/local-network answers it too): App settings' state: each permission the controller can read (A14), how it runs as a service, what an export holds, the admin password's state, and setup: whether the page opens the first run's wizard (OPS-282: no engine host, other node or backend yet)",
   "type": "object",
   "properties": {
     "contract_version": {
@@ -252,6 +252,41 @@
         "this_machine"
       ],
       "additionalProperties": false
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "needs_setup": {
+          "type": "boolean"
+        },
+        "engines": {
+          "type": "integer"
+        },
+        "nodes": {
+          "type": "integer"
+        },
+        "backends": {
+          "type": "integer"
+        },
+        "first_page": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "add_engine",
+            null
+          ]
+        }
+      },
+      "required": [
+        "needs_setup",
+        "engines",
+        "nodes",
+        "backends",
+        "first_page"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -261,7 +296,8 @@
     "permissions",
     "service",
     "export",
-    "password"
+    "password",
+    "setup"
   ],
   "additionalProperties": false
 }

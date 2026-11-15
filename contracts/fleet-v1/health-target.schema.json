@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-target.schema.json",
+  "title": "GET /v1/fleet/health/{id}: one engine host (kind engine: its SSH login, HTTP port and token hint, what status said) or this controller (id controller: who runs chatd, the sandbox socket), its findings and the checks run (ok null: not run, an earlier check made it moot); cached with its age_s while it is younger than 15 s, limited when fresh=1 came within 3 s of the last check",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "engine",
+        "controller"
+      ]
+    },
+    "alias": {
+      "type": "string"
+    },
+    "address": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "warning",
+        "error"
+      ]
+    },
+    "checked_at": {
+      "type": "number"
+    },
+    "age_s": {
+      "type": "number"
+    },
+    "cached": {
+      "type": "boolean"
+    },
+    "limited": {
+      "type": "boolean"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "health-finding.schema.json"
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "ssh",
+              "host_key",
+              "engine",
+              "version",
+              "model",
+              "http",
+              "token",
+              "chatd",
+              "sandbox",
+              "memory_cgroup",
+              "disk",
+              "backends",
+              "engines"
+            ]
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "check",
+          "ok",
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": "integer"
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "host",
+        "port",
+        "user"
+      ],
+      "additionalProperties": false
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "token": {
+          "type": "object",
+          "properties": {
+            "set": {
+              "type": "boolean"
+            },
+            "last4": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sha256_6": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rotated_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "set",
+            "last4",
+            "sha256_6",
+            "rotated_at"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "port",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "host_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine_api": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "engine_state": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "healthy",
+        "loading",
+        "draining",
+        "failed",
+        "down",
+        null
+      ]
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "chat": {
+      "type": "string",
+      "enum": [
+        "own",
+        "external"
+      ]
+    },
+    "sandbox_socket": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "alias",
+    "address",
+    "state",
+    "checked_at",
+    "age_s",
+    "cached",
+    "limited",
+    "findings",
+    "checks"
+  ],
+  "additionalProperties": false
+}

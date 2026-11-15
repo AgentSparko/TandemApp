@@ -653,6 +653,12 @@ class Handler(BaseHTTPRequestHandler):
             # SSH and installing log in to a machine and pair it: pairing's rights
             route = "fleet_trust" if method == "POST" and (
                 parts[-1:] in (["connect"], ["check"], ["install"])) else "conductor_write"
+        elif parts[:1] == ["health"]:
+            # SRV-835 (proxy/fleethealth.py): reading and checking again is a read; a fix needs
+            # the rights of what it does (Start: the Setup Guide's, the token and an upgrade:
+            # pairing's, chatd: the conductor's writes)
+            from proxy import fleethealth
+            route = fleethealth.route_for(method, parts, body)
         elif parts[:1] == ["engines"]:
             # SRV-827..833 (proxy/engineonboard.py): pairing and connecting an engine host change
             # who controls it, pairing's rights; the LAN search and an address probe, discovery's;
@@ -1211,6 +1217,8 @@ def chat_of(args, cfg, env):
         chat.engine_here = lambda: chatengine.engine_here(svc)
         chat.users = cfg
     STATE["chat"] = chat
+    if STATE.get("fleet") is not None:
+        STATE["fleet"].chat = chat              # SRV-835: the health page checks it
     return chat
 
 

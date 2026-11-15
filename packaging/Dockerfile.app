@@ -1,15 +1,28 @@
-# TandemApp, the dashboard and the OpenAI-compatible proxy, as an image: no engine, no GPU, no torch.
-# The build context is app/ (packaging/Dockerfile.app.dockerignore says what goes in).
+# TandemApp, the controller with its page, gateway and chat, as an image: no engine, no GPU, no torch
+# (OPS-282: TandemApp in one container). The build context is this tree's root
+# (packaging/Dockerfile.app.dockerignore says what goes in):
 #
-#   docker build -f app/packaging/Dockerfile.app -t tandemllm-app app     (from the repository's root)
-#   docker run -d --name tandem-app -p 127.0.0.1:8080:8080 -v tandem-app:/data \
-#       --env-file app.env tandemllm-app
+#   docker build -f packaging/Dockerfile.app -t tandemllm-app .
 #
-# Everything the proxy keeps (the config database, the usage ledger, the key file when no
-# TANDEM_SECRETS_KEY is given) lives in the /data volume. The server binds 0.0.0.0 inside the
-# container; what is reachable from outside is what `-p` publishes. Publish it to 127.0.0.1 or a
-# trusted LAN address, never to the internet: with no TANDEM_ADMIN_TOKEN set every route is open
-# (docs/proxy.md).
+# Run it with the LAN in view, so Add engine finds the engines that advertise themselves (mDNS), on
+# loopback only:
+#   docker run -d --name tandem-app --network host -v tandem-app:/data \
+#       -e TANDEM_HOST=127.0.0.1 tandemllm-app
+# or behind a published port (then type the engine's address in Add engine):
+#   docker run -d --name tandem-app -p 127.0.0.1:8080:8080 -v tandem-app:/data tandemllm-app
+#
+# Everything the controller keeps lives in the /data volume: the config database, the usage
+# ledger, the fleet, the master key (secrets.key, made at the first start unless
+# TANDEM_SECRETS_KEY is given), the engine hosts' SSH keys and pins, chatd's env file and chats. The
+# OpenSSH client is inside: engine hosts are controlled over SSH with keys TandemApp keeps there.
+# The server binds 0.0.0.0 inside the container; what is reachable is what `-p` publishes, or with
+# --network host every address of the machine: then set TANDEM_HOST=127.0.0.1 or an admin password
+# (TANDEM_ADMIN_TOKEN). With no admin password every route is open (docs/proxy.md).
+#
+# Chat runs in the container (TANDEM_CHAT=own). Its sandboxes are off until a container runtime's
+# socket is mounted at /run/tandem/sandbox.sock (packaging/container-start.sh writes chatd.env), and
+# the health page says so: for example `-v /var/run/docker.sock:/run/tandem/sandbox.sock
+# --group-add <the socket's group id>`, or a rootless Podman socket with `--user` of its owner.
 #
 # The System view's host collector sees the container, not the machine. For the machine and the
 # processes behind backends on it, run the container with `--pid=host` (and `--gpus all` for
@@ -45,19 +58,28 @@ RUN python tools/dashboard_bundle.py record --source docker \
     && python -m build --wheel -o /wheel .
 
 FROM python:3.12-slim
-RUN useradd --create-home --uid 10001 tandem && mkdir -p /data && chown tandem /data
+# the OpenSSH client: engine hosts are controlled over SSH (proxy/enginectl.py, ssh-keyscan too)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-client \
+    && apt-get clean
+RUN useradd --create-home --uid 10001 tandem && mkdir -p /data /run/tandem && chown tandem /data
 COPY --from=build /wheel/*.whl /tmp/
 RUN pip install --no-cache-dir "$(ls /tmp/*.whl)[host]" && rm /tmp/*.whl
+COPY packaging/container-start.sh /usr/local/lib/tandemapp/container-start.sh
 USER tandem
 ENV TANDEM_CONFIG_DB=/data/config.sqlite3 \
     TANDEM_USAGE_LEDGER=/data/ledger.sqlite3 \
+    TANDEM_APP_STATE=/data \
     TANDEM_HOST=0.0.0.0 \
     TANDEM_PORT=8080 \
+    TANDEM_CHAT=own \
+    TANDEM_CONDUCTOR=off \
+    TANDEM_NODE_AGENT=off \
     PYTHONUNBUFFERED=1
 VOLUME ["/data"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/health', timeout=4)"
+  CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('TANDEM_PORT', '8080'), timeout=4)"
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["tandem-app"]
+ENTRYPOINT ["/bin/sh", "/usr/local/lib/tandemapp/container-start.sh"]
 CMD ["serve", "--no-keychain"]
