@@ -36,6 +36,14 @@ From a DeepSeek key to a row in the Usage view takes five commands:
 
 Then open `http://127.0.0.1:8080/dashboard/#/usage`.
 
+### In one command
+
+A release archive carries the built page, so a host installs TandemApp with its Python 3.11 or newer alone (OPS-282; Linux on arm64 or x86_64, or macOS): no Node, no git, no root.
+
+    tar -xzf tandemapp-<version>.tar.gz && bash tandemapp-<version>/packaging/install.sh
+
+`packaging/install.sh` (`packaging/tandemapp_install.py`) copies the release to `~/.local/share/tandemapp/releases/<version>-<hash>`, makes one venv for it with this host's Python and the `app` extra (`cryptography`, `psutil`), writes the state dir `~/.tandemllm` (mode 0700) with a fresh master key (`secrets.key`) and `app.env` (127.0.0.1:8080, chatd on this host, no conductor, no TandemNode agent), points `~/.local/share/tandemapp/current` at the release and starts it: a systemd user unit `tandem-app` on Linux (packaging/linux's unit and launcher), a launchd job `org.tandemllm.app` on macOS, a background process where no service manager answers (a container). It waits for `/health` to name this release and its page, then prints the URL; the first page is the setup wizard (`GET /v1/fleet/app`'s `setup.needs_setup`). Run it again to update: a new release is switched to and restarted, an unchanged one is left running, the old ones stay, and a release that does not come up is switched back. `--listen ADDR` and `--port N` move it (an address beyond loopback gets an admin token in `app.env` and the page's sign-in), `--with-sandbox` installs rootless Podman for chat's sandboxes under its own user (`ops/sandbox/install.sh`, sudo once; it checks the memory cgroup and prints the fix when it is missing, without editing boot files), `--dry-run` says what it would do. `tools/app_release.py pack --out tandemapp-<version>.tar.gz` makes the archive from a tree with a built page.
+
 ### In docker
 
 `packaging/Dockerfile.app` builds an image of about 70 MB on `python:3.12-slim`, with the page inside and no compiler or torch in it. A Node stage builds the page from `dashboard/` with the lockfile, so the checkout needs no Node:
