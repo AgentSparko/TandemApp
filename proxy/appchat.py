@@ -22,12 +22,26 @@ proxy/nodechat.py). Defaults for what the file leaves out:
 
     QSE_CHAT_URL     http://127.0.0.1:8016       where chatd listens (its port)
     QSE_CHAT_DATA    <state dir>/chat            its chats, forward.key and chatd.pid
-    QSE_CHAT_ENGINE  this controller's gateway   the model API chatd calls: chat traffic passes
-                                                 this controller's routes, keys and ledger
+    QSE_CHAT_ENGINE  <gateway>/chat-engine       the engine chatd calls: this controller's
+                                                 gateway as a whole engine API (SRV-843,
+                                                 proxy/chatengine.py), so chat traffic passes
+                                                 its routes, keys and ledger
+    QSE_CHAT_HOST    app or engine               SRV-843: whether the chat engine runs on this
+                                                 host (`engine_here`): engine when its URL is
+                                                 loopback, else app. chatd sizes its sandboxes by
+                                                 it (chatd/sandbox.py: 2 GiB and 2 running on
+                                                 app, 4 and 4 beside an engine) and asks an
+                                                 engine to release memory only beside one
+    QSE_CHAT_ENGINE_KEY  this controller's key   SRV-843: once the controller has users, a key
+                         for chatd               of its own user `chatd`, made here and kept in
+                                                 <data>/engine.key (0600), so chat traffic
+                                                 passes the completions' rule and its ledger
+                                                 rows name chatd; made again when that user is
+                                                 gone or disabled
     CHATD_PY         this controller's Python    the interpreter
 
-QSE_CHAT_ENGINE_KEY (a key of this controller's users, when it has any), QSE_CHAT_MAX_RUNS and
-the sandbox's QSE_SANDBOX_* go in the same file (packaging/chatd.env.example).
+QSE_CHAT_MAX_RUNS and the sandbox's QSE_SANDBOX_* go in the same file
+(packaging/linux/chatd.env.example); a value there wins over every default above.
 
 THE PROCESS is `<python> -u -m chatd --host H --port P --data D` from TandemApp's tree
 (PYTHONPATH), in a session of its own, its output appended to `<state dir>/logs/chatd.log`; its pid
@@ -57,6 +71,13 @@ import urllib.parse
 import urllib.request
 
 from proxy.nodechat import ACTIONS, EVERY_S, MAX_STARTS, ChatError
+
+#: SRV-843: the path under the controller's own URL where chatd finds its engine
+#: (proxy/chatengine.py PREFIX, kept here so this module imports nothing of the proxy's routes)
+ENGINE_PREFIX = "/chat-engine"
+HOST_KINDS = ("app", "engine")
+ENGINE_USER = "chatd"
+ENGINE_KEY_FILE = "engine.key"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODES = ("external", "own")
@@ -143,6 +164,10 @@ class AppChat:
         self.watch_path = os.path.join(self.state_dir, "chat.watch")
         self.pid_path = os.path.join(self.data, "chatd.pid")
         self.gateway: str | None = None              # the controller's own URL, set once bound
+        # SRV-843, set by the controller: whether its chat engine runs on this host, and its
+        # users (proxy/config.py ConfigDB) for chatd's own key
+        self.engine_here = None
+        self.users = None
         self.proc: subprocess.Popen | None = None
         self.job: dict | None = None
         self.lock = threading.Lock()
@@ -169,7 +194,51 @@ class AppChat:
             return None
 
     def engine_url(self) -> str:
-        return self.cfg.get("QSE_CHAT_ENGINE") or self.gateway or "http://127.0.0.1:8080"
+        return self.cfg.get("QSE_CHAT_ENGINE") or \
+            (self.gateway or "http://127.0.0.1:8080") + ENGINE_PREFIX
+
+    def host_kind(self) -> str:
+        """`engine` when chatd shares its host with the chat engine, `app` otherwise (the env
+        file's QSE_CHAT_HOST wins)."""
+        got = (self.cfg.get("QSE_CHAT_HOST") or "").strip().lower()
+        if got in HOST_KINDS:
+            return got
+        try:
+            here = self.engine_here() if self.engine_here is not None else None
+        except Exception:                                            # noqa: BLE001
+            here = None
+        return "engine" if here else "app"
+
+    def engine_key(self) -> str | None:
+        """chatd's key for this controller's completions once it has users (QSE_CHAT_ENGINE_KEY
+        above); None while it has none, or when the env file names one."""
+        if (self.cfg.get("QSE_CHAT_ENGINE_KEY") or "").strip() or self.users is None:
+            return None
+        try:
+            if not self.users.users_active():
+                return None
+        except Exception:                                            # noqa: BLE001
+            return None
+        path = os.path.join(self.data, ENGINE_KEY_FILE)
+        try:
+            with open(path) as f:
+                key = f.read().strip()
+        except OSError:
+            key = ""
+        if key and self.users.user_for_key(key) == ENGINE_USER:
+            return key
+        for u in self.users.users():
+            if u["label"] == ENGINE_USER and u["source"] == "database":
+                self.users.delete_user(u["id"], who="controller")
+        _row, key = self.users.create_user({"label": ENGINE_USER}, who="controller")
+        os.makedirs(self.data, mode=0o700, exist_ok=True)
+        tmp = path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key + "\n")
+        os.replace(tmp, path)
+        self.log(f"[chat] chatd has a key of its own for this controller (user {ENGINE_USER})")
+        return key
 
     # ------------------------------------------------------------------ the process
     def child_env(self) -> dict:
@@ -178,7 +247,10 @@ class AppChat:
         env.pop("CHATD_PY", None)
         env.update(QSE_CHAT_URL=self.url, QSE_CHAT_DATA=self.data,
                    QSE_CHAT_ENGINE=self.engine_url(), QSE_CHAT_LOG=self.log_path,
-                   PYTHONPATH=ROOT, PYTHONUNBUFFERED="1")
+                   QSE_CHAT_HOST=self.host_kind(), PYTHONPATH=ROOT, PYTHONUNBUFFERED="1")
+        key = self.engine_key()
+        if key:
+            env["QSE_CHAT_ENGINE_KEY"] = key
         return env
 
     def _scoped(self) -> bool:
@@ -350,6 +422,7 @@ class AppChat:
         return {"own": True, "owner": "controller", "state": "running" if st["running"] else
                 "stopped", "pid": st["pid"], "answers": st["answers"], "version": st["version"],
                 "url": self.url, "data": self.data, "engine": self.engine_url(),
+                "host": self.host_kind(),
                 "env_file": self.env_path, "env_file_present": bool(
                     self.env_path and os.path.isfile(self.env_path)),
                 "log": self.log_path,

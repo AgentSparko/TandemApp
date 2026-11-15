@@ -538,7 +538,9 @@ def test_controller_owned_chatd():
         v = _until(lambda: (lambda d: d if d.get("state") == "running" and d.get("answers")
                             else None)(c.get("/v1/fleet/chat", ADMIN_A)[1]), 40)
         assert v, (c.get("/v1/fleet/chat", ADMIN_A), c.tail())
-        assert v["owner"] == "controller" and v["engine"] == c.url, v
+        # SRV-843: chatd's engine is the gateway as a whole engine API; no engine here
+        assert v["owner"] == "controller" and v["engine"] == c.url + "/chat-engine", v
+        assert v["host"] == "app", v
         assert v["url"] == f"http://127.0.0.1:{chat_port}", v
         assert os.path.realpath(v["data"]) == os.path.realpath(data), v
         pid = v["pid"]
@@ -550,7 +552,8 @@ def test_controller_owned_chatd():
         assert os.path.isfile(os.path.join(data, "forward.key"))
         env = _environ(pid)
         if env is not None:
-            assert env["QSE_CHAT_ENGINE"] == c.url and env["QSE_CHAT_MAX_RUNS"] == "2"
+            assert env["QSE_CHAT_ENGINE"] == c.url + "/chat-engine" and env["QSE_CHAT_HOST"] == "app"
+            assert env["QSE_CHAT_MAX_RUNS"] == "2"
             assert env["QSE_CHAT_RETRY_S"] == "30" and env["HOME"] == c.home
             for k in ("TANDEM_ADMIN_TOKEN", "TANDEM_BACKEND_ENG_URL", "QSE_CHAT_FORWARD_KEY",
                       "TANDEM_CHAT", "QSE_TEST"):
