@@ -9,6 +9,7 @@
 | [dashboard.md](dashboard.md) | the Live activity view, the lanes, a request held for memory, the log export, the other views, the contract, access |
 | [chat.md](chat.md) | the Chat tab (in beta) and chatd, the service behind it: who starts it, the sandbox, the permission modes, Agents mode, the known limitations |
 | [conductor.md](conductor.md) | the conductor in one page: modes and headers, profiles, the router, effort, packages, the note, side requests, sessions, the monitor and loop guards, the journal, measured effect |
+| [settings.md](settings.md) | one settings interface over the stores: scopes, change sets, versions and restore, engine restarts, audit |
 | [chat-mode.md](chat-mode.md) | the conductor inside a TandemLLM engine: the `TandemLLM` model, status lines and the narrator, the package library, Laya for the model's scripts, the session monitor's rules |
 | [packages.md](packages.md) | the packages the conductor attaches by class: their shape, the first packages, how each is measured |
 | [memory.md](memory.md) | memory notes: what the model keeps about the user and the work |
