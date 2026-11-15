@@ -146,6 +146,13 @@ def memory_full(err) -> bool:
     return code == "memory_full"
 
 
+def gateway_cut(err) -> bool:
+    """SRV-843: the gateway's word for a stream its engine closed early (`upstream_closed`,
+    proxy/relay.py): with chatd behind the controller this is what a dropped engine stream looks
+    like, so it is continued as one chatd saw drop itself."""
+    return isinstance(err, dict) and err.get("code") == "upstream_closed"
+
+
 def memory_words(exc: EngineError) -> str | None:
     """The engine's memory refusal in plain words; None for any other refusal."""
     m = _MEMORY.search(exc.args[0]) if exc.status == 503 else None
@@ -689,6 +696,8 @@ class Run:
                 continue
             if memory_full(obj.get("error") if isinstance(obj.get("error"), dict) else {}):
                 return "memory"                      # SRV-709: paused, continued by `_call`
+            if gateway_cut(obj.get("error")) and not obj.get("choices"):
+                return "broken"                      # SRV-843: the engine's stream dropped
             if memory_refused(obj.get("error") if isinstance(obj.get("error"), dict) else {}):
                 err = obj["error"]
                 self.error = str(err.get("message") or "the engine had no memory for this call")[:300]
