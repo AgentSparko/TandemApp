@@ -1,8 +1,8 @@
 """The JSON Schema subset `proxy/config.schema.json` uses, in the standard library.
 
 `type` (one or a list; `integer` excludes booleans), `properties`, `required`,
-`additionalProperties: false`, `items`, `enum`, `minimum`, `maximum`, `minLength`, `maxLength`,
-`pattern`, `maxItems` and `$ref` to `#/$defs/...`. `validate` returns the violations as
+`additionalProperties: false`, `items`, `const`, `enum`, `minimum`, `maximum`, `minLength`,
+`maxLength`, `pattern`, `maxItems` and `$ref` to `#/$defs/...`. `validate` returns the violations as
 `(path, message)`; the path is the field's dotted name (`timeouts.connect`), which the env overlay
 turns into the variable's name and the API into a 422 that names the field.
 """
@@ -49,6 +49,8 @@ def validate(value, schema: dict | str, path: str = "") -> list[tuple[str, str]]
         types = [types] if isinstance(types, str) else types
         if not any(_TYPES[t](value) for t in types):
             return [(where, f"must be {' or '.join(types)}")]
+    if "const" in schema and value != schema["const"]:
+        return [(where, f"must be {schema['const']!r}")]
     if "enum" in schema and value not in schema["enum"]:
         return [(where, f"must be one of {', '.join(map(str, schema['enum']))}")]
     if isinstance(value, (int, float)) and not isinstance(value, bool):
