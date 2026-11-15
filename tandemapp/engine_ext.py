@@ -7,8 +7,7 @@ chat mode: `QSE_EXT=tandemapp.engine_ext`.
                     the ledger's file), the Conductor and its router's wiring, the migrations, the
                     session monitor (also alone, with `--conductor shadow|on` and no directory)
     routes          /v1/conductor/* (its routes), /v1/library* (the package library), /v1/memory*
-                    (the model's own notes), /dashboard* (the page, until it leaves the engine),
-                    since 3.1 (ENG-413 WP5b) /v1/laya* (Laya over the engine's decision models,
+                    (the model's own notes), since 3.1 (ENG-413 WP5b) /v1/laya* (Laya over the engine's decision models,
                     with its preflight); each answers (status, headers, body)
     models          `TandemLLM`, read from the conductor's settings at every /v1/models answer
     health()        its part of /health `loaded`
@@ -352,7 +351,6 @@ class Ext:
             {"method": "GET", "prefix": "/v1/library", "handler": self._library},
             {"method": "GET", "prefix": "/v1/memory", "handler": self._memory},
             {"method": "POST", "prefix": "/v1/memory", "handler": self._memory},
-            {"method": "GET", "prefix": "/dashboard", "handler": self._page},
             # engine-ext-v1 3.1 (ENG-413 WP5b): Laya over the engine's decision models, and the
             # preflight of a page's fetch to it
             {"method": "GET", "prefix": "/v1/laya", "handler": self._laya},
@@ -773,12 +771,6 @@ class Ext:
             laya_api.handle_drive_end(r, self.state, request.body)
         else:
             r._json(404, {"error": {"message": f"no route {path}", "type": "not_found"}})
-        return r.answer()
-
-    def _page(self, request):
-        from tandemapp import static
-        r = _Reply(request)
-        static.serve(r, r.path, self.state.get("dashboard_dir"))
         return r.answer()
 
     # ------------------------------------------------------------------ start

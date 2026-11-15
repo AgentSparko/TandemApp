@@ -20,7 +20,7 @@ engine's interface engine-ext-v1 at the version PIN names, through the reference
                                                                   test_chat_mode
   5  the routes answer (status, headers, body): /v1/conductor/settings 200 JSON with no-store,
      the engine's refusal from allowed() passes as it is (401 with its header), /v1/memory
-     without a session address 403 with its journal row, the page and the library answer; a
+     without a session address 403 with its journal row, the library answers, no /dashboard route; a
      route that writes nothing is an error the host counts           test_the_routes_answer
   6  3.0 (ENG-413 WP5): the conductor's engine screens answer over host.engine: the handler's body
      plus contract_version, a Refusal as the conductor's own error (no contract_version), the base
@@ -255,8 +255,8 @@ def test_the_routes_answer():
     assert (st, hd["WWW-Authenticate"], json.loads(body)) == (401, refusal[1]["WWW-Authenticate"], refusal[2])
     st, hd, body = ext._memory(Route("GET", "/v1/memory"))
     assert st == 403 and json.loads(body)["error"]["type"] == "forbidden", (st, body)
-    st, hd, body = ext._page(Route("GET", "/dashboard/"))
-    assert st in (200, 404) and body, (st, body[:120])
+    # ENG-413 WP14: the page left the engine; the extension registers no /dashboard route
+    assert not hasattr(ext, "_page") and not any(r["prefix"].startswith("/dashboard") for r in ext.routes)
     st, hd, body = ext._library(Route("GET", "/v1/library"))
     assert st == 200 and isinstance(json.loads(body), dict), (st, body[:200])
     r = engine_ext._Reply(Route("GET", "/x"))
