@@ -48,7 +48,8 @@
       "type": "string",
       "enum": [
         "lan",
-        "tunnel"
+        "tunnel",
+        "ssh"
       ]
     },
     "address": {

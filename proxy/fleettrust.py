@@ -36,7 +36,9 @@ is `tunnel` and its trust carries the tunnel's route, which needs a key or the u
 
 RELEASE. `DELETE /v1/fleet/nodes/{id}` asks the node to forget this controller (its pin, its
 listen addresses), then forgets the node here. A node that does not answer is forgotten only with
-`?force=1`; `tandem node reset` on the node does its half.
+`?force=1`; `tandem node reset` on the node does its half. An engine host over SSH (SRV-839,
+transport `ssh`) is asked to remove this controller's key line (`tandem remote unpair`); then its
+key pair and its pinned host key are removed here.
 
 THE AUDIT. Each pairing, take-over, release and forced forget is a row of the config database's
 audit table (object `node`, the details in `detail`): never a password, a key or a code.
@@ -55,7 +57,7 @@ import threading
 import time
 import urllib.parse
 
-from proxy import nodeclient, nodesource, nodetrust, pairing, sshonce
+from proxy import enginectl, hostkeys, nodeclient, nodesource, nodetrust, pairing, sshonce
 
 PAIR_PORT_OFFSET = 1
 TRIES_PER_MIN = 10
@@ -274,6 +276,11 @@ class Trust:
         self.fleet.store.add_event("node", nid, f"{row['alias']} {what} by {via}",
                                    f"{text}; certificate sha256 {fp[:16]} pinned")
         return row
+
+    def _unpair_ssh(self, row: dict) -> str:
+        """SRV-839: an engine host over SSH removes this controller's key line (`tandem remote
+        unpair`): unpinned, not_paired (no key or record here), or unreachable."""
+        return _unpair_ssh_row(self, row)
 
     def _unpin_remote(self, endpoint: str, trust: dict) -> str:
         """Ask the node to forget this controller: unpinned, refused (it no longer pins us),
@@ -520,6 +527,15 @@ class Trust:
                 raise TrustError("unreachable", f"{row['alias']} does not answer; ?force=1 "
                                                 f"forgets it here only (then `tandem node "
                                                 f"reset` on the node)", 502)
+        elif t.get("kind") == "ssh":
+            side = self._unpair_ssh(row)
+            if side == "unreachable" and not force:
+                raise TrustError("unreachable", f"{row['alias']} does not answer over SSH; "
+                                                f"?force=1 forgets it here only (then remove "
+                                                f"this controller's line from its "
+                                                f"authorized_keys)", 502)
+            hostkeys.HostKeys(self.cfg).delete(nid, who=who)
+            enginectl.forget_host(self.root, nid)
         else:
             side = "not_paired"
         tun = t.get("tunnel")
@@ -541,6 +557,25 @@ class Trust:
                                    else f"{row['alias']} forgotten here",
                                    f"node side: {side}")
         return {"contract_version": "1.0", "id": nid, "node": side}
+
+
+def _unpair_ssh_row(trust: "Trust", row: dict) -> str:
+    try:
+        ctl = enginectl.for_node(row, state_dir=trust.root, keys=hostkeys.HostKeys(trust.cfg),
+                                 log=trust.fleet.log)
+    except enginectl.CtlError:
+        return "not_paired"
+    try:
+        ctl.unpair()
+        return "unpinned"
+    except enginectl.HostKeyChanged:
+        return "unreachable"
+    except (enginectl.CtlTransport, enginectl.CtlTimeout):
+        return "unreachable"
+    except enginectl.CtlError:
+        return "not_paired"
+    finally:
+        ctl.close()
 
 
 def nodesource_port() -> int:

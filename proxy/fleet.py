@@ -127,6 +127,13 @@ release above; each destructive one runs only with the confirm of the plan it wa
 A virtual node on this machine (a second agent, OPS-197) serves the engine backends whose port
 its agent lists, never this machine's own.
 
+ENGINE HOSTS OVER SSH (SRV-839, proxy/enginectl.py). A node with `transport` ssh is an engine host
+with no TandemNode: its `trust` (kind ssh) names the address, port, login, this controller's key id
+there and the pinned SSH host key's fingerprint, never a secret (the key pair is proxy/hostkeys.py's,
+sealed in the config database; the pin is its own known_hosts file under `controller/ssh/hosts/`);
+its `endpoint` is `ssh://user@host:port`. It has no agent source, so no figures here; its engine is
+controlled through enginectl.for_node.
+
 TUNNELS (proxy/sshtunnel.py). A node with `transport` tunnel (a rented or remote one, paired over
 SSH with `tunnel: true`) carries its SSH route in its trust; its source is its agent at the local
 end of the tunnel, opened when the node is read and kept open, so its endpoint's port is the
@@ -709,6 +716,9 @@ class Fleet:
         if tun and row["transport"] == "tunnel":
             row = dict(row, endpoint=f"https://127.0.0.1:{self.tunnels.ensure(tun)}")
         ep = row["endpoint"] or ""
+        if row["transport"] == "ssh":
+            return nodesource.Unreachable("an engine host over SSH: no TandemNode agent there; "
+                                          "its engine is controlled through `tandem remote`")
         if not ep.startswith(("http://", "https://")):
             return nodesource.Unreachable("not paired: run `tandem node pair` on it and enter "
                                           "the code in Add Spark" if not row["trust"] else
@@ -1296,10 +1306,11 @@ class Fleet:
 
 def pairing_view(row: dict) -> dict:
     """How the controller trusts a node: this machine (local), paired by code or SSH once (the
-    pinned certificate's fingerprint), or not paired."""
+    pinned certificate's fingerprint), an engine host over SSH (SRV-839: its pinned host key, no
+    certificate), or not paired."""
     t = row["trust"] or {}
     local = row["endpoint"] == "local" or t.get("kind") == "loopback-secret"
-    paired = not local and t.get("kind") == "mtls"
+    paired = not local and t.get("kind") in ("mtls", "ssh")
     return {"state": "local" if local else "paired" if paired else "unpaired",
             "via": t.get("via") if paired else None,
             "fingerprint": t.get("fingerprint") if paired else None,

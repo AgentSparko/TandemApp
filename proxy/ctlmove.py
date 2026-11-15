@@ -99,7 +99,7 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True) -> dict:
             cfg._conn.backup(dst)
             dst.close()
         c = sqlite3.connect(path)
-        for t in ("backend_secrets", "add_sessions", "fleet_jobs", "audit"):
+        for t in ("backend_secrets", "engine_host_keys", "add_sessions", "fleet_jobs", "audit"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:
@@ -421,6 +421,10 @@ class Mover:
                 p["nodes"].append({"id": r["id"], "alias": r["alias"], "how": "stays",
                                    "why": "reached through an SSH tunnel with a key on this "
                                           "machine: release it here, add it from the new one"})
+            elif r["transport"] == "ssh":
+                p["nodes"].append({"id": r["id"], "alias": r["alias"], "how": "stays",
+                                   "why": "an engine host controlled over SSH with this "
+                                          "controller's key: pair it from the new one"})
             elif (r["trust"] or {}).get("kind") != "mtls":
                 p["nodes"].append({"id": r["id"], "alias": r["alias"], "how": "stays",
                                    "why": "not paired"})
