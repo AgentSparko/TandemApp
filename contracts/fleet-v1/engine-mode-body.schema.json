@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-mode-body.schema.json",
+  "title": "the body of POST /v1/fleet/engines/{id}/mode: engine (bare engine, the default) or chat, the restart's when (idle, the default, or now) and chat mode's extension module",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "engine",
+        "chat"
+      ]
+    },
+    "when": {
+      "type": "string",
+      "enum": [
+        "now",
+        "idle"
+      ]
+    },
+    "ext": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

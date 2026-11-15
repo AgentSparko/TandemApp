@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-mode.schema.json",
+  "title": "POST /v1/fleet/engines/{id}/mode: the mode asked, whether anything changed (nothing when it is configured already), the mode before (`mode get`) and the restart's job (engine-ctl-v1 job) when it changed",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "previous": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ext": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inferred": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "ext",
+        "source",
+        "inferred"
+      ],
+      "additionalProperties": false
+    },
+    "job": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "contract_version",
+    "id",
+    "mode",
+    "changed",
+    "previous",
+    "job"
+  ],
+  "additionalProperties": false
+}

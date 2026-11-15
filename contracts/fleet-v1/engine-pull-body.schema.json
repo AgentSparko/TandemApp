@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-pull-body.schema.json",
+  "title": "the body of POST /v1/fleet/engines/{id}/models/pull: the model, its weights profile (else what the box runs or the model's recommended one) and dry_run (the plan only)",
+  "type": "object",
+  "properties": {
+    "model": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "dry_run": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "model"
+  ],
+  "additionalProperties": false
+}

@@ -20,6 +20,9 @@ DIR/fake-state.json steers it (`state(dir)`, `set_state(dir, **kw)`):
                   broken answer, a slow one)
     install_fails true: ext install reads and checks the wheel, then answers install_failed (exit 1)
     token         the HTTP token `token rotate` answers (contract 1.1)
+    mode          the mode `mode get` and `status` say (engine); `mode set` writes it
+    inferred      true: `mode get` says the mode was read from an empty QSE_MODE
+    model         the model `status` says a healthy engine serves ("fake-model"; null: none yet)
 
 The 1.1 verbs that read stdin (ext install, upgrade plan --sha256) check the bytes' sha256 against
 --sha256 as the engine does (hash_mismatch, exit 3) and record {sha256, bytes} in DIR/stdin.jsonl,
@@ -173,10 +176,11 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
                            "port": 8000, "health_code": 200 if healthy else None,
                            "engine_api": "1.9" if healthy else None,
                            "version": "0.15.4" if healthy else None,
-                           "model": "fake-model" if healthy else None,
+                           "model": st.get("model", "fake-model") if healthy else None,
                            "running_mode": "engine" if healthy else None,
                            "stopped_on_purpose": st.get("engine") == "down"},
-                "mode": "engine", "profile": None, "engine_version": "0.15.4", "engine_api": "1.9",
+                "mode": st.get("mode", "engine"), "profile": None, "engine_version": "0.15.4",
+                "engine_api": "1.9",
                 "http": {"token": bool(st.get("rotated")), "allow_from": None},
                 "install": True, "overlay": {"current": 0, "good": 0, "versions": 1, "file": False},
                 "hook": True, "job": None}, 0
@@ -184,8 +188,11 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
         set_state(d, engine="down" if name == "stop" else "healthy")
         return {"job": job(name, opts.get("--when")), "follow": "tandem remote status"}, 0
     if name == "mode get":
-        return {"mode": "engine", "ext": None, "source": "managed", "inferred": False}, 0
+        return {"mode": st.get("mode", "engine"), "ext": None,
+                "source": "inferred" if st.get("inferred") else "managed",
+                "inferred": bool(st.get("inferred"))}, 0
     if name == "mode set":
+        set_state(d, mode=pos[0] if pos else "engine", inferred=False)
         return {"job": job("mode", opts.get("--when", "idle")), "follow": "tandem remote status"}, 0
     if name == "settings get":
         keys = pos or ["MAX_QUEUE", "PORT"]

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-progress.schema.json",
+  "title": "GET /v1/fleet/engines/{id}/models/progress[?job=]: the Setup Guide job (GET /v1/setup/jobs/{id}; without job the running or newest one, or null) and its progress: the step that runs, its detail (the download's GB so far), steps done of all",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "job": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "progress": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finished": {
+          "type": "boolean"
+        },
+        "step": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "downloading": {
+          "type": "boolean"
+        },
+        "steps_done": {
+          "type": "integer"
+        },
+        "steps": {
+          "type": "integer"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "finished",
+        "step",
+        "label",
+        "detail",
+        "downloading",
+        "steps_done",
+        "steps",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contract_version",
+    "id",
+    "job",
+    "progress"
+  ],
+  "additionalProperties": false
+}

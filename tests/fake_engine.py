@@ -398,6 +398,11 @@ class FakeEngine:
                         return self._send(200, fn(body))
                     except Refuse as exc:
                         return self._send(exc.status, {"error": {"type": exc.kind, "message": exc.message}})
+                if path == "/v1/models":
+                    if not ok:
+                        return self._send(401, {"error": {"type": "unauthorized",
+                                                          "message": "a bearer token is needed"}})
+                    return self._send(200, {"object": "list", "data": []})
                 if path.startswith("/v1/setup/"):
                     if not ok:
                         return self._send(401, {"error": {"type": "unauthorized",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine.schema.json",
-  "title": "GET /v1/fleet/engines/{id}: one engine host with its `status` over SSH (engine-ctl-v1's status answer), or the finding that says why there is none",
+  "title": "GET /v1/fleet/engines/{id}: one engine host with its `status` over SSH (engine-ctl-v1's status answer), or the finding that says why there is none, and `wizard`: what the first run does next (bare engine preselected, then a model while none is served)",
   "$defs": {
     "view": {
       "type": "object",
@@ -147,6 +147,41 @@
             "object",
             "null"
           ]
+        },
+        "wizard": {
+          "type": "object",
+          "properties": {
+            "mode_choice": {
+              "const": "engine"
+            },
+            "mode": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "needs_model": {
+              "type": "boolean"
+            },
+            "next": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "model",
+                "chat",
+                null
+              ]
+            }
+          },
+          "required": [
+            "mode_choice",
+            "mode",
+            "needs_model",
+            "next"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -313,6 +348,41 @@
     },
     "contract_version": {
       "type": "string"
+    },
+    "wizard": {
+      "type": "object",
+      "properties": {
+        "mode_choice": {
+          "const": "engine"
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needs_model": {
+          "type": "boolean"
+        },
+        "next": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "model",
+            "chat",
+            null
+          ]
+        }
+      },
+      "required": [
+        "mode_choice",
+        "mode",
+        "needs_model",
+        "next"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

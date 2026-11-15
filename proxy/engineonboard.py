@@ -26,6 +26,15 @@
     POST /v1/fleet/engines/connect/key/check {plan, host_key}
                                                   paste a key (SRV-831): the line to paste, then
                                                   a check that waits for the first login
+    POST /v1/fleet/engines/{id}/mode {mode?, when?, ext?}
+                                                  the engine's mode (SRV-833): bare engine
+                                                  (`mode set engine`) unless it is that already
+    GET  /v1/fleet/engines/{id}/models            the Setup Guide's models (GET /v1/setup/models)
+    POST /v1/fleet/engines/{id}/models/pull {model, profile?, dry_run?}
+                                                  install a model: the Setup Guide's plan, then
+                                                  its apply (the download is its fetch step)
+    GET  /v1/fleet/engines/{id}/models/progress[?job=]
+                                                  that job (GET /v1/setup/jobs/{id}), summed up
 
 FINDING THE ENGINE (SRV-827). `discover` asks the LAN once (proxy/mdns.py's Browser: a legacy
 unicast query from an ephemeral port, so nothing binds 5353; IPv4) for `_tandem._tcp.local` and
@@ -79,6 +88,19 @@ Then both, over the new login: `token rotate` (the token goes straight to the se
 key in the audit). A failure there undoes the pin and the token of a host that was not in the
 fleet.
 
+AFTER PAIRING (SRV-833). The engine view's `wizard` says what the first run does next: bare
+engine is the preselected mode, and `needs_model` is true while `status` names no model. `mode`
+reads `mode get` and changes nothing when the configured mode is already the asked one (not
+inferred from an empty QSE_MODE); else `mode set` (an idle-gated restart by default) writes it
+into the engine's managed overlay. A model comes through the engine's own Setup Guide over HTTP
+with this controller's token: GET /v1/setup/models/{id}/current is the box's selection, `profile`
+replaces its weights, POST /v1/setup/plan checks it (download size, errors) and POST
+/v1/setup/apply starts the job whose steps download, check, write the config and restart;
+`progress` reads the job. No file is edited by anyone but the engine's own tools. An HTTP call that
+fails is told apart over SSH: the engine down (`engine_down`), its port blocked from here
+(`http_blocked`), the token refused (`token_refused`), the Setup Guide locked by its admin
+password (`setup_locked`).
+
 THE HOST ID is that of the fleet node with the same pinned host key, else of the engine host at the
 same address and SSH port (pairing by code replaces its key), else `eh-` and 10 hex digits of the
 host key fingerprint's sha256: one id per machine.
@@ -92,6 +114,9 @@ from __future__ import annotations
 
 import collections
 import hashlib
+import http.client
+import json
+import urllib.parse
 import ipaddress
 import os
 import re
@@ -150,6 +175,11 @@ fi
 echo "TANDEMENGINE-KEY $added $dir"
 """
 KEY_PLACE = enginepair.KEY_PLACE
+HTTP_TIMEOUT_S = 20.0
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+JOB_RE = re.compile(r"^[0-9]{8}T[0-9]{6}-[0-9a-f]{6}$")
+ENDED = ("done", "failed", "rolled_back", "cancelled")
 TRIES_PER_MIN = 10
 MAX_PENDING = 32
 HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9-]{1,63})*\.?$")
@@ -345,6 +375,14 @@ class Onboarding:
             return self.key_check(body, who)
         if method == "GET" and len(sub) == 1:
             return self.engine_view(sub[0])
+        if method == "POST" and len(sub) == 2 and sub[1] == "mode":
+            return self.set_mode(sub[0], body, who)
+        if method == "GET" and len(sub) == 2 and sub[1] == "models":
+            return self.models(sub[0])
+        if method == "POST" and len(sub) == 3 and sub[1:] == ["models", "pull"]:
+            return self.pull(sub[0], body, who)
+        if method == "GET" and len(sub) == 3 and sub[1:] == ["models", "progress"]:
+            return self.progress(sub[0], q.get("job"))
         raise ERR("not_found", status=404)
 
     # ------------------------------------------------------------------ the fleet's engine hosts
@@ -397,10 +435,216 @@ class Onboarding:
         finally:
             ctl.close()
 
+    @staticmethod
+    def wizard(status: dict | None) -> dict:
+        """What the first run does next (SRV-833): bare engine preselected, then a model."""
+        eng = (status or {}).get("engine") or {}
+        needs = status is not None and not eng.get("model")
+        return {"mode_choice": "engine", "mode": (status or {}).get("mode"),
+                "needs_model": needs, "next": None if status is None else "model" if needs else "chat"}
+
     def engine_view(self, hid: str) -> dict:
         row = self._row(hid)
         status, finding = self.status_of(row)
-        return {"contract_version": CONTRACT, **self.view(row, status, finding)}
+        return {"contract_version": CONTRACT, **self.view(row, status, finding),
+                "wizard": self.wizard(status)}
+
+    # ------------------------------------------------------------------ after pairing (SRV-833)
+    def _ctl_call(self, row: dict, fn):
+        t = row["trust"] or {}
+        try:
+            ctl = self.ctl(row)
+        except enginectl.CtlError as exc:
+            raise ctl_error(exc, host=t.get("host"), port=t.get("port"), user=t.get("user")) from None
+        try:
+            return fn(ctl)
+        except enginectl.CtlError as exc:
+            raise ctl_error(exc, host=t.get("host"), port=t.get("port"), user=t.get("user")) from None
+        finally:
+            ctl.close()
+
+    def set_mode(self, hid: str, body, who: str) -> dict:
+        b = _fields(body if body is not None else {}, {"mode", "when", "ext"})
+        mode = b.get("mode", "engine")
+        if mode not in ("engine", "chat"):
+            raise ERR("bad_request", "mode is engine (bare engine, the default) or chat")
+        when = b.get("when", "idle")
+        if when not in ("now", "idle"):
+            raise ERR("bad_request", "when is now or idle")
+        ext = b.get("ext")
+        if ext is not None and (mode != "chat" or not isinstance(ext, str)
+                                or not enginectl.MODULE_RE.match(ext)):
+            raise ERR("bad_request", "ext is the extension module chat mode runs (chat only)")
+        row = self._row(hid)
+        before = self._ctl_call(row, lambda c: c.mode_get())
+        prev = {k: before.get(k) for k in ("mode", "ext", "source", "inferred")}
+        if before.get("mode") == mode and not before.get("inferred") and ext in (None, before.get("ext")):
+            return {"contract_version": CONTRACT, "id": hid, "mode": mode, "changed": False,
+                    "previous": prev, "job": None}
+        doc = self._ctl_call(row, lambda c: c.mode_set(mode, ext=ext, when=when))
+        self.cfg.log_audit(who, "mode", "node", hid, detail={
+            "mode": mode, "from": prev["mode"], "when": when,
+            "text": f"engine mode set to {mode} ({when})"})
+        self.log(f"[engines] {row['alias']} ({hid}): mode {prev['mode']} -> {mode} ({when})")
+        return {"contract_version": CONTRACT, "id": hid, "mode": mode, "changed": True,
+                "previous": prev, "job": doc.get("job")}
+
+    # the engine's HTTP routes, with this controller's token
+    def _raw(self, row: dict, method: str, path: str, body=None) -> tuple[int, dict]:
+        t = row["trust"] or {}
+        address, port = row["address"] or t.get("host"), t.get("http_port") or enginepair.DEFAULT_PORT
+        token = self.cfg.engine_token(row["id"])
+        if not token:
+            raise ERR("token_missing")
+        hdrs = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            hdrs["Content-Type"] = "application/json"
+        conn = http.client.HTTPConnection(address, port, timeout=HTTP_TIMEOUT_S)
+        try:
+            conn.request(method, path, body=data, headers=hdrs)
+            r = conn.getresponse()
+            raw, st = r.read(4 << 20), r.status
+        except (OSError, http.client.HTTPException):
+            raise self._why_no_http(row, address, port) from None
+        finally:
+            token = hdrs = None
+            conn.close()
+        try:
+            doc = json.loads(raw) if raw else {}
+        except (ValueError, UnicodeDecodeError):
+            doc = None
+        if not isinstance(doc, dict):
+            raise ERR("not_an_engine", f"HTTP {st}, not JSON", address=address, port=port)
+        return st, doc
+
+    def _http(self, row: dict, method: str, path: str, body=None, *, ok=(200,)) -> tuple[int, dict]:
+        st, doc = self._raw(row, method, path, body)
+        t = row["trust"] or {}
+        address, port = row["address"] or t.get("host"), t.get("http_port") or enginepair.DEFAULT_PORT
+        if st == 401:
+            raise self._why_401(row)
+        if st == 403 and str((doc.get("error") or {}).get("type", "")).startswith("forbidden"):
+            raise ERR("not_allowed", None, address=address, port=port)
+        if st not in ok:
+            raise self._setup_refusal(st, doc)
+        return st, doc
+
+    def _why_no_http(self, row: dict, address: str, port: int) -> enginecodes.OnboardError:
+        """No HTTP answer: over SSH, is the engine down or is its port blocked from here?"""
+        status, finding = self.status_of(row)
+        if status is None:
+            return enginecodes.OnboardError(finding["code"], finding.get("detail"),
+                                            **{k: v for k, v in finding.items()
+                                               if k in enginecodes.FACTS})
+        state = (status.get("engine") or {}).get("state")
+        if state in ("down", "failed"):
+            return ERR("engine_down", None, host=address, port=port)
+        return ERR("http_blocked", None, address=address, port=port)
+
+    def _why_401(self, row: dict) -> enginecodes.OnboardError:
+        """401 from a Setup Guide route: the token (a route the token opens refuses it too), or
+        the Setup Guide's own admin password?"""
+        try:
+            st, _ = self._raw(row, "GET", "/v1/models")
+        except enginecodes.OnboardError as exc:
+            return exc
+        return ERR("token_refused") if st == 401 else ERR("setup_locked")
+
+    @staticmethod
+    def _setup_refusal(st: int, doc: dict) -> enginecodes.OnboardError:
+        e = doc.get("error") if isinstance(doc.get("error"), dict) else {}
+        kind, msg = str(e.get("type") or e.get("code") or ""), str(e.get("message") or "")[:300]
+        if kind in ("busy", "job_running"):
+            return ERR("busy", msg or kind)
+        if kind in ("unknown_model", "not_found") and st in (400, 404):
+            return ERR("unknown_model", msg or None)
+        return ERR("setup_refused", msg or f"HTTP {st}", status=st if 400 <= st < 500 else 502)
+
+    def _row_http(self, hid: str) -> dict:
+        row = self._row(hid)
+        if not (row["trust"] or {}).get("http_port") and not row["address"]:
+            raise ERR("not_paired", "no HTTP port is known for this engine host")
+        return row
+
+    def models(self, hid: str) -> dict:
+        row = self._row_http(hid)
+        _, doc = self._http(row, "GET", "/v1/setup/models")
+        return {"contract_version": CONTRACT, "id": hid,
+                "models": doc.get("models") if isinstance(doc.get("models"), list) else [],
+                "errors": doc.get("errors") if isinstance(doc.get("errors"), list) else []}
+
+    @staticmethod
+    def summary(job: dict | None) -> dict | None:
+        """A Setup Guide job in a line: its state, the step that runs and its detail (the
+        download's bytes so far), how many of its steps are done."""
+        if not isinstance(job, dict):
+            return None
+        steps = [x for x in job.get("steps") or [] if isinstance(x, dict) and x.get("id") != "rollback"]
+        cur = next((x for x in steps if x.get("state") == "running"), None)
+        state = job.get("state")
+        return {"state": state, "finished": state in ENDED,
+                "step": cur.get("id") if cur else None, "label": cur.get("label") if cur else None,
+                "detail": cur.get("detail") if cur else None,
+                "downloading": bool(cur and cur.get("id") == "fetch"),
+                "steps_done": sum(1 for x in steps if x.get("state") in ("done", "skipped")),
+                "steps": len(steps), "message": job.get("message")}
+
+    def pull(self, hid: str, body, who: str) -> dict:
+        b = _fields(body, {"model", "profile", "dry_run"}, ("model",))
+        model, profile = b["model"], b.get("profile")
+        if not isinstance(model, str) or not MODEL_RE.match(model):
+            raise ERR("bad_request", "model is a model id of the engine's Setup Guide")
+        if profile is not None and (not isinstance(profile, str) or not PROFILE_RE.match(profile)):
+            raise ERR("bad_request", "profile is a weights profile id of that model")
+        if not isinstance(b.get("dry_run", False), bool):
+            raise ERR("bad_request", "dry_run is true or false")
+        row = self._row_http(hid)
+        q = urllib.parse.quote(model, safe="")
+        try:
+            _, cur = self._http(row, "GET", f"/v1/setup/models/{q}/current")
+        except enginecodes.OnboardError as exc:
+            if exc.code in ("unknown_model", "setup_refused") and exc.status in (400, 404):
+                raise ERR("unknown_model", exc.detail, model=model) from None
+            raise
+        sel = cur.get("selection") if isinstance(cur.get("selection"), dict) else None
+        if sel is None:
+            raise ERR("setup_refused", "the engine gave no selection for that model")
+        if profile is not None:
+            sel = dict(sel, profile=profile)
+        _, plan = self._http(row, "POST", "/v1/setup/plan", {"selection": sel})
+        facts = {"ok": bool(plan.get("ok")), "errors": plan.get("errors") or [],
+                 "warnings": plan.get("warnings") or [],
+                 "download_gb": (plan.get("profile") or {}).get("download_gb"),
+                 "on_disk": (plan.get("profile") or {}).get("on_disk"),
+                 "profile": (plan.get("profile") or {}).get("next") or sel.get("profile")}
+        if not facts["ok"]:
+            raise ERR("setup_refused", " ".join(str(x) for x in facts["errors"])[:300] or "the plan "
+                      "has errors", model=model)
+        out = {"contract_version": CONTRACT, "id": hid, "model": model, "profile": facts["profile"],
+               "plan": facts, "job": None, "progress": None}
+        if b.get("dry_run"):
+            return out
+        _, started = self._http(row, "POST", "/v1/setup/apply", {"selection": sel}, ok=(200, 202))
+        job = started.get("job") if isinstance(started.get("job"), dict) else None
+        self.cfg.log_audit(who, "model", "node", hid, detail={
+            "model": model, "profile": facts["profile"], "job": (job or {}).get("id"),
+            "text": f"model {model} ({facts['profile']}) installing"})
+        self.log(f"[engines] {row['alias']} ({hid}): installing {model} ({facts['profile']}), "
+                 f"{facts['download_gb']} GB to download, job {(job or {}).get('id')}")
+        return dict(out, job=job, progress=self.summary(job))
+
+    def progress(self, hid: str, jid) -> dict:
+        row = self._row_http(hid)
+        if jid is not None:
+            if not isinstance(jid, str) or not JOB_RE.match(jid):
+                raise ERR("bad_request", "job is a Setup Guide job id")
+            _, job = self._http(row, "GET", f"/v1/setup/jobs/{jid}?format=json")
+        else:
+            _, st = self._http(row, "GET", "/v1/setup/status")
+            job = st.get("job") if isinstance(st.get("job"), dict) else None
+        return {"contract_version": CONTRACT, "id": hid, "job": job, "progress": self.summary(job)}
 
     # ------------------------------------------------------------------ keeping a paired host
     def host_id(self, host_fp: str, address: str, ssh_port: int, *, proven: bool) -> str:
@@ -457,7 +701,7 @@ class Onboarding:
     def paired(self, row: dict, via: str) -> dict:
         status, finding = self.status_of(row)
         return {"contract_version": CONTRACT, "state": "paired", "via": via,
-                "engine": self.view(row, status, finding),
+                "engine": dict(self.view(row, status, finding), wizard=self.wizard(status)),
                 "node": self.fleet.node_view(row, self.clock()), "finding": None}
 
     # ------------------------------------------------------------------ finding the engine
@@ -711,7 +955,7 @@ class Onboarding:
                         http_port=http_port if isinstance(http_port, int) else None,
                         name=item.get("name"), who=who, method=method)
         return {"contract_version": CONTRACT, "state": "paired", "via": method,
-                "engine": self.view(row, status, None),
+                "engine": dict(self.view(row, status, None), wizard=self.wizard(status)),
                 "node": self.fleet.node_view(row, self.clock()), "finding": None}
 
     def _target(self, b: dict) -> tuple[str, int, str]:

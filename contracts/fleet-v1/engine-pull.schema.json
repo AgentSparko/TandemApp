@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-pull.schema.json",
+  "title": "POST /v1/fleet/engines/{id}/models/pull: the Setup Guide's plan in brief (ok, errors, warnings, GB to download, on disk, the profile) and the job it started (null for dry_run) with its progress",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array"
+        },
+        "warnings": {
+          "type": "array"
+        },
+        "download_gb": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "on_disk": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ok",
+        "errors",
+        "warnings",
+        "download_gb",
+        "on_disk",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "job": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "progress": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finished": {
+          "type": "boolean"
+        },
+        "step": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "downloading": {
+          "type": "boolean"
+        },
+        "steps_done": {
+          "type": "integer"
+        },
+        "steps": {
+          "type": "integer"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "finished",
+        "step",
+        "label",
+        "detail",
+        "downloading",
+        "steps_done",
+        "steps",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "contract_version",
+    "id",
+    "model",
+    "profile",
+    "plan",
+    "job",
+    "progress"
+  ],
+  "additionalProperties": false
+}
