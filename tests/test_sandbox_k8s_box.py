@@ -42,6 +42,7 @@ class Client:
         with open(os.path.join(data, "forward.key")) as fh:
             self.key = fh.read().strip()
         self.data = data
+        self.made: list[str] = []
 
     def call(self, method, path, body=None):
         host, _, port = CHATD.rpartition(":")
@@ -60,7 +61,9 @@ class Client:
         return doc
 
     def new(self) -> str:
-        return self.ok("POST", "/conversations", {})["id"]
+        cid = self.ok("POST", "/conversations", {})["id"]
+        self.made.append(cid)
+        return cid
 
     def bash(self, cid, *commands, timeout=240):
         calls = [{"name": "bash", "arguments": {"command": c}} for c in commands]
@@ -76,6 +79,23 @@ class Client:
                 return parts[-len(commands):]
             time.sleep(0.5)
         raise AssertionError(f"chat {cid} did not end in {timeout} s")
+
+
+FORKS = ("import os, signal, time\n"
+         "kids = []\n"
+         "try:\n"
+         "    while len(kids) < 2000:\n"
+         "        pid = os.fork()\n"
+         "        if pid == 0:\n"
+         "            time.sleep(60)\n"
+         "            os._exit(0)\n"
+         "        kids.append(pid)\n"
+         "except OSError:\n"
+         "    pass\n"
+         "print(\"forked\", len(kids))\n"
+         "for k in kids:\n"
+         "    os.kill(k, signal.SIGKILL)\n"
+         "    os.waitpid(k, 0)\n")
 
 
 def _out(part) -> str:
@@ -147,6 +167,17 @@ def test_pod_sandboxes_on_this_cluster():
     cl = Client(data)
     api = _api()
     labels = json.loads(env["QSE_K8S_LABELS"])
+    assert not _sandbox_pods(api, env), "sandbox pods exist already: use a fresh release"
+    made: list[str] = []
+    try:
+        cl.made = made
+        _cases(cl, api, env, data, labels, made)
+    finally:
+        for cid in made:
+            cl.call("DELETE", f"/conversations/{cid}?forever=1")
+
+
+def _cases(cl, api, env, data, labels, made):
     caps = cl.ok("GET", "/capabilities")
     _wait(lambda: cl.ok("GET", "/capabilities")["session"]["sandbox"] == "ready", 120, 2)
     print("chatd: the cluster check passed; sandbox ready")
@@ -188,12 +219,10 @@ def test_pod_sandboxes_on_this_cluster():
         [f"data/chat/workspaces/{a}", f"data/chat/homes/{a}"]
     print(f"[1] one pod {pod['metadata']['name']} with the chart's labels; spec locked down; "
           f"chatd reads /workspace/k8s.txt")
-    p = cl.bash(a, "for i in $(seq 600); do sleep 30 & done 2>/dev/null; sleep 1; "
-                   "ls /proc | grep -c '^[0-9]'")[0]
-    n = int(_out(p).strip().splitlines()[-1])
-    assert n <= 520, n
-    cl.bash(a, "pkill sleep; true")
-    print(f"[1] a fork storm stops at {n} processes (512 per pod)")
+    p = cl.bash(a, "python3 -c '" + FORKS + "'")[0]
+    n = int(_out(p).strip().splitlines()[0].split()[-1])
+    assert 400 < n <= 512, _out(p)
+    print(f"[1] a fork storm stops after {n} more processes (512 per pod)")
 
     # ---- 2. the Role: no secrets, no other namespace
     st, _ = api.call("GET", f"/api/v1/namespaces/{api.namespace}/secrets")
