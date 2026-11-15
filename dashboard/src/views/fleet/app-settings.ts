@@ -40,6 +40,7 @@ const HOW: Record<MovePlan['nodes'][number]['how'], string> = {
   release: 'runs the new controller, read over its loopback',
   own: 'this machine’s node: handed on with its LAN address',
   stays: 'stays',
+  carry: 'goes with its SSH key, sealed',
 };
 const GLYPH = { done: '✓', running: '●', failed: '✕', todo: '○' } as const;
 

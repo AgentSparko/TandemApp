@@ -51,7 +51,8 @@
               "repin",
               "release",
               "own",
-              "stays"
+              "stays",
+              "carry"
             ]
           },
           "why": {
@@ -78,7 +79,7 @@
           "why"
         ],
         "additionalProperties": false,
-        "description": "repin: its owner pin handed to the new controller; release: the new controller's own machine, read over its loopback; own: this controller's own machine, its agent handed on with its LAN address; stays: not moved, with why"
+        "description": "repin: its owner pin handed to the new controller; release: the new controller's own machine, read over its loopback; own: this controller's own machine, its agent handed on with its LAN address; stays: not moved, with why; carry (a pull, SRV-841): an engine host over SSH whose key pair and pinned host key go inside the sealed export"
       }
     },
     "expires_at": {

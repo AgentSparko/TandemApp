@@ -1154,8 +1154,9 @@ export interface MoveNode {
   id: string;
   alias: string;
   /** repin: its owner pin handed over; release: the new controller's own machine; own: this
-   *  controller's machine; stays: not moved, with why */
-  how: 'repin' | 'release' | 'own' | 'stays';
+   *  controller's machine; stays: not moved, with why; carry: an engine host over SSH, its key
+   *  pair inside the sealed export (a pull, SRV-841) */
+  how: 'repin' | 'release' | 'own' | 'stays' | 'carry';
   why: string | null;
   state?: 'handed' | 'failed';
   accepted?: boolean;
@@ -1181,6 +1182,8 @@ export interface MoveJob {
   url?: string;
   from?: string;
   old_refused?: boolean | null;
+  /** a pull from another host: backends at the giver's loopback, now at its host (SRV-841) */
+  rebased?: { backend: string; from: string; to: string }[];
 }
 
 export interface ControllerView {

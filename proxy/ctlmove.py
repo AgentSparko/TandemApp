@@ -39,6 +39,17 @@ P-256, HKDF-SHA256, AES-256-GCM: the keys never cross the LAN in clear), the tak
 giver hands its nodes over (its own Spark's agent too, with the address to listen on) and says
 `moved_to` the taker's URL.
 
+A TAKE ACROSS HOSTS (SRV-841). The taker may run on a host with no engine (packaging/linux/):
+  - a backend at the giver's loopback (http://127.0.0.1:8000/v1) points at the host the taker
+    reached the giver at once imported (`rebase_loopback`; a field a variable sets stays);
+  - the users of the giver's TANDEM_API_USERS_FROM database (the engine's own, a file on the giver's
+    host) are folded into the export's users, their keys' hashes only;
+  - an engine host over SSH goes along when the giver holds its key pair and pinned host key: both
+    travel inside the sealed export, the taker stores the key under its own master key and pins
+    the host key under its trust root, the giver drops both after the commit (`carry`);
+  - the deployments travel with the rest; a taker that gave a fleet away before forgets its own
+    `moved_to`, so the original controller takes its fleet back the same way.
+
 A MAC THAT SLEEPS. The host-sleep rule (proxy/fleetwatch.py) fires while a Mac runs the
 controller; the plan and this route say it too.
 """
@@ -56,7 +67,7 @@ import time
 import urllib.error
 import urllib.request
 
-from proxy import _version, nodesource, nodetrust
+from proxy import _version, enginectl, hostkeys, nodesource, nodetrust
 
 CONTRACT = "1.0"
 KIND = "tandemapp-export"
@@ -68,7 +79,10 @@ DEFAULT_PORT = 8080
 MIN_PASSWORD = 32
 # the tables an export carries (the rest: secrets, sessions, jobs, audit, meta stay)
 TABLES = ("backends", "models", "model_features", "routing_rules", "users", "settings", "nodes",
-          "layouts")
+          "layouts", "deployments")
+# the users columns a fold of TANDEM_API_USERS_FROM's database copies (the key's hash, never a key)
+USER_COLS = ("label", "key_hash", "key_hint", "role", "enabled", "created_at", "last_seen_at")
+LOOPBACK_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost")
 SKIP_SETTINGS = ("controller.", "fleet.")
 STEPS = {"push": (("check", "Check {to}"), ("export", "Export the fleet"),
                   ("start", "Start the controller on {to}"),
@@ -88,9 +102,13 @@ class MoveError(Exception):
 
 # ---------------------------------------------------------------------- the export
 
-def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True) -> dict:
+def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
+           ssh_root: str | None = None) -> dict:
     """The fleet's export (THE EXPORT above). `skip_nodes`: ids that stay; `extra_nodes`: rows put
-    in as they are (this machine's node as the new controller reaches it)."""
+    in as they are (this machine's node as the new controller reaches it); `host_keys`: the engine
+    hosts over SSH whose key pairs and pinned host keys go along (a sealed pull only), their pins
+    under `ssh_root`. The users of TANDEM_API_USERS_FROM's database are folded into the users
+    (their keys' hashes): that file stays on this host, the new controller may run on another."""
     d = tempfile.mkdtemp(prefix="tandem-export-")
     try:
         path = os.path.join(d, "export.sqlite3")
@@ -107,6 +125,7 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True) -> dict:
         c.execute("DELETE FROM nodes WHERE endpoint = 'local'")
         for nid in skip_nodes:
             c.execute("DELETE FROM nodes WHERE id = ?", (nid,))
+        folded = _fold_users(c, getattr(cfg, "users_from", None))
         cols = [r[1] for r in c.execute("PRAGMA table_info(nodes)")]
         for row in extra_nodes:
             doc = {k: (json.dumps(v) if k in ("tags", "trust", "drain") and v is not None else v)
@@ -133,8 +152,50 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True) -> dict:
                 k = None
             if k:
                 got[b["id"]] = k
-    return {"kind": KIND, "version": 1, "release": _version.release() or None,
-            "at": round(time.time(), 3), "db": base64.b64encode(db).decode(), "keys": got}
+    out = {"kind": KIND, "version": 1, "release": _version.release() or None,
+           "at": round(time.time(), 3), "db": base64.b64encode(db).decode(), "keys": got,
+           "users_from": folded}
+    if host_keys:
+        out["host_keys"] = {}
+        for hid in host_keys:
+            row, pin = cfg.host_key(hid), enginectl.pinned_key(ssh_root, hid) if ssh_root else None
+            pem = cfg.host_key_private(hid) if row is not None else None
+            if row is None or pin is None or not pem:
+                continue
+            out["host_keys"][hid] = {"key_id": row["key_id"], "public": row["public"],
+                                     "private": pem, "host_key_type": pin[0], "host_key": pin[1]}
+    return out
+
+
+def _fold_users(c, path: str | None) -> int:
+    """TANDEM_API_USERS_FROM's users (SRV-733: another config database on this host, read only)
+    into the export's users table: label, the key's hash and hint, role, enabled. A label or a
+    key already there keeps its row. The count folded."""
+    if not path or not os.path.isfile(path):
+        return 0
+    try:
+        src = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2.0)
+        try:
+            have = [r[1] for r in src.execute("PRAGMA table_info(users)")]
+            cols = [x for x in USER_COLS if x in have]
+            if "label" not in cols or "key_hash" not in cols:
+                return 0
+            rows = src.execute(f"SELECT {', '.join(cols)} FROM users").fetchall()
+        finally:
+            src.close()
+    except sqlite3.Error:
+        return 0
+    n = 0
+    for r in rows:
+        doc = dict(zip(cols, r))
+        doc.setdefault("created_at", int(time.time() * 1000))
+        if c.execute("SELECT 1 FROM users WHERE label = ? OR key_hash = ?",
+                     (doc["label"], doc["key_hash"])).fetchone():
+            continue
+        c.execute(f"INSERT INTO users({', '.join(doc)}) VALUES ({', '.join('?' * len(doc))})",
+                  list(doc.values()))
+        n += 1
+    return n
 
 
 def _has_table(c, name: str) -> bool:
@@ -142,9 +203,13 @@ def _has_table(c, name: str) -> bool:
                      (name,)).fetchone() is not None
 
 
-def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller") -> dict:
+def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller",
+                  ssh_root: str | None = None) -> dict:
     """The export into `cfg`, which has no fleet of its own; each paired node's trust names this
-    controller's certificate (`cert`, `key`). {nodes, backends, keys} counted."""
+    controller's certificate (`cert`, `key`); an engine host over SSH that came along gets its key
+    pair under this controller's master key and its host key pinned under `ssh_root` (default: the
+    certificate's folder, the controller's trust root). {nodes, backends, keys, host_keys}
+    counted."""
     if not isinstance(bundle, dict) or bundle.get("kind") != KIND:
         raise MoveError(400, "bad_request", "not a TandemApp export")
     if any(n["endpoint"] != "local" for n in cfg.nodes()):
@@ -187,12 +252,21 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
             with cfg._lock:
                 cfg._store_key(bid, k)
                 cfg._conn.commit()
+    root = ssh_root or os.path.dirname(cert)
+    hk = 0
+    for hid, h in (bundle.get("host_keys") or {}).items():
+        if cfg.node(hid) is None:
+            continue
+        cfg.put_host_key(hid, h["key_id"], h["public"], h["private"], who=who)
+        enginectl.pin_host_key(root, hid, h["host_key_type"], h["host_key"], replace=True)
+        hk += 1
     cfg._bump()
     cfg.log_audit(who, "import", "fleet", None, detail={
         "text": f"imported {n.get('nodes', 0)} nodes, {n.get('backends', 0)} backends from "
                 f"{(bundle.get('from') or {}).get('name') or 'another controller'}"})
     return {"nodes": n.get("nodes", 0), "backends": n.get("backends", 0),
-            "keys": len(bundle.get("keys") or {})}
+            "keys": len(bundle.get("keys") or {}), "host_keys": hk,
+            "users_from": int(bundle.get("users_from") or 0)}
 
 
 def import_at_start(cfg, state_dir: str, log=print) -> dict | None:
@@ -641,7 +715,9 @@ class Mover:
             if row is None:
                 continue
             src = f.source(row)
-            if x["how"] == "own":
+            if x["how"] == "carry":
+                st, doc = 200, {}                    # nothing to ask the host: the key moves
+            elif x["how"] == "own":
                 st, doc = f.agent.client.json("PUT", "/node/owner", {
                     "certificate": pem, "name": name, "address": own_address}, timeout=10.0)
             elif x["how"] == "release":
@@ -653,9 +729,13 @@ class Mover:
             if st == 200:
                 x["state"] = "handed"
                 done.append(x["id"])
-                self._say(job, f"{x['alias']}: {'released to its own machine' if x['how'] == 'release' else 'trusts the new controller'}")
-                f.store.add_event("node", x["id"], f"{x['alias']} moves to {name}",
-                                  f"{'released here, read over its loopback there' if x['how'] == 'release' else 'its owner pin handed over'}")
+                said = {"release": ("released to its own machine",
+                                    "released here, read over its loopback there"),
+                        "carry": ("its key pair goes to the new controller, sealed",
+                                  "its SSH key pair and pinned host key handed over")}.get(
+                    x["how"], ("trusts the new controller", "its owner pin handed over"))
+                self._say(job, f"{x['alias']}: {said[0]}")
+                f.store.add_event("node", x["id"], f"{x['alias']} moves to {name}", said[1])
             else:
                 x["state"] = "failed"
                 x["why"] = _err(doc, f"HTTP {st}") + ": pair it again from the new controller"
@@ -728,14 +808,25 @@ class Mover:
         own = self._own_row()
         nodes = []
         lid = self.fleet._local_id
+        root = self.fleet.trust().root
         for r in self.cfg.nodes():
             how = "own" if r["id"] == lid and own else "stays" if r["transport"] == "tunnel" or \
                 (r["trust"] or {}).get("kind") != "mtls" else "repin"
             if r["id"] == lid and not own:
                 how = "stays"
-            nodes.append({"id": r["id"], "alias": r["alias"], "how": how, "why": None})
+            why = None
+            if r["transport"] == "ssh":
+                # SRV-841: an engine host over SSH goes along with its key pair, sealed: the same
+                # key, so the host's line stays (a line with `from=` needs the new address there)
+                if self.cfg.host_key(r["id"]) is not None and \
+                        enginectl.pinned_key(root, r["id"]) is not None:
+                    how = "carry"
+                else:
+                    how, why = "stays", "no key pair or pinned host key here: pair it from the new one"
+            nodes.append({"id": r["id"], "alias": r["alias"], "how": how, "why": why})
         bundle = export(self.cfg, skip_nodes=[x["id"] for x in nodes if x["how"] == "stays"],
-                        extra_nodes=[own] if own else [])
+                        extra_nodes=[own] if own else [],
+                        host_keys=[x["id"] for x in nodes if x["how"] == "carry"], ssh_root=root)
         bundle["from"] = {"name": self.fleet.trust().name,
                           "fingerprint": self.fleet.trust().fingerprint(),
                           "api_url": self.api_url()}
@@ -761,6 +852,15 @@ class Mover:
         done = self._hand_over(job, h["pem"], h["name"], to=None, virtual=False,
                                own_address=h["own_address"])
         self._moved(job, h["url"], h["name"], h["fp"], done)
+        root = self.fleet.trust().root
+        for x in job["nodes"]:
+            if x["how"] == "carry" and x.get("state") == "handed":
+                # one controller holds an engine host's key: the taker has it now
+                try:
+                    hostkeys.HostKeys(self.cfg).delete(x["id"], who=who)
+                    enginectl.forget_host(root, x["id"])
+                except (hostkeys.HostKeyError, enginectl.CtlError):
+                    pass
         for s in job["steps"]:
             s["state"] = "done"
         job.update(state="done", ended_at=round(self.clock(), 3),
@@ -814,10 +914,23 @@ class Mover:
             sid = "import"
             self._step(job, sid, "running")
             bundle = unseal(got["sealed"], tr.key)
-            n = import_bundle(self.cfg, bundle, tr.cert, tr.key, who=job["by"])
+            n = import_bundle(self.cfg, bundle, tr.cert, tr.key, who=job["by"], ssh_root=tr.root)
             bundle = None
+            # a controller that gave its fleet away before takes one again: it points nowhere now
+            if self.cfg.setting("controller.moved_to") is not None:
+                self.cfg.delete_setting("controller.moved_to", who=job["by"])
+            moved = rebase_loopback(self.cfg, giver_host(url), who=job["by"])
+            for bid, was, now in moved:
+                self._say(job, f"backend {bid}: {was} was the giver's own loopback; now {now}")
+            job["rebased"] = [{"backend": b, "from": a, "to": c} for b, a, c in moved]
             self._step(job, sid, "done", f"{n['nodes']} nodes, {n['backends']} backends, "
-                                         f"{n['keys']} stored keys")
+                                         f"{n['keys']} stored keys"
+                                         + (f", {n['host_keys']} engine host keys"
+                                            if n["host_keys"] else "")
+                                         + (f", {n['users_from']} users of the engine's database"
+                                            if n["users_from"] else "")
+                                         + (f", {len(moved)} loopback backends pointed at the "
+                                            f"giver's host" if moved else ""))
             sid = "repin"
             self._step(job, sid, "running")
             st, c = self.call(url, "POST", f"/v1/fleet/controller/handover/{got['id']}/commit",
@@ -829,11 +942,16 @@ class Mover:
             self._step(job, sid, "done", f"{len(ids)} nodes handed here")
             sid = "verify"
             self._step(job, sid, "running")
+            # an engine host over SSH has no agent to answer: its key pair and pin are here
+            carried = {x["id"] for x in job["nodes"] if x.get("how") == "carry"}
+            held = {i for i in carried if i in ids and self.cfg.host_key(i) is not None
+                    and enginectl.pinned_key(tr.root, i) is not None}
             end = time.monotonic() + VERIFY_S
-            up: set = set()
+            up: set = set(held)
             while time.monotonic() < end:
-                up = {r["id"] for r, s in f.sources() if r["id"] in ids and s.status()[0] != "off"}
-                if up >= set(ids):
+                up = held | {r["id"] for r, s in f.sources() if r["id"] in ids and
+                             r["id"] not in carried and s.status()[0] != "off"}
+                if up >= set(ids) - (carried - held):
                     break
                 self.sleep(1.0)
             for x in job["nodes"]:
@@ -866,6 +984,66 @@ class Mover:
         if p == ["take"] and method == "POST":
             return self.take(body, who, now)
         raise MoveError(404, "not_found", f"no route {method} /v1/fleet/{'/'.join(parts)}")
+
+
+def is_loopback(host: str | None) -> bool:
+    import ipaddress
+    h = (host or "").strip("[]").lower()
+    if h in LOOPBACK_NAMES:
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
+def giver_host(url: str) -> str | None:
+    """The host the taker reached the giver at, when it is not this machine's loopback: a backend
+    on the giver's loopback is on that host. None for a giver on this machine."""
+    from urllib.parse import urlsplit
+    h = urlsplit(url).hostname
+    return None if not h or is_loopback(h) else h
+
+
+def _rebase(u, host: str):
+    from urllib.parse import urlsplit, urlunsplit
+    if not isinstance(u, str) or not u.startswith(("http://", "https://")):
+        return None
+    p = urlsplit(u)
+    if not is_loopback(p.hostname):
+        return None
+    h = f"[{host}]" if ":" in host else host
+    return urlunsplit(p._replace(netloc=h + (f":{p.port}" if p.port else "")))
+
+
+def rebase_loopback(cfg, host: str | None, who: str = "controller") -> list[tuple]:
+    """SRV-841: after a take from a controller on another host, each backend whose URL (or host
+    collector URL) is the giver's loopback points at the giver's host instead: on this host the
+    loopback is another machine. A field set by a variable stays as it is. [(id, was, now)]."""
+    if not host:
+        return []
+    from proxy import config as config_mod
+    out = []
+    for b in cfg.backends():
+        patch = {}
+        new = _rebase(b.get("url"), host)
+        if new:
+            patch["url"] = new
+        hb = dict(b.get("host") or {})
+        for k, v in list(hb.items()):
+            nv = _rebase(v, host) if k.endswith("url") else None
+            if nv:
+                hb[k] = nv
+        if hb != (b.get("host") or {}):
+            patch["host"] = hb
+        if not patch:
+            continue
+        try:
+            cfg.update_backend(b["id"], patch, who=who)
+            out.append((b["id"], b.get("url"), patch.get("url", b.get("url"))))
+        except config_mod.ConfigError:
+            pass
+    return out
 
 
 def _same(a: str, b: str) -> bool:
