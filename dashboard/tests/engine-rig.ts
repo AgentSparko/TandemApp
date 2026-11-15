@@ -14,7 +14,9 @@ const FDIR = join(CONTRACTS, 'fleet-v1');
 // allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
 const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
 const schema: Record<string, ReturnType<typeof ajv.compile>> = {};
-for (const f of readdirSync(FDIR)) if (f.endsWith('.schema.json')) schema[f.replace('.schema.json', '')] = ajv.compile(JSON.parse(readFileSync(join(FDIR, f), 'utf8')));
+// every schema first, then each one: a schema may $ref another (health-fix -> health-target)
+for (const f of readdirSync(FDIR)) if (f.endsWith('.schema.json')) ajv.addSchema(JSON.parse(readFileSync(join(FDIR, f), 'utf8')), f);
+for (const f of readdirSync(FDIR)) if (f.endsWith('.schema.json')) schema[f.replace('.schema.json', '')] = ajv.getSchema(f)!;
 
 export function valid(name: string, data: unknown): void {
   if (!schema[name]) throw new Error(`no schema ${name}`);
