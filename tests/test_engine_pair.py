@@ -20,8 +20,8 @@ engine host's SSH and `tandem remote` are tests/fake_ssh.py and tests/fake_tande
      new one; five wrong codes spend it (code_spent: run `tandem pair` again); an expired code and
      no window the same; nothing stored in any of them              test_wrong_code_says_so
   5  a host key swapped on the way: alone (its fingerprint does not match) or with a consistent
-     fingerprint (cB fails as a wrong code); an advertisement that disagrees with the window;
-     nothing stored, nothing installed                               test_swapped_host_key
+     fingerprint (cB fails as a wrong code); an advertisement that disagrees with the window; a
+     host key type no login here pins; nothing stored, nothing installed  test_swapped_host_key
   6  pairing again replaces the key pair and keeps the id, alias and node; abandon forgets a
      started pairing; a pairing id that is unknown is not_found; an engine before 1.9 and
      something that is not an engine are told apart                test_again_abandon_and_old
@@ -309,7 +309,18 @@ def test_swapped_host_key(tmp_path, monkeypatch):
         assert st == 409 and doc["error"]["code"] == "host_key_mismatch", doc
         assert doc["error"]["expected"] == other_fp and doc["error"]["offered"] == r.host_fp
         _nothing_stored(r)
-    return "swapped alone, swapped consistently, advertised another: nothing stored"
+        # a host key of a type no login here pins: refused before step 2, so nothing is installed
+        import base64
+        import struct
+        dss = "ssh-dss " + base64.b64encode(struct.pack(">I", 7) + b"ssh-dss" + b"\x01" * 40).decode()
+        r.engine.host_key = r.engine.host_keys[0] = dss
+        code = r.engine.open()
+        p = r.start()
+        st, doc = r.post("/v1/fleet/engines/pair/code", {"pairing": p["pairing"], "code": code})
+        assert st == 502 and doc["error"]["code"] == "engine_failed" and "ssh-dss" in doc["error"]["detail"]
+        assert r.engine.status()["state"] == "open" and r.engine.status()["tries_left"] == 4
+        _nothing_stored(r)
+    return "swapped alone, swapped consistently, advertised another, a type not pinned: nothing stored"
 
 
 # ---------------------------------------------------------------------------- 6 again, abandon, old

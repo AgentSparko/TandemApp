@@ -18,9 +18,11 @@ WHAT IS CHECKED before anything is trusted, in order:
      `host_key_mismatch` (the run is abandoned)
   2  that fingerprint is the one the user saw (`expect`: the window's state read at the start, or
      the LAN advertisement), else `host_key_mismatch` with both (abandoned)
-  3  cB is HMAC(KcB, TT) over the identity of THAT host key, else `wrong_code` (abandoned): a wrong
+  3  its type is one this side pins (sshonce.PREFER), else `engine_failed` (abandoned, so the
+     engine installs nothing)
+  4  cB is HMAC(KcB, TT) over the identity of THAT host key, else `wrong_code` (abandoned): a wrong
      code and a host key swapped on the way look the same, and neither is trusted
-  4  step 2's seal opens under Ke (its tag first), the plaintext is the contract's answer, its key
+  5  step 2's seal opens under Ke (its tag first), the plaintext is the contract's answer, its key
      id is ours and its host key the one step 1 named, else `engine_failed`: nothing is stored
 `abandon` answers the tries left and the window's state; `wrong_code` carries them.
 
@@ -44,7 +46,7 @@ import secrets
 import socket
 import struct
 
-from proxy import enginecodes, pairing
+from proxy import enginecodes, pairing, sshonce
 
 PAIR = "engine-pair-v1"
 PREFIX = "/v1/engine/pair"
@@ -137,7 +139,7 @@ class Exchange:
         return body
 
     def check1(self, answer, expect: str | None = None) -> dict:
-        """Step 1's answer checked (the module's 1 to 3); step 2's body {session, cA}. An
+        """Step 1's answer checked (the module's 1 to 4); step 2's body {session, cA}. An
         OnboardError otherwise, with `session` set so the caller can abandon the run."""
         if not isinstance(answer, dict) or answer.get("pair") != PAIR or \
                 not SESSION_RE.match(str(answer.get("session") or "")) or \
@@ -151,6 +153,9 @@ class Exchange:
                              "it came with", expected=answer["fingerprint"], offered=offered or "none")
         if expect is not None and expect != offered:
             raise _abandoned("host_key_mismatch", None, expected=expect, offered=offered)
+        if key[0] not in sshonce.PREFER:
+            raise _abandoned("engine_failed", f"the host key's type {key[0][:40]} is not one an "
+                             "SSH login here pins")
         try:
             pb = pairing.element(answer.get("pB"))
         except pairing.PairError:
@@ -165,7 +170,7 @@ class Exchange:
         return {"session": self.session, "cA": pairing.confirm_mac(kca, tt)}
 
     def open2(self, answer) -> dict:
-        """Step 2's sealed answer, opened and checked (the module's 4): the plaintext."""
+        """Step 2's sealed answer, opened and checked (the module's 5): the plaintext."""
         if self._tt is None:
             raise RuntimeError("step 1 was not checked")
         sealed = answer.get("sealed") if isinstance(answer, dict) and answer.get("pair") == PAIR \

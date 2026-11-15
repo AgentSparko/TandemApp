@@ -860,7 +860,8 @@ class Onboarding:
         finally:
             code = b["code"] = None
         primary = enginepair.parse_key(ans["host_key"])
-        others = [enginepair.parse_key(k) for k in ans["host_keys"]]
+        others = [k for k in (enginepair.parse_key(x) for x in ans["host_keys"])
+                  if k[0] in enginectl.HOST_KEY_TYPES]
         host_fp = enginepair.fingerprint(primary[1])
         hid = self.host_id(host_fp, address, ans["ssh_port"], proven=True)
         self.keys.put(hid, item["pem"], item["public"], who=who)
@@ -924,7 +925,10 @@ class Onboarding:
         hid = self.host_id(hk["fingerprint"], host, port, proven=False)
         root = self.root
         new = self.cfg.node(hid) is None
-        enginectl.pin_host_keys(root, hid, [(hk["type"], hk["b64"])], replace=new)
+        try:
+            enginectl.pin_host_keys(root, hid, [(hk["type"], hk["b64"])], replace=new)
+        except enginectl.CtlError as exc:
+            raise ctl_error(exc, host=host, port=port, user=user) from None
         ctl = enginectl.SshControl(enginectl.SshHost(
             id=hid, host=host, port=port, user=user, key_id=item["key_id"],
             host_key_type=hk["type"], host_key=hk["fingerprint"]), root,
