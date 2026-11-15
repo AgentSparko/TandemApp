@@ -112,7 +112,7 @@ Compare & the shadow precision of each task and question, per backend, from the 
 
 \section{Backends}\index{Backends view}
 
-On an engine without \code{--backends} the System answer says \code{proxy.mode: off}, and the view says the proxy is off without asking the configuration routes. The dashboard has no token dialog and no sign-in screen (\enginemanual{Access and sign-in}).
+An engine relays to no backend since engine API 1.8: its System answer says \code{proxy.mode: off}, and the view says so without asking the configuration routes, with the way to the controller and to \code{tandem-app import-backends} (Section~\ref{sec:import-backends}). The dashboard has no token dialog and no sign-in screen (\enginemanual{Access and sign-in}).
 
 \screenshot{dashboard-backends}{The Backends view with a vLLM, an SGLang and a DeepSeek backend, and the line for this engine's own settings. Demo data from the dashboard's mock server (\texttt{npm run preview:mock}), not a measurement.}{fig:shot-backends}
 

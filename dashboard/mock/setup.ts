@@ -159,7 +159,6 @@ const CLIENT_FACING: Record<string, string> = {
   HOST: 'the engine listens on another address; clients and the reverse proxy may not reach it any more.',
   PORT: 'clients, the reverse proxy and the watchdog must use the new port.',
   SERVED_MODEL: 'clients that ask for the old model name get an error until they use the new one.',
-  QSE_BACKENDS: 'the model names routed to other servers or cloud APIs change with it.',
 };
 function clientFacing(changes: SetupEnvChange[]): string[] {
   return changes.filter((c) => CLIENT_FACING[c.key]).map((c) => `${c.key} changes from ${c.current ?? 'unset'} to ${c.next ?? 'unset'}: ${CLIENT_FACING[c.key]}`);

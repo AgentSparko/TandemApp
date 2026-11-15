@@ -43,8 +43,10 @@ test('the recommended setup is preselected and fits', async ({ page }) => {
   for (const id of ['drafters', 'lookup', 'conductor', 'laya', 'shadow', 'vision', 'prompt_cache', 'state_store', 'disk_tier', 'nvme_spill']) {
     await expect(page.locator(`[data-component="${id}"] input`), id).toBeChecked();
   }
-  // the card's own defaults: the narrator, the response cache and the proxy start off
-  for (const id of ['narrator', 'response_cache', 'proxy']) await expect(page.locator(`[data-component="${id}"] input`), id).not.toBeChecked();
+  // the card's own defaults: the narrator and the response cache start off (the engine has no
+  // "Other backends" tool since engine API 1.8: the Backends page has the feature)
+  await expect(page.locator('[data-component="proxy"]')).toHaveCount(0);
+  for (const id of ['narrator', 'response_cache']) await expect(page.locator(`[data-component="${id}"] input`), id).not.toBeChecked();
 });
 
 test('Next and Previous: the URL, the rail and the page agree and nothing is lost', async ({ page }) => {
@@ -91,7 +93,7 @@ test('over budget blocks Finish with How to fix, and a shorter window lets it go
   await open(page, `#/setup/${MODEL}/weights`);
   await page.locator('[data-profile-card="exl3-6.0"]').click();
   await page.goto(`./#/setup/${MODEL}/components`);
-  for (const id of ['response_cache', 'proxy']) await page.locator(`[data-component="${id}"]`).click();
+  await page.locator('[data-component="response_cache"]').click();
   await page.goto(`./#/setup/${MODEL}/parallelism`);
   await page.locator('[data-field="parallelism.kv_pool"] input').click();
   await page.goto(`./#/setup/${MODEL}/review`);

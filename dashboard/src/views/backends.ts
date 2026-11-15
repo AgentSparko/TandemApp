@@ -319,7 +319,7 @@ export class QseBackends extends LightElement {
 
   private renderBody(): TemplateResult {
     if (this.off)
-      return panel('The proxy is off on this server', html`<div class="state"><p class="state-body">This engine runs without <code>--backends</code>, so it serves its own model only. To put other engines and cloud APIs behind this dashboard, set <code>QSE_BACKENDS=~/.tandemllm/config.sqlite3</code> in ops/serve.env and restart, or run the standalone proxy: <code>python -m proxy</code>. docs/proxy.md has both.</p></div>`, { id: 'proxy-off' });
+      return panel('The proxy is off on this server', html`<div class="state"><p class="state-body">This page talks to an engine, which serves its own model only: since engine API 1.8 no engine relays to other backends. TandemApp's controller does. Run it with <code>tandem-app</code> (or <code>python -m proxy</code> in a checkout), open this page from it, and add other engines and cloud APIs here; its config database is <code>~/.tandemllm/config.sqlite3</code>. A box whose engine relayed before (<code>QSE_BACKENDS</code>) copies its backends over with <code>tandem-app import-backends --from &lt;that file&gt;</code>. docs/proxy.md has the steps.</p></div>`, { id: 'proxy-off' });
     const o = this.ov;
     if (o.state === 'loading') return panel('Backends', skeleton(4));
     if (o.state === 'error') return panel('Backends', errorState(o.endpoint, o.message, () => this.load()));
