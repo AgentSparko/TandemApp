@@ -1,13 +1,20 @@
 # TandemApp Helm chart
 
 TandemApp's controller (the gateway, the usage ledger, the fleet and the page) in one pod, with its
-own chatd when `chat.mode` is `own`. Nothing is built into an image: every container runs a stock
-Python image (`image.*`, pinned by digest), and an init container unpacks a release archive into
-the volume and makes a virtualenv there from the archive's own wheels.
+own chatd once Chat is on. Nothing is built into an image: every container runs a stock Python
+image (`image.*`, pinned by digest), and an init container unpacks a release archive into the
+volume and makes a virtualenv there from the archive's own wheels.
+
+The defaults are bare (OPS-288): the gateway only, Chat and the conductor off, no MCP bridge, no
+sandbox. Each is switched on from the page (Settings, App, What runs here) or with the values below.
 
 ## Install
 
-1. Make the release archive from a commit and the page built from it:
+The whole procedure, tested end to end: [docs/install-kubernetes.md](../../docs/install-kubernetes.md).
+In short:
+
+1. Build the release archive from a commit and the page built from it (reproducible with
+   `WHEELS=<a folder of wheels>`):
 
    ```
    python3 tools/dashboard_bundle.py build
@@ -21,7 +28,7 @@ the volume and makes a virtualenv there from the archive's own wheels.
 
    ```
    helm install tandemapp charts/tandemapp -n tandemapp --create-namespace \
-     --set release.id=<id> \
+     --set release.id=<id> --set release.archive.sha256=<sha256> \
      --set ingress.enabled=true --set ingress.className=<class> --set ingress.host=<host>
    ```
 
@@ -29,6 +36,42 @@ the volume and makes a virtualenv there from the archive's own wheels.
 
 The admin password is a Secret the chart makes with a random token (kept across upgrades), or one
 you name with `auth.existingSecret`. Values files never hold a token.
+
+## Values
+
+| value | default | what |
+|-|-|-|
+| `image.repository`, `.tag`, `.digest`, `.pullPolicy` | `python` 3.12 slim, pinned | the stock image of every container (Python 3.11+, tar, the CA bundle) |
+| `release.id` | required | the folder in the archive (the commit's first 12 characters) |
+| `release.archive.url`, `.sha256`, `.waitSeconds` | empty, empty, 1800 | where the init container gets the archive; empty url: it waits for `incoming/tandemapp-<id>.tar.gz` on the volume; sha256 required with a url, checked when set |
+| `release.requirements` | cryptography, psutil | what the venv gets from the archive's wheelhouse (no index) |
+| `persistence.mountPath` | `/var/lib/tandemapp` | the volume in every container |
+| `persistence.existingClaim`, `.storageClass`, `.size`, `.accessModes` | empty, the cluster's, 20Gi, RWO | the claim |
+| `persistence.hostPath.path`, `.node` | empty | a single node's folder as a Retain volume |
+| `persistence.keep` | true | the claim survives `helm uninstall` |
+| `controller.port` | 8091 | the controller's port in the pod |
+| `controller.env`, `.extraEnv`, `.extraEnvFrom` | `TANDEM_NODE_AGENT: "off"` | the controller's variables (docs/proxy.md); keys never go here |
+| `controller.conductor` | empty | the conductor's documents: a path under the volume, an absolute path, or `off`. Empty: off on a new install, the running release's on an upgrade |
+| `controller.resources`, `.probes` | | the controller's requests, limits and probes (`/health`) |
+| `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the admin token's Secret |
+| `chat.mode` | empty | `off`, `own` (chatd in this pod), `external` (another host's). Empty: off on a new install, the running release's on an upgrade. The page's switch wins once used |
+| `chat.dataDir`, `chat.env` | `data/chat`, {} | chatd's data folder under the volume, more lines of its env file |
+| `sandbox.mode` | `off` | `off`, `podman-socket`, `kubernetes` (below) |
+| `sandbox.podmanSocket.hostDir` | empty | the node's folder with `podman.sock` |
+| `sandbox.kubernetes.image`, `.imagePullPolicy` | `tandem-sandbox:1`, Never | the sandbox image, imported on each node |
+| `sandbox.kubernetes.podLabels`, `.runtimeClassName`, `.hostUsers`, `.runAsUser` | component label, empty, false, 1000 | the sandbox pods |
+| `sandbox.kubernetes.memoryGiB`, `.cpus`, `.maxRunning`, `.egressPort` | 2 (empty), 4, 2 (empty), 3128 | per sandbox, and chatd's egress proxy port |
+| `mcpBridge.enabled`, `.name`, `.port`, `.path`, `.command`, `.env`, `.resources` | off, `tools`, 8031, `/mcp` | a stdio MCP server as HTTP on the pod's loopback (below) |
+| `trust.extraCA`, `.existingConfigMap`, `.configMapKey` | empty | more CA certificates for every container |
+| `service.*` | ClusterIP, 80 | the Service |
+| `ingress.enabled`, `.className`, `.host`, `.annotations`, `.tls`, `.blockedPaths` | off; streaming annotations; `/chat-engine` blocked | the Ingress |
+| `networkPolicy.enabled`, `.ingressNamespaces`, `.extraFrom` | off | who may reach the controller's port |
+| `serviceAccount.*`, `podSecurityContext`, `securityContext` | uid 10001, read-only root, no capabilities | the pod's identity and lockdown |
+| `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity`, `terminationGracePeriodSeconds` | | scheduling |
+
+An empty `chat.mode` or `controller.conductor` reads the running Deployment (`lookup`) on an
+upgrade. `helm template` and client-side dry runs read no cluster and render the new-install
+default, so a release whose renders are checked before an upgrade sets both explicitly.
 
 ## Volume
 
@@ -47,8 +90,9 @@ host folder with a Retain volume.
   the pod. chatd hands host paths to the runtime as bind mounts, so the volume must be a host
   folder at the same path (`persistence.hostPath.path` = `persistence.mountPath`), and the
   socket's ACL must admit `podSecurityContext.runAsUser`.
-- `kubernetes`: chatd (`chat.mode: own`) makes each chat's sandbox a pod in the release's
-  namespace through the Kubernetes API (`chatd/k8s.py`, [docs/chat.md](../../docs/chat.md)).
+- `kubernetes`: chatd (`chat.mode` own, or off and switched on from the page) makes each chat's
+  sandbox a pod in the release's namespace through the Kubernetes API (`chatd/k8s.py`,
+  [docs/chat.md](../../docs/chat.md), [docs/install-kubernetes.md](../../docs/install-kubernetes.md)).
 
 ### sandbox.mode kubernetes
 
