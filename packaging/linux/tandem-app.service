@@ -1,0 +1,30 @@
+# systemd USER unit for TandemApp's controller on a plain Linux host with no engine (SRV-841):
+# packaging/linux/tandem-app.sh in the foreground, restarted on failure. Replace %h/tandemapp with
+# the TandemApp checkout or release folder (a wheel install keeps a copy of the launcher anywhere),
+# and the state dir when it is not ~/.tandemllm.
+#
+#   mkdir -p ~/.config/systemd/user && cp packaging/linux/tandem-app.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now tandem-app
+#   loginctl enable-linger "$USER"            (once, as root: the unit outlives the login)
+#
+# The address, the port, the admin password and the backends come from the env file
+# ($TANDEM_APP_STATE/app.env, mode 0600, packaging/app.env.example). A chatd this controller owns
+# (TANDEM_CHAT=own) runs in a scope of its own (systemd-run --user --scope): stopping or restarting
+# this unit leaves it and its chat runs alone, and the next start adopts it. `tandem-app service
+# install` writes an equivalent unit for a controller beside an engine (proxy/appservice.py).
+[Unit]
+Description=TandemApp controller (tandem-app) on a host with no engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+Environment=TANDEM_APP_STATE=%h/.tandemllm
+ExecStart=/bin/bash %h/tandemapp/packaging/linux/tandem-app.sh
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
