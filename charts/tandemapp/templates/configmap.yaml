@@ -1,0 +1,41 @@
+{{- include "tandemapp.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tandemapp.fullname" . }}-config
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+data:
+  init.sh: |-
+{{ .Files.Get "files/init.sh" | indent 4 }}
+  mcp-stdio-http.py: |-
+{{ .Files.Get "files/mcp-stdio-http.py" | indent 4 }}
+  {{- if eq .Values.chat.mode "own" }}
+  chatd.env: |
+    # chatd's env file, written to <state>/chatd.env by the init container (chart values chat.*,
+    # sandbox.*). No secret goes here: chatd's forward key lives in its data folder.
+    QSE_CHAT_DATA={{ printf "%s/%s" .Values.persistence.mountPath .Values.chat.dataDir }}
+    # chatd gets few of the controller's variables: the CA bundle for its https MCP servers
+    SSL_CERT_FILE={{ printf "%s/ca/bundle.pem" .Values.persistence.mountPath }}
+    {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
+    QSE_SANDBOX_SOCKET=/run/tandem-sandbox/podman.sock
+    {{- else }}
+    # sandbox.mode {{ .Values.sandbox.mode }}: no runtime socket in the pod, the sandbox tools say so
+    QSE_SANDBOX_SOCKET=/run/tandem-sandbox/none.sock
+    {{- end }}
+    {{- range $k, $v := .Values.chat.env }}
+    {{ $k }}={{ $v }}
+    {{- end }}
+  {{- end }}
+---
+{{- if and (or .Values.trust.extraCA) (not .Values.trust.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tandemapp.fullname" . }}-trust
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+data:
+  {{ .Values.trust.configMapKey }}: |
+{{ .Values.trust.extraCA | indent 4 }}
+{{- end }}

@@ -1,0 +1,41 @@
+TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Values.release.id }} in namespace {{ .Release.Namespace }}.
+{{ $full := include "tandemapp.fullname" . }}
+1. The release archive.
+{{- if .Values.release.archive.url }}
+   The init container fetches it from release.archive.url (sha256 checked).
+{{- else }}
+   Until the archive is on the volume the pod waits in its init container. Copy it in:
+
+   POD=$(kubectl -n {{ .Release.Namespace }} get pod -l app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}')
+   kubectl -n {{ .Release.Namespace }} cp tandemapp-{{ .Values.release.id }}.tar.gz $POD:{{ .Values.persistence.mountPath }}/incoming/tandemapp-{{ .Values.release.id }}.tar.gz -c release
+{{- end }}
+
+2. Wait for it:   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ $full }}
+   Then:          helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+3. The page:
+{{- if .Values.ingress.enabled }}
+   {{ if .Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}/dashboard/
+   ({{ range .Values.ingress.blockedPaths }}{{ . }} {{ end }}is not routed.)
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $full }} 8091:{{ .Values.service.port }}
+   then http://127.0.0.1:8091/dashboard/
+{{- end }}
+
+4. The admin password (TANDEM_ADMIN_TOKEN) is in Secret {{ include "tandemapp.secretName" . }}, key {{ .Values.auth.secretKey }}.
+   Read it into your password manager, never into a log:
+   kubectl -n {{ .Release.Namespace }} get secret {{ include "tandemapp.secretName" . }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d | pbcopy
+
+5. Chat: chatd is {{ if eq .Values.chat.mode "own" }}this pod's own ({{ .Values.persistence.mountPath }}/{{ .Values.chat.dataDir }}){{ else }}external (another host runs it){{ end }}.
+   Sandboxes: {{ .Values.sandbox.mode }}.
+{{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
+   sandbox.mode kubernetes is PLANNED: its Role and NetworkPolicy are in place, but chatd of this
+   release does not make sandbox pods yet, so the sandbox tools stay off.
+{{- else if eq (toString .Values.sandbox.mode) "off" }}
+   The chats' sandbox tools (files, shell, browser) are off; the Chat tab says so.
+{{- end }}
+{{- if .Values.mcpBridge.enabled }}
+
+6. MCP bridge "{{ .Values.mcpBridge.name }}": http://127.0.0.1:{{ .Values.mcpBridge.port }}{{ .Values.mcpBridge.path }} inside the pod
+   (its program logs in once with its own folder; see the chart README).
+{{- end }}

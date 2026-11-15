@@ -1,0 +1,61 @@
+{{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
+{{- $full := include "tandemapp.fullname" . }}
+# sandbox.mode kubernetes (PLANNED): chatd makes each chat's sandbox a pod in this namespace. The
+# Role is the whole of its API access: pods, their exec and logs, in this namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $full }}-sandbox
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods/attach"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $full }}-sandbox
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $full }}-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "tandemapp.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# a sandbox pod: nothing reaches it; it reaches only chatd's egress proxy in the controller's pod
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-sandbox
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml .Values.sandbox.kubernetes.podLabels | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "tandemapp.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: controller
+      ports:
+        - port: {{ .Values.sandbox.kubernetes.egressPort }}
+          protocol: TCP
+{{- end }}

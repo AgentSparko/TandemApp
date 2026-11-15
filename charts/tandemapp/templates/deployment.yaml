@@ -1,0 +1,203 @@
+{{- $root := .Values.persistence.mountPath }}
+{{- $full := include "tandemapp.fullname" . }}
+{{- $trust := or .Values.trust.extraCA .Values.trust.existingConfigMap }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  # one volume, one writer: never two pods at once
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tandemapp.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        {{- include "tandemapp.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      # a stable host name: the fleet and the topology name the controller's host by it
+      hostname: {{ include "tandemapp.fullname" . }}
+      serviceAccountName: {{ include "tandemapp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ eq (toString .Values.sandbox.mode) "kubernetes" }}
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: release
+          image: {{ include "tandemapp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "/etc/tandemapp/config/init.sh"]
+          env:
+            - name: TA_ROOT
+              value: {{ $root | quote }}
+            - name: TA_RELEASE
+              value: {{ .Values.release.id | quote }}
+            - name: TA_ARCHIVE_URL
+              value: {{ .Values.release.archive.url | quote }}
+            - name: TA_ARCHIVE_SHA256
+              value: {{ .Values.release.archive.sha256 | quote }}
+            - name: TA_WAIT_S
+              value: {{ .Values.release.archive.waitSeconds | quote }}
+            - name: TA_REQUIREMENTS
+              value: {{ join " " .Values.release.requirements | quote }}
+            - name: TA_CHAT_DIR
+              value: {{ .Values.chat.dataDir | quote }}
+            - name: TA_CONDUCTOR_DIR
+              value: {{ $c := include "tandemapp.conductor" . }}{{ if eq $c "off" }}""{{ else }}{{ $c | quote }}{{ end }}
+            - name: HOME
+              value: {{ printf "%s/home" $root | quote }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: data, mountPath: {{ $root }}}
+            - {name: config, mountPath: /etc/tandemapp/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            {{- if $trust }}
+            - {name: trust, mountPath: /etc/tandemapp/trust, readOnly: true}
+            {{- end }}
+      containers:
+        - name: controller
+          image: {{ include "tandemapp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "{{ $root }}/current/packaging/linux/tandem-app.sh"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.controller.port }}
+              protocol: TCP
+          env:
+            - {name: TANDEM_APP_STATE, value: {{ printf "%s/state" $root | quote }}}
+            - {name: TANDEM_APP_PYTHON, value: {{ printf "%s/current/venv/bin/python" $root | quote }}}
+            - {name: TANDEM_HOST, value: "0.0.0.0"}
+            - {name: TANDEM_PORT, value: {{ .Values.controller.port | quote }}}
+            - {name: TANDEM_CONDUCTOR, value: {{ include "tandemapp.conductor" . | quote }}}
+            - {name: TANDEM_CHAT, value: {{ .Values.chat.mode | quote }}}
+            - {name: HOME, value: {{ printf "%s/home" $root | quote }}}
+            - {name: SSL_CERT_FILE, value: {{ printf "%s/ca/bundle.pem" $root | quote }}}
+            - name: TANDEM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tandemapp.secretName" . }}
+                  key: {{ .Values.auth.secretKey }}
+            {{- range $k, $v := .Values.controller.env }}
+            - {name: {{ $k }}, value: {{ $v | toString | quote }}}
+            {{- end }}
+            {{- with .Values.controller.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.controller.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            {{- toYaml .Values.controller.probes.startup | nindent 12 }}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            {{- toYaml .Values.controller.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            {{- toYaml .Values.controller.probes.readiness | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: {{ $root }}}
+            - {name: tmp, mountPath: /tmp}
+            {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
+            - {name: sandbox-socket, mountPath: /run/tandem-sandbox}
+            {{- end }}
+        {{- if .Values.mcpBridge.enabled }}
+        - name: mcp-{{ .Values.mcpBridge.name }}
+          image: {{ include "tandemapp.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python3
+            - -u
+            - /etc/tandemapp/config/mcp-stdio-http.py
+            - --host
+            - 127.0.0.1
+            - --port
+            - {{ .Values.mcpBridge.port | quote }}
+            - --path
+            - {{ .Values.mcpBridge.path | quote }}
+            - --
+            {{- range .Values.mcpBridge.command }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - {name: HOME, value: {{ printf "%s/home" $root | quote }}}
+            - {name: SSL_CERT_FILE, value: {{ printf "%s/ca/bundle.pem" $root | quote }}}
+            {{- range $k, $v := .Values.mcpBridge.env }}
+            - {name: {{ $k }}, value: {{ $v | toString | quote }}}
+            {{- end }}
+          livenessProbe:
+            tcpSocket: {port: {{ .Values.mcpBridge.port }}}
+            periodSeconds: 30
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.mcpBridge.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: {{ $root }}}
+            - {name: config, mountPath: /etc/tandemapp/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "tandemapp.claimName" . }}
+        - name: config
+          configMap:
+            name: {{ $full }}-config
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
+        {{- if $trust }}
+        - name: trust
+          configMap:
+            name: {{ default (printf "%s-trust" $full) .Values.trust.existingConfigMap }}
+            items:
+              - {key: {{ .Values.trust.configMapKey }}, path: ca.pem}
+        {{- end }}
+        {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
+        - name: sandbox-socket
+          hostPath:
+            path: {{ .Values.sandbox.podmanSocket.hostDir }}
+            type: Directory
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

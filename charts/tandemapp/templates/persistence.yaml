@@ -1,0 +1,55 @@
+{{- if not .Values.persistence.existingClaim }}
+{{- if .Values.persistence.hostPath.path }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "tandemapp.fullname" . }}-{{ .Release.Namespace }}-data
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ .Values.persistence.size }}
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  claimRef:
+    namespace: {{ .Release.Namespace }}
+    name: {{ include "tandemapp.claimName" . }}
+  hostPath:
+    path: {{ .Values.persistence.hostPath.path }}
+    type: DirectoryOrCreate
+  {{- with .Values.persistence.hostPath.node }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [{{ . | quote }}]
+  {{- end }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "tandemapp.claimName" . }}
+  labels:
+    {{- include "tandemapp.labels" . | nindent 4 }}
+  {{- if .Values.persistence.keep }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.accessModes | nindent 4 }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- if .Values.persistence.hostPath.path }}
+  volumeName: {{ include "tandemapp.fullname" . }}-{{ .Release.Namespace }}-data
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

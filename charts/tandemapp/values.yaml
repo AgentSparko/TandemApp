@@ -1,0 +1,215 @@
+# TandemApp's controller on Kubernetes: one pod with the controller (gateway, usage ledger, fleet,
+# page) and, with chat.mode own, its chatd as a child process. No image is built: a stock Python
+# image runs the code of a release archive that an init container unpacks into the volume, with a
+# virtualenv made there from the archive's own wheels (scripts/make-archive.sh builds the archive).
+
+# -- the stock image every container runs (controller, init, bridge, test). Python 3.11 or newer
+# with tar and the system CA bundle; pin the digest.
+image:
+  repository: docker.io/library/python
+  tag: "3.12.12-slim-bookworm"
+  digest: "sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# -- the release the pod runs: an archive `tandemapp-<id>.tar.gz` holding one folder `<id>/` with
+# the source tree, the built page (dashboard/dist) and a wheelhouse/ for the virtualenv
+release:
+  # the release's id (the folder in the archive; the commit's short hash). Required.
+  id: ""
+  # where the init container gets the archive. With url empty it waits until the file
+  # `<persistence.mountPath>/incoming/tandemapp-<id>.tar.gz` is there (copy it in with the
+  # `kubectl cp` line NOTES prints), for at most waitSeconds, then fails and the pod retries.
+  archive:
+    url: ""
+    # the archive's sha256: required with url, checked when set
+    sha256: ""
+    waitSeconds: 1800
+  # what the virtualenv gets, from the archive's wheelhouse only (no index is asked)
+  requirements:
+    - cryptography
+    - psutil
+
+# -- the volume: state (config, ledger, fleet, secrets.key), chat data, the releases, the conductor's
+# documents and the bridge's own files. One volume, ReadWriteOnce: one replica.
+persistence:
+  # mounted at this path in every container. With sandbox.mode podman-socket it must equal
+  # hostPath.path: chatd hands the host's Podman paths under it as bind mounts.
+  mountPath: /var/lib/tandemapp
+  # an existing claim (nothing below is made)
+  existingClaim: ""
+  # a dynamic claim (when hostPath.path is empty)
+  storageClass: ""
+  size: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  # a single-node cluster may pin the data to a host folder: the chart makes a PersistentVolume
+  # (hostPath, Retain, the storage class below) bound to its claim. Uninstalling keeps the folder.
+  hostPath:
+    path: ""
+    # the node that has the folder (nodeAffinity of the volume); empty: any
+    node: ""
+  # the claim survives `helm uninstall` (resource policy keep)
+  keep: true
+
+# -- the controller (`tandem-app serve` through packaging/linux/tandem-app.sh)
+controller:
+  port: 8091
+  # variables of the controller's process (the env file of packaging/app.env.example, as a map).
+  # TANDEM_HOST, TANDEM_PORT, TANDEM_APP_STATE and TANDEM_CONDUCTOR are set by the chart. Backends
+  # are added here (TANDEM_BACKENDS ...) or on the page; their keys are stored in the config
+  # database under the controller's own master key, never here.
+  env:
+    TANDEM_NODE_AGENT: "off"
+  # variables from existing Secrets or ConfigMaps (envFrom entries)
+  extraEnvFrom: []
+  # more env entries (valueFrom allowed)
+  extraEnv: []
+  # the conductor's documents: a path under the volume, or "off"
+  conductor: conductor
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "4"
+      memory: 3Gi
+  probes:
+    startup:
+      failureThreshold: 60
+      periodSeconds: 5
+    liveness:
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+# -- the admin password (TANDEM_ADMIN_TOKEN, at least 32 characters). Without one every route of
+# the controller answers anyone who reaches it. Either name an existing Secret, or let the chart
+# make one with a random token (kept across upgrades). Never put a token in a values file.
+auth:
+  existingSecret: ""
+  secretKey: admin-token
+  create: true
+
+# -- Chat: who runs chatd. external: another host does (the Chat tab forwards to chat.url).
+# own: this pod's controller starts and watches chatd, with the variables below as its env file
+# (<state>/chatd.env, written by the init container at every start).
+chat:
+  mode: external
+  # chatd's data folder under the volume (QSE_CHAT_DATA)
+  dataDir: data/chat
+  # more lines of chatd.env (QSE_CHAT_MAX_RUNS, QSE_SANDBOX_MEM_GB, ...), as a map
+  env: {}
+
+# -- the chat sandboxes (one container per chat, chatd/sandbox.py)
+sandbox:
+  # off: no sandbox runtime; a chat's sandbox tools say so
+  # podman-socket: a rootless Podman socket on the node (ops/sandbox/install.sh), mounted into the
+  #   pod. Needs persistence.hostPath.path == persistence.mountPath, and the socket's ACL open to
+  #   podSecurityContext.runAsUser.
+  # kubernetes: PLANNED. chatd makes each sandbox a pod through the Kubernetes API. This chart
+  #   already renders its ServiceAccount, Role and NetworkPolicy; chatd of this release does not
+  #   use them yet, so sandboxes stay off.
+  mode: "off"
+  podmanSocket:
+    # the folder on the node that holds podman.sock (/run/user/<uid>/podman)
+    hostDir: ""
+  kubernetes:
+    # labels every sandbox pod carries (the NetworkPolicy selects them)
+    podLabels:
+      app.kubernetes.io/component: chat-sandbox
+    runtimeClassName: ""
+    resources:
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    # where a sandbox may connect: only the controller's pod (chatd's egress proxy) by default
+    egressPort: 3128
+
+# -- a stdio MCP server served as streamable HTTP on the pod's loopback (files/mcp-stdio-http.py),
+# a sidecar. chatd's MCP servers reach it at http://127.0.0.1:<port><path>. The command is a
+# program on the volume (put there by the operator) with its own login in its own folder.
+mcpBridge:
+  enabled: false
+  name: tools
+  port: 8031
+  path: /mcp
+  # the program and its arguments, e.g. ["/var/lib/tandemapp/mcp/bin/server", "--stdio"]
+  command: []
+  env: {}
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# -- extra CA certificates trusted by every container (SSL_CERT_FILE = system bundle + these)
+trust:
+  # PEM text
+  extraCA: ""
+  # or a ConfigMap with the PEM
+  existingConfigMap: ""
+  configMapKey: ca.pem
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: 200m
+  # TLS secrets for the host (empty: plain HTTP, e.g. behind a front that ends TLS)
+  tls: []
+  # paths routed to a Service with no endpoints (503): chatd's engine gateway is for chatd inside
+  # the pod only
+  blockedPaths:
+    - /chat-engine
+
+# -- who may reach the controller's port. Off: anyone in the cluster.
+networkPolicy:
+  enabled: false
+  # namespaces whose pods may connect (the ingress controller's)
+  ingressNamespaces: []
+  # more `from` entries (ipBlock for a node, a front, ...)
+  extraFrom: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  runAsNonRoot: true
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+terminationGracePeriodSeconds: 40
