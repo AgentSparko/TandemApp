@@ -35,11 +35,15 @@ restarted, and switched back when it does not come up. `app.env` keeps what it h
 | `--chat off\|own\|external` | who runs chatd. A new `app.env` gets `off`; the page switches it later. `own` here runs chatd on this host from the start |
 | `--with-sandbox` | Linux, sudo once: rootless Podman for chat's sandboxes (below). It switches nothing on |
 | `--service auto\|systemd\|launchd\|process\|none` | how it runs (default: what the host has) |
+| `--unit NAME`, `--launchd-label LABEL` | the systemd user unit's name (default `tandem-app`), the launchd job's label (default `org.tandemllm.app`). A second install on the same host needs its own name, `--state-dir` and `--port` |
 | `--prefix DIR`, `--state-dir DIR` | where the releases and the state go |
 | `--wheels DIR` | install the venv offline from a folder of wheels |
 | `--venv DIR` | use a venv that is there |
 | `--bundle-url URL --bundle-sha256 HEX`, `--build-page` | a tree without a built page: fetch one, or build it with Node 20.19 or newer |
 | `--dry-run` | print what it would do |
+
+Nothing is changed when a unit or launchd job of that name runs another prefix or state dir, or
+when another listener holds the port: the install stops (exit 2) and names both.
 
 On Linux a user unit stops at logout unless the user lingers; the install prints the one command
 (`sudo loginctl enable-linger <user>`).

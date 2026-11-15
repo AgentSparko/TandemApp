@@ -90,8 +90,9 @@ file of the registry without any secret: good for a record, not a backup.
 
 - One command: `systemctl --user disable --now tandem-app` and remove
   `~/.config/systemd/user/tandem-app.service` (Linux), or `launchctl bootout gui/$(id -u)/org.tandemllm.app`
-  and remove `~/Library/LaunchAgents/org.tandemllm.app.plist` (macOS). Then remove the prefix
-  folder. The state dir stays until you remove it.
+  and remove `~/Library/LaunchAgents/org.tandemllm.app.plist` (macOS); an install made with
+  `--unit` or `--launchd-label` uses that name instead (the install's summary prints its stop
+  command). Then remove the prefix folder. The state dir stays until you remove it.
 - Container: `docker rm -f tandem-app`; the volume stays until `docker volume rm`.
 - Helm: `helm uninstall`; the volume's claim stays (`persistence.keep`) until you delete it.
 

@@ -42,6 +42,10 @@ stopped at the end.
   8  the image built and run (TANDEM_TEST_DOCKER=1 with docker): /health, the wizard flag, ssh,
      sandboxes off                                                test_container_build
   9  a venv from the package index (TANDEM_INSTALL_NET=1)         test_venv_from_the_index
+ 10  a second install beside another: a unit or launchd job of the name that runs another prefix
+     or state dir is refused (exit 2, both named, nothing changed); --unit names it everywhere
+     (file, enable, restart, the stop line) and its own unit is updated; a port held by another
+     listener is refused, the install's own controller is not   test_unit_name_and_guards
 
     python tests/test_app_install.py
 """
@@ -364,7 +368,8 @@ if args[:1] != ["--user"]:
     sys.exit(1)
 cmd, rest = args[1], args[2:]
 unit = [a for a in rest if not a.startswith("-")]
-pidf = os.path.join(d, "unit.pid")
+name = unit[0] if unit else ""
+pidf = os.path.join(d, f"{name}.pid")
 def alive():
     try:
         pid = int(open(pidf).read())
@@ -375,13 +380,13 @@ def alive():
 if cmd in ("show-environment", "daemon-reload", "enable"):
     sys.exit(0)
 if cmd == "is-active":
-    sys.exit(0 if unit == ["tandem-app"] and alive() else 3)
-if cmd == "restart" and unit == ["tandem-app"]:
+    sys.exit(0 if name and alive() else 3)
+if cmd == "restart" and name:
     pid = alive()
     if pid:
         os.kill(pid, signal.SIGTERM)
         time.sleep(1)
-    path = os.path.join(os.environ["HOME"], ".config", "systemd", "user", "tandem-app.service")
+    path = os.path.join(os.environ["HOME"], ".config", "systemd", "user", f"{name}.service")
     env, argv = dict(os.environ), None
     for line in open(path):
         line = line.strip()
@@ -415,7 +420,7 @@ def test_systemd_unit(tmp_path):
     try:
         out = ok_run(box.install("--port", str(box.port), "--service", "systemd",
                                  env=box.env(FAKE_SYSTEMD=fake)))
-        with open(os.path.join(fake, "unit.pid")) as f:
+        with open(os.path.join(fake, "tandem-app.pid")) as f:
             upid = int(f.read())
         assert "is running (systemd)" in out and "sudo loginctl enable-linger tester" in out, out
         unit = os.path.join(box.home, ".config", "systemd", "user", "tandem-app.service")
@@ -441,6 +446,117 @@ def test_systemd_unit(tmp_path):
     finally:
         box.stop(upid)
     return "the unit from C1's template, enabled and restarted, linger note, idempotent"
+
+
+def fake_systemd(box: Box, tmp: str) -> str:
+    fake = os.path.join(tmp, "systemd")
+    os.makedirs(fake)
+    with open(os.path.join(box.bin, "systemctl"), "w") as f:
+        f.write(FAKE_SYSTEMCTL.replace("PYTHON", sys.executable))
+    with open(os.path.join(box.bin, "loginctl"), "w") as f:
+        f.write("#!/bin/sh\necho Linger=yes\n")
+    for name in ("systemctl", "loginctl"):
+        os.chmod(os.path.join(box.bin, name), 0o755)
+    return fake
+
+
+def calls_of(fake: str) -> list:
+    try:
+        with open(os.path.join(fake, "calls.jsonl")) as f:
+            return [json.loads(x) for x in f]
+    except FileNotFoundError:
+        return []
+
+
+def test_unit_name_and_guards(tmp_path):
+    template = os.path.join(ROOT, "packaging", "linux", "tandem-app.service")
+    assert "systemctl --user disable --now tandem-app-pi stops it" in \
+        inst.unit_text(template, "/p", "/s", "tandem-app-pi")
+    # launchd: the label in the plist; a job of the name that runs another install is refused
+    assert plistlib.loads(inst.plist_bytes("/p", "/s", "org.example.two"))["Label"] == \
+        "org.example.two"
+    lhome = os.path.join(str(tmp_path), "lhome")
+    agents = os.path.join(lhome, "Library", "LaunchAgents")
+    os.makedirs(agents)
+    with open(os.path.join(agents, "org.tandemllm.app.plist"), "wb") as f:
+        f.write(inst.plist_bytes("/other", "/other/state"))
+    try:
+        inst.check_owner("launchd", "tandem-app", "org.tandemllm.app", "/p", "/s", lhome)
+        raise AssertionError("a launchd job of another install was accepted")
+    except inst.Stop as exc:
+        assert exc.code == 2 and "--launchd-label" in exc.message, exc.message
+        assert "prefix /other, state /other/state" in exc.message and "prefix /p" in exc.message
+    inst.check_owner("launchd", "tandem-app", "org.tandemllm.app", "/other", "/other/state", lhome)
+    inst.check_owner("launchd", "tandem-app", "org.example.two", "/p", "/s", lhome)
+    box = Box(str(tmp_path))
+    # a port another listener holds: refused before anything changes
+    held = socket.socket()
+    held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    held.bind(("127.0.0.1", box.port))
+    held.listen(1)
+    try:
+        r = box.install("--port", str(box.port), "--service", "process")
+        assert r.returncode == 2 and f"port {box.port} on 127.0.0.1 is taken" in r.stdout, \
+            r.stdout[-2000:]
+        assert not os.path.exists(box.prefix) and sorted(os.listdir(box.state)) == ["chatd.env"]
+    finally:
+        held.close()
+    r = box.install("--service", "none", "--unit", "two words")
+    assert r.returncode == 2 and "--unit" in r.stdout, r.stdout
+    if not sys.platform.startswith("linux"):
+        return "launchd label and guard, port guard (the systemd part is Linux's)"
+    fake = fake_systemd(box, str(tmp_path))
+    env = box.env(FAKE_SYSTEMD=fake)
+    udir = os.path.join(box.home, ".config", "systemd", "user")
+    os.makedirs(udir)
+    foreign = os.path.join(udir, "tandem-app.service")
+    other = inst.unit_text(template, "/srv/other/app", "/srv/other/state")
+    with open(foreign, "w") as f:
+        f.write(other)
+    pids = []
+    try:
+        # the default name belongs to another install: refused, its unit untouched
+        r = box.install("--port", str(box.port), "--service", "systemd", env=env)
+        assert r.returncode == 2 and "the unit tandem-app (" in r.stdout, r.stdout[-2000:]
+        assert "prefix /srv/other/app, state /srv/other/state" in r.stdout and \
+            f"prefix {box.prefix}, state {box.state}" in r.stdout and "--unit" in r.stdout
+        with open(foreign) as f:
+            assert f.read() == other
+        assert not [c for c in calls_of(fake) if c[1] in ("enable", "restart", "daemon-reload")]
+        assert not os.path.exists(box.prefix)
+        # its own name: beside it, the name everywhere
+        out = ok_run(box.install("--port", str(box.port), "--service", "systemd",
+                                 "--unit", "tandem-app-pi.service", env=env))
+        with open(os.path.join(fake, "tandem-app-pi.pid")) as f:
+            pids.append(int(f.read()))
+        assert "is running (systemd)" in out and \
+            "Stop:    systemctl --user disable --now tandem-app-pi" in out, out
+        with open(os.path.join(udir, "tandem-app-pi.service")) as f:
+            text = f.read()
+        assert f'Environment="TANDEM_APP_STATE={box.state}"' in text and \
+            "disable --now tandem-app-pi stops it" in text, text
+        calls = calls_of(fake)
+        assert ["--user", "enable", "--quiet", "tandem-app-pi"] in calls and \
+            ["--user", "restart", "tandem-app-pi"] in calls, calls
+        assert not [c for c in calls if c[1] in ("enable", "restart") and "tandem-app" in c], calls
+        with open(foreign) as f:
+            assert f.read() == other
+        assert box.json("/health")["version"] == box.version
+        # its own unit is updated: a new release restarts it; its own port is no refusal
+        v2 = box.version + "-t2"
+        with open(os.path.join(box.tree, "VERSION"), "w") as f:
+            f.write(v2 + "\n")
+        n = len(calls_of(fake))
+        ok_run(box.install("--service", "systemd", "--unit", "tandem-app-pi", env=env))
+        with open(os.path.join(fake, "tandem-app-pi.pid")) as f:
+            pids.append(int(f.read()))
+        assert ["--user", "restart", "tandem-app-pi"] in calls_of(fake)[n:]
+        assert pids[1] != pids[0] and box.json("/health")["version"] == v2
+        with open(foreign) as f:
+            assert f.read() == other
+    finally:
+        box.stop(*pids)
+    return "launchd label and guard, port guard, a foreign unit refused, --unit everywhere"
 
 
 # ---------------------------------------------------------------------------- 4 launchd, dry

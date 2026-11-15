@@ -31,10 +31,11 @@ WHAT IT DOES, in order (each step says what it did; `--dry-run` says what it wou
      fix is printed (on a Raspberry Pi, cgroup_enable=memory in cmdline.txt); no boot file is
      edited here.
   6  <prefix>/current points to the release, and the service (--service, auto by default):
-       systemd   Linux with a user manager: ~/.config/systemd/user/tandem-app.service
+       systemd   Linux with a user manager: ~/.config/systemd/user/<--unit, tandem-app>.service
                  (packaging/linux/tandem-app.service with this prefix and state dir), enabled and
                  restarted; a user without linger is told the one command that keeps it after logout
-       launchd   macOS: ~/Library/LaunchAgents/org.tandemllm.app.plist, booted out and in
+       launchd   macOS: ~/Library/LaunchAgents/<--launchd-label, org.tandemllm.app>.plist, booted
+                 out and in
        process   no service manager (a container, no user bus): a background process, its pid in
                  <state>/tandem-app.pid, its output in <state>/logs/tandem-app.log; not started at
                  boot (the summary says so)
@@ -44,11 +45,16 @@ WHAT IT DOES, in order (each step says what it did; `--dry-run` says what it wou
      --wait seconds. Else an update switches back to the release before and restarts it, and the
      run fails with the log's last lines.
 
+Before any of it: a unit or launchd job of that name that runs another prefix or state dir, or a
+port another listener holds (not this install's own controller), stops the run (exit 2) with
+nothing changed. Two installs on one host need their own --unit, --state-dir and --port.
+
 A re-run with the same release changes nothing that runs while it answers healthy (an unchanged
 unit or plist, the same release): idempotent. Old releases stay; the summary says how many.
 
     bash packaging/install.sh [--prefix DIR] [--state-dir DIR] [--listen ADDR] [--port N]
-        [--service auto|systemd|launchd|process|none] [--chat off|own|external]
+        [--service auto|systemd|launchd|process|none] [--unit NAME] [--launchd-label LABEL]
+        [--chat off|own|external]
         [--with-sandbox] [--venv DIR]
         [--wheels DIR] [--bundle-url URL --bundle-sha256 HEX | --build-page] [--python PY]
         [--wait S] [--dry-run]
@@ -60,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import hashlib
 import ipaddress
 import json
@@ -71,14 +78,17 @@ import secrets
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 
-UNIT = "tandem-app"
-LABEL = "org.tandemllm.app"
+UNIT = "tandem-app"                     # --unit
+LABEL = "org.tandemllm.app"             # --launchd-label
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}")
+LAUNCHER_TAIL = os.path.join("current", "packaging", "linux", "tandem-app.sh")
 DEFAULT_PORT = 8080
 DEFAULT_HOST = "127.0.0.1"
 MANAGERS = ("auto", "systemd", "launchd", "process", "none")
@@ -381,11 +391,8 @@ CHATD_ENV = ("# chatd on TandemApp's host (packaging/install.sh): packaging/linu
              "it).\nQSE_SANDBOX_MEM_GB=2\nQSE_SANDBOX_MAX_RUNNING=2\n")
 
 
-def ensure_state(state: str, a, dry: bool) -> dict:
-    """Step 4: {host, port, token, changed, new} of the controller's app.env."""
-    envf = os.path.join(state, "app.env")
-    cur = read_env(envf)
-    new = not os.path.exists(envf)
+def address_of(a, cur: dict) -> tuple[str, int]:
+    """(host, port) the controller listens on: the options, else app.env's, else the defaults."""
     host = check_listen(a.listen) if a.listen else cur.get("TANDEM_HOST") or DEFAULT_HOST
     try:
         port = int(a.port if a.port is not None else cur.get("TANDEM_PORT") or DEFAULT_PORT)
@@ -393,6 +400,15 @@ def ensure_state(state: str, a, dry: bool) -> dict:
         raise Stop("TANDEM_PORT in app.env is not a number", 2) from None
     if not 1 <= port <= 65535:
         raise Stop(f"--port {port}: 1 to 65535", 2)
+    return host, port
+
+
+def ensure_state(state: str, a, dry: bool) -> dict:
+    """Step 4: {host, port, token, changed, new} of the controller's app.env."""
+    envf = os.path.join(state, "app.env")
+    cur = read_env(envf)
+    new = not os.path.exists(envf)
+    host, port = address_of(a, cur)
     lan = not loopback(host)
     has_admin = bool(cur.get("TANDEM_ADMIN_TOKEN") or cur.get("QSE_ADMIN_TOKEN")) or \
         os.path.exists(os.path.join(state, "admin.json"))
@@ -506,14 +522,14 @@ def _q(path: str) -> str:
     return f'"{path}"' if re.search(r"\s", path) else path
 
 
-def unit_text(template: str, prefix: str, state: str) -> str:
+def unit_text(template: str, prefix: str, state: str, unit: str = UNIT) -> str:
     """packaging/linux/tandem-app.service with this prefix and state dir."""
     with open(template) as f:
         text = f.read()
     launcher = os.path.join(prefix, "current", "packaging", "linux", "tandem-app.sh")
     py = os.path.join(prefix, "current", "venv", "bin", "python")
     head = (f"# written by packaging/install.sh: TandemApp's controller from {prefix}/current\n"
-            f"# (run the installer again to update; systemctl --user disable --now {UNIT} stops it)\n")
+            f"# (run the installer again to update; systemctl --user disable --now {unit} stops it)\n")
     body = []
     for line in text.splitlines():
         if line.startswith("ExecStart="):
@@ -528,11 +544,11 @@ def unit_text(template: str, prefix: str, state: str) -> str:
     return head + "\n".join(body).lstrip("\n") + "\n"
 
 
-def plist_bytes(prefix: str, state: str) -> bytes:
+def plist_bytes(prefix: str, state: str, label: str = LABEL) -> bytes:
     launcher = os.path.join(prefix, "current", "packaging", "linux", "tandem-app.sh")
     log = os.path.join(state, "logs", "tandem-app.log")
     return plistlib.dumps({
-        "Label": LABEL,
+        "Label": label,
         "ProgramArguments": ["/bin/bash", launcher],
         "EnvironmentVariables": {
             "TANDEM_APP_STATE": state,
@@ -540,6 +556,130 @@ def plist_bytes(prefix: str, state: str) -> bytes:
             "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
         "RunAtLoad": True, "KeepAlive": True, "ProcessType": "Interactive",
         "StandardOutPath": log, "StandardErrorPath": log})
+
+
+def service_file(mgr: str, unit: str, label: str, home: str | None = None) -> str | None:
+    """Where the unit (systemd) or the plist (launchd) of this name lives; None for the others."""
+    home = home or os.path.expanduser("~")
+    if mgr == "systemd":
+        return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"),
+                            "systemd", "user", f"{unit}.service")
+    if mgr == "launchd":
+        return os.path.join(home, "Library", "LaunchAgents", f"{label}.plist")
+    return None
+
+
+def owner_of(mgr: str, path: str) -> tuple[str | None, str | None]:
+    """(prefix, state dir) the unit or plist at `path` runs; None where it names none."""
+    prefix = state = None
+    if mgr == "launchd":
+        try:
+            with open(path, "rb") as f:
+                doc = plistlib.load(f)
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            return None, None
+        args = doc.get("ProgramArguments") or []
+        launcher = args[-1] if args and isinstance(args[-1], str) else ""
+        state = (doc.get("EnvironmentVariables") or {}).get("TANDEM_APP_STATE")
+    else:
+        launcher = ""
+        try:
+            with open(path) as f:
+                lines = f.read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            return None, None
+        for line in lines:
+            line = line.strip()
+            try:
+                if line.startswith("ExecStart="):
+                    argv = shlex.split(line[len("ExecStart="):])
+                    launcher = argv[-1] if argv else ""
+                elif line.startswith("Environment="):
+                    for kv in shlex.split(line[len("Environment="):]):
+                        k, _, v = kv.partition("=")
+                        if k == "TANDEM_APP_STATE":
+                            state = v
+            except ValueError:
+                continue
+    if launcher.endswith(os.sep + LAUNCHER_TAIL):
+        prefix = launcher[:-len(LAUNCHER_TAIL) - 1]
+    return prefix, state
+
+
+def check_owner(mgr: str, unit: str, label: str, prefix: str, state: str,
+                home: str | None = None) -> None:
+    """A unit or launchd job of this name that runs another prefix or state dir is never
+    overwritten: the run stops (exit 2) and names both."""
+    path = service_file(mgr, unit, label, home)
+    if path is None:
+        return
+    if not os.path.exists(path) and mgr == "systemd" and shutil.which("systemctl"):
+        r = run(["systemctl", "--user", "show", "-p", "FragmentPath", "--value",
+                 f"{unit}.service"], check=False)
+        found = r.stdout.strip() if r.returncode == 0 else ""
+        path = found if found and os.path.exists(found) else path
+    if not os.path.exists(path):
+        return
+    p, s = owner_of(mgr, path)
+    same = p is not None and s is not None and \
+        os.path.realpath(p) == os.path.realpath(prefix) and \
+        os.path.realpath(s) == os.path.realpath(state)
+    if not same:
+        what = f"the unit {unit}" if mgr == "systemd" else f"the launchd job {label}"
+        flag = "--unit" if mgr == "systemd" else "--launchd-label"
+        raise Stop(f"{what} ({path}) runs prefix {p or '?'}, state {s or '?'}; this install is "
+                   f"prefix {prefix}, state {state}: name another with {flag} (nothing changed)",
+                   2)
+
+
+def port_taken(host: str, port: int) -> bool:
+    """Something listens where the controller would: it answers a connect, or the bind fails."""
+    h = "127.0.0.1" if host in ("0.0.0.0", "") else "::1" if host == "::" else host
+    try:
+        with socket.create_connection((h, port), timeout=1):
+            return True
+    except OSError:
+        pass
+    s = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        return False
+    except OSError as exc:
+        return exc.errno == errno.EADDRINUSE
+    finally:
+        s.close()
+
+
+def own_running(mgr: str, unit: str, label: str, state: str) -> bool:
+    """This install's controller runs (its unit, job or process; check_owner made sure a unit or
+    job of this name is this install's)."""
+    if mgr == "systemd":
+        return run(["systemctl", "--user", "is-active", "--quiet", unit],
+                   check=False).returncode == 0
+    if mgr == "launchd":
+        return run(["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                   check=False).returncode == 0
+    if mgr == "process":
+        return process_pid(state) is not None
+    return False
+
+
+def check_port(mgr: str, unit: str, label: str, state: str, host: str, port: int) -> None:
+    """The port is free, or this install's own controller holds it; else the run stops (exit 2)."""
+    if mgr == "none" or not port_taken(host, port):
+        return
+    envf = os.path.join(state, "app.env")
+    if os.path.exists(envf):
+        cur = read_env(envf)
+        try:
+            own_port = int(cur.get("TANDEM_PORT") or DEFAULT_PORT)
+        except ValueError:
+            own_port = None
+        if own_port == port and own_running(mgr, unit, label, state):
+            return
+    raise Stop(f"port {port} on {host} is taken by another listener: pick another --port "
+               f"(nothing changed)", 2)
 
 
 def write_if_changed(path: str, data: bytes) -> bool:
@@ -620,26 +760,26 @@ def start_process(prefix: str, state: str) -> int:
     return p.pid
 
 
-def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry: bool) -> dict:
-    """Step 6's service: {manager, started, note}."""
-    home = os.path.expanduser("~")
+def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry: bool,
+            unit: str = UNIT, label: str = LABEL) -> dict:
+    """Step 6's service: {manager, started, note}. The unit (systemd) is named `unit`, the
+    launchd job `label`."""
     if mgr == "systemd":
-        path = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"),
-                            "systemd", "user", f"{UNIT}.service")
+        path = service_file(mgr, unit, label)
         text = unit_text(os.path.join(release, "packaging", "linux", "tandem-app.service"),
-                         prefix, state).encode()
+                         prefix, state, unit).encode()
         if dry:
-            say(f"would write {path} and enable and restart {UNIT}")
+            say(f"would write {path} and enable and restart {unit}")
             return {"manager": mgr, "started": False, "note": None}
         if write_if_changed(path, text):
             restart = True
             say(f"wrote {path}")
         run(["systemctl", "--user", "daemon-reload"])
-        run(["systemctl", "--user", "enable", "--quiet", UNIT])
-        active = run(["systemctl", "--user", "is-active", "--quiet", UNIT], check=False)
+        run(["systemctl", "--user", "enable", "--quiet", unit])
+        active = run(["systemctl", "--user", "is-active", "--quiet", unit], check=False)
         if restart or active.returncode != 0:
-            run(["systemctl", "--user", "restart", UNIT])
-            say(f"started the user unit {UNIT}")
+            run(["systemctl", "--user", "restart", unit])
+            say(f"started the user unit {unit}")
         user = os.environ.get("USER") or ""
         r = run(["loginctl", "show-user", user, "--property=Linger"], check=False) \
             if shutil.which("loginctl") and user else None
@@ -647,16 +787,16 @@ def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry:
         if r is not None and r.stdout.strip() == "Linger=no":
             note = (f"the unit stops when {user} logs out; keep it running with: "
                     f"sudo loginctl enable-linger {user}")
-        if run(["systemctl", "--user", "is-active", "--quiet", "tandemapp"],
-               check=False).returncode == 0:
+        if unit != "tandemapp" and run(["systemctl", "--user", "is-active", "--quiet",
+                                        "tandemapp"], check=False).returncode == 0:
             note = ((note + "; ") if note else "") + (
                 "the unit tandemapp (`tandem-app service install`) runs too: remove it with "
                 "`tandem-app service uninstall` so one controller keeps the port")
         return {"manager": mgr, "started": True, "note": note,
-                "stop": f"systemctl --user disable --now {UNIT}"}
+                "stop": f"systemctl --user disable --now {unit}"}
     if mgr == "launchd":
-        path = os.path.join(home, "Library", "LaunchAgents", f"{LABEL}.plist")
-        data = plist_bytes(prefix, state)
+        path = service_file(mgr, unit, label)
+        data = plist_bytes(prefix, state, label)
         if dry:
             say(f"would write {path} and load it")
             return {"manager": mgr, "started": False, "note": None}
@@ -664,13 +804,13 @@ def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry:
             restart = True
             say(f"wrote {path}")
         dom = f"gui/{os.getuid()}"
-        loaded = run(["launchctl", "print", f"{dom}/{LABEL}"], check=False).returncode == 0
+        loaded = run(["launchctl", "print", f"{dom}/{label}"], check=False).returncode == 0
         if restart or not loaded:
-            run(["launchctl", "bootout", f"{dom}/{LABEL}"], check=False)
+            run(["launchctl", "bootout", f"{dom}/{label}"], check=False)
             run(["launchctl", "bootstrap", dom, path])
-            say(f"loaded the launchd job {LABEL}")
+            say(f"loaded the launchd job {label}")
         return {"manager": mgr, "started": True, "note": None,
-                "stop": f"launchctl bootout {dom}/{LABEL}"}
+                "stop": f"launchctl bootout {dom}/{label}"}
     if mgr == "process":
         if dry:
             say("would start the controller in the background (no service manager here)")
@@ -720,9 +860,9 @@ def health(host: str, port: int, token: str | None, version: str, bundle: str | 
         time.sleep(0.5)
 
 
-def log_tail(state: str, mgr: str, n: int = 20) -> str:
+def log_tail(state: str, mgr: str, n: int = 20, unit: str = UNIT) -> str:
     if mgr == "systemd":
-        r = run(["journalctl", "--user", "-u", UNIT, "-n", str(n), "--no-pager"], check=False)
+        r = run(["journalctl", "--user", "-u", unit, "-n", str(n), "--no-pager"], check=False)
         return r.stdout
     try:
         with open(os.path.join(state, "logs", "tandem-app.log"), "rb") as f:
@@ -762,6 +902,11 @@ def parser() -> argparse.ArgumentParser:
                          "loopback makes an admin token")
     ap.add_argument("--port", type=int, default=None, help=f"default {DEFAULT_PORT}, or app.env's")
     ap.add_argument("--service", choices=MANAGERS, default="auto")
+    ap.add_argument("--unit", default=UNIT,
+                    help="the systemd user unit's name (default: %(default)s); a unit of this "
+                         "name that runs another prefix or state dir stops the run")
+    ap.add_argument("--launchd-label", default=LABEL,
+                    help="the launchd job's label on macOS (default: %(default)s); the same rule")
     ap.add_argument("--chat", choices=("off", "own", "external"), default=None,
                     help="who runs chatd: off (a new app.env: no chat until it is switched on "
                          "from the page), own (this host) or external; a later run with it "
@@ -808,9 +953,20 @@ def install(a) -> int:
                    "chatd.env (QSE_SANDBOX_SOCKET)", 2)
     if a.listen:
         check_listen(a.listen)
+    unit = a.unit[:-len(".service")] if a.unit.endswith(".service") else a.unit
+    if not NAME_RE.fullmatch(unit):
+        raise Stop(f"--unit {a.unit!r}: letters, digits and _ . @ - (at most 64)", 2)
+    if not NAME_RE.fullmatch(a.launchd_label):
+        raise Stop(f"--launchd-label {a.launchd_label!r}: letters, digits and _ . @ - "
+                   "(at most 64)", 2)
+    label = a.launchd_label
     src = os.path.abspath(a.source)
     prefix = os.path.abspath(os.path.expanduser(a.prefix))
     state = os.path.abspath(os.path.expanduser(a.state_dir))
+    # nothing changes while a unit or job of this name, or the port, belongs to someone else
+    check_owner(mgr, unit, label, prefix, state)
+    host, port = address_of(a, read_env(os.path.join(state, "app.env")))
+    check_port(mgr, unit, label, state, host, port)
     version = read_version(src)
     say(f"TandemApp {version} on {osname} {arch}, Python {sys.version.split()[0]}"
         + (" (dry run: nothing changes)" if dry else ""))
@@ -841,21 +997,22 @@ def install(a) -> int:
         sandbox(rel if os.path.isdir(rel) else src, state, a, dry)
     if dry:
         say(f"would point {prefix}/current at releases/{rid}")
-        service(mgr, prefix, rel, state, True, dry=True)
+        service(mgr, prefix, rel, state, True, dry=True, unit=unit, label=label)
         return 0
     before = switch(prefix, rid)
     changed = before != rid or st["changed"]
     if before and before != rid:
         say(f"current: releases/{before} -> releases/{rid}")
-    svc = service(mgr, prefix, rel, state, changed, dry=False)
+    svc = service(mgr, prefix, rel, state, changed, dry=False, unit=unit, label=label)
     bundle = manifest.get("sha256")
     if svc["started"]:
         ok, said = health(st["host"], st["port"], st["token"], version, bundle, a.wait)
         if not ok:
-            tail = log_tail(state, mgr)
+            tail = log_tail(state, mgr, unit=unit)
             if before and before != rid and os.path.isdir(os.path.join(prefix, "releases", before)):
                 switch(prefix, before)
-                service(mgr, prefix, os.path.join(prefix, "releases", before), state, True, False)
+                service(mgr, prefix, os.path.join(prefix, "releases", before), state, True,
+                        False, unit=unit, label=label)
                 say(f"releases/{rid} did not come up ({said}); switched back to releases/{before}")
             raise Stop(f"the controller did not answer as {version} within {a.wait:.0f} s "
                        f"({said}). Its log:\n{tail}")
