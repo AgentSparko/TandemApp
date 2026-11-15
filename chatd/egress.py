@@ -192,60 +192,128 @@ class Proxy:
             threading.Thread(target=self._serve, args=(c,), daemon=True).start()
 
     def _serve(self, c: socket.socket) -> None:
-        self.stats["connections"] += 1
-        up = None
-        try:
-            c.settimeout(30)
-            head = b""
-            while b"\r\n\r\n" not in head:
-                d = c.recv(CHUNK)
-                if not d:
-                    return
-                head += d
-                if len(head) > 65536:
-                    return
-            line, _, rest = head.partition(b"\r\n")
-            method, target, _ = (line.decode("latin-1").split(" ") + ["", "", ""])[:3]
-            if self.mode() != "on":
-                raise Refused("the network is off for this chat")
-            if method == "CONNECT":
-                host, _, port = target.rpartition(":")
-                up = connect(host.strip("[]"), int(port or 443))
-                c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
-                extra = rest.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in rest else b""
-                if extra:
-                    up.sendall(extra)
-            else:
-                u = urllib.parse.urlsplit(target)
-                if u.scheme != "http" or not u.hostname:
-                    raise Refused("send absolute http:// URLs or CONNECT")
-                up = connect(u.hostname, u.port or 80)
-                hdrs, _, body = rest.partition(b"\r\n\r\n")
-                keep = [h for h in hdrs.split(b"\r\n") if h and not h.lower().startswith(
-                    (b"proxy-", b"connection:", b"keep-alive:"))]
-                path = (u.path or "/") + (f"?{u.query}" if u.query else "")
-                up.sendall(f"{method} {path} HTTP/1.1\r\n".encode() + b"\r\n".join(keep) +
-                           b"\r\nConnection: close\r\n\r\n" + body)
-            c.settimeout(None)
-            _splice(c, up)                       # the pumps carry the idle timeout
-        except (Refused, ValueError) as exc:
-            self.stats["refused"] += 1
-            msg = str(exc).encode()
+        serve(c, self.mode, self.stats)
+
+
+class TcpProxy:
+    """The same proxy on one TCP port for every sandbox of a cluster (sandbox.mode kubernetes,
+    chatd/k8s.py): a sandbox pod has no unix socket of chatd's, only the pod network, and a
+    NetworkPolicy lets it reach this port and nothing else. `lookup(peer address)` names the
+    connection's sandbox and gives its mode function, or None: an address that is not a running
+    sandbox's pod is refused before anything is read."""
+
+    def __init__(self, host: str, port: int, lookup, log=None):
+        self.host, self.port = host, port
+        self.lookup = lookup
+        self.log = log or (lambda line: None)
+        self.sock: socket.socket | None = None
+        self.stats = {"connections": 0, "refused": 0, "unknown": 0}
+
+    def start(self) -> None:
+        fam = socket.AF_INET6 if ":" in self.host else socket.AF_INET
+        s = socket.socket(fam, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((self.host, self.port))
+        s.listen(128)
+        self.port = s.getsockname()[1]
+        self.sock = s
+        threading.Thread(target=self._accept, name="chatd-egress-tcp", daemon=True).start()
+
+    def close(self) -> None:
+        if self.sock is not None:
             try:
-                c.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "
-                          + str(len(msg) + 1).encode() + b"\r\nConnection: close\r\n\r\n" + msg +
-                          b"\n")
+                self.sock.close()
             except OSError:
                 pass
+            self.sock = None
+
+    def _accept(self) -> None:
+        while self.sock is not None:
+            try:
+                c, peer = self.sock.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(c, peer[0]), daemon=True).start()
+
+    def _serve(self, c: socket.socket, peer: str) -> None:
+        try:
+            mode = self.lookup(peer.split("%")[0].removeprefix("::ffff:"))
+        except Exception:                                           # noqa: BLE001
+            mode = None
+        if mode is None:
+            self.stats["unknown"] += 1
+            msg = b"not a sandbox of this chatd\n"
+            try:
+                c.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n"
+                          b"Content-Length: " + str(len(msg)).encode() +
+                          b"\r\nConnection: close\r\n\r\n" + msg)
+            except OSError:
+                pass
+            try:
+                c.close()
+            except OSError:
+                pass
+            return
+        serve(c, mode, self.stats)
+
+
+def serve(c: socket.socket, mode, stats: dict) -> None:
+    """One client connection of a sandbox: its request line checked, then tunnelled or passed
+    on (see the module's doc). `mode()` is the chat's network: on, or everything refused."""
+    stats["connections"] += 1
+    up = None
+    try:
+        c.settimeout(30)
+        head = b""
+        while b"\r\n\r\n" not in head:
+            d = c.recv(CHUNK)
+            if not d:
+                return
+            head += d
+            if len(head) > 65536:
+                return
+        line, _, rest = head.partition(b"\r\n")
+        method, target, _ = (line.decode("latin-1").split(" ") + ["", "", ""])[:3]
+        if mode() != "on":
+            raise Refused("the network is off for this chat")
+        if method == "CONNECT":
+            host, _, port = target.rpartition(":")
+            up = connect(host.strip("[]"), int(port or 443))
+            c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            extra = rest.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in rest else b""
+            if extra:
+                up.sendall(extra)
+        else:
+            u = urllib.parse.urlsplit(target)
+            if u.scheme != "http" or not u.hostname:
+                raise Refused("send absolute http:// URLs or CONNECT")
+            up = connect(u.hostname, u.port or 80)
+            hdrs, _, body = rest.partition(b"\r\n\r\n")
+            keep = [h for h in hdrs.split(b"\r\n") if h and not h.lower().startswith(
+                (b"proxy-", b"connection:", b"keep-alive:"))]
+            path = (u.path or "/") + (f"?{u.query}" if u.query else "")
+            up.sendall(f"{method} {path} HTTP/1.1\r\n".encode() + b"\r\n".join(keep) +
+                       b"\r\nConnection: close\r\n\r\n" + body)
+        c.settimeout(None)
+        _splice(c, up)                       # the pumps carry the idle timeout
+    except (Refused, ValueError) as exc:
+        stats["refused"] += 1
+        msg = str(exc).encode()
+        try:
+            c.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: "
+                      + str(len(msg) + 1).encode() + b"\r\nConnection: close\r\n\r\n" + msg +
+                      b"\n")
         except OSError:
             pass
-        finally:
-            for s in (c, up):
-                if s is not None:
-                    try:
-                        s.close()
-                    except OSError:
-                        pass
+    except OSError:
+        pass
+    finally:
+        for s in (c, up):
+            if s is not None:
+                try:
+                    s.close()
+                except OSError:
+                    pass
 
 
 def _splice(a: socket.socket, b: socket.socket,
