@@ -33,6 +33,8 @@ serves on one port:
                                    what this TandemApp runs, switched from the page (OPS-288,
                                    proxy/appparts.py): Chat and the conductor on or off, with a
                                    plan and its confirm; the page's switch wins over the install's
+    *    /v1/fleet/hooks[/...]     the remote hooks around the relay: list, create, change, test,
+                                   their calls (proxy/hookapi.py, SRV-849)
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -635,6 +637,11 @@ class Handler(BaseHTTPRequestHandler):
         if path.rstrip("/") == "/v1/fleet/session":
             return self._session(method, body, fleet=True)
         parts = path.rstrip("/").split("/")[3:]
+        if parts[:1] == ["hooks"]:
+            # SRV-849: the hooks' admin API (proxy/hookapi.py), its own rights
+            from proxy import hookapi
+            return hookapi.handle(self, STATE["svc"], method, [unquote(x) for x in parts[1:]],
+                                  body)
         if parts == ["app", "password"]:
             return self._app_password(method, body)
         if parts[:1] == ["app"] and method == "POST":
