@@ -188,8 +188,9 @@ the numbers, the model reads them as the tool's result and the chat shows them o
 guard asks the engine first and then stops the least recently used idle sandbox under 3 GiB, and
 kills them all under 2 GiB; an idle sandbox stops after 30 minutes. The files stay.
 
-A process the kernel kills at the memory limit (the cgroup's `oom_kill` count) fails its call with
-"out of memory (4 GiB sandbox limit)". The default was 1 GiB until 0.11.3; headless Chromium drawing
+A process the kernel kills at the memory limit (the cgroup's `oom_kill` count; the cgroup is the one
+the container's first process is in, so Docker, Podman and containerd are read alike) fails its
+call with "out of memory (4 GiB sandbox limit)". The default was 1 GiB until 0.11.3; headless Chromium drawing
 a Three.js app in software (SwiftShader) went past it, so render_page and the verify phase failed on
 the apps they check. A container made under another limit takes the current one at its next start.
 render_page and the laya kit start Chromium with `--disable-dev-shm-usage` (a container's /dev/shm
@@ -225,6 +226,40 @@ that needs a sandbox installs a fake one. On the Spark, Docker and the sandbox i
 before this the tests found them: `bash` was offered, the tools' order changed and the capabilities
 said the sandbox was installed. Only `tests/test_sandbox_box.py` (with `QSE_SANDBOX_BOX=1`) uses
 the real runtime.
+
+### Sandboxes as Kubernetes pods
+
+With `QSE_SANDBOX_BACKEND=kubernetes` (the Helm chart's `sandbox.mode: kubernetes`, chatd in the
+controller's pod) each chat's sandbox is a pod in the release's namespace, made through the
+Kubernetes API with the controller's ServiceAccount (a Role: pods, pods/exec and pods/log in that
+namespace; no Secrets, no other namespace, no nodes). `chatd/k8s.py` has the whole design; in short:
+
+- The pod: the same image and lockdown (uid 1000, no capabilities, no privilege escalation, seccomp
+  RuntimeDefault, a read-only root, no service-account token, no DNS), memory as request and limit
+  (2 GiB on a host without the engine), 4 CPUs, no swap, an optional runtimeClass. With a user
+  namespace (`hostUsers: false`, the chart's default) uid 1000 in the pod is not the node's uid
+  1000, and every exec runs under a 512-process limit that the kernel counts per pod. It runs on the
+  controller's node and is owned by the controller's pod.
+- The files: `/workspace` and `/home/agent` are subPath mounts of the release's own volume, the
+  same folders chatd reads and writes, with POSIX ACLs that give chatd's uid and the sandbox's uid
+  both access. A ReadWriteOnce volume is one node's, so the sandboxes run on the controller's node.
+- The network: a NetworkPolicy lets a sandbox pod reach only chatd's egress proxy port (3128) on the
+  controller's pod, and nothing reach the sandbox. The proxy is chatd's (`chatd/egress.py`, the same
+  checks) on one TCP port; a connection's address names its sandbox, and any other address is
+  refused. At start a probe pod with the sandbox's labels tries the controller's own port and the
+  Kubernetes API: when either answers, the cluster does not enforce NetworkPolicy and chatd offers
+  no sandbox at all, saying so.
+- Commands are execs over the API's WebSocket stream. A kill at the memory limit ends the whole pod
+  (OOMKilled): the call says out of memory and the next call gets a new pod with the files. An
+  eviction says so. A pod that stays Pending is reported as capacity and deleted after the wait.
+- `QSE_SANDBOX_MAX_RUNNING` and `QSE_SANDBOX_TOTAL_GB` count chatd's pods in the cluster. The
+  scheduler holds the memory, so there is no MemAvailable floor here. Pods whose chat has no running
+  sandbox are deleted at start and once a minute.
+- The image is built in the cluster and imported on each node (`ops/sandbox/build-k8s.sh`): nothing
+  is pushed to a registry, and the pods never pull it.
+
+`tests/test_chatd_sandbox_k8s.py` tests the backend against a fake API; `tests/test_sandbox_k8s_box.py`
+(with `QSE_SANDBOX_K8S_BOX=1`, in a throwaway release's controller) on a real cluster.
 
 A deleted chat goes to the trash for 7 days, and its sandbox stops at once. `POST /conversations/{id}/restore` brings the chat back, and its sandbox starts again on its next tool call. When the 7 days end, or on `DELETE /conversations/{id}?forever=1`, chatd removes the container and the chat's folders under `workspaces/`, `homes/`, `egress/` and `snapshots/`. When chatd starts, it removes every container whose chat is gone or in the trash, and logs each one.
 

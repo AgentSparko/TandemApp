@@ -60,6 +60,12 @@ workspace; a variable of the env file still wins over each default.
 
 chatd restarts adopt running containers by their label and do not recreate them.
 
+TWO BACKENDS (SRV-863). `QSE_SANDBOX_BACKEND`: docker (this module: the container engine's API on a
+socket) or kubernetes (chatd/k8s.py: a pod per sandbox through the Kubernetes API, for chatd in a
+cluster). `make()` picks one; both keep this class's interface (ensure, run, open_exec,
+exit_code, end_exec, resize, stop, remove, status, oom_kills), so the tools, terminals, the
+preview and MCP servers do not know which runs.
+
 ONE CHATD'S CONTAINERS. Several chatds may share one container engine (a second install, a test
 instance with its own --data). Each labels its containers `tandem.chat.instance=<id>`, the id kept
 in its data dir (`sandbox-instance.json`, made anew when the dir is a copy), and adopts, reaps,
