@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-connect-plan.schema.json",
+  "title": "POST /v1/fleet/engines/connect/password/plan: the plan's id and the host key to confirm (`known` against what the fleet pins for that address); nothing has logged in yet",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "plan": {
+      "type": "string"
+    },
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "user": {
+      "type": "string"
+    },
+    "engine_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "host_key": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "known": {
+          "type": "string",
+          "enum": [
+            "new",
+            "same",
+            "changed"
+          ]
+        },
+        "stored": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "fingerprint",
+        "known",
+        "stored"
+      ],
+      "additionalProperties": false
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "expires_in": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "contract_version",
+    "plan",
+    "host",
+    "port",
+    "user",
+    "engine_dir",
+    "host_key",
+    "key_id",
+    "expires_in"
+  ],
+  "additionalProperties": false
+}

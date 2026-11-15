@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-connect-confirm-body.schema.json",
+  "title": "the body of POST /v1/fleet/engines/connect/password/confirm: the plan, the password for this one login (never stored, logged or answered) and the host key's fingerprint as the user confirmed it; answers engine-paired.schema.json",
+  "type": "object",
+  "properties": {
+    "plan": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    },
+    "host_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan",
+    "password"
+  ],
+  "additionalProperties": false
+}

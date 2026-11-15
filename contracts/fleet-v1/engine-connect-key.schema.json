@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-connect-key.schema.json",
+  "title": "POST /v1/fleet/engines/connect/key/new: the authorized_keys line of a new key pair (the engine's key_line: tandem remote forced, --key-id), where it goes, the address, port and user the check will try, and the host key to confirm (null with a finding when SSH does not answer yet)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "type": "string"
+    },
+    "plan": {
+      "type": "string"
+    },
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "user": {
+      "type": "string"
+    },
+    "engine_dir": {
+      "type": "string"
+    },
+    "engine_dir_guessed": {
+      "type": "boolean"
+    },
+    "line": {
+      "type": "string"
+    },
+    "file": {
+      "type": "string"
+    },
+    "key_id": {
+      "type": "string"
+    },
+    "key_fingerprint": {
+      "type": "string"
+    },
+    "host_key": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "known": {
+          "type": "string",
+          "enum": [
+            "new",
+            "same",
+            "changed"
+          ]
+        },
+        "stored": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "fingerprint",
+        "known",
+        "stored"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "expires_in": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "contract_version",
+    "plan",
+    "host",
+    "port",
+    "user",
+    "engine_dir",
+    "engine_dir_guessed",
+    "line",
+    "file",
+    "key_id",
+    "key_fingerprint",
+    "host_key",
+    "finding",
+    "expires_in"
+  ],
+  "additionalProperties": false
+}

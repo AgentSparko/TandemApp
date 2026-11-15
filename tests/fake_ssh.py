@@ -15,6 +15,11 @@ FAKE_SSH_SERVER names the server's JSON file, FAKE_SSH_LOG the file each run app
   the offered key's fingerprint printed when `print_fp`
 - the key: the -i file must be 0600 and its public key a line of the server's authorized_keys;
   else "Permission denied (publickey)." (255)
+- a password (SRV-831): with PreferredAuthentications password and PubkeyAuthentication no, ssh
+  asks SSH_ASKPASS (SSH_ASKPASS_REQUIRE force) as OpenSSH does; what it prints must be the server's
+  `password`, else "Permission denied" (255); the login then runs the command itself (no forced
+  command: the user's shell), never logging what the program printed
+- the server's `home` is HOME of the command it runs (the account's home, its ~/.ssh)
 - `-M -N -f` binds the ControlPath socket and returns; a later call with ControlMaster=no and a
   socket there counts as multiplexed (`mux`); with the server's `dead_master` the socket is one
   whose master is gone (ssh's "Control socket connect(...)" line, then a direct connection)
@@ -48,7 +53,8 @@ def install(d: str) -> str:
 
 
 def server(path: str, **kw) -> str:
-    doc = {"host_key": None, "authorized_keys": None, "unreachable": False, "print_fp": True}
+    doc = {"host_key": None, "authorized_keys": None, "unreachable": False, "print_fp": True,
+           "home": None, "password": None}
     if os.path.exists(path):
         with open(path) as f:
             doc.update(json.load(f))
@@ -154,6 +160,20 @@ def _hostkey(opts: dict, host: str, port: str, srv: dict) -> int | None:
     return None
 
 
+def _password(opts: dict, user: str, host: str, srv: dict) -> tuple[int | None, str | None]:
+    """A password login: the askpass program's line against the server's password."""
+    denied = f"{user}@{host}: Permission denied (publickey,password).\n"
+    ap = os.environ.get("SSH_ASKPASS")
+    if not ap or os.environ.get("SSH_ASKPASS_REQUIRE") != "force" or not srv.get("password"):
+        sys.stderr.write(denied)
+        return 255, None
+    got = subprocess.run([ap, f"{user}@{host}'s password: "], capture_output=True, timeout=10)
+    if got.returncode != 0 or got.stdout.decode().rstrip("\n") != srv["password"]:
+        sys.stderr.write(denied)
+        return 255, None
+    return None, ""
+
+
 def _auth(flags: dict, user: str, host: str, srv: dict) -> tuple[int | None, str | None]:
     from cryptography.hazmat.primitives import serialization
     idf = flags.get("i")
@@ -212,7 +232,11 @@ def ssh(argv: list[str]) -> int:
         bad = _hostkey(opts, host, port, srv)
         if bad is not None:
             return bad
-    rc, forced = _auth(flags, user, host, srv)
+    if opts.get("preferredauthentications", "").startswith("password") and \
+            opts.get("pubkeyauthentication") == "no":
+        rc, forced = _password(opts, user, host, srv)
+    else:
+        rc, forced = _auth(flags, user, host, srv)
     if rc is not None:
         return rc
     if flags.get("M"):
@@ -224,7 +248,8 @@ def ssh(argv: list[str]) -> int:
         return 0
     if flags.get("N"):
         return 0
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": os.environ.get("HOME", "/"),
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+           "HOME": srv.get("home") or os.environ.get("HOME", "/"),
            "SSH_CONNECTION": f"127.0.0.1 50000 127.0.0.1 {port}", "USER": user}
     if remote is not None:
         env["SSH_ORIGINAL_COMMAND"] = remote

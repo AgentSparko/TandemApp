@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/engine-connect-check-body.schema.json",
+  "title": "the body of POST /v1/fleet/engines/connect/key/check: the plan and the host key's fingerprint as the user confirmed it; answers engine-paired.schema.json, `state` waiting until the host takes the key",
+  "type": "object",
+  "properties": {
+    "plan": {
+      "type": "string"
+    },
+    "host_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan"
+  ],
+  "additionalProperties": false
+}

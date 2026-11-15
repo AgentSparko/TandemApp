@@ -18,6 +18,14 @@
                                                   the exchange (proxy/enginepair.py); on success
                                                   the host is in the fleet: `state` paired
     POST /v1/fleet/engines/pair/abandon {pairing} the started pairing and its key pair forgotten
+    POST /v1/fleet/engines/connect/password/plan {host, port?, user, engine_dir?, name?}
+    POST /v1/fleet/engines/connect/password/confirm {plan, password, host_key}
+                                                  password once (SRV-831): the host key shown,
+                                                  then confirmed, then the key's line installed
+    POST /v1/fleet/engines/connect/key/new {host, port?, user, engine_dir?, from?, name?}
+    POST /v1/fleet/engines/connect/key/check {plan, host_key}
+                                                  paste a key (SRV-831): the line to paste, then
+                                                  a check that waits for the first login
 
 FINDING THE ENGINE (SRV-827). `discover` asks the LAN once (proxy/mdns.py's Browser: a legacy
 unicast query from an ephemeral port, so nothing binds 5353; IPv4) for `_tandem._tcp.local` and
@@ -51,6 +59,26 @@ which); no window at `start` `no_window`; a host key that is not the one the use
 fingerprints. In none of these is anything stored, and a host key mismatch also forgets the
 started pairing.
 
+THE OTHER WAYS (SRV-831) pin the host key on first contact: the first call scans it
+(`ssh-keyscan`, sshonce) and answers its fingerprint, `known` new, same (the fleet already pins it
+for that address) or changed (refused: 409 host_key_changed, both fingerprints; only pairing by
+code replaces a pinned key); the second call must send that fingerprint back as `host_key`
+(else 409 host_key_unconfirmed), and every login takes exactly that key.
+- Password once: `confirm` logs in once with the password through sshonce's askpass path (in this
+  call's memory only, never stored, logged or answered) and runs INSTALL with bash on the host: it
+  finds the engine's install (`engine_dir`, else ~/TandemLLM), checks ~/.ssh as the engine's
+  pairing does (no link, the user's own, not writable by others; made 0700/0600 when missing) and
+  appends the forced-command line (the engine's `key_line`, with --key-id) unless the very same line
+  is there; the session ends with the script.
+- Paste a key: `new` answers the line for a new key pair (`engine_dir` must be the install's
+  absolute path; without one the answer guesses /home/<user>/TandemLLM and says so) and the
+  address, port and user it will try; `check` tries that login (BatchMode, the key only) and
+  answers `state` waiting with the key_not_installed finding until the host takes the key.
+Then both, over the new login: `token rotate` (the token goes straight to the sealed table) and
+`status`; only then are the key pair, the pin and the node kept (`via` ssh, `method` password or
+key in the audit). A failure there undoes the pin and the token of a host that was not in the
+fleet.
+
 THE HOST ID is that of the fleet node with the same pinned host key, else of the engine host at the
 same address and SSH port (pairing by code replaces its key), else `eh-` and 10 hex digits of the
 host key fingerprint's sha256: one id per machine.
@@ -65,18 +93,63 @@ from __future__ import annotations
 import collections
 import hashlib
 import ipaddress
+import os
 import re
 import secrets
+import shlex
 import threading
 import time
 
-from proxy import enginecodes, enginectl, enginepair, hostkeys, mdns
+from proxy import enginecodes, enginectl, enginepair, hostkeys, mdns, sshonce
 
 CONTRACT = "1.0"
 SERVICE = "_tandem._tcp.local"
 BROWSE_S = 2.0
 BROWSE_MAX_S = 5.0
 PAIR_TTL_S = 600.0
+PLAN_TTL_S = 600.0
+KEY_TTL_S = 3600.0
+PASSWORD_MAX = 1024
+DEFAULT_DIR = "TandemLLM"
+ENGINE_DIR_RE = re.compile(r"^(?:~|~/[A-Za-z0-9._/+@-]{0,1000}|/[A-Za-z0-9._/+@-]{0,1023})$")
+#: password once: on the engine host, with bash, as the account's own shell runs it. The engine's
+#: pairing (server/remote/keys.py) checks ~/.ssh the same way; the line is the engine's key_line.
+INSTALL = r"""set -u
+umask 077
+fail() { echo "TANDEMENGINE-ERROR $1 $2" >&2; exit 65; }
+dir=__DIR__
+[ -n "$dir" ] || dir="$HOME/__DEFAULT__"
+case "$dir" in "~") dir="$HOME" ;; "~/"*) dir="$HOME/${dir#"~/"}" ;; esac
+if [ ! -f "$dir/bin/tandem" ]; then echo "TANDEMENGINE-ERROR not_installed $dir" >&2; exit 64; fi
+dir=$(cd "$dir" 2>/dev/null && pwd -P) || { echo "TANDEMENGINE-ERROR not_installed $dir" >&2; exit 64; }
+case "$dir" in /*) ;; *) fail bad_dir "$dir" ;; esac
+case "$dir" in *[!A-Za-z0-9._/+@-]*) fail bad_dir "$dir" ;; esac
+sd="$HOME/.ssh"
+ak="$sd/authorized_keys"
+check() {
+  [ -L "$1" ] && fail "$2_link" "$1 is a symbolic link"
+  if [ "$2" = ssh_dir ]; then [ -d "$1" ] || fail ssh_dir_type "$1 is not a directory"
+  else [ -f "$1" ] || fail authorized_keys_type "$1 is not a regular file"; fi
+  [ -O "$1" ] || fail "$2_owner" "$1 belongs to another user"
+  case "$(ls -ld "$1" | cut -c1-10)" in ?????w????|????????w?) fail "$2_mode" "$1 is writable by group or others" ;; esac
+}
+if [ -e "$sd" ] || [ -L "$sd" ]; then check "$sd" ssh_dir; else mkdir -m 700 "$sd" || fail ssh_dir_create "$sd cannot be created"; fi
+if [ -e "$ak" ] || [ -L "$ak" ]; then check "$ak" authorized_keys; fi
+pre=__PRE__
+post=__POST__
+blob=__BLOB__
+line="$pre$dir$post"
+added=1
+if [ -f "$ak" ] && grep -qF -e "$blob" "$ak"; then
+  if grep -qxF -e "$line" "$ak"; then added=0; else fail key_present "the key already has another line"; fi
+fi
+if [ "$added" = 1 ]; then
+  if [ ! -e "$ak" ]; then : > "$ak" && chmod 600 "$ak" || fail authorized_keys_open "$ak cannot be written"; fi
+  printf '%s\n' "$line" >> "$ak" || fail authorized_keys_open "$ak cannot be written"
+fi
+echo "TANDEMENGINE-KEY $added $dir"
+"""
+KEY_PLACE = enginepair.KEY_PLACE
 TRIES_PER_MIN = 10
 MAX_PENDING = 32
 HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9-]{1,63})*\.?$")
@@ -133,6 +206,31 @@ def _name(v) -> str | None:
         raise ERR("bad_request", "name is a text of 64 characters at most")
     s = "".join(c for c in v if c.isprintable()).strip()
     return s or None
+
+
+def _login(v) -> str:
+    if not isinstance(v, str) or not enginectl.USER_RE.match(v):
+        raise ERR("bad_request", "user is a login name")
+    return v
+
+
+def _engine_dir(v, absolute: bool = False) -> str | None:
+    if v is None:
+        return None
+    if not isinstance(v, str) or not ENGINE_DIR_RE.match(v) or "/../" in v + "/" or \
+            (absolute and not v.startswith("/")):
+        raise ERR("bad_request", "engine_dir is the engine's install folder, " +
+                  ("an absolute path" if absolute else "an absolute path or ~/...") +
+                  " of letters, digits and . _ / + @ -")
+    return v.rstrip("/") or "/"
+
+
+def install_script(public: str, key_id: str, engine_dir: str | None) -> str:
+    """INSTALL for this key: its line split around the install's folder, found on the host."""
+    pre, post = hostkeys.key_line(public, key_id, "/TANDEMDIR").split("/TANDEMDIR", 1)
+    return (INSTALL.replace("__DIR__", shlex.quote(engine_dir or ""))
+            .replace("__DEFAULT__", DEFAULT_DIR).replace("__PRE__", shlex.quote(pre))
+            .replace("__POST__", shlex.quote(post)).replace("__BLOB__", shlex.quote(public.split()[1])))
 
 
 def host_id_of(host_fp: str) -> str:
@@ -237,6 +335,14 @@ class Onboarding:
             return self.pair_code(body, who)
         if method == "POST" and sub == ["pair", "abandon"]:
             return self.pair_abandon(body)
+        if method == "POST" and sub == ["connect", "password", "plan"]:
+            return self.password_plan(body)
+        if method == "POST" and sub == ["connect", "password", "confirm"]:
+            return self.password_confirm(body, who)
+        if method == "POST" and sub == ["connect", "key", "new"]:
+            return self.key_new(body)
+        if method == "POST" and sub == ["connect", "key", "check"]:
+            return self.key_check(body, who)
         if method == "GET" and len(sub) == 1:
             return self.engine_view(sub[0])
         raise ERR("not_found", status=404)
@@ -523,6 +629,218 @@ class Onboarding:
                         http_port=ans["http_port"], name=item.get("name"), who=who, method="code")
         self._drop(b["pairing"])
         return self.paired(row, "code")
+
+    # ------------------------------------------------------------------ the other ways
+    @property
+    def ssh_once(self) -> sshonce.Ssh:
+        if getattr(self, "_ssh_once", None) is None:
+            self._ssh_once = sshonce.Ssh(os.path.join(self.root, "known_hosts"))
+        return self._ssh_once
+
+    @ssh_once.setter
+    def ssh_once(self, v) -> None:
+        self._ssh_once = v
+
+    def scan(self, host: str, port: int) -> dict:
+        """The host key the host offers (the type an OpenSSH client prefers) against what the
+        fleet pins for that address: {type, b64, fingerprint, known, stored}."""
+        try:
+            offered = self.ssh_once.scan(host, port)
+        except sshonce.SshError as exc:
+            raise ERR("ssh_unreachable", exc.message, host=host, port=port) from None
+        kind = next(k for k in sshonce.PREFER + tuple(offered) if k in offered)
+        fp = sshonce.fingerprint(offered[kind])
+        there = next((n for n in self._ssh_rows() if (n["trust"] or {}).get("host") == host
+                      and (n["trust"] or {}).get("port", 22) == port), None)
+        stored = (there["trust"] or {}).get("host_key") if there else None
+        known = "new" if stored is None else "same" if stored == fp else "changed"
+        return {"type": kind, "b64": offered[kind], "fingerprint": fp, "known": known,
+                "stored": stored}
+
+    @staticmethod
+    def _host_key_view(hk: dict | None) -> dict | None:
+        return None if hk is None else {k: hk[k] for k in ("type", "fingerprint", "known", "stored")}
+
+    def _confirmed(self, item: dict, given, hk: dict) -> None:
+        """The host key `hk` offered now must be the one shown and the one the user sent back."""
+        if hk["known"] == "changed":
+            raise ERR("host_key_changed", None, pinned=hk["stored"], offered=hk["fingerprint"],
+                      host=item["host"], port=item["port"])
+        if given is None:
+            raise ERR("host_key_unconfirmed", None, offered=hk["fingerprint"], host=item["host"])
+        if given != hk["fingerprint"]:
+            raise ERR("host_key_mismatch", "the host key the host offers now is not the one "
+                      "confirmed", expected=given, offered=hk["fingerprint"], host=item["host"])
+
+    def finish_ssh(self, item: dict, hk: dict, who: str, method: str) -> dict:
+        """Over the new login: `token rotate` into the sealed table, then `status`; then the key
+        pair, the pin and the node are kept. A failure undoes the pin and the token of a host
+        that was not in the fleet, and is the control error's code."""
+        host, port, user = item["host"], item["port"], item["user"]
+        hid = self.host_id(hk["fingerprint"], host, port, proven=False)
+        root = self.root
+        new = self.cfg.node(hid) is None
+        enginectl.pin_host_keys(root, hid, [(hk["type"], hk["b64"])], replace=new)
+        ctl = enginectl.SshControl(enginectl.SshHost(
+            id=hid, host=host, port=port, user=user, key_id=item["key_id"],
+            host_key_type=hk["type"], host_key=hk["fingerprint"]), root,
+            key=lambda: item["pem"], log=self.fleet.log)
+        token_set = False
+        try:
+            def store(tok):
+                nonlocal token_set
+                token_set = True
+                return self.keys.put_http_token(hid, tok, who=who)
+            ctl.token_rotate(store=store)
+            status = ctl.status()
+        except enginectl.CtlError as exc:
+            if new:
+                enginectl.forget_host(root, hid)
+                if token_set:
+                    self.cfg.delete_engine_token(hid, who=who)
+            if method == "key" and isinstance(exc, enginectl.CtlProtocol):
+                raise ERR("not_installed", exc.message[:200], dir=item.get("engine_dir"),
+                          host=host) from None
+            raise ctl_error(exc, host=host, port=port, user=user) from None
+        finally:
+            ctl.close()
+        self.keys.put(hid, item["pem"], item["public"], who=who)
+        http_port = ((status.get("engine") or {}).get("port")) if isinstance(status, dict) else None
+        row = self.keep(hid, address=host, ssh_user=user, ssh_port=port, key_id=item["key_id"],
+                        host_type=hk["type"], host_fp=hk["fingerprint"], via="ssh",
+                        http_port=http_port if isinstance(http_port, int) else None,
+                        name=item.get("name"), who=who, method=method)
+        return {"contract_version": CONTRACT, "state": "paired", "via": method,
+                "engine": self.view(row, status, None),
+                "node": self.fleet.node_view(row, self.clock()), "finding": None}
+
+    def _target(self, b: dict) -> tuple[str, int, str]:
+        return _address(b["host"], "host"), _port(b.get("port"), 22), _login(b["user"])
+
+    # password once
+    def password_plan(self, body) -> dict:
+        b = _fields(body, {"host", "port", "user", "engine_dir", "name"}, ("host", "user"))
+        host, port, user = self._target(b)
+        engine_dir = _engine_dir(b.get("engine_dir"))
+        name = _name(b.get("name"))
+        hk = self.scan(host, port)
+        if hk["known"] == "changed":
+            raise ERR("host_key_changed", None, pinned=hk["stored"], offered=hk["fingerprint"],
+                      host=host, port=port)
+        pem, pub = hostkeys.generate()
+        kid = hostkeys.key_id_of(pub)
+        pid = self._put("password", PLAN_TTL_S, host=host, port=port, user=user,
+                        engine_dir=engine_dir, name=name, pem=pem, public=pub, key_id=kid,
+                        host_key=hk)
+        return {"contract_version": CONTRACT, "plan": pid, "host": host, "port": port, "user": user,
+                "engine_dir": engine_dir, "host_key": self._host_key_view(hk), "key_id": kid,
+                "expires_in": int(PLAN_TTL_S)}
+
+    def password_confirm(self, body, who: str) -> dict:
+        b = _fields(body, {"plan", "password", "host_key"}, ("plan", "password"))
+        password = b.pop("password")
+        try:
+            if not isinstance(password, str) or not password or len(password) > PASSWORD_MAX or \
+                    "\n" in password:
+                raise ERR("bad_request", "password is one line of text")
+            item = self._get(b["plan"], "password")
+            hk = item["host_key"]
+            self._confirmed(item, _fp(b.get("host_key"), "host_key"), hk)
+            self._rate()
+            host, port, user = item["host"], item["port"], item["user"]
+            try:
+                rc, out, err = self.ssh_once.run(
+                    host, port, user, "/bin/bash -s",
+                    install_script(item["public"], item["key_id"], item["engine_dir"]).encode(),
+                    kind=hk["type"], b64=hk["b64"], password=password)
+            except sshonce.SshError as exc:
+                raise ERR("ssh_unreachable" if exc.kind == "unreachable" else "ssh_failed",
+                          exc.message, host=host, port=port) from None
+        finally:
+            password = None
+        done = next((x for x in out.splitlines() if x.startswith("TANDEMENGINE-KEY ")), None)
+        if rc != 0 or done is None:
+            raise self._install_refusal(rc, err, item)
+        parts = done.split(" ", 2)
+        item = dict(item, engine_dir=parts[2] if len(parts) > 2 else item["engine_dir"])
+        self.log(f"[engines] {user}@{host}:{port}: the key's line "
+                 f"{'added' if parts[1] == '1' else 'was there'} by password once; session closed")
+        out = self.finish_ssh(item, hk, who, "password")
+        self._drop(b["plan"])
+        return out
+
+    def _install_refusal(self, rc: int, err: str, item: dict) -> enginecodes.OnboardError:
+        host, port, user = item["host"], item["port"], item["user"]
+        mark = next((x for x in err.splitlines() if x.startswith("TANDEMENGINE-ERROR ")), "")
+        kind, _, why = mark[len("TANDEMENGINE-ERROR "):].partition(" ")
+        if rc == 64 or kind == "not_installed":
+            return ERR("not_installed", None, dir=why or item.get("engine_dir") or f"~/{DEFAULT_DIR}",
+                       host=host)
+        if kind == "bad_dir":
+            return ERR("bad_engine_dir", why, host=host)
+        if kind == "key_present":
+            return ERR("key_present", why, host=host)
+        if kind in KEY_PLACE:
+            return ERR("key_refused", why, host=host)
+        lines = [x for x in err.strip().splitlines() if x.strip()]
+        last = (lines or [f"exit status {rc}"])[-1][:300]
+        if "Host key verification failed" in err or "REMOTE HOST IDENTIFICATION" in err:
+            return ERR("host_key_changed", None, pinned=item["host_key"]["fingerprint"],
+                       offered="another", host=host, port=port)
+        if rc == 255 and ("Permission denied" in err or "Authentication failed" in err):
+            return ERR("auth_failed", None, host=host, user=user)
+        if rc == 255:
+            return ERR("ssh_unreachable", last, host=host, port=port)
+        return ERR("ssh_failed", last, host=host)
+
+    # paste a key
+    def key_new(self, body) -> dict:
+        b = _fields(body, {"host", "port", "user", "engine_dir", "from", "name"}, ("host", "user"))
+        host, port, user = self._target(b)
+        engine_dir = _engine_dir(b.get("engine_dir"), absolute=True)
+        guessed = engine_dir is None
+        if guessed:
+            engine_dir = f"/home/{user}/{DEFAULT_DIR}"
+        name = _name(b.get("name"))
+        pem, pub = hostkeys.generate()
+        kid = hostkeys.key_id_of(pub)
+        try:
+            line = hostkeys.key_line(pub, kid, engine_dir, b.get("from"))
+        except hostkeys.HostKeyError as exc:
+            raise ERR("bad_request", exc.message) from None
+        hk, finding = None, None
+        try:
+            hk = self.scan(host, port)
+        except enginecodes.OnboardError as exc:
+            finding = exc.finding()
+        if hk is not None and hk["known"] == "changed":
+            raise ERR("host_key_changed", None, pinned=hk["stored"], offered=hk["fingerprint"],
+                      host=host, port=port)
+        pid = self._put("key", KEY_TTL_S, host=host, port=port, user=user, engine_dir=engine_dir,
+                        name=name, pem=pem, public=pub, key_id=kid)
+        return {"contract_version": CONTRACT, "plan": pid, "host": host, "port": port, "user": user,
+                "engine_dir": engine_dir, "engine_dir_guessed": guessed, "line": line,
+                "file": "~/.ssh/authorized_keys", "key_id": kid,
+                "key_fingerprint": hostkeys.fingerprint_of(pub),
+                "host_key": self._host_key_view(hk), "finding": finding,
+                "expires_in": int(KEY_TTL_S)}
+
+    def key_check(self, body, who: str) -> dict:
+        b = _fields(body, {"plan", "host_key"}, ("plan",))
+        item = self._get(b["plan"], "key")
+        given = _fp(b.get("host_key"), "host_key")
+        hk = self.scan(item["host"], item["port"])
+        self._confirmed(item, given, hk)
+        try:
+            out = self.finish_ssh(item, hk, who, "key")
+        except enginecodes.OnboardError as exc:
+            if exc.code != "not_paired":
+                raise
+            return {"contract_version": CONTRACT, "state": "waiting", "via": "key", "engine": None,
+                    "node": None, "finding": enginecodes.finding(
+                        "key_not_installed", None, user=item["user"], host=item["host"])}
+        self._drop(b["plan"])
+        return out
 
     def pair_abandon(self, body) -> dict:
         b = _fields(body, {"pairing"}, ("pairing",))
