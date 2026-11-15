@@ -29,6 +29,9 @@ ledger. Its tables:
                      members (node, engine, backend, the id that backend serves) and a Split's
                      stages as JSON, its options (api id, context, role, affinity) and the state
                      it should be in (serving or stopped)
+    engine_host_keys this controller's SSH key pair per engine host (SRV-839, proxy/hostkeys.py):
+                     the public key and its id there, the private key as AES-256-GCM ciphertext
+                     under the master key with the host id as associated data
     meta             schema_version, created_at
 
 Migrations are forward only and keyed on meta.schema_version, as the ledger's are.
@@ -197,6 +200,9 @@ CREATE TABLE IF NOT EXISTS deployments (
   type TEXT NOT NULL, members TEXT NOT NULL DEFAULT '[]', stages TEXT NOT NULL DEFAULT '[]',
   options TEXT NOT NULL DEFAULT '{}', state TEXT NOT NULL DEFAULT 'serving',
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS engine_host_keys (
+  host_id TEXT PRIMARY KEY, key_id TEXT NOT NULL, public TEXT NOT NULL, ciphertext BLOB NOT NULL,
+  nonce BLOB NOT NULL, master_key_id TEXT NOT NULL, created_at INTEGER NOT NULL);
 """
 DEPLOYMENT_COLS = ("id", "name", "model", "pack", "type", "members", "stages", "options", "state",
                    "created_at", "updated_at")
@@ -1283,6 +1289,47 @@ class ConfigDB:
             self._audit(who, "delete", "node", nid)
             self._conn.commit()
             self._bump()
+
+    # ----------------------------------------------------------------- engine host keys (SRV-839)
+    def put_host_key(self, host_id: str, key_id: str, public: str, pem: str,
+                     who: str = "controller") -> None:
+        """This controller's key pair for an engine host; the private half sealed with the
+        master key, the host id as associated data (proxy/hostkeys.py)."""
+        ct, nonce, kid = self.vault().encrypt(f"engine-host:{host_id}", pem)
+        with self._lock:
+            self._conn.execute("INSERT OR REPLACE INTO engine_host_keys(host_id, key_id, public, "
+                               "ciphertext, nonce, master_key_id, created_at) VALUES "
+                               "(?, ?, ?, ?, ?, ?, ?)",
+                               (host_id, key_id, public, ct, nonce, kid, _now_ms()))
+            self._audit(who, "create", "engine_host_key", host_id, ["key_id", "public"])
+            self._conn.commit()
+
+    def host_key(self, host_id: str) -> dict | None:
+        """{host_id, key_id, public, created_at} of an engine host's key pair; never the private."""
+        with self._lock:
+            r = self._conn.execute("SELECT key_id, public, created_at FROM engine_host_keys "
+                                   "WHERE host_id = ?", (host_id,)).fetchone()
+        return None if r is None else {"host_id": host_id, "key_id": r[0], "public": r[1],
+                                       "created_at": r[2]}
+
+    def host_key_private(self, host_id: str) -> str | None:
+        """The private key in plain text, for the SSH adapter's key file and nothing else; None
+        when there is none, SecretError when it cannot be read."""
+        with self._lock:
+            r = self._conn.execute("SELECT ciphertext, nonce, master_key_id FROM engine_host_keys "
+                                   "WHERE host_id = ?", (host_id,)).fetchone()
+        if r is None:
+            return None
+        return self.vault().decrypt(f"engine-host:{host_id}", bytes(r[0]), bytes(r[1]), r[2])
+
+    def delete_host_key(self, host_id: str, who: str = "controller") -> bool:
+        with self._lock:
+            n = self._conn.execute("DELETE FROM engine_host_keys WHERE host_id = ?",
+                                   (host_id,)).rowcount
+            if n:
+                self._audit(who, "delete", "engine_host_key", host_id)
+            self._conn.commit()
+        return bool(n)
 
     def layout(self, page: str, device: str) -> dict | None:
         with self._lock:
