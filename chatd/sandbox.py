@@ -44,6 +44,20 @@ free blocks at the time. So:
   memory_guard`);
 - 30 minutes with no tool call and no terminal: stop (`idle`).
 
+A HOST WITHOUT THE ENGINE (SRV-843). chatd may run on the controller's host instead of the engine's
+(proxy/appchat.py sets QSE_CHAT_HOST=app there; unset is `engine`, TandemNode's chatd beside the
+engine as before). There the engine's memory is another machine's: chatd never asks it to release
+anything (`release` is dropped), and the defaults fit a small host (about 7 GiB free):
+
+    QSE_CHAT_HOST        engine (default)      app
+    QSE_SANDBOX_MEM_GB   4                     2      per sandbox
+    QSE_SANDBOX_MAX_RUNNING 4                  2      at once
+    QSE_SANDBOX_FLOOR_GB 4                     1.5    left after a new sandbox's limit
+    stop / kill below    3 / 2 GiB             1 / 0.5 GiB
+
+The app host's floor keeps room for the controller, chatd and the system, not for a prefill's
+workspace; a variable of the env file still wins over each default.
+
 chatd restarts adopt running containers by their label and do not recreate them.
 
 ONE CHATD'S CONTAINERS. Several chatds may share one container engine (a second install, a test
@@ -81,14 +95,41 @@ from chatd.egress import Proxy
 GiB = 1024 ** 3
 IMAGE = os.environ.get("QSE_SANDBOX_IMAGE", "tandem-sandbox:1")
 SOCKET = os.environ.get("QSE_SANDBOX_SOCKET", "/var/run/docker.sock")
-# 4 GiB: headless Chromium drawing a Three.js app in software (SwiftShader) went past 1 GiB and
-# the kernel killed it, so render_page and the verify phase failed on the apps they check
-LIMIT_BYTES = int(float(os.environ.get("QSE_SANDBOX_MEM_GB") or 4) * GiB)
+#: SRV-843: the defaults per host kind (A HOST WITHOUT THE ENGINE above). 4 GiB beside the engine:
+#: headless Chromium drawing a Three.js app in software (SwiftShader) went past 1 GiB and the kernel
+#: killed it, so render_page and the verify phase failed on the apps they check
+HOST_DEFAULTS = {"engine": {"mem_gb": 4.0, "max_running": 4, "floor_gb": 4.0, "stop_gb": 3.0,
+                            "kill_gb": 2.0},
+                 "app": {"mem_gb": 2.0, "max_running": 2, "floor_gb": 1.5, "stop_gb": 1.0,
+                         "kill_gb": 0.5}}
+
+
+def host_kind(env=None) -> str:
+    """`app` when QSE_CHAT_HOST says so, else `engine` (chatd beside the engine, as before)."""
+    env = os.environ if env is None else env
+    return "app" if (env.get("QSE_CHAT_HOST") or "").strip().lower() == "app" else "engine"
+
+
+def limits(env=None) -> dict:
+    """The sandbox limits for this environment: the host kind's defaults, each variable over its
+    default."""
+    env = os.environ if env is None else env
+    kind = host_kind(env)
+    d = dict(HOST_DEFAULTS[kind], host=kind)
+    d["mem_gb"] = float(env.get("QSE_SANDBOX_MEM_GB") or d["mem_gb"])
+    d["max_running"] = int(env.get("QSE_SANDBOX_MAX_RUNNING") or d["max_running"])
+    d["floor_gb"] = float(env.get("QSE_SANDBOX_FLOOR_GB") or d["floor_gb"])
+    return d
+
+
+LIMITS = limits()
+HOST_KIND = LIMITS["host"]
+LIMIT_BYTES = int(LIMITS["mem_gb"] * GiB)
 CPUS = 4
 PIDS = 512
 DISK_LIMIT = 10 * GiB
-FLOOR_GB = float(os.environ.get("QSE_SANDBOX_FLOOR_GB") or 4)
-STOP_GB, KILL_GB = 3.0, 2.0
+FLOOR_GB = LIMITS["floor_gb"]
+STOP_GB, KILL_GB = LIMITS["stop_gb"], LIMITS["kill_gb"]
 WAIT_S = float(os.environ.get("QSE_SANDBOX_WAIT_S") or 60)
 RELEASE_EVERY_S = 10.0
 IDLE_S = 30 * 60
@@ -378,7 +419,7 @@ class Box:
 class Sandboxes:
     def __init__(self, data_dir: str, *, engine: Engine | None = None, image: str = IMAGE,
                  log=None, on_change=None, network_mode=None, meminfo_fn=meminfo, clock=time.time,
-                 release=None):
+                 release=None, host: str | None = None):
         self.data = data_dir
         self.engine = engine or Engine()
         self.image = image
@@ -389,12 +430,15 @@ class Sandboxes:
         self.clock = clock
         self.boxes: dict[str, Box] = {}
         self.lock = threading.Lock()
-        self.max_running = int(os.environ.get("QSE_SANDBOX_MAX_RUNNING") or 4)
+        self.host = host or HOST_KIND
+        self.max_running = int(os.environ.get("QSE_SANDBOX_MAX_RUNNING") or
+                               HOST_DEFAULTS[self.host]["max_running"])
         self.total_gb = float(os.environ.get("QSE_SANDBOX_TOTAL_GB") or
                               self.max_running * LIMIT_BYTES / GiB)
         # `release(nbytes) -> bytes given back`: the engine makes room (chatd/engine.py
-        # `release_memory`); None where there is no engine to ask
-        self.release = release
+        # `release_memory`); None where there is no engine to ask, and on a host without the
+        # engine (SRV-843): its memory is another machine's
+        self.release = release if self.host == "engine" else None
         self.released = 0                    # bytes the engine gave back at the last ask
         self._asked: float | None = None
         self.wait_s, self.poll_s, self.release_every_s = WAIT_S, 2.0, RELEASE_EVERY_S
@@ -561,7 +605,8 @@ class Sandboxes:
         return got
 
     def short_words(self, avail: float) -> str:
-        return (f"MemAvailable {avail:.1f} GiB: a {limit_words()} sandbox would leave the engine "
+        who = "the engine" if self.host == "engine" else "this host"
+        return (f"MemAvailable {avail:.1f} GiB: a {limit_words()} sandbox would leave {who} "
                 f"under its {FLOOR_GB:g} GiB floor")
 
     def admit(self) -> str | None:

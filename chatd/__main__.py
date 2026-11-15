@@ -9,7 +9,9 @@ an engine whose server has no forward (one process to start and stop when trying
 
 Environment: QSE_CHAT_FORWARD_KEY (else `<data>/forward.key`, made on the first start, mode 600),
 QSE_CHAT_ENGINE_KEY (a bearer token for the engine's API, when it wants one), QSE_CHAT_MAX_RUNS,
-QSE_CHAT_RETRY_S. SIGTERM ends every run `interrupted` (Continue resumes it after the restart).
+QSE_CHAT_RETRY_S, QSE_CHAT_HOST (SRV-843: `app` on a host without the engine, which sizes the
+sandboxes for it and never asks the engine to release memory; unset: beside the engine).
+SIGTERM ends every run `interrupted` (Continue resumes it after the restart).
 """
 
 from __future__ import annotations
