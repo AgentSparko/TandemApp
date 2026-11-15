@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: engine.lifecycle",
+  "description": "an engine starts, stops, changes mode or applies settings. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "event": {
+      "enum": [
+        "start",
+        "stop",
+        "mode",
+        "settings_applied"
+      ]
+    },
+    "host": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "detail": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "event",
+    "host",
+    "detail"
+  ],
+  "additionalProperties": false
+}

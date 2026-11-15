@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: request.error",
+  "description": "an upstream error or timeout before any byte reached the client. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "integer"
+        },
+        "code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "backend",
+        "model"
+      ],
+      "additionalProperties": false
+    },
+    "attempt": {
+      "type": "integer"
+    },
+    "candidates_left": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "backend",
+          "model"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "error",
+    "route",
+    "attempt",
+    "candidates_left"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /v1/fleet/hooks (body)",
+  "description": "name, role and stages always; endpoint for http, target for builtin. Defaults: kind http, priority 100, mode on, payload meta, enabled true, policy and timeout_ms null (the stage's). `confirm`: the token a 409 confirm_needed answered.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "http",
+        "builtin",
+        "plugin",
+        "mcp",
+        "inproc"
+      ]
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "request.received",
+          "route.select",
+          "request.before_engine",
+          "decision.ask",
+          "stream.chunk",
+          "tool_call.detected",
+          "tool.before_exec",
+          "tool.after_exec",
+          "response.after_engine",
+          "request.error",
+          "request.finished",
+          "memory.write",
+          "session.start",
+          "session.compact",
+          "engine.lifecycle"
+        ]
+      }
+    },
+    "role": {
+      "enum": [
+        "transform",
+        "guard",
+        "decider",
+        "observer"
+      ]
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "on"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "backends": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "client_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "policy": {
+      "enum": [
+        "open",
+        "closed",
+        null
+      ]
+    },
+    "timeout_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "payload": {
+      "enum": [
+        "meta",
+        "redacted",
+        "full"
+      ]
+    },
+    "endpoint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "options": {
+      "type": "object"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "confirm": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "role",
+    "stages"
+  ],
+  "additionalProperties": false
+}

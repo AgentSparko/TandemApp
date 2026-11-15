@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: request.finished",
+  "description": "the ledger row is written. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "row": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finish_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backend": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backend_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tokens": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "completion": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cached": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "reasoning": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "prompt",
+            "completion",
+            "cached",
+            "reasoning"
+          ],
+          "additionalProperties": false
+        },
+        "cost_micros": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ttft_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "retries": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fallback_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "finish_reason",
+        "error_type",
+        "backend",
+        "backend_model",
+        "tokens",
+        "cost_micros",
+        "ttft_ms",
+        "retries",
+        "fallback_from"
+      ],
+      "additionalProperties": false
+    },
+    "labels": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "row",
+    "labels"
+  ],
+  "additionalProperties": false
+}

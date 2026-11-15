@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: response.after_engine",
+  "description": "the whole answer. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "integer"
+    },
+    "finish_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "streamed": {
+      "type": "boolean"
+    },
+    "usage": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "sizes": {
+      "type": "object",
+      "properties": {
+        "body_bytes": {
+          "type": "integer"
+        },
+        "content_chars": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reasoning_chars": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tool_calls": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "body_bytes",
+        "content_chars",
+        "reasoning_chars",
+        "tool_calls"
+      ],
+      "additionalProperties": false
+    },
+    "tool_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "content": {
+      "type": "object",
+      "description": "the answer as the backend sent it (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "status",
+    "finish_reason",
+    "streamed",
+    "usage",
+    "sizes",
+    "tool_names"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: route.select",
+  "description": "choose the backend, model and profile. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "route": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "fallbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "backend",
+              "model"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "backend",
+        "model",
+        "fallbacks"
+      ],
+      "additionalProperties": false
+    },
+    "backends": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "route",
+    "backends"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GET /v1/fleet/hooks",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "$ref": "hook.schema.json"
+      }
+    },
+    "kinds_available": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "builtins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "contract_version",
+    "hooks",
+    "kinds_available",
+    "builtins"
+  ],
+  "additionalProperties": false
+}

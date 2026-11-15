@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "a hook",
+  "description": "GET /v1/fleet/hooks/{id} `hook`, and every answer that carries a hook. Never the secret: its hint.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "http",
+        "builtin",
+        "plugin",
+        "mcp",
+        "inproc"
+      ]
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "request.received",
+          "route.select",
+          "request.before_engine",
+          "decision.ask",
+          "stream.chunk",
+          "tool_call.detected",
+          "tool.before_exec",
+          "tool.after_exec",
+          "response.after_engine",
+          "request.error",
+          "request.finished",
+          "memory.write",
+          "session.start",
+          "session.compact",
+          "engine.lifecycle"
+        ]
+      }
+    },
+    "role": {
+      "enum": [
+        "transform",
+        "guard",
+        "decider",
+        "observer"
+      ]
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "mode": {
+      "enum": [
+        "off",
+        "shadow",
+        "on"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "backends": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "client_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "policy": {
+      "enum": [
+        "open",
+        "closed",
+        null
+      ]
+    },
+    "timeout_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "payload": {
+      "enum": [
+        "meta",
+        "redacted",
+        "full"
+      ]
+    },
+    "endpoint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "options": {
+      "type": "object"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": "integer"
+    },
+    "updated_at": {
+      "type": "integer"
+    },
+    "updated_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": "integer"
+    },
+    "grant": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "level": {
+          "const": "full"
+        },
+        "by": {
+          "type": "string"
+        },
+        "at": {
+          "type": "integer"
+        },
+        "destination": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lan": {
+          "type": "boolean"
+        },
+        "confirmed_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirmed_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "level",
+        "by",
+        "at",
+        "destination",
+        "lan",
+        "confirmed_by",
+        "confirmed_at"
+      ],
+      "additionalProperties": false
+    },
+    "policy_effective": {
+      "type": "object"
+    },
+    "secret": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "set": {
+          "type": "boolean"
+        },
+        "last4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256_6": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rotated_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "previous_until": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "set",
+        "last4",
+        "sha256_6",
+        "rotated_at",
+        "previous_until"
+      ],
+      "additionalProperties": false
+    },
+    "destination": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lan": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "host",
+        "lan"
+      ],
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "calls": {
+          "type": "integer"
+        },
+        "failures": {
+          "type": "integer"
+        },
+        "timeouts": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
+        },
+        "outcomes": {
+          "type": "object"
+        },
+        "p50_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p95_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "breaker": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "enum": [
+                "closed",
+                "open",
+                "half_open"
+              ]
+            },
+            "consecutive_failures": {
+              "type": "integer"
+            },
+            "open_for_s": {
+              "type": "number"
+            },
+            "opened": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "consecutive_failures",
+            "open_for_s",
+            "opened"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "calls",
+        "failures",
+        "timeouts",
+        "skipped",
+        "outcomes",
+        "p50_ms",
+        "p95_ms",
+        "breaker"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "stages",
+    "role",
+    "priority",
+    "mode",
+    "scope",
+    "policy",
+    "timeout_ms",
+    "payload",
+    "endpoint",
+    "target",
+    "options",
+    "enabled",
+    "created_at",
+    "updated_at",
+    "updated_by",
+    "version",
+    "grant",
+    "policy_effective",
+    "secret",
+    "destination",
+    "metrics"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GET, PATCH /v1/fleet/hooks/{id}, POST .../enable, .../disable, PUT .../mode",
+  "type": "object",
+  "properties": {
+    "hook": {
+      "$ref": "hook.schema.json"
+    }
+  },
+  "required": [
+    "hook"
+  ],
+  "additionalProperties": false
+}

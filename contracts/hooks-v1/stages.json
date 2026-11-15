@@ -1,0 +1,504 @@
+{
+  "contract": "hooks-v1",
+  "version": "1.0",
+  "cap_ms": 800,
+  "async_timeout_ms": 5000,
+  "max_timeout_ms": 30000,
+  "kinds": [
+    "http",
+    "builtin",
+    "plugin",
+    "mcp",
+    "inproc"
+  ],
+  "kinds_available": [
+    "http",
+    "builtin"
+  ],
+  "payloads": [
+    "meta",
+    "redacted",
+    "full"
+  ],
+  "modes": [
+    "off",
+    "shadow",
+    "on"
+  ],
+  "policies": [
+    "open",
+    "closed"
+  ],
+  "roles": {
+    "transform": [
+      "continue",
+      "modify"
+    ],
+    "guard": [
+      "continue",
+      "deny"
+    ],
+    "decider": [
+      "continue",
+      "decide"
+    ],
+    "observer": [
+      "continue"
+    ]
+  },
+  "stages": {
+    "request.received": {
+      "when": "after auth, before routing",
+      "may": [
+        "modify",
+        "deny"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 150,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "model",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens",
+        "stop",
+        "seed",
+        "presence_penalty",
+        "frequency_penalty",
+        "repetition_penalty",
+        "response_format",
+        "reasoning_effort",
+        "chat_template_kwargs",
+        "tool_choice",
+        "parallel_tool_calls",
+        "logit_bias",
+        "metadata",
+        "user",
+        "messages",
+        "prompt",
+        "input",
+        "instructions",
+        "tools"
+      ],
+      "content": [
+        "messages",
+        "prompt",
+        "input",
+        "instructions",
+        "tools"
+      ],
+      "decision": [],
+      "first_token": true,
+      "wired": true
+    },
+    "route.select": {
+      "when": "choose the backend, model and profile",
+      "may": [
+        "decide"
+      ],
+      "actions": [
+        "continue",
+        "decide"
+      ],
+      "roles": [
+        "decider",
+        "observer"
+      ],
+      "budget_ms": 150,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [],
+      "content": [],
+      "decision": [
+        "backend",
+        "model",
+        "profile"
+      ],
+      "first_token": true,
+      "wired": true
+    },
+    "request.before_engine": {
+      "when": "the final body before it is sent to the backend",
+      "may": [
+        "modify",
+        "deny"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 250,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens",
+        "stop",
+        "seed",
+        "presence_penalty",
+        "frequency_penalty",
+        "repetition_penalty",
+        "response_format",
+        "reasoning_effort",
+        "chat_template_kwargs",
+        "tool_choice",
+        "parallel_tool_calls",
+        "logit_bias",
+        "metadata",
+        "user",
+        "messages",
+        "prompt",
+        "input",
+        "instructions",
+        "tools"
+      ],
+      "content": [
+        "messages",
+        "prompt",
+        "input",
+        "instructions",
+        "tools"
+      ],
+      "decision": [],
+      "first_token": true,
+      "wired": true
+    },
+    "decision.ask": {
+      "when": "a question for a decision provider",
+      "may": [
+        "decide"
+      ],
+      "actions": [
+        "continue",
+        "decide"
+      ],
+      "roles": [
+        "decider",
+        "observer"
+      ],
+      "budget_ms": 400,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [],
+      "content": [],
+      "decision": [
+        "answer"
+      ],
+      "first_token": true,
+      "wired": false
+    },
+    "stream.chunk": {
+      "when": "each event of a streamed answer",
+      "may": [
+        "observe"
+      ],
+      "actions": [
+        "continue"
+      ],
+      "roles": [
+        "observer"
+      ],
+      "budget_ms": null,
+      "sync": false,
+      "on_failure": "drop",
+      "fields": [],
+      "content": [],
+      "decision": [],
+      "first_token": false,
+      "wired": true
+    },
+    "tool_call.detected": {
+      "when": "the answer holds a tool call",
+      "may": [
+        "modify",
+        "deny"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 500,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "tool_calls"
+      ],
+      "content": [
+        "tool_calls"
+      ],
+      "decision": [],
+      "first_token": true,
+      "wired": true
+    },
+    "tool.before_exec": {
+      "when": "chatd, before a tool runs",
+      "may": [
+        "deny",
+        "modify"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 500,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "arguments"
+      ],
+      "content": [
+        "arguments"
+      ],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    },
+    "tool.after_exec": {
+      "when": "chatd, after a tool ran",
+      "may": [
+        "deny",
+        "modify"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 500,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "result"
+      ],
+      "content": [
+        "result"
+      ],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    },
+    "response.after_engine": {
+      "when": "the whole answer",
+      "may": [
+        "modify",
+        "deny",
+        "retry"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny",
+        "decide"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "decider",
+        "observer"
+      ],
+      "budget_ms": 1000,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "choices",
+        "output"
+      ],
+      "content": [
+        "choices",
+        "output"
+      ],
+      "decision": [
+        "retry"
+      ],
+      "first_token": true,
+      "wired": true
+    },
+    "request.error": {
+      "when": "an upstream error or timeout before any byte reached the client",
+      "may": [
+        "choose fallback"
+      ],
+      "actions": [
+        "continue",
+        "decide"
+      ],
+      "roles": [
+        "decider",
+        "observer"
+      ],
+      "budget_ms": 250,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [],
+      "content": [],
+      "decision": [
+        "fallback"
+      ],
+      "first_token": true,
+      "wired": true
+    },
+    "request.finished": {
+      "when": "the ledger row is written",
+      "may": [
+        "observe"
+      ],
+      "actions": [
+        "continue"
+      ],
+      "roles": [
+        "observer"
+      ],
+      "budget_ms": null,
+      "sync": false,
+      "on_failure": "drop",
+      "fields": [],
+      "content": [],
+      "decision": [],
+      "first_token": false,
+      "wired": true
+    },
+    "memory.write": {
+      "when": "a note about to be stored",
+      "may": [
+        "modify",
+        "deny"
+      ],
+      "actions": [
+        "continue",
+        "modify",
+        "deny"
+      ],
+      "roles": [
+        "transform",
+        "guard",
+        "observer"
+      ],
+      "budget_ms": 500,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "text"
+      ],
+      "content": [
+        "text"
+      ],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    },
+    "session.start": {
+      "when": "a session starts",
+      "may": [
+        "observe",
+        "modify"
+      ],
+      "actions": [
+        "continue",
+        "modify"
+      ],
+      "roles": [
+        "transform",
+        "observer"
+      ],
+      "budget_ms": 250,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "profile"
+      ],
+      "content": [],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    },
+    "session.compact": {
+      "when": "a session is compacted",
+      "may": [
+        "observe",
+        "modify"
+      ],
+      "actions": [
+        "continue",
+        "modify"
+      ],
+      "roles": [
+        "transform",
+        "observer"
+      ],
+      "budget_ms": 250,
+      "sync": true,
+      "on_failure": "open",
+      "fields": [
+        "instruction"
+      ],
+      "content": [
+        "instruction"
+      ],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    },
+    "engine.lifecycle": {
+      "when": "an engine starts, stops, changes mode or applies settings",
+      "may": [
+        "observe"
+      ],
+      "actions": [
+        "continue"
+      ],
+      "roles": [
+        "observer"
+      ],
+      "budget_ms": null,
+      "sync": false,
+      "on_failure": "drop",
+      "fields": [],
+      "content": [],
+      "decision": [],
+      "first_token": false,
+      "wired": false
+    }
+  }
+}

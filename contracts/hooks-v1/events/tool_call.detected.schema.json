@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: tool_call.detected",
+  "description": "the answer holds a tool call. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "args_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "index",
+          "id",
+          "name",
+          "args_bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "streamed": {
+      "type": "boolean"
+    },
+    "content": {
+      "type": "array",
+      "description": "the answer's tool_calls (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "calls",
+    "streamed"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: memory.write",
+  "description": "a note about to be stored. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "note": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "bytes"
+      ],
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "string",
+      "description": "the note's text (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "note"
+  ],
+  "additionalProperties": false
+}

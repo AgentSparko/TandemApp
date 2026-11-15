@@ -1,0 +1,31 @@
+{
+  "hooks": "1.0",
+  "id": "hd-0123456789abcdef0123456789abcdef",
+  "hook": "example-hook",
+  "stage": "decision.ask",
+  "ts": 1763200000.0,
+  "payload": "meta",
+  "mode": "on",
+  "request": {
+    "request_id": "chatcmpl-px-0123456789abcdef01234567",
+    "endpoint": "chat",
+    "model": "example-model",
+    "upstream_model": "example-model",
+    "backend": "local",
+    "profile": null,
+    "user": "owner",
+    "session": "s-1",
+    "client_kind": "unknown",
+    "stream": false
+  },
+  "event": {
+    "question": {
+      "state": "class",
+      "options": [
+        "chat",
+        "code"
+      ],
+      "deadline_ms": 400
+    }
+  }
+}
