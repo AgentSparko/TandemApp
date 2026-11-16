@@ -133,7 +133,10 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
         for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
                   "fleet_jobs", "audit", "decision_provider_keys", "plugin_secrets",
                   "hook_secrets", "plugins", "plugin_keys", "accounts", "sessions",
-                  "group_roles"):
+                  "group_roles", "setup_codes", "auth_state",
+                  # SRV-867: tokens belong to accounts, which stay; the receiver imports the
+                  # moved `users` itself
+                  "api_tokens"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:

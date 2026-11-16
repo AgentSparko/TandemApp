@@ -31,7 +31,7 @@ from proxy import accounts as acc_mod  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
 from proxy_util import run  # noqa: E402
 
-NEW = {"accounts", "sessions", "group_roles"}
+NEW = {"accounts", "sessions", "group_roles", "setup_codes", "auth_state", "api_tokens"}
 
 
 def _expected() -> dict:
@@ -104,7 +104,11 @@ def test_export_leaves_accounts():
     from proxy import ctlmove
     path = _written()
     cfg = config_mod.ConfigDB(path, env={}, use_keychain=False).open()
-    acc_mod.AccountsAuth(cfg)
+    a = acc_mod.AccountsAuth(cfg)
+    # SRV-867: an account's token and the import's record stay with the accounts
+    own = a.store.create("mover", "operator", "the password of mover here", actor="test")
+    a.tokens.create(own, label="t", scopes=["inference:openai"], actor="test")
+    a.store.set_state("tokens_imported", {"users": 1})
     bundle = ctlmove.export(cfg, keys=False)
     cfg.close()
     out = os.path.join(tempfile.mkdtemp(prefix="export-"), "export.sqlite3")
