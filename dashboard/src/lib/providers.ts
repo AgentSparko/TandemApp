@@ -60,6 +60,7 @@ const FALLBACK: Record<string, { title: string; text: string }> = {
   unknown_label: { title: 'An answer that is no option', text: 'It answered something that is not one of the question’s options.' },
   breaker_open: { title: 'Breaker open', text: 'Five failures in a row, or a p95 at its timeout over the last minute: skipped for 30 s, then one probe call.' },
   provider_down: { title: 'Health probe failed', text: 'Its last probe of /readyz failed, so it was not asked.' },
+  not_granted: { title: 'Not granted there', text: 'Its endpoint is not in its grant, or is outside the LAN without the second confirm. The text was not sent.' },
   hook_off: { title: 'The hook is off', text: 'The hook behind it is off or in shadow. Keep the hook on: the provider’s mode decides shadow and A/B.' },
   no_answer: { title: 'No decision', text: 'The hook answered without a decision.' },
   out_of_scope: { title: 'Out of the hook’s scope', text: 'The hook’s scope does not take that request.' },

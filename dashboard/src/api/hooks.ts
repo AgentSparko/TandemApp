@@ -53,6 +53,15 @@ export interface Grant {
   confirmed_at: number | null;
 }
 
+/** SEC-16: where a systemone-http provider's questions' text may go: host -> on the LAN, who and when */
+export interface ProviderGrant {
+  by: string | null;
+  at: number;
+  destinations: Record<string, boolean>;
+  confirmed_by: string | null;
+  confirmed_at: number | null;
+}
+
 /** what is shown of a hook's secret: never the secret */
 export interface SecretHint {
   set: boolean;
@@ -302,6 +311,8 @@ export interface Provider {
   sticky: Sticky;
   enabled: boolean;
   key: KeyHint | null;
+  /** SEC-16: where its text may go; null for a kind that sends none */
+  grant: ProviderGrant | null;
   created_at: number;
   updated_at: number;
   updated_by: string | null;

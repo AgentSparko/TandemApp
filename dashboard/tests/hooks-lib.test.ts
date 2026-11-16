@@ -332,7 +332,7 @@ describe('words', () => {
 
 const prov = (id: string, o: Partial<Provider> = {}): Provider => ({
   id, name: id, kind: 'systemone-http', endpoint: 'http://decider.lan:8720', hook_id: null, model: 'auto', timeout_ms: 400, questions: { classify: { model: null, endpoint: null, timeout_ms: null, key: { key_set: false, last4: null, sha256_6: null, set_at: null } } },
-  mode: 'shadow', ab_percent: 0, sticky: 'session', enabled: true, key: { key_set: true, last4: '0003', sha256_6: 'abc123', set_at: 1 }, created_at: 1, updated_at: 1, updated_by: 'admin', version: 1, breakers: {}, ...o,
+  mode: 'shadow', ab_percent: 0, sticky: 'session', enabled: true, key: { key_set: true, last4: '0003', sha256_6: 'abc123', set_at: 1 }, grant: null, created_at: 1, updated_at: 1, updated_by: 'admin', version: 1, breakers: {}, ...o,
 });
 const QS = { classify: { what: 'which class' }, judge: { what: 'a failure' }, memory_gate: { what: 'worth a note' } };
 

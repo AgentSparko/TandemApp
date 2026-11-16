@@ -336,7 +336,15 @@ describe('the decision providers’ API in the mock', () => {
 
   it('a provider is made, changed and removed; its keys are write-only', async () => {
     const r = rig();
-    const made = await r.providers.create({ name: 'My decider', kind: 'systemone-http', endpoint: 'http://decider.example:8720', api_key: 'sk-my-decider-1234', questions: { memory_intent: { endpoint: 'http://other.example:8720', api_key: 'sk-other-5678', model: 'intent-v1' }, packages: {} } });
+    const doc = { name: 'My decider', kind: 'systemone-http' as const, endpoint: 'http://decider.example:8720', api_key: 'sk-my-decider-1234', questions: { memory_intent: { endpoint: 'http://other.example:8720', api_key: 'sk-other-5678', model: 'intent-v1' }, packages: {} } };
+    // SEC-16: its questions' text goes outside the LAN: pairing's rights, then a second confirm
+    r.reg.control({ trust: false });
+    expect(await refusal(r.providers.create(doc))).toMatchObject([403, 'trust_required', {}]);
+    r.reg.control({ trust: true });
+    const [, asked, facts] = await refusal(r.providers.create(doc));
+    expect([asked, facts.destination, facts.lan, facts.field]).toEqual(['confirm_needed', 'decider.example, other.example', false, 'endpoint']);
+    const made = await r.providers.create({ ...doc, confirm: facts.confirm } as never);
+    expect(made.grant).toEqual({ by: 'admin', at: T0, destinations: { 'decider.example': false, 'other.example': false }, confirmed_by: 'admin', confirmed_at: T0 });
     expect([made.id, made.mode, made.model, made.timeout_ms, made.key?.last4, made.questions.memory_intent.key?.last4, made.questions.packages.key?.key_set]).toEqual(['my-decider', 'shadow', 'auto', 400, '1234', '5678', false]);
     expect(Object.keys(made.breakers).sort()).toEqual(['http://decider.example:8720', 'http://other.example:8720']);
     const changed = await r.providers.patch('my-decider', { name: 'Mine', model: 'm-2', timeout_ms: 250 });

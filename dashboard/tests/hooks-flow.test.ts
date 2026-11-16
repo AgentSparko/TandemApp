@@ -769,7 +769,7 @@ describe('the decision providers', () => {
     expect(await p.prov.create()).toBeNull();
     expect(Object.keys(p.prov.add!.errors).sort()).toEqual(['endpoint', 'name', 'questions']);
     expect(view()).toContain('3 things need a correction above.');
-    p.prov.editAdd({ name: 'My decider', endpoint: 'http://decider.example:8720', api_key: 'sk-my-own-key-7777', questions: ['classify', 'packages'], mode: 'on' });
+    p.prov.editAdd({ name: 'My decider', endpoint: 'http://decider.lan:8720', api_key: 'sk-my-own-key-7777', questions: ['classify', 'packages'], mode: 'on' });
     expect(p.prov.add!.errors.questions).toContain('classify is answered by Classes');
     p.prov.editAdd({ mode: 'ab', ab_percent: '20', sticky: 'user', questions: ['packages'] });
     expect(view()).toContain('data-sticky-to=user');

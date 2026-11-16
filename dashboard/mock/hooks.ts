@@ -34,7 +34,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Answer, Arm, Breaker, Bucket, Grant, Health, Hook, HookCall, HookMetrics, HookScope, Outcome, Probe, Provider, ProviderCall, ProviderKind, Role, StageTable } from '../src/api/hooks.ts';
+import type { Answer, Arm, Breaker, Bucket, Grant, ProviderGrant, Health, Hook, HookCall, HookMetrics, HookScope, Outcome, Probe, Provider, ProviderCall, ProviderKind, Role, StageTable } from '../src/api/hooks.ts';
 
 export type Reply = { status: number; body: unknown };
 
@@ -83,6 +83,7 @@ const SENTENCE: Record<string, string> = {
   kind_unavailable: 'kind ‘mcp’ is not available in this version: it arrives with a later version (a plugin’s hooks are kind plugin). Use http, builtin or plugin.',
   invalid: 'name: 1 to 80 characters',
   bad_request: 'the body must be a JSON object',
+  p_trust: 'a provider the questions’ text goes to, and each new place it goes, take pairing’s rights: set an admin password (App settings) to do this from another machine, or ask from this one',
 };
 
 class Refuse extends Error {
@@ -167,6 +168,8 @@ export interface MockProvider {
   open_until: number;
   opened: number;
   probed: Record<string, number>;
+  /** SEC-16: where its questions' text may go (a systemone-http provider); null before a grant */
+  grant: ProviderGrant | null;
 }
 
 function hostOf(url: string | null): string | null {
@@ -212,7 +215,7 @@ function hook(now: number, o: Partial<MockHook> & Pick<MockHook, 'name' | 'kind'
 }
 function provider(now: number, o: Partial<MockProvider> & Pick<MockProvider, 'name' | 'kind'> & { vals?: Record<string, unknown> }): MockProvider {
   return {
-    keys: {}, key_at: {}, endpoint: null, hook_id: null, model: 'auto', timeout_ms: 400, created_at: now - 86_400_000, updated_at: now - 86_400_000, updated_by: 'admin', version: 1, behave: 'ok', agree: 0.92, base_ms: 21, fails: 0, open_until: 0, opened: 0, probed: {},
+    keys: {}, key_at: {}, endpoint: null, hook_id: null, model: 'auto', timeout_ms: 400, created_at: now - 86_400_000, updated_at: now - 86_400_000, updated_by: 'admin', version: 1, behave: 'ok', agree: 0.92, base_ms: 21, fails: 0, open_until: 0, opened: 0, probed: {}, grant: null,
     ...o,
     vals: { enabled: true, mode: 'shadow', ab_percent: 0, sticky: 'session', questions: {}, ...(o.vals ?? {}) },
   };
@@ -533,6 +536,36 @@ export class MockHooks {
   private confirmToken(id: string, host: string | null, version: number): string {
     return sha(`${id}\0${host}\0${version}`).slice(0, 32);
   }
+  /** SEC-16: host -> on the LAN, of every place a systemone-http provider's text goes */
+  private destinations(d: Record<string, unknown>): Record<string, boolean> {
+    if (d.kind !== 'systemone-http') return {};
+    const out: Record<string, boolean> = {};
+    const urls = [d.endpoint, ...Object.values((d.questions ?? {}) as Record<string, { endpoint?: string }>).map((q) => q?.endpoint)];
+    for (const u of urls) {
+      const h = typeof u === 'string' && u ? hostOf(u) : null;
+      if (h && !(h in out)) out[h] = hostIsLan(h);
+    }
+    return out;
+  }
+  private providerNeedsGrant(old: MockProvider | null, d: Record<string, unknown>): boolean {
+    const have = old?.grant?.destinations ?? (old ? this.destinations({ kind: old.kind, endpoint: old.endpoint, questions: old.vals.questions }) : {});
+    return Object.keys(this.destinations(d)).some((h) => !(h in have));
+  }
+  private providerGrant(id: string, old: MockProvider | null, d: Record<string, unknown>, who: string, confirm: unknown): ProviderGrant | null {
+    const dests = this.destinations(d);
+    if (!Object.keys(dests).length) return null;
+    const g = old?.grant ?? null;
+    if (g && Object.keys(dests).every((h) => h in g.destinations)) return { ...g, destinations: Object.fromEntries(Object.keys(dests).map((h) => [h, g.destinations[h]])) };
+    const sure = g?.confirmed_by ? Object.keys(g.destinations) : [];
+    const away = Object.keys(dests).filter((h) => !dests[h] && !sure.includes(h)).sort();
+    if (away.length) {
+      const want = this.confirmToken(id, away.join(','), old?.version ?? 0);
+      if (confirm !== want) no('confirm_needed', `the questions’ text would go to ${away.join(', ')}, outside the LAN: send the same request again with this confirm to grant it`, 'endpoint', { confirm: want, destination: away.join(', '), lan: false });
+    }
+    const outside = Object.values(dests).some((lan) => !lan);
+    const confirmed = outside && (away.length > 0 || !!g?.confirmed_by);
+    return { by: who, at: this.now, destinations: dests, confirmed_by: confirmed ? (away.length ? who : g!.confirmed_by) : null, confirmed_at: confirmed ? (away.length ? this.now : g!.confirmed_at) : null };
+  }
   /** the grant a document carries; a destination outside the LAN wants its confirm first */
   private grant(id: string, old: MockHook | null, payload: unknown, host: string | null, lan: boolean, who: string, confirm: unknown): Grant | null {
     if (payload !== 'full') return null;
@@ -738,7 +771,7 @@ export class MockHooks {
     );
     return {
       id, name: p.name, kind: p.kind, endpoint: p.endpoint, hook_id: p.hook_id, target: null, model: p.model, timeout_ms: p.timeout_ms, questions, mode: v.mode as Provider['mode'], ab_percent: v.ab_percent as number, sticky: v.sticky as Provider['sticky'], enabled: !!v.enabled,
-      key: p.kind === 'systemone-http' ? this.hint(p, '*') : null, created_at: p.created_at, updated_at: p.updated_at, updated_by: p.updated_by, version: p.version,
+      key: p.kind === 'systemone-http' ? this.hint(p, '*') : null, grant: p.grant ? copy(p.grant) : null, created_at: p.created_at, updated_at: p.updated_at, updated_by: p.updated_by, version: p.version,
       breakers: Object.fromEntries(this.targets(p).map(([ep]) => [ep, this.breaker(p, now)])),
       ...(health ? { health: this.healthOf(id, now, false, health === 'cached') } : {}),
     };
@@ -821,7 +854,7 @@ export class MockHooks {
   }
 
   private createProvider(doc: Record<string, unknown>, who: string): Provider {
-    const unknown = Object.keys(doc).filter((k) => !PROVIDER_FIELDS.includes(k) && k !== 'id').sort();
+    const unknown = Object.keys(doc).filter((k) => !PROVIDER_FIELDS.includes(k) && k !== 'id' && k !== 'confirm').sort();
     if (unknown.length) bad(`unknown field '${unknown[0]}'`, unknown[0]);
     const d: Record<string, unknown> = { name: doc.name, kind: doc.kind ?? 'systemone-http', endpoint: doc.endpoint ?? null, hook_id: doc.hook_id ?? null, target: doc.target ?? null, model: doc.model ?? 'auto', timeout_ms: doc.timeout_ms ?? 400, questions: doc.questions, mode: doc.mode ?? 'shadow', ab_percent: doc.ab_percent ?? 0, sticky: doc.sticky ?? 'session', enabled: doc.enabled ?? true, api_key: doc.api_key ?? null };
     this.checkProvider(d);
@@ -831,13 +864,17 @@ export class MockHooks {
     if (this.providers[id!]) no('exists', `a decision provider '${id}' exists`, 'id');
     const [mapping, keys] = this.split(d.questions as Record<string, Record<string, unknown>>);
     this.taken({ ...d, questions: mapping }, id!);
+    const grant = this.providerGrant(id!, null, { ...d, questions: mapping }, who, doc.confirm);
     const p = provider(this.now, { name: (d.name as string).trim(), kind: d.kind as ProviderKind, endpoint: d.endpoint as string | null, hook_id: d.hook_id as string | null, model: d.model as string, timeout_ms: d.timeout_ms as number, created_at: this.now, updated_at: this.now, updated_by: who, vals: { enabled: d.enabled, mode: d.mode, ab_percent: d.ab_percent, sticky: d.sticky, questions: mapping } });
+    p.grant = grant;
     this.putKeys(p, { ...keys, ...(d.api_key != null ? { '*': d.api_key as string } : {}) });
     this.providers[id!] = p;
     return this.providerView(id!, this.now);
   }
 
   private updateProvider(id: string, patch: Record<string, unknown>, who: string): Provider {
+    const confirm = patch.confirm;
+    patch = Object.fromEntries(Object.entries(patch).filter(([k]) => k !== 'confirm'));
     const unknown = Object.keys(patch).filter((k) => !PROVIDER_FIELDS.includes(k)).sort();
     if (unknown.length) bad(`unknown field '${unknown[0]}'`, unknown[0]);
     if ('kind' in patch) bad('kind: a provider’s kind is fixed; make a new provider', 'kind');
@@ -847,13 +884,14 @@ export class MockHooks {
     this.checkProvider(next);
     const [mapping, keys] = this.split(next.questions as Record<string, Record<string, unknown>>);
     this.taken({ ...next, questions: mapping }, id);
+    const grant = this.providerGrant(id, p, { ...next, questions: mapping }, who, confirm);
     if (this.racing.delete(id)) {
       p.version++;
       p.updated_by = 'another screen';
       p.updated_at = this.now;
       no('conflict', 'the provider changed meanwhile; read it again');
     }
-    Object.assign(p, { name: (next.name as string).trim(), endpoint: next.endpoint, hook_id: next.hook_id, model: next.model, timeout_ms: next.timeout_ms, version: p.version + 1, updated_at: this.now, updated_by: who });
+    Object.assign(p, { name: (next.name as string).trim(), endpoint: next.endpoint, hook_id: next.hook_id, model: next.model, timeout_ms: next.timeout_ms, version: p.version + 1, updated_at: this.now, updated_by: who, grant });
     Object.assign(p.vals, { enabled: next.enabled, mode: next.mode, ab_percent: next.ab_percent, sticky: next.sticky, questions: mapping });
     this.putKeys(p, { ...keys, ...('api_key' in patch ? { '*': patch.api_key as string | null } : {}) });
     for (const q of Object.keys(p.keys)) if (q !== '*' && !(q in mapping)) delete p.keys[q];
@@ -974,6 +1012,7 @@ export class MockHooks {
       }
       if (method === 'POST') {
         this.forced('p-create');
+        if (!this.trust && this.providerNeedsGrant(null, { ...b, kind: b.kind ?? 'systemone-http' })) no('trust_required', SENTENCE.p_trust);
         return [201, { provider: this.createProvider(b, who) }];
       }
     } else if (sub.length === 1 && sub[0] === 'report' && method === 'GET') {
@@ -992,6 +1031,8 @@ export class MockHooks {
       }
       if (method === 'PATCH') {
         this.forced('p-patch');
+        const old = this.needProvider(id);
+        if (!this.trust && ('endpoint' in b || 'questions' in b) && this.providerNeedsGrant(old, { kind: old.kind, endpoint: 'endpoint' in b ? b.endpoint : old.endpoint, questions: 'questions' in b ? b.questions : old.vals.questions })) no('trust_required', SENTENCE.p_trust);
         return [200, { provider: this.updateProvider(id, b, who) }];
       }
       if (method === 'DELETE') {
