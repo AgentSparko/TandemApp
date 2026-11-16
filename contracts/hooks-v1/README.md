@@ -56,7 +56,7 @@ Every call carries:
 | `X-Tandem-Timestamp` | unix seconds |
 | `X-Tandem-Signature` | `v1=` and the hex HMAC-SHA256 of `<timestamp>.` followed by the body's bytes, keyed with the hook's secret (its UTF-8 bytes). During a rotation's grace a second `v1=` for the previous secret follows, comma-separated |
 
-A receiver recomputes the HMAC over the bytes it read, compares in constant time, refuses a timestamp more than 300 s from its clock, and refuses a body `id` it has seen within that window. The secret is answered once, when the hook is made or its secret rotated; it is stored encrypted under the controller's master key and is never logged, journaled, exported or answered again.
+A receiver recomputes the HMAC over the bytes it read, compares in constant time, refuses a timestamp more than 300 s from its clock, and refuses a body `id` it has seen within that window. The secret is answered once, when the hook is made or its secret rotated; it is stored encrypted under the controller's master key and is never logged, journaled, exported or answered again. A controller move carries it inside its sealed handover, and the new controller encrypts it again under its own master key, so the hook keeps signing with it.
 
 ## The admin API
 

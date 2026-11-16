@@ -86,7 +86,7 @@ curl -X POST http://127.0.0.1:8080/v1/fleet/decision-providers \
 ```
 
 - `questions` maps each question it answers; a question may set its own `endpoint`, `api_key`, `model` and `timeout_ms`, and takes the provider's for the rest.
-- A key is write-only: a string sets it, `null` clears it, and every answer shows only whether it is set, its last 4 characters and a sha256 prefix. Keys are stored sealed under the master key, never logged, journaled or exported; a controller move leaves them behind (type them again on the new controller).
+- A key is write-only: a string sets it, `null` clears it, and every answer shows only whether it is set, its last 4 characters and a sha256 prefix. Keys are stored sealed under the master key, never logged, journaled or exported; a controller move carries them inside its sealed handover and the new controller seals them again under its own master key.
 - The provider's own key goes only to its own endpoint's origin: a question with an endpoint on another host gets its own key or none.
 - One enabled provider may answer a question `on` or `ab`; any number may watch it in `shadow`.
 - `POST .../{id}/test` asks it once with a sample question; `GET .../{id}/health` probes it; `GET .../report` has the numbers below. The list (`GET /v1/fleet/decision-providers`) carries each provider's health from its last probes and probes nothing: an endpoint not probed since the provider last changed shows no probe, and the status `unknown`.

@@ -11,6 +11,9 @@ as on a Spark. The controllers here are tandem-app in this process (the Proxy he
      controller only, its nodes' trust naming its own certificate, the keys under its own master
      key                                                                   test_export_import
   2  sealing: only the holder of the certificate's key opens it               test_seal
+  2b SEC-16: the hooks' secrets and the providers' keys leave the database copy and are sealed
+     again under the taker's master key (same refs: the hooks sign and the providers answer
+     with them after the move); plugins stay, listed in `dropped`         test_secrets_resealed
   3  the plan: the target's words, every node's how, the password the new controller needs, a
      rented or unpaired target refused, the confirm single use, the sleep warning on a Mac
                                                                            test_plan_and_refusals
@@ -28,10 +31,12 @@ as on a Spark. The controllers here are tandem-app in this process (the Proxy he
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shlex
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -91,7 +96,8 @@ def test_export_import():
     c = _cfg(d)
     got = ctlmove.import_bundle(c, b, "/b/ctl.crt", "/b/ctl.key")
     assert sorted(got.pop("backend_ids")) == ["ds", "eng"], got
-    assert got == {"nodes": 1, "backends": 2, "keys": 1, "host_keys": 0, "users_from": 0}, got
+    assert got == {"nodes": 1, "backends": 2, "keys": 1, "host_keys": 0, "users_from": 0,
+                   "hook_secrets": 0, "provider_keys": 0}, got
     assert {x["id"] for x in c.backends()} == {"ds", "eng"}
     assert c.key_for("ds") == KEY                     # stored again under c's own master key
     assert [r["pattern"] for r in c.rules()] == ["qwen*"]
@@ -117,6 +123,75 @@ def test_export_import():
     assert os.path.isfile(os.path.join(d2, "controller", "controller.crt"))
     assert c2.nodes()[0]["trust"]["cert"] == os.path.join(d2, "controller", "controller.crt")
     assert ctlmove.import_at_start(c2, d2) is None
+
+
+def test_secrets_resealed():
+    from proxy import hookstore, pluginstore, providerstore
+    da = tempfile.mkdtemp(prefix="mv-sa-")
+    a = _cfg(da)
+    hs = hookstore.HookStore(a)
+    h, secret = hs.create({"name": "Audit", "endpoint": "http://192.0.2.20:9300/h",
+                           "role": "observer", "stages": ["request.finished"]}, "t")
+    ps = providerstore.ProviderStore(a, hook=hs.get)
+    pkey, qkey = "sk-" + "Mv1" * 12, "sk-" + "Mv2" * 12
+    ps.create({"name": "Jev", "endpoint": "http://192.168.1.30:8720", "api_key": pkey,
+               "questions": {"classify": {"api_key": qkey}}}, "t")
+    with a._lock:
+        a._conn.executescript(pluginstore.DDL)
+        a._conn.execute("INSERT INTO plugin_secrets(plugin_id, name, ciphertext, nonce, "
+                        "master_key_id, set_at) VALUES ('p', 'TOKEN', x'00', x'00', 'k', 1)")
+        a._conn.commit()
+    before = {r[0]: bytes(r[1]) for r in a._conn.execute("SELECT ref, ciphertext FROM "
+                                                         "hook_secrets")}
+    b = ctlmove.export(a)
+    # the database copy holds no sealed secret of this master key, and no plugin
+    db = base64.b64decode(b["db"])
+    with tempfile.NamedTemporaryFile(suffix=".sqlite3", dir=da, delete=False) as f:
+        f.write(db)
+    con = sqlite3.connect(f.name)
+    for t in ("hook_secrets", "decision_provider_keys", "plugin_secrets", "plugins"):
+        assert con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] == 0, t
+    con.close()
+    for ct in before.values():
+        assert ct not in db
+    assert [x["hook_id"] for x in b["hook_secrets"]] == [h["id"]]
+    assert sorted(x["scope"] for x in b["provider_keys"]) == ["*", "classify"]
+    assert any("plugins stay" in x for x in b["dropped"]), b["dropped"]
+    rest = json.dumps({k: v for k, v in b.items() if k not in ("hook_secrets", "provider_keys")})
+    for v in (secret, pkey, qkey):
+        assert v not in rest
+    # the taker seals them again under its own master key, with the same refs
+    dc = tempfile.mkdtemp(prefix="mv-sc-")
+    c = _cfg(dc)
+    got = ctlmove.import_bundle(c, b, "/b/ctl.crt", "/b/ctl.key")
+    assert (got["hook_secrets"], got["provider_keys"]) == (1, 2), got
+    hc = hookstore.HookStore(c)
+    hrow = hc.get(h["id"])
+    assert hrow is not None and hrow["secret_ref"] == h["secret_ref"]
+    assert hc.secrets_for(h["id"], hrow["secret_ref"]) == [secret]
+    pc = providerstore.ProviderStore(c, hook=hc.get)
+    assert pc.key_for("jev", "*") == pkey and pc.key_for("jev", "classify") == qkey
+    assert pc.get("jev")["grant"] is not None                # the grant moves with it
+    after = {r[0]: bytes(r[1]) for r in c._conn.execute("SELECT ref, ciphertext FROM "
+                                                        "hook_secrets")}
+    assert set(after) == set(before) and all(after[k] != before[k] for k in after)
+    with open(c.path, "rb") as fh:
+        raw = fh.read()
+    for v in (secret, pkey, qkey):
+        assert v.encode() not in raw
+    # the sealed handover carries them only inside the seal
+    from proxy import nodetrust
+    crt, key = os.path.join(dc, "t.crt"), os.path.join(dc, "t.key")
+    nodetrust.make_identity(crt, key, "taker")
+    with open(crt) as fh:
+        sealed = json.dumps(ctlmove.seal(b, fh.read()))
+    for v in (secret, pkey, qkey):
+        assert v not in sealed
+    # without keys nothing of them goes, and the export says so
+    nb = ctlmove.export(a, keys=False)
+    assert nb["hook_secrets"] == [] and nb["provider_keys"] == []
+    assert any("without keys" in x for x in nb["dropped"])
+    return "hook secrets and provider keys sealed again; plugins dropped with the reason"
 
 
 def test_seal():

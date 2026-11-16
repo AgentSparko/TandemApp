@@ -11,7 +11,8 @@ the conductor's harness, keys, the byte gate.
      conductor's and the report counts the shadow calls; down: the
      built-in answer, the health view failing                      test_relay_with_a_provider
   3  no provider key in any answer, log line, file of the controller,
-     audit row, journal row or the controller move's export        test_key_never_leaves
+     audit row, journal row or the controller move's database copy
+     (its keys travel beside it, to be sealed again by the taker)  test_key_never_leaves
   4  no provider: the relay byte for byte (tools/hooks_gate.py's cases)
      with providers stored for every question; with the conductor on
      the decisions recorded are those of a controller without any  test_relay_unchanged_without_provider
@@ -273,8 +274,13 @@ def test_key_never_leaves():
             assert con.execute("SELECT COUNT(*) FROM decision_provider_keys").fetchone()[0] == 0
             assert con.execute("SELECT COUNT(*) FROM decision_providers").fetchone()[0] == 1
             con.close()
+            # SEC-16: the keys travel beside the database, for the taker to seal again under its
+            # own master key (inside the handover's seal); nowhere else in the export
+            assert sorted(k["key"] for k in exp["provider_keys"]) == sorted(KEYS[:2]) or \
+                sorted(k["key"] for k in exp["provider_keys"]) == sorted([KEYS[1], KEYS[2]])
+            rest = {k: v for k, v in exp.items() if k != "provider_keys"}
             blobs = answers + [m.encode() for m in px.logs] + \
-                [json.dumps(exp).encode(), db]
+                [json.dumps(rest).encode(), db]
             blobs.append(json.dumps(_routes(cond, 200), default=str).encode())
             blobs.append(json.dumps(cond.journal.rows(kind="provider", limit=200),
                                     default=str).encode())

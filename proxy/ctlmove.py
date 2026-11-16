@@ -16,10 +16,15 @@
 
 THE EXPORT (`kind: tandemapp-export`): the config database without the secrets, the wizard's
 sessions and the jobs (backends, models, routes, the proxy's own keys as hashes, the settings,
-the nodes with their pins, the layouts), and the backends' stored API keys decrypted, for the new
-controller to store under its own master key. The decision providers' keys (SRV-851) do not go:
-they are typed again on the new controller. The metric history (fleet.sqlite3) stays where it
-is. A node reached through an SSH tunnel stays too: its key is a file on this machine (rented
+the nodes with their pins, the layouts, the hooks and the decision providers), and the backends'
+stored API keys decrypted, for the new controller to store under its own master key. The hooks'
+secrets and the decision providers' keys (SEC-16) go the same way: decrypted here, out of the
+database copy (never as this master key's ciphertext, which the taker could not read), and sealed
+again under the taker's master key with the same refs, so the hooks keep signing and the providers
+keep answering after the move. Plugins stay (`DROPPED`): their files are on this machine, so their
+rows, secrets and trusted keys are left out and they are installed again on the new controller.
+A secret this machine cannot read is left out too and named in `dropped`. The metric history
+(fleet.sqlite3) stays where it is. A node reached through an SSH tunnel stays too: its key is a file on this machine (rented
 nodes, step 7); the plan says so. An import lands only in a controller with no fleet of its own,
 and every node's trust then names that controller's certificate.
 
@@ -82,7 +87,10 @@ DEFAULT_PORT = 8080
 MIN_PASSWORD = 32
 # the tables an export carries (the rest: secrets, sessions, jobs, audit, meta stay)
 TABLES = ("backends", "models", "model_features", "routing_rules", "users", "settings", "nodes",
-          "layouts", "deployments")
+          "layouts", "deployments", "hooks", "decision_providers")
+#: what an export leaves out on purpose, and why (the plan and the bundle list it)
+DROPPED = {"plugins": "plugins stay: their files are on this machine; install them again on the "
+                      "new controller (their secrets and trusted keys stay with them)"}
 # the users columns a fold of TANDEM_API_USERS_FROM's database copies (the key's hash, never a key)
 USER_COLS = ("label", "key_hash", "key_hint", "role", "enabled", "created_at", "last_seen_at")
 LOOPBACK_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost")
@@ -120,8 +128,11 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             cfg._conn.backup(dst)
             dst.close()
         c = sqlite3.connect(path)
+        # SEC-16: a sealed secret never leaves as this master key's ciphertext: the hooks' and
+        # the providers' go decrypted beside the database (below), the plugins' stay
         for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
-                  "fleet_jobs", "audit", "decision_provider_keys", "plugin_secrets"):
+                  "fleet_jobs", "audit", "decision_provider_keys", "plugin_secrets",
+                  "hook_secrets", "plugins", "plugin_keys"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:
@@ -156,9 +167,14 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
                 k = None
             if k:
                 got[b["id"]] = k
+    dropped = list(DROPPED.values())
+    hook_secrets, provider_keys = (_secret_rows(cfg, dropped) if keys else ([], []))
+    if not keys:
+        dropped.append("hook secrets and decision provider keys: an export without keys")
     out = {"kind": KIND, "version": 1, "release": _version.release() or None,
            "at": round(time.time(), 3), "db": base64.b64encode(db).decode(), "keys": got,
-           "users_from": folded}
+           "users_from": folded, "hook_secrets": hook_secrets, "provider_keys": provider_keys,
+           "dropped": dropped}
     if host_keys:
         out["host_keys"] = {}
         for hid in host_keys:
@@ -175,6 +191,74 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             if tok:
                 out["host_keys"][hid]["http_token"] = tok        # SRV-839: the engine's bearer
     return out
+
+
+def _secret_rows(cfg, dropped: list) -> tuple[list, list]:
+    """The hooks' secrets and the providers' keys decrypted, for the taker to seal again under
+    its own master key (the same ref, so the rows that name them stay as they are). One this
+    machine cannot read is left out and named in `dropped`."""
+    hs, pk = [], []
+    with cfg._lock:
+        conn = cfg._conn
+        rows_h = conn.execute("SELECT ref, hook_id, ciphertext, nonce, master_key_id, last4, "
+                              "sha256_6, created_at, expires_at FROM hook_secrets").fetchall() \
+            if _has_table(conn, "hook_secrets") else []
+        rows_p = conn.execute("SELECT ref, provider_id, scope, ciphertext, nonce, master_key_id, "
+                              "last4, sha256_6, created_at FROM decision_provider_keys"
+                              ).fetchall() if _has_table(conn, "decision_provider_keys") else []
+    for ref, hid, ct, nonce, kid, l4, h6, at, until in rows_h:
+        try:
+            v = cfg.vault().decrypt(f"hook-secret:{ref}", bytes(ct), bytes(nonce), kid)
+        except Exception:                                            # noqa: BLE001
+            dropped.append(f"the hook {hid}'s secret: unreadable here (rotate it after the move)")
+            continue
+        hs.append({"ref": ref, "hook_id": hid, "secret": v, "last4": l4, "sha256_6": h6,
+                   "created_at": at, "expires_at": until})
+    for ref, pid, scope, ct, nonce, kid, l4, h6, at in rows_p:
+        try:
+            v = cfg.vault().decrypt(f"decision-provider-key:{ref}", bytes(ct), bytes(nonce), kid)
+        except Exception:                                            # noqa: BLE001
+            dropped.append(f"the decision provider {pid}'s key ({scope}): unreadable here (set "
+                           f"it again after the move)")
+            continue
+        pk.append({"ref": ref, "provider_id": pid, "scope": scope, "key": v, "last4": l4,
+                   "sha256_6": h6, "created_at": at})
+    return hs, pk
+
+
+def _reseal(cfg, bundle: dict) -> tuple[int, int]:
+    """The hooks' secrets and the providers' keys of a bundle sealed under this controller's
+    master key, for the hooks and providers it brought (counted)."""
+    nh = np = 0
+    with cfg._lock:
+        c = cfg._conn
+        hooks = {r[0] for r in c.execute("SELECT id FROM hooks")}
+        provs = {r[0] for r in c.execute("SELECT id FROM decision_providers")}
+        for h in bundle.get("hook_secrets") or []:
+            if h.get("hook_id") not in hooks or not h.get("secret"):
+                continue
+            ct, nonce, kid = cfg.vault().encrypt(f"hook-secret:{h['ref']}", h["secret"])
+            c.execute("INSERT OR REPLACE INTO hook_secrets(ref, hook_id, ciphertext, nonce, "
+                      "master_key_id, last4, sha256_6, created_at, expires_at) VALUES "
+                      "(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (h["ref"], h["hook_id"], ct, nonce, kid, h.get("last4"),
+                       h.get("sha256_6"), h.get("created_at") or int(time.time() * 1000),
+                       h.get("expires_at")))
+            nh += 1
+        for k in bundle.get("provider_keys") or []:
+            if k.get("provider_id") not in provs or not k.get("key"):
+                continue
+            ct, nonce, kid = cfg.vault().encrypt(f"decision-provider-key:{k['ref']}", k["key"])
+            c.execute("DELETE FROM decision_provider_keys WHERE provider_id = ? AND scope = ?",
+                      (k["provider_id"], k["scope"]))
+            c.execute("INSERT INTO decision_provider_keys(ref, provider_id, scope, ciphertext, "
+                      "nonce, master_key_id, last4, sha256_6, created_at) VALUES "
+                      "(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (k["ref"], k["provider_id"], k["scope"], ct, nonce, kid, k.get("last4"),
+                       k.get("sha256_6"), k.get("created_at") or int(time.time() * 1000)))
+            np += 1
+        c.commit()
+    return nh, np
 
 
 def _fold_users(c, path: str | None) -> int:
@@ -225,6 +309,10 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
     if any(n["endpoint"] != "local" for n in cfg.nodes()):
         raise MoveError(409, "not_empty", "this controller has a fleet of its own: an import "
                                           "lands only on an empty one")
+    # the hooks' and the providers' tables exist before their rows arrive (made at first use)
+    from proxy import hookstore, providerstore
+    hookstore.HookStore(cfg).ready()
+    providerstore.ProviderStore(cfg).ready()
     d = tempfile.mkdtemp(prefix="tandem-import-")
     path = os.path.join(d, "import.sqlite3")
     try:
@@ -264,6 +352,7 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
             with cfg._lock:
                 cfg._store_key(bid, k)
                 cfg._conn.commit()
+    sealed = _reseal(cfg, bundle)
     root = ssh_root or os.path.dirname(cert)
     hk = 0
     for hid, h in (bundle.get("host_keys") or {}).items():
@@ -280,6 +369,7 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
                 f"{(bundle.get('from') or {}).get('name') or 'another controller'}"})
     return {"nodes": n.get("nodes", 0), "backends": n.get("backends", 0),
             "keys": len(bundle.get("keys") or {}), "host_keys": hk,
+            "hook_secrets": sealed[0], "provider_keys": sealed[1],
             "users_from": int(bundle.get("users_from") or 0), "backend_ids": ids}
 
 
@@ -545,6 +635,9 @@ class Mover:
         p["keeps"] += ["backends, routes, the proxy's keys, alert rules, aliases, colours and "
                        "layouts go with the export; stored API keys too, under the new "
                        "controller's own master key",
+                       "the hooks and the decision providers go too, their secrets and keys "
+                       "sealed again under the new controller's master key",
+                       DROPPED["plugins"],
                        "the metric history and the event log stay on this machine "
                        "(fleet.sqlite3)",
                        "this controller keeps running for its page; it no longer reads the "
