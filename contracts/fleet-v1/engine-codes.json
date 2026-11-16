@@ -327,6 +327,26 @@
       "message": "The old admin token still works as an API token for scripts, for 30 days after the upgrade.",
       "fix": "Give each script a token of its own, then revoke the admin token under All tokens."
     },
+    "exposure_no_tokens": {
+      "status": 409,
+      "message": "The {protocol} API is open to other devices, but no token can use it yet.",
+      "fix": "Make a token with the {protocol} scope under My tokens, or switch the API back to this machine."
+    },
+    "exposure_unreachable": {
+      "status": 409,
+      "message": "The {protocol} API is switched on for other devices, but they cannot reach it: {reason}.",
+      "fix": "Change the listen address under API exposure and restart TandemApp, or route the API at the ingress."
+    },
+    "exposure_plain_http": {
+      "status": 409,
+      "message": "An API token was sent without https. Anyone on the same network could have read it.",
+      "fix": "Reach TandemApp over https (a front that ends TLS), then rotate the token."
+    },
+    "token_expiring": {
+      "status": 409,
+      "message": "{n} API tokens end within 7 days.",
+      "fix": "Open each token and make a new one before it ends."
+    },
     "not_offered": {
       "status": 409,
       "message": "{node} does not need that fix now.",
@@ -514,6 +534,22 @@
     },
     "legacy_admin_token": {
       "severity": "warning",
+      "action": null
+    },
+    "exposure_no_tokens": {
+      "severity": "info",
+      "action": null
+    },
+    "exposure_unreachable": {
+      "severity": "warning",
+      "action": null
+    },
+    "exposure_plain_http": {
+      "severity": "warning",
+      "action": null
+    },
+    "token_expiring": {
+      "severity": "info",
       "action": null
     }
   },

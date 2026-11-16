@@ -49,7 +49,11 @@
         "legacy_users_from_unreadable",
         "bootstrap_secret_left",
         "tokens_need_review",
-        "legacy_admin_token"
+        "legacy_admin_token",
+        "exposure_no_tokens",
+        "exposure_unreachable",
+        "exposure_plain_http",
+        "token_expiring"
       ]
     },
     "severity": {
@@ -183,6 +187,12 @@
         },
         "n": {
           "type": "integer"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
         }
       },
       "required": [],

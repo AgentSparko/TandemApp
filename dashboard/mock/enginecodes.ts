@@ -78,13 +78,17 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   bootstrap_secret_left: [409, "An owner exists and the setup code's Secret is still mounted at {path}.", "Delete the Secret; it opens nothing now."],
   tokens_need_review: [409, "{n} API keys were imported from the older setup. Confirm or revoke each one.", "Open All tokens and confirm or revoke each key under Review."],
   legacy_admin_token: [409, "The old admin token still works as an API token for scripts, for 30 days after the upgrade.", "Give each script a token of its own, then revoke the admin token under All tokens."],
+  exposure_no_tokens: [409, "The {protocol} API is open to other devices, but no token can use it yet.", "Make a token with the {protocol} scope under My tokens, or switch the API back to this machine."],
+  exposure_unreachable: [409, "The {protocol} API is switched on for other devices, but they cannot reach it: {reason}.", "Change the listen address under API exposure and restart TandemApp, or route the API at the ingress."],
+  exposure_plain_http: [409, "An API token was sent without https. Anyone on the same network could have read it.", "Reach TandemApp over https (a front that ends TLS), then rotate the token."],
+  token_expiring: [409, "{n} API tokens end within 7 days.", "Open each token and make a new one before it ends."],
   not_offered: [409, "{node} does not need that fix now.", "Check again, then use a button the health page shows."],
   job_not_found: [404, "{node} has no job {job} any more.", "A newer job took its place, or the host started again: check again to see how things stand."],
   too_many_fixes: [429, "{node} had too many fixes in the last minute.", "Wait {retry_after} seconds, then try again."],
 };
 
 /** the facts a sentence may name; never a secret */
-export const FACTS = ['address', 'port', 'host', 'user', 'dir', 'tries_left', 'state', 'retry_after', 'expected', 'offered', 'pinned', 'model', 'job', 'node', 'alias', 'path', 'image', 'free_gb', 'need_gb', 'backend', 'engine_api', 'speaks', 'plugin', 'variable', 'file', 'n'] as const;
+export const FACTS = ['address', 'port', 'host', 'user', 'dir', 'tries_left', 'state', 'retry_after', 'expected', 'offered', 'pinned', 'model', 'job', 'node', 'alias', 'path', 'image', 'free_gb', 'need_gb', 'backend', 'engine_api', 'speaks', 'plugin', 'variable', 'file', 'n', 'protocol', 'reason'] as const;
 /** the facts of the health page's findings (SRV-835), beside the engine routes' */
 export interface HealthOnly {
   path?: string;
@@ -98,6 +102,8 @@ export interface HealthOnly {
   variable?: string;
   file?: string;
   n?: number;
+  protocol?: string;
+  reason?: string;
 }
 export type Facts = Partial<Pick<EngineFinding, Exclude<(typeof FACTS)[number], keyof HealthOnly>>> & HealthOnly;
 
@@ -106,7 +112,7 @@ const GENERIC: Record<string, string> = {
   tries_left: 'some', retry_after: '60', port: 'its port', address: 'the address', host: 'the engine host', user: 'the user', dir: "the engine's folder",
   detail: 'no reason given', expected: 'one', offered: 'another', pinned: 'another', model: 'asked for', node: 'This node',
   state: 'starting', path: 'its folder', image: 'tandem-sandbox:1', free_gb: 'a few', need_gb: '5', backend: 'named', engine_api: 'another version', speaks: 'another', plugin: 'named', job: 'by that id', variable: 'A variable', file: 'the environment',
-  n: 'Some',
+  n: 'Some', protocol: 'This', reason: 'not known',
 };
 
 const fill = (text: string, f: Record<string, unknown>): string => text.replace(/\{(\w+)\}/g, (_m, k: string) => (f[k] != null ? String(f[k]) : (GENERIC[k] ?? '?')));

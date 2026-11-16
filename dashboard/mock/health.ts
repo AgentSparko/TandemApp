@@ -115,6 +115,10 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   bootstrap_secret_left: ['info', null],
   tokens_need_review: ['warning', null],
   legacy_admin_token: ['warning', null],
+  exposure_no_tokens: ['info', null],
+  exposure_unreachable: ['warning', null],
+  exposure_plain_http: ['warning', null],
+  token_expiring: ['info', null],
 };
 
 export const actionView = (a: ActionId | null): HealthAction | null => (a === null ? null : { id: a, label: HEALTH_ACTIONS[a][0], changes: HEALTH_ACTIONS[a][1], confirm: HEALTH_ACTIONS[a][2] });
@@ -285,6 +289,10 @@ function build(name: HealthScenario, t0: number): Sim {
             { code: 'bootstrap_secret_left', facts: { path: '/etc/tandemapp/setup/code' } },
             { code: 'tokens_need_review', facts: { n: 3 } },
             { code: 'legacy_admin_token', facts: {} },
+            { code: 'exposure_no_tokens', facts: { protocol: 'Anthropic' } },
+            { code: 'exposure_unreachable', facts: { protocol: 'OpenAI', reason: 'listening on this machine only' } },
+            { code: 'exposure_plain_http', facts: {} },
+            { code: 'token_expiring', facts: { n: 2 } },
           ],
         }),
         pairings: [],

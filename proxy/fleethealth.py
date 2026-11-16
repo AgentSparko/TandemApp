@@ -200,6 +200,11 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     # API tokens (SRV-867)
     "tokens_need_review": ("warning", None),
     "legacy_admin_token": ("warning", None),
+    # the API's exposure and tokens about to end (SRV-871)
+    "exposure_no_tokens": ("info", None),
+    "exposure_unreachable": ("warning", None),
+    "exposure_plain_http": ("warning", None),
+    "token_expiring": ("info", None),
 }
 
 ERR = enginecodes.error
