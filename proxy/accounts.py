@@ -24,7 +24,8 @@ session that ends is closed: at once when this process ends it, within STREAM_CH
 THE COOKIE. `__Host-tandem_session` over https, `tandem_session` over http (each read only on
 its own scheme); HttpOnly, SameSite=Strict, Path=/, no Domain, Secure over https, Max-Age the
 idle time. Https is known from the listener's own TLS, or from X-Forwarded-Proto sent by a
-loopback peer or a TANDEM_TRUSTED_PROXY peer; from any other peer the header counts for nothing.
+loopback peer or a TANDEM_TRUSTED_PROXY peer (an address or a CIDR range, tandemapp/auth.py
+TrustedProxies); from any other peer the header counts for nothing.
 
 THE GATE (one rule for every route, AccountsAuth.gate):
   1. a path with no entry in proxy/authz.py's table is refused (403 `unmapped_route`), logged once;
@@ -773,7 +774,9 @@ class AccountsAuth:
         self.policy = authz.Policy(cfg)
         self.store = AccountStore(cfg, clock=clock, policy=self.policy)
         self.provider = identity_mod.LocalProvider(self.store, clock=clock)
-        self.trusted_proxies = frozenset(p.strip() for p in trusted_proxies if p and p.strip())
+        # OPS-298: addresses and CIDR ranges, one parser for both auth modes
+        self.trusted_proxies = auth_mod.TrustedProxies(trusted_proxies)
+        self.trusted_proxy_file = None      # where TANDEM_TRUSTED_PROXY is set
         self.limits = SignInLimits(self.trusted_proxies, clock=clock)
         self.streams = Streams(self.store)
         self.store.on_revoked = lambda ids: self.streams.close(ids, keep=self._tls_conn())
@@ -872,6 +875,12 @@ class AccountsAuth:
         for f in self.legacy:
             out.append({"code": f["code"], "facts": {"variable": f["variable"],
                                                      "file": f["file"]}})
+        # OPS-298: an entry of TANDEM_TRUSTED_PROXY that is neither an address nor a range
+        bad = self.trusted_proxies.bad
+        if bad:
+            out.append({"code": "trusted_proxy_invalid", "detail": ", ".join(bad)[:300],
+                        "facts": {"variable": auth_mod.TRUSTED_PROXY_ENV,
+                                  "file": self.trusted_proxy_file or "the environment"}})
         # SRV-867: imported keys to confirm, and the admin token while it still works
         n = self.tokens.need_review()
         if n:

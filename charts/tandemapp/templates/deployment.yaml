@@ -1,6 +1,8 @@
 {{- $root := .Values.persistence.mountPath }}
 {{- $full := include "tandemapp.fullname" . }}
 {{- $trust := or .Values.trust.extraCA .Values.trust.existingConfigMap }}
+{{- $accounts := eq (include "tandemapp.authMode" .) "accounts" }}
+{{- $setup := include "tandemapp.setupSecret" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,11 +109,33 @@ spec:
             - {name: TANDEM_CHAT, value: {{ include "tandemapp.chatMode" . | quote }}}
             - {name: HOME, value: {{ printf "%s/home" $root | quote }}}
             - {name: SSL_CERT_FILE, value: {{ printf "%s/ca/bundle.pem" $root | quote }}}
+            # never local mode: kubectl port-forward reaches the pod on its loopback
+            - {name: TANDEM_DEPLOY, value: kubernetes}
+            {{- if $accounts }}
+            # the sign-in of accounts: no auth secret in the environment, the setup code is a file
+            - {name: TANDEM_AUTH, value: accounts}
+            {{- if $setup }}
+            - {name: TANDEM_SETUP_CODE_FILE, value: /etc/tandemapp/auth/setup-code}
+            {{- if not (.Values.auth.bootstrap | default dict).existingSecret }}
+            # the Secret of the legacy mode: its admin token (32 characters or more) is imported
+            # once an owner exists, as an API token that ends after 30 days
+            - {name: TANDEM_ADMIN_TOKEN_FILE, value: /etc/tandemapp/auth/setup-code}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.ingress.enabled }}
+            # what the ingress routes (the exposure_unreachable finding reads it)
+            - {name: TANDEM_INGRESS_API, value: {{ include "tandemapp.ingressApi" . | quote }}}
+            {{- end }}
+            {{- else }}
             - name: TANDEM_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "tandemapp.secretName" . }}
                   key: {{ .Values.auth.secretKey }}
+            {{- end }}
+            {{- with .Values.auth.trustedProxy }}
+            - {name: TANDEM_TRUSTED_PROXY, value: {{ . | toString | quote }}}
+            {{- end }}
             {{- range $k, $v := .Values.controller.env }}
             - {name: {{ $k }}, value: {{ $v | toString | quote }}}
             {{- end }}
@@ -143,6 +167,9 @@ spec:
             {{- end }}
             {{- if eq (toString .Values.sandbox.mode) "kubernetes" }}
             - {name: kube-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            {{- end }}
+            {{- if and $accounts $setup }}
+            - {name: auth, mountPath: /etc/tandemapp/auth, readOnly: true}
             {{- end }}
         {{- if .Values.mcpBridge.enabled }}
         - name: mcp-{{ .Values.mcpBridge.name }}
@@ -215,6 +242,17 @@ spec:
                   items: [{key: ca.crt, path: ca.crt}]
               - downwardAPI:
                   items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
+        {{- end }}
+        {{- if and $accounts $setup }}
+        # the setup code (accounts mode), a file for the controller only; optional, so the pod
+        # still starts once the Secret is deleted after the first owner exists
+        - name: auth
+          secret:
+            secretName: {{ $setup }}
+            optional: true
+            defaultMode: 0440
+            items:
+              - {key: {{ include "tandemapp.setupKey" . }}, path: setup-code}
         {{- end }}
         {{- if eq (toString .Values.sandbox.mode) "podman-socket" }}
         - name: sandbox-socket

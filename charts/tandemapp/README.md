@@ -37,6 +37,17 @@ In short:
 The admin password is a Secret the chart makes with a random token (kept across upgrades), or one
 you name with `auth.existingSecret`. Values files never hold a token.
 
+With `auth.mode: accounts` (user accounts, sessions, API tokens) no auth secret goes into the pod's
+environment. The same Secret is mounted into the controller as a file holding a one-time setup code
+that makes the first owner; a release that had an admin token keeps it, and the token works once as
+the setup code and then, for 30 days, as an API token for scripts. The pod never trusts its own
+loopback, so `kubectl port-forward` needs a sign-in like any client. NOTES prints where the code is,
+and the `kubectl exec` lines for a new code (`users setup-code`) and a lost password
+(`users reset-password NAME`). The ingress routes the API paths; `ingress.api.*` blocks one only when
+set to false. Who may call is the page's API exposure switch: a token from another device is refused
+while its API is "this machine", a signed-in page always works. `auth.trustedProxy` names the ingress
+controller, or its pods' CIDR range, when it ends TLS. docs/install-kubernetes.md has the whole of it.
+
 ## Values
 
 | value | default | what |
@@ -53,7 +64,10 @@ you name with `auth.existingSecret`. Values files never hold a token.
 | `controller.env`, `.extraEnv`, `.extraEnvFrom` | `TANDEM_NODE_AGENT: "off"` | the controller's variables (docs/proxy.md); keys never go here |
 | `controller.conductor` | empty | the conductor's documents: a path under the volume, an absolute path, or `off`. Empty: off on a new install, the running release's on an upgrade |
 | `controller.resources`, `.probes` | | the controller's requests, limits and probes (`/health`) |
-| `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the admin token's Secret |
+| `auth.mode` | `legacy` | `legacy`: the admin token in the controller's env; `accounts`: TANDEM_AUTH=accounts, the setup code as a file |
+| `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the admin token's Secret; in accounts mode the setup code's (made with 20 characters) |
+| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty | accounts mode: a Secret of its own for the setup code; empty: the one above. No Secret at all is allowed: the code is then in the log |
+| `auth.trustedProxy` | empty | TANDEM_TRUSTED_PROXY: addresses and CIDR ranges (IPv4, IPv6) of the proxies whose forwarded headers count, e.g. `192.0.2.0/24` |
 | `chat.mode` | empty | `off`, `own` (chatd in this pod), `external` (another host's). Empty: off on a new install, the running release's on an upgrade. The page's switch wins once used |
 | `chat.dataDir`, `chat.env` | `data/chat`, {} | chatd's data folder under the volume, more lines of its env file |
 | `sandbox.mode` | `off` | `off`, `podman-socket`, `kubernetes` (below) |
@@ -66,6 +80,7 @@ you name with `auth.existingSecret`. Values files never hold a token.
 | `trust.extraCA`, `.existingConfigMap`, `.configMapKey` | empty | more CA certificates for every container |
 | `service.*` | ClusterIP, 80 | the Service |
 | `ingress.enabled`, `.className`, `.host`, `.annotations`, `.tls`, `.blockedPaths` | off; streaming annotations; `/chat-engine` and `/plugin-backends` blocked | the Ingress |
+| `ingress.api.openai`, `.anthropic` | empty | route (empty or true) or block (false) the OpenAI-compatible paths and the Messages API's `/v1/messages`; `/v1/models` is always routed. Blocking `openai` breaks the page's Playground through the ingress |
 | `networkPolicy.enabled`, `.ingressNamespaces`, `.extraFrom` | off | who may reach the controller's port |
 | `serviceAccount.*`, `podSecurityContext`, `securityContext` | uid 10001, read-only root, no capabilities | the pod's identity and lockdown |
 | `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity`, `terminationGracePeriodSeconds` | | scheduling |
@@ -158,5 +173,6 @@ and this does not: a bridge that hangs while its port stays open. Check it with 
 
 The Ingress routes everything to the controller except `ingress.blockedPaths` (`/chat-engine`,
 chatd's engine gateway, and `/plugin-backends`, a plugin's backend for the controller's own relay),
-which go to a Service with no endpoints. `networkPolicy.enabled` limits
+which go to a Service with no endpoints, as do the API paths `ingress.api` blocks.
+`networkPolicy.enabled` limits
 the controller's port to the ingress controller's namespace and this release's pods.

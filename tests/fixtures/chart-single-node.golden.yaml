@@ -1,0 +1,679 @@
+# OPS-298: the chart before accounts mode, rendered with chart-single-node.yaml (helm template t
+# charts/tandemapp -n ns -f tests/fixtures/chart-single-node.yaml) and normalized as
+# tests/test_chart_defaults.py normalized() does. The chart of now must render the same objects.
+---
+# Source: tandemapp/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: t-tandemapp
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tandemapp
+      app.kubernetes.io/instance: t
+      app.kubernetes.io/component: controller
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+      from:
+        # this release's own pods (the chart's test)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: t
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress
+
+---
+# Source: tandemapp/templates/sandbox.yaml
+# a sandbox pod: nothing reaches it (exec goes through the kubelet, not the pod network); it
+# reaches only chatd's egress proxy in the controller's pod. No DNS: the proxy resolves names
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: t-tandemapp-sandbox
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: chat-sandbox
+      app.kubernetes.io/instance: t
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tandemapp
+              app.kubernetes.io/instance: t
+              app.kubernetes.io/component: controller
+      ports:
+        - port: 3128
+          protocol: TCP
+        - port: 3129
+          protocol: TCP
+---
+# Source: tandemapp/templates/sandbox.yaml
+# the controller's egress port: from this release's sandbox pods only. Policies add up: with
+# networkPolicy.enabled the controller's own policy admits its HTTP port; without it this policy
+# would isolate the pod, so it admits the HTTP port from anywhere, as before
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: t-tandemapp-egress
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tandemapp
+      app.kubernetes.io/instance: t
+      app.kubernetes.io/component: controller
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: chat-sandbox
+              app.kubernetes.io/instance: t
+      ports:
+        - port: 3128
+          protocol: TCP
+        - port: 3129
+          protocol: TCP
+
+---
+# Source: tandemapp/templates/sandbox.yaml
+# the sandbox pods' own account: no Role, no token (the controller's token is never handed to
+# code a chat runs)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-tandemapp-sandbox
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: chat-sandbox
+automountServiceAccountToken: false
+---
+# Source: tandemapp/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: t-tandemapp
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+# the controller needs no API access; sandbox.mode kubernetes binds a Role to it (sandbox.yaml)
+automountServiceAccountToken: false
+
+---
+# Source: tandemapp/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: t-tandemapp-admin
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  admin-token: <random>
+
+---
+# Source: tandemapp/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-tandemapp-config
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+data:
+  init.sh: |-
+    <file>
+  mcp-stdio-http.py: |-
+    <file>
+  chatd.env: |
+    # chatd's env file, written to <state>/chatd.env by the init container (chart values chat.*,
+    # sandbox.*), read while Chat is on (chat.mode own, or switched on from the page). No secret
+    # goes here: chatd's forward key lives in its data folder.
+    QSE_CHAT_DATA=/var/lib/tandemapp/data/chat
+    # chatd gets few of the controller's variables: the CA bundle for its https MCP servers
+    SSL_CERT_FILE=/var/lib/tandemapp/ca/bundle.pem
+    # sandbox.mode kubernetes: a pod per sandbox through the Kubernetes API (chatd/k8s.py)
+    QSE_SANDBOX_BACKEND=kubernetes
+    QSE_K8S_API=https://kubernetes.default.svc
+    QSE_K8S_NAMESPACE=ns
+    QSE_K8S_LABELS={"app.kubernetes.io/component":"chat-sandbox","app.kubernetes.io/instance":"t"}
+    QSE_K8S_CLAIM=t-tandemapp-data
+    QSE_K8S_VOLUME_ROOT=/var/lib/tandemapp
+    QSE_K8S_SERVICE_ACCOUNT=t-tandemapp-sandbox
+    QSE_K8S_IMAGE_PULL=Never
+    QSE_K8S_RUNTIME_CLASS=
+    QSE_K8S_HOST_USERS=false
+    QSE_K8S_EGRESS_PORT=3128
+    TANDEM_PLUGIN_EGRESS_PORT=3129
+    QSE_K8S_CONTROLLER_PORT=8091
+    QSE_SANDBOX_IMAGE=tandem-sandbox:1
+    QSE_SANDBOX_UID=1000
+    QSE_SANDBOX_CPUS=4
+    QSE_SANDBOX_MEM_GB=2
+    QSE_SANDBOX_MAX_RUNNING=2
+    QSE_CHAT_MAX_RUNS=4
+---
+# Source: tandemapp/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: t-tandemapp-trust
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+data:
+  ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBexampleexampleexampleexample
+    -----END CERTIFICATE-----
+    
+
+---
+# Source: tandemapp/templates/persistence.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: t-tandemapp-ns-data
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: "tandemapp-local"
+  claimRef:
+    namespace: ns
+    name: t-tandemapp-data
+  hostPath:
+    path: /srv/tandemapp
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: ["node-1"]
+---
+# Source: tandemapp/templates/persistence.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: t-tandemapp-data
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: "tandemapp-local"
+  volumeName: t-tandemapp-ns-data
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+# Source: tandemapp/templates/sandbox.yaml
+# sandbox.mode kubernetes: chatd makes each chat's sandbox a pod in this namespace (chatd/k8s.py).
+# The Role is the whole of its API access: pods, their exec and logs, in this namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: t-tandemapp-sandbox
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+# Source: tandemapp/templates/sandbox.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: t-tandemapp-sandbox
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: t-tandemapp-sandbox
+subjects:
+  - kind: ServiceAccount
+    name: t-tandemapp
+    namespace: ns
+---
+# Source: tandemapp/templates/ingress.yaml
+# selects no pod: what the Ingress sends here has no endpoint and ends in a 503
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-tandemapp-blocked
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: none-blocked-path
+  ports:
+    - name: http
+      port: 80
+      targetPort: 9
+
+---
+# Source: tandemapp/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: t-tandemapp
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/component: controller
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+---
+# Source: tandemapp/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t-tandemapp
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+spec:
+  # one volume, one writer: never two pods at once
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tandemapp
+      app.kubernetes.io/instance: t
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tandemapp
+        app.kubernetes.io/instance: t
+        app.kubernetes.io/component: controller
+      annotations:
+        checksum/config: <sha256>
+    spec:
+      # a stable host name: the fleet and the topology name the controller's host by it
+      hostname: t-tandemapp
+      serviceAccountName: t-tandemapp
+      # the token goes to the controller's container only (sandbox.mode kubernetes), not to the
+      # init container or the MCP bridge
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: release
+          image: docker.io/library/python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/etc/tandemapp/config/init.sh"]
+          env:
+            - name: TA_ROOT
+              value: "/var/lib/tandemapp"
+            - name: TA_RELEASE
+              value: "0123456789ab"
+            - name: TA_ARCHIVE_URL
+              value: ""
+            - name: TA_ARCHIVE_SHA256
+              value: ""
+            - name: TA_WAIT_S
+              value: "1800"
+            - name: TA_REQUIREMENTS
+              value: "cryptography psutil"
+            - name: TA_CHAT_DIR
+              value: "data/chat"
+            - name: TA_CONDUCTOR_DIR
+              value: "/var/lib/tandemapp/conductor"
+            - name: HOME
+              value: "/var/lib/tandemapp/home"
+            - name: TA_POD_NAME
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/tandemapp}
+            - {name: config, mountPath: /etc/tandemapp/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: trust, mountPath: /etc/tandemapp/trust, readOnly: true}
+      containers:
+        - name: controller
+          image: docker.io/library/python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/var/lib/tandemapp/current/packaging/linux/tandem-app.sh"]
+          ports:
+            - name: http
+              containerPort: 8091
+              protocol: TCP
+            - name: egress
+              containerPort: 3128
+              protocol: TCP
+          env:
+            - {name: TANDEM_APP_STATE, value: "/var/lib/tandemapp/state"}
+            - {name: TANDEM_APP_PYTHON, value: "/var/lib/tandemapp/current/venv/bin/python"}
+            - {name: TANDEM_HOST, value: "0.0.0.0"}
+            - {name: TANDEM_PORT, value: "8091"}
+            - {name: TANDEM_CONDUCTOR, value: "/var/lib/tandemapp/conductor"}
+            - {name: TANDEM_CHAT, value: "own"}
+            - {name: HOME, value: "/var/lib/tandemapp/home"}
+            - {name: SSL_CERT_FILE, value: "/var/lib/tandemapp/ca/bundle.pem"}
+            - name: TANDEM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: t-tandemapp-admin
+                  key: admin-token
+            - {name: TANDEM_BACKENDS, value: "engine"}
+            - {name: TANDEM_BACKEND_ENGINE_KIND, value: "generic"}
+            - {name: TANDEM_BACKEND_ENGINE_URL, value: "http://engine.example.com:8000/v1"}
+            - {name: TANDEM_NODE_AGENT, value: "off"}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            failureThreshold: 60
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            failureThreshold: 3
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: "4"
+              memory: 3Gi
+            requests:
+              cpu: 200m
+              memory: 512Mi
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/tandemapp}
+            - {name: tmp, mountPath: /tmp}
+            - {name: kube-api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+        - name: mcp-tools
+          image: docker.io/library/python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c
+          imagePullPolicy: IfNotPresent
+          # a pod is Ready only while every container runs, so a restarting bridge would take the
+          # Service (the page, the API) down with it. This container never exits: the loop starts
+          # the bridge again 5 s after it ends, and there is no probe to restart it (README: MCP bridge)
+          command:
+            - sh
+            - -c
+            - |
+              trap 'kill "$c" 2>/dev/null; wait "$c"; exit 0' TERM INT
+              while :; do
+                python3 -u /etc/tandemapp/config/mcp-stdio-http.py "$@" & c=$!
+                wait "$c"; echo "[bridge] exited ($?); again in 5 s" >&2
+                sleep 5 & c=$!; wait "$c"
+              done
+            - mcp-bridge
+            - --host
+            - 127.0.0.1
+            - --port
+            - "8031"
+            - --path
+            - "/mcp"
+            - --
+            - "/var/lib/tandemapp/mcp/bin/server"
+            - "--stdio"
+          env:
+            - {name: HOME, value: "/var/lib/tandemapp/home"}
+            - {name: SSL_CERT_FILE, value: "/var/lib/tandemapp/ca/bundle.pem"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 20m
+              memory: 64Mi
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/tandemapp}
+            - {name: config, mountPath: /etc/tandemapp/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: t-tandemapp-data
+        - name: config
+          configMap:
+            name: t-tandemapp-config
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
+        - name: trust
+          configMap:
+            name: t-tandemapp-trust
+            items:
+              - {key: ca.pem, path: ca.pem}
+        # the ServiceAccount's token for chatd (its Role: pods, exec, logs in this namespace)
+        - name: kube-api
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3607}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+              - downwardAPI:
+                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
+
+---
+# Source: tandemapp/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: t-tandemapp
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 200m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: public
+  rules:
+    - host: "app.example.com"
+      http:
+        paths:
+          # never routed to the controller: a Service with no endpoints answers 503
+          - path: /chat-engine
+            pathType: Prefix
+            backend:
+              service:
+                name: t-tandemapp-blocked
+                port:
+                  number: 80
+          # never routed to the controller: a Service with no endpoints answers 503
+          - path: /plugin-backends
+            pathType: Prefix
+            backend:
+              service:
+                name: t-tandemapp-blocked
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: t-tandemapp
+                port:
+                  name: http
+---
+# Source: tandemapp/templates/tests/test-health.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: t-tandemapp-test
+  labels:
+    helm.sh/chart: <chart>
+    app.kubernetes.io/name: tandemapp
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/version: <version>
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsUser: 10001
+    runAsNonRoot: true
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: health
+      image: docker.io/library/python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL]}
+      resources:
+        limits: {cpu: 200m, memory: 128Mi}
+      command:
+        - python3
+        - -c
+        - |
+          import json, urllib.request
+          base = "http://t-tandemapp:80"
+          with urllib.request.urlopen(base + "/health", timeout=10) as r:
+              assert r.status == 200, r.status
+              print("health", json.loads(r.read()).get("status"))
+          with urllib.request.urlopen(base + "/dashboard/", timeout=10) as r:
+              assert r.status == 200 and r.headers.get("X-Tandem-Bundle"), "no page"
+              print("page bundle", r.headers.get("X-Tandem-Bundle"))
+

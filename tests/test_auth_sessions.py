@@ -37,6 +37,10 @@
  13  no state rides on a kept connection: a renewal cookie an answer never sent is dropped by the
      next request; two demotions of the last two owners at once leave one; a users' key of the
      old rule opens nothing on the OpenAI routes                   test_races_and_leftovers
+ 14 OPS-298: TANDEM_TRUSTED_PROXY takes CIDR ranges: a peer in the range is trusted for
+     X-Forwarded-Proto (the https cookie) and X-Real-IP (the sign-in key), one outside is not; a
+     bad entry is ignored, the start goes on and the health page names the variable
+                                                                   test_trusted_proxy_ranges
 
     python tests/test_auth_sessions.py
 """
@@ -674,6 +678,33 @@ def test_races_and_leftovers():
     assert not streams._open
     left.close()
     right.close()
+
+
+
+# ---------------------------------------------------------------------------- 14
+
+def test_trusted_proxy_ranges():
+    env = {**ON, "TANDEM_TRUSTED_PROXY": "192.0.2.0/24, 2001:db8:42::/64, not-an-address"}
+    with Proxy(env=env) as px:
+        a = accounts()
+        https, real = {"X-Forwarded-Proto": "https"}, {"X-Real-IP": "203.0.113.50"}
+        for peer in ("192.0.2.9", "192.0.2.200", "2001:db8:42::9", "::ffff:192.0.2.9"):
+            assert a.secure(peer, https), peer
+            assert a.login_key(peer, real) == "203.0.113.50", peer
+        for peer in ("192.0.3.9", "198.51.100.9", "2001:db8:43::9"):
+            assert not a.secure(peer, https), peer
+            assert a.login_key(peer, real) == peer, peer
+        # the sign-in limits use the same parser
+        assert a.limits.key("192.0.2.9", real) == "203.0.113.50"
+        assert a.limits.key("192.0.3.9", real) == "192.0.3.9"
+        # the bad entry: ignored, the server serves, the finding names the variable
+        assert px.get("/health")[0] == 200
+        got = [f for f in a.findings() if f["code"] == "trusted_proxy_invalid"]
+        assert got == [{"code": "trusted_proxy_invalid", "detail": "not-an-address",
+                        "facts": {"variable": "TANDEM_TRUSTED_PROXY",
+                                  "file": "the environment"}}], got
+    with Proxy(env={**ON, "TANDEM_TRUSTED_PROXY": "192.0.2.0/24"}) as px:
+        assert not [f for f in accounts().findings() if f["code"] == "trusted_proxy_invalid"]
 
 
 if __name__ == "__main__":

@@ -483,6 +483,13 @@ def accounts_on(cur: dict) -> bool:
     return v.strip().lower() == "accounts"
 
 
+def wants_code(st: dict, env: dict) -> bool:
+    """OPS-298: the summary prints a setup code with the accounts on and local mode off: an
+    address beyond loopback, or a proxy in front (--behind-proxy). A loopback install without a
+    proxy is in local mode and needs none."""
+    return bool(st.get("accounts")) and (bool(st.get("lan")) or env.get(LOCAL_ENV) == "off")
+
+
 def setup_code(rel: str, state: str) -> str | None:
     """A one-time setup code from the release's own CLI while no owner exists, else None."""
     py = os.path.join(rel, "venv", "bin", "python")
@@ -960,7 +967,8 @@ def parser() -> argparse.ArgumentParser:
                          "(default: %(default)s)")
     ap.add_argument("--listen", default=None,
                     help="the address it listens on (default 127.0.0.1, or app.env's); not "
-                         "loopback makes an admin token")
+                         "loopback makes an admin token, or with TANDEM_AUTH=accounts prints a "
+                         "one-time setup code")
     ap.add_argument("--port", type=int, default=None, help=f"default {DEFAULT_PORT}, or app.env's")
     ap.add_argument("--behind-proxy", action="store_true",
                     help="a reverse proxy or tunnel on this machine sends other devices here: "
@@ -1090,19 +1098,20 @@ def install(a) -> int:
     print()
     print(f"TandemApp {version} " + ("is running" if url else "is installed")
           + f" ({svc['manager']}).")
+    # a loopback install without a proxy is in local mode: it needs no code (also when nothing
+    # was started: the code is kept in the config database and works at the first start)
+    code = setup_code(rel, state) if wants_code(st, read_env(os.path.join(state, "app.env"))) \
+        else None
     if url:
         print(f"  Open {url}  (the first page sets up an engine)")
-        # a loopback install without a proxy is in local mode: it needs no code
-        no_local = st["lan"] or read_env(os.path.join(state, "app.env")).get(LOCAL_ENV) == "off"
-        code = setup_code(rel, state) if st.get("accounts") and no_local else None
-        if code:
-            where = "http://<this host's address>" if st["lan"] else url.rstrip("/")
-            print(f"  Setup code: {code}  (single use, valid 24 hours: open {where}"
-                  f"{':' + str(st['port']) if st['lan'] else ''}/ and make the owner with it; "
-                  f"`tandem-app users setup-code` prints a new one)")
-        elif st["lan"] and not st.get("accounts"):
-            print(f"  From another machine: http://<this host's address>:{st['port']}/; sign in "
-                  f"with TANDEM_ADMIN_TOKEN from {os.path.join(state, 'app.env')}")
+    if code:
+        where = f"http://<this host's address>:{st['port']}" if st["lan"] else \
+            (url or f"http://{st['host']}:{st['port']}/").rstrip("/")
+        print(f"  Setup code: {code}  (single use, valid 24 hours: open {where}/ and make the "
+              f"owner with it; `tandem-app users setup-code` prints a new one)")
+    elif url and st["lan"] and not st.get("accounts"):
+        print(f"  From another machine: http://<this host's address>:{st['port']}/; sign in "
+              f"with TANDEM_ADMIN_TOKEN from {os.path.join(state, 'app.env')}")
     if (read_env(os.path.join(state, "app.env")).get("TANDEM_CHAT") or "external") == "off":
         print("  Runs:    the gateway only; Chat and the conductor are switched on in Settings, "
               "App" + (" (the sandboxes are ready for Chat)" if a.with_sandbox else ""))

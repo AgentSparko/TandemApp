@@ -134,12 +134,26 @@ def check(args) -> int:
         loop = ipaddress.ip_address(args.host).is_loopback
     except ValueError:
         loop = args.host == "localhost"
-    admin = bool(env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN"))
-    _say(f"listen  {args.host}:{args.port}, dashboard login {args.dashboard_login}, admin "
-         f"password {'set' if admin else 'not set (every route is open, the dashboard asks for nothing)'}")
-    if not loop and not admin:
-        _say("WARN    bound beyond loopback with no admin password: anyone on the network reads "
-             "and changes the configuration. Keep it on a trusted network, never on the internet")
+    if (env.get("TANDEM_AUTH") or "").strip().lower() == "accounts":
+        # OPS-298: the accounts' sign-in (proxy/authlocal.py): what the health page would say
+        from proxy import authlocal, userscli
+        owner = userscli.owner_ready(os.path.realpath(os.path.expanduser(args.config_db)))
+        local = loop and not owner and authlocal.deploy_kind(env) == "bare" and \
+            (env.get(authlocal.LOCAL_ENV) or "").strip().lower() != "off"
+        _say(f"listen  {args.host}:{args.port}, sign-in accounts: "
+             + ("an owner with a password" if owner else
+                "local mode, this machine only, no password yet" if local else "no owner yet"))
+        if not owner and not local:
+            _say("WARN    no owner yet (auth_setup_pending): nobody signs in until one is made "
+                 "with a setup code; `tandem-app users setup-code` prints one")
+    else:
+        admin = bool(env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN"))
+        _say(f"listen  {args.host}:{args.port}, dashboard login {args.dashboard_login}, admin "
+             f"password {'set' if admin else 'not set (every route is open, the dashboard asks for nothing)'}")
+        if not loop and not admin:
+            _say("WARN    bound beyond loopback with no admin password: anyone on the network "
+                 "reads and changes the configuration. Keep it on a trusted network, never on "
+                 "the internet")
     if not _has("cryptography"):
         return 1
     _say("OK")

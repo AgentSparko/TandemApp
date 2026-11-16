@@ -1,5 +1,8 @@
 TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Values.release.id }} in namespace {{ .Release.Namespace }}.
-{{ $full := include "tandemapp.fullname" . }}
+{{ $full := include "tandemapp.fullname" . -}}
+{{ $root := .Values.persistence.mountPath -}}
+{{ $cli := printf "kubectl -n %s exec deploy/%s -c controller -- env PYTHONPATH=%s/current %s/current/venv/bin/python -m proxy" .Release.Namespace $full $root $root -}}
+{{ $db := printf "--config-db %s/state/config.sqlite3" $root }}
 1. The release archive.
 {{- if .Values.release.archive.url }}
    The init container fetches it from release.archive.url (sha256 checked).
@@ -16,15 +19,55 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
 3. The page:
 {{- if .Values.ingress.enabled }}
    {{ if .Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}/dashboard/
-   ({{ range .Values.ingress.blockedPaths }}{{ . }} {{ end }}is not routed.)
+   ({{ range (include "tandemapp.blockedPaths" . | fromJsonArray) }}{{ . }} {{ end }}is not routed.)
 {{- else }}
    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $full }} 8091:{{ .Values.service.port }}
    then http://127.0.0.1:8091/dashboard/
 {{- end }}
-
+{{ if eq (include "tandemapp.authMode" .) "accounts" }}
+4. Sign-in: accounts. Nobody signs in until the first owner is made, not even through
+   kubectl port-forward: on Kubernetes the pod never trusts its own loopback.
+{{- $setup := include "tandemapp.setupSecret" . }}
+{{- if $setup }}
+   The setup code (single use, 5 tries) is in Secret {{ $setup }}, key {{ include "tandemapp.setupKey" . }}:
+     kubectl -n {{ .Release.Namespace }} get secret {{ $setup }} -o jsonpath='{.data.{{ include "tandemapp.setupKey" . }}}' | base64 -d; echo
+   Open the page and enter it with the owner's name and password.
+{{- if not (.Values.auth.bootstrap | default dict).existingSecret }}
+   A release that had an admin token keeps this Secret: the token works once as the setup code,
+   and once an owner exists, as an API token for scripts that ends after 30 days.
+{{- end }}
+   Once the owner exists the health page asks to delete the Secret (bootstrap_secret_left). Keep
+   it while you may still roll back to a release in legacy mode: its admin token signs in there.
+{{- else }}
+   No setup code Secret: the controller's log has a code at each start while no owner exists.
+{{- end }}
+   A new setup code:   {{ $cli }} users setup-code {{ $db }}
+   A lost password:    {{ $cli }} users reset-password NAME {{ $db }}
+{{- if .Values.ingress.enabled }}
+{{- $r := include "tandemapp.apiRouted" . | fromJson }}
+   The ingress routes the OpenAI-compatible API: {{ if $r.openai }}yes{{ else }}no{{ end }}; the Messages API: {{ if $r.anthropic }}yes{{ else }}no{{ end }}
+   (ingress.api.openai, ingress.api.anthropic). Who may call is the page's API exposure switch:
+   a token from another device needs its API switched on there; a signed-in page always works.
+{{- if not $r.openai }}
+   The page's Playground posts to /v1/chat/completions: it answers 503 here.
+{{- end }}
+{{- if not .Values.auth.trustedProxy }}
+{{- if .Values.ingress.tls }}
+   Set auth.trustedProxy to the ingress controller's address or its pods' CIDR range, or every
+   API token through it counts as sent without https (exposure_plain_http).
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if eq (include "tandemapp.chatMode" .) "external" }}
+   chatd on another host needs its key (QSE_CHAT_ENGINE_KEY) from here; the one before stops:
+     {{ $cli }} tokens chatd-key /tmp/chatd.key {{ $db }}
+     kubectl -n {{ .Release.Namespace }} exec deploy/{{ $full }} -c controller -- sh -c 'cat /tmp/chatd.key; rm /tmp/chatd.key'
+{{- end }}
+{{- else }}
 4. The admin password (TANDEM_ADMIN_TOKEN) is in Secret {{ include "tandemapp.secretName" . }}, key {{ .Values.auth.secretKey }}.
    Read it into your password manager, never into a log:
    kubectl -n {{ .Release.Namespace }} get secret {{ include "tandemapp.secretName" . }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d | pbcopy
+{{- end }}
 
 {{- $chat := include "tandemapp.chatMode" . }}
 {{- $cond := include "tandemapp.conductor" . }}

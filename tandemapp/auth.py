@@ -98,6 +98,7 @@ from __future__ import annotations
 import collections
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import threading
@@ -112,6 +113,49 @@ LOGIN_FAILS = 5
 LOGIN_WINDOW_S = 60.0
 LOGIN_MAX_KEYS = 10_000               # a memory bound on `_fails`, not a ban reset
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+TRUSTED_PROXY_ENV = "TANDEM_TRUSTED_PROXY"
+
+
+class TrustedProxies:
+    """TANDEM_TRUSTED_PROXY: the proxies whose X-Real-IP and X-Forwarded-Proto count, as a comma
+    list of addresses and CIDR ranges, IPv4 and IPv6 (`192.0.2.10, 10.0.0.0/8, 2001:db8::/32`).
+    The one reader of the variable: both auth modes ask `peer in proxies`. An entry that is
+    neither an address nor a range is ignored and kept in `bad` (the health page's
+    trusted_proxy_invalid, a line in the start log); nothing here raises. An IPv4-mapped IPv6
+    peer (`::ffff:192.0.2.10`, a dual-stack listener) matches its IPv4 entry."""
+
+    def __init__(self, value=""):
+        if isinstance(value, TrustedProxies):
+            self.networks, self.bad = list(value.networks), list(value.bad)
+            return
+        items = value.split(",") if isinstance(value, str) else (value or ())
+        self.networks: list = []
+        self.bad: list[str] = []
+        for item in items:
+            s = str(item or "").strip()
+            if not s:
+                continue
+            try:
+                self.networks.append(ipaddress.ip_network(s.strip("[]"), strict=False))
+            except ValueError:
+                self.bad.append(s[:80])
+
+    @classmethod
+    def from_env(cls, env) -> "TrustedProxies":
+        return cls(env.get(TRUSTED_PROXY_ENV) or "")
+
+    def __contains__(self, peer) -> bool:
+        try:
+            ip = ipaddress.ip_address(str(peer or "").strip().strip("[]").split("%", 1)[0])
+        except ValueError:
+            return False
+        ips = [ip]
+        if ip.version == 6 and ip.ipv4_mapped is not None:
+            ips.append(ip.ipv4_mapped)
+        return any(a in n for a in ips for n in self.networks if a.version == n.version)
+
+    def __bool__(self) -> bool:
+        return bool(self.networks)
 
 
 def loopback_host(host: str) -> bool:
@@ -153,7 +197,7 @@ class Auth:
         self.clock = clock
         self._token_key = (hmac.new(self.admin.encode(), b"qse-dash-session-v1",
                                     hashlib.sha256).digest() if self.admin else None)
-        self.trusted_proxies = frozenset(p.strip() for p in trusted_proxies if p and p.strip())
+        self.trusted_proxies = TrustedProxies(trusted_proxies)
         # THE CONTROLLER'S PASSWORD (proxy/adminpw.py, set in App settings; the engine has none):
         # a second secret beside the token, for sign-in only
         self.password = password
@@ -165,8 +209,7 @@ class Auth:
     def from_env(cls, env=None, **kw) -> "Auth":
         env = os.environ if env is None else env
         kw.setdefault("login", env.get(LOGIN_ENV, LOGIN_DEFAULT) == "on")
-        kw.setdefault("trusted_proxies",
-                      (env.get("TANDEM_TRUSTED_PROXY") or "").split(","))
+        kw.setdefault("trusted_proxies", TrustedProxies.from_env(env))
         return cls(env.get("QSE_ADMIN_TOKEN") or None, env.get("QSE_METRICS_TOKEN") or None, **kw)
 
     @property
@@ -314,7 +357,8 @@ class Auth:
         trusts: loopback by default (the documented single-box shape -- an nginx on this
         box fronts the server and every real client shares the 127.0.0.1 peer; keying on
         the peer there lets one user's five wrong passwords lock out every user), plus
-        TANDEM_TRUSTED_PROXY naming a proxy's own address for the LAN shape (docs/proxy.md).
+        TANDEM_TRUSTED_PROXY naming a proxy's address or range for the LAN shape
+        (TrustedProxies, docs/proxy.md).
         From any other peer the header is ignored and the peer itself is the key.
         Never both at once: a spoofable value must not merge with real IPs. A trusted
         proxy that sends no header leaves the attempt keyed on the peer."""

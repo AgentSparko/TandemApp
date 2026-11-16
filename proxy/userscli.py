@@ -192,6 +192,39 @@ def _has_owner(path: str) -> bool:
         return False
 
 
+def owner_ready(path: str) -> bool:
+    """OPS-298: an enabled local owner with a password is in the config database at `path` (read
+    only; False when there is none or it does not read): the first-run setup is over."""
+    if not os.path.exists(path):
+        return False
+    try:
+        c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            return bool(c.execute("SELECT COUNT(*) FROM accounts WHERE role = 'owner' AND "
+                                  "enabled = 1 AND provider = 'local' AND pw IS NOT NULL")
+                        .fetchone()[0])
+        finally:
+            c.close()
+    except sqlite3.Error:
+        return False
+
+
+def accounts_in(env_file: str | None, env=None) -> bool:
+    """TANDEM_AUTH=accounts in the environment or in the env file the controller starts with."""
+    env = os.environ if env is None else env
+    v = env.get("TANDEM_AUTH") or ""
+    if env_file:
+        try:
+            with open(os.path.expanduser(env_file)) as f:
+                for line in f:
+                    k, sep, val = line.strip().removeprefix("export ").partition("=")
+                    if sep and k.strip() == "TANDEM_AUTH":
+                        v = val.strip()
+        except OSError:
+            pass
+    return v.strip().lower() == "accounts"
+
+
 def password_main(argv: list[str]) -> int:
     """`tandem-app password set|remove|status`: the first owner's once the accounts hold one."""
     from proxy import adminpw

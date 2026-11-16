@@ -1,0 +1,42 @@
+# OPS-298: values shaped like a single-node install (example names only): chatd in the pod,
+# the conductor, sandbox pods, an MCP bridge sidecar, an ingress behind a front that ends TLS,
+# the data in a host folder. tests/test_chart_defaults.py renders it before and after the change.
+release:
+  id: 0123456789ab
+persistence:
+  hostPath:
+    path: /srv/tandemapp
+    node: node-1
+  storageClass: tandemapp-local
+controller:
+  conductor: conductor
+  env:
+    TANDEM_NODE_AGENT: "off"
+    TANDEM_BACKENDS: engine
+    TANDEM_BACKEND_ENGINE_KIND: generic
+    TANDEM_BACKEND_ENGINE_URL: http://engine.example.com:8000/v1
+chat:
+  mode: own
+  env:
+    QSE_CHAT_MAX_RUNS: "4"
+sandbox:
+  mode: kubernetes
+  kubernetes:
+    memoryGiB: "2"
+    maxRunning: "2"
+mcpBridge:
+  enabled: true
+  name: tools
+  command: ["/var/lib/tandemapp/mcp/bin/server", "--stdio"]
+trust:
+  extraCA: |
+    -----BEGIN CERTIFICATE-----
+    MIIBexampleexampleexampleexample
+    -----END CERTIFICATE-----
+ingress:
+  enabled: true
+  className: public
+  host: app.example.com
+networkPolicy:
+  enabled: true
+  ingressNamespaces: [ingress]

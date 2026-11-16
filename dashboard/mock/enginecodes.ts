@@ -75,6 +75,7 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   local_mode_proxy_seen: [401, "A request came through a proxy while TandemApp trusts everything on this machine. Set a password now.", "Set it on the page at #/account from this machine; until then requests through the proxy are refused."],
   legacy_env_set: [409, "{variable} in {file} is no longer used. Sign-in and API tokens replace it. Remove the line when you no longer need to go back to an older version.", "Remove {variable} from {file} once the way back to the release before is no longer needed."],
   legacy_env_invalid: [409, "{variable} in {file} has a value TandemApp cannot read. It is ignored.", "Remove the line, or correct it while an older version still needs it."],
+  trusted_proxy_invalid: [409, "{variable} in {file} has entries that are neither an address nor a range. They are ignored.", "Write each entry as an address or a CIDR range, separated by commas, then restart TandemApp."],
   legacy_users_from_unreadable: [409, "{variable} in {file} names a database TandemApp cannot read.", "Correct the path or remove the line: sign-in and API tokens replace it."],
   bootstrap_secret_left: [409, "An owner exists and the setup code's Secret is still mounted at {path}.", "Delete the Secret; it opens nothing now."],
   tokens_need_review: [409, "{n} API keys were imported from the older setup. Confirm or revoke each one.", "Open All tokens and confirm or revoke each key under Review."],

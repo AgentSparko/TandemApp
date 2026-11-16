@@ -16,6 +16,9 @@ used to `clear()` -- a flood of one-shot keys wiped every active ban.
     X-Real-IP from loopback            the header is the key
     X-Real-IP from any other peer      ignored, the peer is the key
     a 10k-key flood of failures        an active ban survives the eviction
+    TANDEM_TRUSTED_PROXY ranges (OPS-298) a peer in a CIDR range is trusted, one outside is not;
+                                       IPv6 and IPv4-mapped peers; a bad entry is kept in
+                                       `bad`, never raised
 
 Run: python tests/test_proxy_http_hardening.py
 """
@@ -163,6 +166,40 @@ def test_the_login_key_follows_the_proxy_trust():
     assert trusted.login_key("192.0.2.2", hdrs) == "198.51.100.7"
     assert trusted.login_key("203.0.113.9", hdrs) == "203.0.113.9"   # not the proxy: noise
     assert trusted.login_key("192.0.2.2", {}) == "192.0.2.2"        # proxy, no header
+
+
+
+def test_trusted_proxy_ranges():
+    """OPS-298: an ingress controller's pod changes its address, so TANDEM_TRUSTED_PROXY takes
+    CIDR ranges beside exact addresses, IPv4 and IPv6; one parser (TrustedProxies) for every
+    reader. A bad entry is ignored and kept in `bad`; nothing raises."""
+    from tandemapp import auth as auth_mod
+    tp = auth_mod.TrustedProxies(" 192.0.2.0/24, 198.51.100.7 ,2001:db8:42::/64,, not-an-address,"
+                                 "203.0.113.0/33")
+    assert tp.bad == ["not-an-address", "203.0.113.0/33"], tp.bad
+    for peer in ("192.0.2.1", "192.0.2.254", "198.51.100.7", "2001:db8:42::17",
+                 "::ffff:192.0.2.9", "[2001:db8:42::1]"):
+        assert peer in tp, peer
+    for peer in ("192.0.3.1", "198.51.100.8", "2001:db8:43::1", "127.0.0.1", "", None,
+                 "not-an-address", "::ffff:203.0.113.9"):
+        assert peer not in tp, peer
+    # the same object again, a list, or nothing; never a raise on odd input
+    assert auth_mod.TrustedProxies(tp).bad == tp.bad and "192.0.2.5" in auth_mod.TrustedProxies(tp)
+    assert "192.0.2.5" in auth_mod.TrustedProxies(["192.0.2.0/28", " "])
+    assert not auth_mod.TrustedProxies("") and not auth_mod.TrustedProxies(None)
+    assert auth_mod.TrustedProxies(",,,").bad == []
+    # X-Real-IP counts from a peer in the range, never from one outside it
+    hdrs = {"X-Real-IP": "203.0.113.50"}
+    env = {"TANDEM_TRUSTED_PROXY": "192.0.2.0/24,2001:db8:42::/64,bad entry"}
+    for a in (auth_mod.Auth(admin_token=ADMIN, login=True, trusted_proxies="192.0.2.0/24,"
+                                                                            "2001:db8:42::/64"),
+              auth_mod.Auth.from_env(env)):
+        assert a.login_key("192.0.2.17", hdrs) == "203.0.113.50"
+        assert a.login_key("2001:db8:42::9", hdrs) == "203.0.113.50"
+        assert a.login_key("::ffff:192.0.2.17", hdrs) == "203.0.113.50"
+        assert a.login_key("192.0.3.17", hdrs) == "192.0.3.17", "outside the range: the peer"
+        assert a.login_key("192.0.2.17", {}) == "192.0.2.17"
+    assert auth_mod.Auth.from_env(env).trusted_proxies.bad == ["bad entry"]
 
 
 def test_the_overflow_sweep_lands_at_ninety_percent():

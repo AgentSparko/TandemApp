@@ -348,6 +348,9 @@ def main(argv: list[str]) -> int:
                          "~/.tandemllm)")
     ap.add_argument("--env-file", default=None, help="KEY=VALUE lines read at each start")
     ap.add_argument("--open", action="store_true", help="install: open the page in the browser")
+    ap.add_argument("--setup-code", action="store_true",
+                    help="install, with TANDEM_AUTH=accounts beyond this machine while no owner "
+                         "has a password: go on and print a one-time setup code that makes one")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     say = (lambda m: None) if a.json else (lambda m: print(f"[service] {m}", flush=True))
@@ -355,14 +358,35 @@ def main(argv: list[str]) -> int:
         svc = Service(a.name)
         if a.action == "install":
             spec = Spec(host=a.host, port=a.port, state_dir=a.state_dir, env_file=a.env_file)
-            if a.host not in ("127.0.0.1", "::1", "localhost") and not a.env_file:
+            beyond = a.host not in ("127.0.0.1", "::1", "localhost")
+            # OPS-298: with the accounts, a controller others reach needs an owner who can sign
+            # in, or a setup code to make one
+            from proxy import userscli
+            accounts = userscli.accounts_in(a.env_file, {})
+            db = os.path.join(_expand(a.state_dir, svc.home), "config.sqlite3")
+            code_wanted = accounts and beyond and not userscli.owner_ready(db)
+            if code_wanted and not a.setup_code:
+                say(f"REFUSED {a.host} is beyond this machine and no owner has a password yet: "
+                    "nobody could sign in. Give --setup-code for a one-time code that makes the "
+                    "owner, or install on 127.0.0.1 and set the owner's password first")
+                return 2
+            if beyond and not accounts and not a.env_file:
                 say("WARN listening beyond this machine: set TANDEM_ADMIN_TOKEN in an env file "
                     "(--env-file), or anyone on the network changes the fleet")
             st = svc.install(spec, say)
+            if code_wanted:
+                cfg, _, codes = userscli.open_store(db)
+                try:
+                    st["setup_code"] = codes.new("cli")
+                finally:
+                    cfg.close()
             if a.json:
                 print(json.dumps(st))
                 return 0
             say(f"{st['name']} runs ({st['kind']}, pid {st['pid']}): open {st['url']}")
+            if code_wanted:
+                say(f"setup code: {st['setup_code']} (single use, valid 24 hours): open the page "
+                    "from another machine and make the owner with it")
             if st.get("linger") is False:
                 say("WARN this user does not linger: the controller stops at logout "
                     "(loginctl enable-linger)")
