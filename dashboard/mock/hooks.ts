@@ -70,9 +70,10 @@ const PROBE_TTL_MS = 10_000;
 const FAILURES: Outcome[] = ['timeout', 'error', 'invalid'];
 
 /** every refusal of the two APIs with its HTTP status */
-export const HOOK_ERRORS: Record<string, number> = { bad_request: 400, unauthorized: 401, not_found: 404, exists: 409, conflict: 409, confirm_needed: 409, no_secret: 409, question_taken: 409, invalid: 422, kind_unavailable: 422, unavailable: 503 };
+export const HOOK_ERRORS: Record<string, number> = { bad_request: 400, unauthorized: 401, trust_required: 403, not_found: 404, exists: 409, conflict: 409, confirm_needed: 409, no_secret: 409, question_taken: 409, invalid: 422, kind_unavailable: 422, unavailable: 503 };
 const SENTENCE: Record<string, string> = {
-  unauthorized: 'the full payload and a hook’s secret take pairing’s rights: set an admin password (App settings) to do this from another machine, or ask from this one',
+  unauthorized: 'a bearer token or the dashboard session is needed',
+  trust_required: 'the full payload and a hook’s secret take pairing’s rights: set an admin password (App settings) to do this from another machine, or ask from this one',
   conflict: 'the hook changed meanwhile; read it again',
   unavailable: 'the config database is not open',
   not_found: 'no such hook',
@@ -609,7 +610,8 @@ export class MockHooks {
   }
 
   private hookRoute(method: string, sub: string[], q: URLSearchParams, b: Record<string, unknown>, now: number, who: string): [number, unknown] {
-    if (this.needsTrust(method, sub, b) && !this.trust) no('unauthorized', SENTENCE.unauthorized);
+    // SRV-849: the writes are there, pairing's rights are not: 403, as the settings interface answers
+    if (this.needsTrust(method, sub, b) && !this.trust) no('trust_required', SENTENCE.trust_required);
     if (!sub.length) {
       if (method === 'GET') {
         this.forced('list');

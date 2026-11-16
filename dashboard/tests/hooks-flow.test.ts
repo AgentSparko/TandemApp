@@ -390,11 +390,11 @@ describe('add a hook', () => {
     await p.flow.load();
     p.flow.startAdd('response.after_engine');
     p.flow.editAdd({ name: 'Archive', role: 'observer', endpoint: 'https://archive.example.com/in', payload: 'full' });
-    // without pairing's rights: the sign-in, nothing made
+    // without pairing's rights: 403 trust_required (SRV-849), said in words, nothing made
     p.r.reg.control({ trust: false });
     expect(await p.flow.create()).toBeNull();
-    expect([p.flow.add!.refused!.type, p.flow.add!.confirm]).toEqual(['unauthorized', null]);
-    expect(addPage(p)).toContain('This needs TandemApp’s admin password.');
+    expect([p.flow.add!.refused!.type, p.flow.add!.confirm]).toEqual(['trust_required', null]);
+    expect(addPage(p)).toContain('This takes pairing’s rights.');
     p.r.reg.control({ trust: true });
     expect(await p.flow.create()).toBeNull();
     expect([p.flow.add!.confirm!.destination, p.flow.add!.confirm!.token.length, p.flow.add!.refused]).toEqual(['archive.example.com', 32, null]);
@@ -601,7 +601,7 @@ describe('one hook’s page', () => {
     for (const s of ['data-rotate', 'How long may the old one still sign beside it?', 'At once', 'One hour', 'One day', 'Rotate, and show the new secret']) expect(html).toContain(s);
     p.r.reg.control({ trust: false });
     await p.flow.rotate();
-    expect([p.flow.one!.secret.step, p.flow.one!.secret.refused!.type]).toEqual(['ask', 'unauthorized']);
+    expect([p.flow.one!.secret.step, p.flow.one!.secret.refused!.type]).toEqual(['ask', 'trust_required']);
     p.r.reg.control({ trust: true });
     await p.flow.rotate();
     const s = p.flow.one!.secret;

@@ -321,6 +321,7 @@ describe('words', () => {
     expect(e('invalid').title).toBe('A value is not accepted.');
     expect(e('kind_unavailable').fix).toBe('Use a webhook or a built-in.');
     expect(e('unauthorized').title).toBe('This needs TandemApp’s admin password.');
+    expect(e('trust_required')).toMatchObject({ title: 'This takes pairing’s rights.', detail: null });
     expect(e('question_taken').title).toBe('Another provider answers one of these questions already.');
     for (const t of ['offline', 'exists', 'no_secret', 'not_found', 'unavailable', 'bad_request']) expect(e(t).title.length, t).toBeGreaterThan(10);
     expect(e('something_new', {}, 'its own sentence').title).toBe('its own sentence');

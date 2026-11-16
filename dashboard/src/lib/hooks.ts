@@ -748,6 +748,8 @@ export function hookErrorWords(e: Pick<HookError, 'type' | 'message' | 'facts'>)
   switch (e.type) {
     case 'unauthorized':
       return { title: 'This needs TandemApp’s admin password.', fix: 'Sign in below, then try again. The full payload and a hook’s secret take pairing’s rights: with no admin password set, only the controller’s own machine may do this.', detail: m && !m.startsWith('TandemApp’s') ? m : null };
+    case 'trust_required':
+      return { title: 'This takes pairing’s rights.', fix: 'The full payload and a hook’s secret take them. Set an admin password in App settings and sign in, or do this on the controller’s own machine.', detail: null };
     case 'offline':
       return { title: 'TandemApp did not answer.', fix: 'Check that it still runs and that this device reaches it, then try again.', detail: null };
     case 'confirm_needed':

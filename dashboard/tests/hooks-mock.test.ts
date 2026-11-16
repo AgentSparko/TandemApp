@@ -121,8 +121,8 @@ describe('the hooks’ API in the mock', () => {
     const r = rig();
     const away = { ...HTTP, name: 'Archive', endpoint: 'https://archive.example.com/in', payload: 'full' as const };
     r.reg.control({ trust: false });
-    expect(await refusal(r.hooks.create(away))).toMatchObject([401, 'unauthorized', {}]);
-    expect(await refusal(r.hooks.rotate('audit'))).toMatchObject([401, 'unauthorized', {}]);
+    expect(await refusal(r.hooks.create(away))).toMatchObject([403, 'trust_required', {}]);
+    expect(await refusal(r.hooks.rotate('audit'))).toMatchObject([403, 'trust_required', {}]);
     r.reg.control({ trust: true });
     const [status, type, facts] = await refusal(r.hooks.create(away));
     expect([status, type, facts.field, facts.destination, facts.lan, facts.confirm?.length]).toEqual([409, 'confirm_needed', 'payload', 'archive.example.com', false, 32]);
