@@ -20,7 +20,8 @@ TANDEM_AUTH=accounts.
   a  the migration run twice changes nothing the second time, a restart on the state included
                                                                        test_migration_twice
   b  admin.json follows the first owner's password in the old format: the page's change, the
-     setup, a reset's code, `tandem-app password set`                 test_admin_json_follows
+     setup, a reset's code, `tandem-app password set`, the CLI's first owner; a first owner who
+     leaves hands it to the next owner                                test_admin_json_follows
   c  each legacy variable that is set is a finding with its file; a malformed one is ignored
      (valid TANDEM_API_KEYS entries stay); an unreadable TANDEM_API_USERS_FROM
                                                                        test_variables_and_files
@@ -277,6 +278,14 @@ def test_admin_json_follows():
         code = a.store.set_code(a.store.by_username("owner")["id"], actor="test")
         old_format(px, code)
         a.store.set_password(a.store.by_username("owner")["id"], OLD_PW, actor="test")
+        old_format(px, OLD_PW)
+        # the first owner leaves: admin.json follows the other owner, never the one who left
+        a.store.update(a.store.by_username("owner")["id"], {"role": "admin"}, actor="test")
+        assert a.store.first_owner()["username"] == "two"
+        old_format(px, "another long password!")
+        a.store.update(a.store.by_username("owner")["id"], {"role": "owner"}, actor="test")
+        a.store.remove(two["id"], actor="test")
+        assert a.store.first_owner()["username"] == "owner"
         old_format(px, OLD_PW)
     # the setup's owner is the first owner too
     with Proxy(env=ON) as px:

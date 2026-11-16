@@ -282,6 +282,8 @@ class AccountStore:
         and the write hold the database's lock together: two at once never leave none."""
         with self.cfg._lock:
             row, ends = self._update_locked(account_id, changes, actor)
+        if not row["enabled"] or row["role"] != "owner":
+            self._first_owner_left(account_id)
         if ends:
             self.revoke_account(account_id, actor=actor,
                                 why="role" if row["enabled"] else "disabled")
@@ -334,6 +336,7 @@ class AccountStore:
             self.cfg._audit(actor, "delete", "account", account_id,
                             detail={"username": row["username"], "role": row["role"]})
             self._c.commit()
+        self._first_owner_left(account_id)
         return row
 
     def set_password(self, account_id: str, password: str, *, actor: str,
@@ -386,6 +389,19 @@ class AccountStore:
         return self.get(aid) if isinstance(aid, str) else None
 
     on_password = None                      # (account_id, pw doc) -> None (proxy/authlegacy.py)
+
+    def _first_owner_left(self, account_id: str) -> None:
+        """SRV-865: the first owner was removed, disabled or demoted: admin.json follows the
+        oldest other enabled owner with a password from now on (the last one cannot leave), so
+        a rollback never takes the password of someone who left."""
+        if self.state("first_owner") != account_id:
+            return
+        nxt = next((r for r in self.all() if r["id"] != account_id and r["role"] == "owner" and
+                    r["enabled"] and isinstance(r["pw"], dict)), None)
+        if nxt is None:
+            return
+        self.set_state("first_owner", nxt["id"])
+        self._password_changed(nxt["id"], nxt["pw"])
 
     def _password_changed(self, account_id: str, doc: dict) -> None:
         if self.on_password is not None:
