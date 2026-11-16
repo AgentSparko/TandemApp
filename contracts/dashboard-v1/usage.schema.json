@@ -463,7 +463,7 @@
           }
         },
         "tokens": {
-          "description": "SRV-873: the API tokens seen in the ledger, with label and owner (TANDEM_AUTH=accounts)",
+          "description": "SRV-873: the API tokens seen in the ledger, with label and owner (TANDEM_AUTH=accounts); without the permission users only the reader's own",
           "type": "array",
           "items": {
             "type": "object",
@@ -508,7 +508,7 @@
       ]
     },
     "groups": {
-      "description": "SRV-873: the range's sums per token or per user, each the sum of the ledger's rows; key null holds the rows without one",
+      "description": "SRV-873: the range's sums per token or per user, each the sum of the ledger's rows; key null holds the rows without one; without the permission users only the rows of the reader's own tokens",
       "type": "array",
       "items": {
         "type": "object",

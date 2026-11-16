@@ -61,7 +61,8 @@ from tandemapp.activity import REPLAY  # noqa: E402  (answered from memory, noth
 # SRV-873 (ledger schema 13, still 1.3: optional fields only, and only with TANDEM_AUTH=accounts):
 # the dimension `tokens` (each API token the ledger has seen, its label and owner), `token=`
 # filters usage and requests, and usage's `group=token` or `group=user` adds `groups`: the
-# range's sums per token or per user, each the sum of the ledger's rows.
+# range's sums per token or per user, each the sum of the ledger's rows. A reader without the
+# permission `users` gets only its own tokens' rows, labels and owners there (`own`).
 CONTRACT = "1.3"
 # the log endpoints did not change: their answers stay at 1.0
 LOGS_CONTRACT = "1.0"
@@ -92,12 +93,20 @@ GROUPS = {"token": "token_id", "user": "user"}
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, kind: str, message: str):
+    def __init__(self, status: int, kind: str, message: str, **facts):
         super().__init__(message)
-        self.status, self.kind, self.message = status, kind, message
+        self.status, self.kind, self.message, self.facts = status, kind, message, facts
 
     def body(self) -> dict:
-        return {"error": {"type": self.kind, "message": self.message}}
+        return {"error": {"type": self.kind, "message": self.message, **self.facts}}
+
+
+def _not_own(token, own) -> None:
+    """SRV-873: `token=` naming a token that is not the reader's own (`own`: None for a reader
+    with the permission `users`, else the ids of its own tokens)."""
+    if token and own is not None and token not in own:
+        raise ApiError(403, "permission_denied", "another account's token needs the permission "
+                       "users", permission="users")
 
 
 def _flag(v) -> bool:
@@ -504,7 +513,9 @@ class DashboardAPI:
         return row[0] if row else None
 
     # ----------------------------------------------------------------- endpoints
-    def usage(self, q: dict) -> dict:
+    def usage(self, q: dict, own=None) -> dict:
+        """`own`: None, every token (the permission `users`, or no accounts); else the ids of
+        the reader's own tokens, the only ones its token dimension, `token=` and `groups` see."""
         tz_name = q.get("tz") or DEFAULT_TZ
         tz = zone(tz_name)
         bucket = q.get("bucket") or "day"
@@ -529,15 +540,17 @@ class DashboardAPI:
             raise _bad(f"group must be one of {', '.join(GROUPS)}, got {group!r}")
         if (token or group) and self.tokens_fn is None:
             raise _bad("token= and group= need the accounts (TANDEM_AUTH=accounts)")
+        own = None if own is None or self.tokens_fn is None else tuple(sorted(set(own)))
+        _not_own(token, own)
         key = ("usage", tz_name, bucket, first, last, model, client, backend, user, internal,
-               node, deployment, token, group)
+               node, deployment, token, group, own)
         return self._cached(key, lambda: self._usage(first, last, bucket, tz, tz_name, model,
                                                      client, backend, user, internal, node,
-                                                     deployment, token, group))
+                                                     deployment, token, group, own))
 
     def _usage(self, first, last, bucket, tz, tz_name, model, client, backend=None,
                user=None, internal=False, node=None, deployment=None, token=None,
-               group=None) -> dict:
+               group=None, own=None) -> dict:
         rng = Range(first, last, bucket, tz)
         aggs = (self._days(first, last, tz, tz_name, model, client, backend, user, internal,
                            node, deployment, token)
@@ -573,22 +586,28 @@ class DashboardAPI:
                "bucket": bucket, "tz": tz_name, "filters": filters,
                "buckets": buckets,
                "totals": Agg.merge(aggs).totals(sum(1 for a in aggs if a.n)),
-               "top_days": top_days, "dimensions": self.dimensions(internal)}
+               "top_days": top_days, "dimensions": self.dimensions(internal, own)}
         if group:
             out["group"] = group
             out["groups"] = self._groups(group, rng.start_ms, rng.end_ms, model, client, backend,
-                                         user, internal, node, deployment, token)
+                                         user, internal, node, deployment, token, own)
         return out
 
     def _groups(self, group: str, start_ms: int, end_ms: int, model, client, backend, user,
-                internal, node, deployment, token) -> list:
+                internal, node, deployment, token, own=None) -> list:
         """SRV-873: the range's sums per token or per user, straight from the rows (a row
-        without a token or a user is the group `null`), the most tokens first."""
+        without a token or a user is the group `null`), the most tokens first. With `own` (a
+        reader without the permission `users`) only the rows of its own tokens."""
         db = self._db()
         if db is None:
             return []
         col = GROUPS[group]
         fsql, fargs = _filters(model, client, backend, user, internal, node, deployment, token)
+        if own is not None:
+            if not own:
+                return []
+            fsql += f" AND token_id IN ({', '.join('?' * len(own))})"
+            fargs = fargs + list(own)
         names = self._token_names() if group == "token" else {}
         out = []
         for key, n, ref, p, c, o, r, cost, cost_n in db.execute(
@@ -617,7 +636,7 @@ class DashboardAPI:
         except Exception:                                          # noqa: BLE001
             return {}
 
-    def dimensions(self, internal: bool = False) -> dict:
+    def dimensions(self, internal: bool = False, own=None) -> dict:
         """Every model and client the ledger has seen (the filter lists), from the covering
         index on (model, client_id, ts_ms); a client's kind is the one on its latest row. A
         model or client seen only on internal rows is listed with `internal` alone (VIS-60)."""
@@ -637,7 +656,7 @@ class DashboardAPI:
                                       (model, cid, ts)).fetchone()[0]
                     clients[cid] = (ts, {"id": cid, "label": labels.get(cid), "kind": kind})
         out = {"models": sorted(models), "clients": [clients[c][1] for c in sorted(clients)]}
-        extra = self._proxy_dimensions(db)
+        extra = self._proxy_dimensions(db, own)
         if extra is not None:
             out.update(extra)
         return out
@@ -674,7 +693,7 @@ class DashboardAPI:
             v = db.execute(f"SELECT MIN({col}) FROM requests WHERE {col} > ?", (v,)).fetchone()[0]
         return out
 
-    def _proxy_dimensions(self, db) -> dict | None:
+    def _proxy_dimensions(self, db, own=None) -> dict | None:
         """1.3: the backends and users the ledger has seen, with the configured ones; None on a
         server without the proxy and a ledger with no relayed row (the 1.0 answer)."""
         rows, users, fleet = [], [], {"nodes": [], "deployments": []}
@@ -710,6 +729,8 @@ class DashboardAPI:
                 seen = self._distinct(db, "token_id")
             except sqlite3.Error:
                 seen = []
+            if own is not None:                # without the permission users: its own only
+                seen = [t for t in seen if t in own]
             names = self._token_names()
             out["tokens"] = [{"id": t, "label": (names.get(t) or {}).get("label"),
                               "owner": (names.get(t) or {}).get("owner")} for t in seen]
@@ -757,7 +778,10 @@ class DashboardAPI:
                 "tz": tz_name, "windows": windows,
                 "streak": {"current_days": cur, "longest_days": longest}, "ledger": ledger}
 
-    def requests(self, q: dict) -> dict:
+    def requests(self, q: dict, own=None) -> dict:
+        """`own`: as usage's; `token=` may name only the reader's own tokens."""
+        if self.tokens_fn is not None:
+            _not_own(q.get("token") or None, own)
         try:
             limit = int(q.get("limit") or 50)
             before = int(q["before"]) if q.get("before") else None

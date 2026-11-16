@@ -8,6 +8,8 @@
 //   Usage adds up            "the usage view grouped by token, then by user: each sum equals the
 //                             ledger's rows" (the mock's rows; tests/test_token_limits.py holds
 //                             the controller's)
+//   Only one's own tokens    a Usage reader without the right `users` (a viewer) sees only its own
+//                            tokens' rows, labels and owners; an admin sees all
 //   and the page around them: My tokens shows each token's use and its limits' state, a reached
 //   limit and the last refusals; a usage read that fails leaves the list; the limits form says the
 //   role's limit holds; the Usage view's token filter and its By token / By user table; the usage
@@ -74,8 +76,7 @@ describe('Gherkin: limits and usage (SRV-873)', () => {
 
   it('Usage adds up: grouped by token, then by user, each sum is the sum of the ledger’s rows', async () => {
     const mw = createMockMiddleware({ live: false });
-    const signIn = await call(mw, 'GET', '/dashboard/?auth=ola');
-    const cookie = ([] as string[]).concat(signIn.headers['set-cookie'] as string[]).map((c) => c.split(';')[0]).join('; ');
+    const cookie = await signedIn(mw, 'sam');
     const q = '/v1/dashboard/usage?bucket=day&tz=UTC&from=2026-01-01&to=2026-12-31';
     const all = (await call(mw, 'GET', q, cookie)).body as Usage;
     const tokens = all.dimensions.tokens!;
@@ -97,6 +98,39 @@ describe('Gherkin: limits and usage (SRV-873)', () => {
     // without accounts: no token dimension
     const off = (await call(mw, 'GET', q)).body as Usage;
     expect(off.dimensions.tokens).toBeUndefined();
+  });
+
+  it('Only one’s own tokens: a viewer sees its own token’s rows, label and owner; an admin sees all', async () => {
+    const mw = createMockMiddleware({ live: false });
+    const sam = await signedIn(mw, 'sam');
+    const vic = await signedIn(mw, 'vic');
+    expect((await call(mw, 'POST', '/__mock/auth', vic, { viewers: 'on' })).status).toBe(200);
+    const made = await call(mw, 'POST', '/v1/auth/tokens', vic, { label: 'vic-notebook', scopes: ['inference:openai'] });
+    expect(made.status).toBe(201);
+    const mine = (made.body as { id: string }).id;
+    const q = '/v1/dashboard/usage?bucket=day&tz=UTC&from=2026-01-01&to=2026-12-31';
+    const read = async (who: string, more = '') => (await call(mw, 'GET', `${q}${more}`, who)).body as Usage;
+    const all = await read(sam, '&group=token');
+    const others = all.dimensions.tokens!.filter((t) => t.id !== mine);
+    expect(others.length).toBeGreaterThan(1);
+    expect(all.groups!.map((g) => g.key)).toContain(mine);
+    for (const by of ['token', 'user'] as const) {
+      const u = await read(vic, `&group=${by}`);
+      expect(u.dimensions.tokens).toEqual([{ id: mine, label: 'vic-notebook', owner: 'vic' }]);
+      expect(u.groups!.map((g) => g.key)).toEqual([by === 'token' ? mine : 'vic']);
+      expect(u.groups![0].requests).toBeGreaterThan(0);
+      const text = JSON.stringify([u.dimensions.tokens, u.groups]);
+      for (const t of others) {
+        expect(text, t.id).not.toContain(t.id);
+        if (t.owner && t.owner !== 'vic') expect(text, t.owner).not.toContain(`"${t.owner}"`);
+      }
+    }
+    // another's token: refused; its own: its rows
+    const no = await call(mw, 'GET', `${q}&token=${others[0].id}`, vic);
+    expect([no.status, (no.body as { error: { permission: string } }).error.permission]).toEqual([403, 'users']);
+    expect((await read(vic, `&token=${mine}`)).filters.token).toBe(mine);
+    // the admin again, after the viewer: still every token
+    expect((await read(sam)).dimensions.tokens!.length).toBe(all.dimensions.tokens!.length);
   });
 });
 
@@ -189,7 +223,13 @@ describe('the mock’s answers are the controller’s', () => {
   });
 });
 
-function call(mw: ReturnType<typeof createMockMiddleware>, method: string, url: string, cookie = ''): Promise<{ status: number; headers: Record<string, string | string[]>; body: unknown }> {
+/** the session cookie of one of the mock's seeded accounts */
+async function signedIn(mw: ReturnType<typeof createMockMiddleware>, who: string): Promise<string> {
+  const r = await call(mw, 'GET', `/dashboard/?auth=${who}`);
+  return ([] as string[]).concat(r.headers['set-cookie'] as string[]).map((c) => c.split(';')[0]).join('; ');
+}
+
+function call(mw: ReturnType<typeof createMockMiddleware>, method: string, url: string, cookie = '', body?: unknown): Promise<{ status: number; headers: Record<string, string | string[]>; body: unknown }> {
   return new Promise((resolve) => {
     const req = Object.assign(new EventEmitter(), { method, url, headers: { cookie } as Record<string, string>, socket: { destroy() {} } });
     const headers: Record<string, string | string[]> = {};
@@ -205,6 +245,9 @@ function call(mw: ReturnType<typeof createMockMiddleware>, method: string, url: 
       end: (s?: string) => resolve({ status, headers, body: s && s.startsWith('{') ? JSON.parse(s) : null }),
     };
     mw(req as never, res as never, () => resolve({ status, headers, body: null }));
-    queueMicrotask(() => req.emit('end'));
+    queueMicrotask(() => {
+      if (body !== undefined) req.emit('data', JSON.stringify(body));
+      req.emit('end');
+    });
   });
 }

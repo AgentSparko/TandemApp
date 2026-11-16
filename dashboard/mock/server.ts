@@ -518,6 +518,13 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
     }
     return fleets.get(key)!;
   };
+  /** SRV-873: the tokens whose rows, labels and owners the ledger views show the caller: all (null)
+   *  with the right `users`, else its own */
+  const ownOf = (a: NonNullable<MockFleet['auth']>): Set<string> | null => {
+    if (a.may(a.caller, 'users')) return null;
+    const me = a.account(a.caller)?.id;
+    return new Set(a.tokens.filter((t) => me !== undefined && t.owner_id === me).map((t) => t.id));
+  };
   /** SRV-875: the page's cookie says the mock runs with accounts (`on`) or in local mode */
   const accountsOf = (req: IncomingMessage): string => {
     const a = cookies(req).qse_auth;
@@ -544,7 +551,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
 
   /** /v1/dashboard/{summary,usage,requests} over a ledger's rows: this server's, or the controller's
    *  (VIS-254) with its fleet dimensions (`usageExtra`) and each row's node and deployment (`rowExtra`) */
-  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string; tokenOf?: TokenOf }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
+  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string; tokenOf?: TokenOf; own?: Set<string> | null }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
     if (name === 'summary') {
       if (mode === '500') return json(res, 500, { error: { type: 'internal_error', message: 'ledger query failed: database is locked' } });
       const now = Date.now();
@@ -569,6 +576,10 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         }),
       );
     }
+    // SRV-873: a reader without the right `users` sees only its own tokens (`own`; null: all)
+    const own = data.tokenOf ? (data.own ?? null) : null;
+    const asked = data.tokenOf ? q.get('token') : null;
+    if (asked && own && !own.has(asked)) return json(res, 403, { error: { type: 'permission_denied', message: 'another account’s token needs the permission users', permission: 'users' } });
     if (name === 'usage') {
       const ztz = q.get('tz') || tz;
       const bucket = (q.get('bucket') as 'day' | 'hour') || 'day';
@@ -587,14 +598,14 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       const rows = tq ? data.rows.filter((r) => tok!(r)?.id === tq) : data.rows;
       const u = aggUsage(rows, { from, to, bucket, tz: ztz, model: q.get('model'), client: q.get('client') }) as unknown as Record<string, any>;
       if (tok) {
-        const seen = new Map(data.rows.map((r) => tok(r)).filter((t) => !!t).map((t) => [t!.id, { id: t!.id, label: t!.label, owner: t!.owner }]));
+        const seen = new Map(data.rows.map((r) => tok(r)).filter((t) => t !== null && (!own || own.has(t.id))).map((t) => [t!.id, { id: t!.id, label: t!.label, owner: t!.owner }]));
         u.dimensions.tokens = [...seen.values()];
         if (tq) u.filters.token = tq;
         const g = q.get('group');
         if (g === 'token' || g === 'user') {
           const lo = Date.parse(`${from}T00:00:00Z`) - 86_400_000;
           const hi = Date.parse(`${to}T00:00:00Z`) + 2 * 86_400_000;
-          const inRange = rows.filter((r) => r.ts_ms >= lo && r.ts_ms < hi && dayKey(r.ts_ms, ztz) >= from && dayKey(r.ts_ms, ztz) <= to);
+          const inRange = rows.filter((r) => r.ts_ms >= lo && r.ts_ms < hi && dayKey(r.ts_ms, ztz) >= from && dayKey(r.ts_ms, ztz) <= to && (!own || own.has(tok(r)?.id ?? '')));
           u.group = g;
           u.groups = groupSums(inRange, (r) => (g === 'token' ? (tok(r)?.id ?? null) : (tok(r)?.owner ?? null)), (k) => (g === 'token' ? { label: seen.get(k ?? '')?.label ?? null, owner: seen.get(k ?? '')?.owner ?? null } : {}));
         }
@@ -1009,7 +1020,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         const fleetDims = { nodes: [...new Set(all.map((r) => r.node).filter((x): x is string => !!x))], deployments: [...new Set(all.map((r) => r.deployment).filter((x): x is string => !!x))] };
         const since = dayKey(from, q.get('tz') || tz);
         const ta = accountsOf(req) === 'on' ? f.auth : null;
-        return ledgerAnswer(res, q, fleetLedger[1], { rows, since, ...(ta ? { tokenOf: (r: LedgerRow) => ta.tokenOf(r.id) } : {}) }, (u) => {
+        return ledgerAnswer(res, q, fleetLedger[1], { rows, since, ...(ta ? { tokenOf: (r: LedgerRow) => ta.tokenOf(r.id), own: ownOf(ta) } : {}) }, (u) => {
           u.dimensions = { ...u.dimensions, ...fleetDims };
           if (node || dep) u.filters = { ...u.filters, node, deployment: dep };
         }, (r) => Object.assign(r, where.get(String(r.request_id)) ?? { node: null, deployment: null }));
@@ -1178,7 +1189,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       const own = /^\/v1\/dashboard\/(summary|usage|requests)$/.exec(path);
       if (own) {
         const ta = accountsOf(req) === 'on' ? fleetFor(req).auth : null;
-        return ledgerAnswer(res, q, own[1], ta ? { ...rowsFor(), tokenOf: (r) => ta.tokenOf(r.id) } : rowsFor());
+        return ledgerAnswer(res, q, own[1], ta ? { ...rowsFor(), tokenOf: (r) => ta.tokenOf(r.id), own: ownOf(ta) } : rowsFor());
       }
       if (path === '/v1/dashboard/system') {
         return json(res, 200, sysSnapshot());

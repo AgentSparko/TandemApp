@@ -26,6 +26,9 @@ counters.
                                                                        test_spend_under_parallel_load
   b  refused requests are ledger rows with the token and the reason   test_refused_requests_are_rows
   c  the usage routes need usage:read or the token's owner             test_the_usage_routes_rights
+  c2 a Usage reader without the permission users sees only its own tokens' rows, labels and
+     owners (the token dimension, token= and group=token|user); users sees all
+                                                                       test_usage_is_ones_own
 
   Also:
   d  defaults per role from api.limits.default.*, written by an admin; a token never above its
@@ -452,6 +455,73 @@ def test_the_usage_routes_rights():
             assert st == 200 and out["totals"]["requests"] == 1, out
             assert px.get("/v1/auth/usage?user=nobody", adm)[0] == 404
             assert px.get(f"{path}?days=0", ops)[0] == 400
+    finally:
+        srv.shutdown()
+
+
+def test_usage_is_ones_own():
+    srv, port = engine()
+    try:
+        with controller(port) as px:
+            px.sync()
+            setting(px, "api.tokens.viewers_may_create", True)
+            make("ops", "operator")
+            make("view", "viewer")
+            make("adm", "admin")
+            ops, view, adm = sign_in(px, "ops"), sign_in(px, "view"), sign_in(px, "adm")
+            to, vo = new_token(px, ops, label="ops-a", scopes=["inference:openai"])
+            tv, vv = new_token(px, view, label="view-a", scopes=["inference:openai"])
+            ta, va = new_token(px, adm, label="adm-a", scopes=["inference:openai"])
+            reader, vr = new_token(px, ops, label="ops-r", scopes=["usage:read"])
+            for tok, n in ((to, 3), (tv, 2), (ta, 1)):
+                for _ in range(n):
+                    px.post("/v1/chat/completions", SMALL, bearer(tok))
+            px.rows()
+            q = "/v1/dashboard/usage?bucket=day&tz=UTC"
+            everyone = {vo["id"], vv["id"], va["id"]}
+
+            def seen(who, base=q):
+                st, out = j(px.get(f"{base}&group=token", who))
+                assert st == 200, (st, out)
+                dims = {t["id"]: t for t in out["dimensions"]["tokens"]}
+                groups = {g["key"]: g for g in out["groups"]}
+                st, by_user = j(px.get(f"{base}&group=user", who))
+                assert st == 200, (st, by_user)
+                return dims, groups, {g["key"] for g in by_user["groups"]}
+
+            # the users permission: every token, its label and owner, every user
+            dims, groups, users = seen(adm)
+            assert everyone <= set(dims) and everyone <= set(groups), (dims, groups)
+            assert dims[vo["id"]] == {"id": vo["id"], "label": "ops-a", "owner": "ops"}, dims
+            assert {"ops", "view", "adm"} <= users, users
+            # a viewer: its own token only, in the dimension, the groups and by user
+            for base in (q, "/v1/fleet/ledger/usage?bucket=day&tz=UTC"):
+                dims, groups, users = seen(view, base)
+                assert set(dims) == {vv["id"]} and set(groups) == {vv["id"]}, (dims, groups)
+                assert dims[vv["id"]] == {"id": vv["id"], "label": "view-a", "owner": "view"}
+                assert groups[vv["id"]]["requests"] == 2, groups
+                assert users == {"view"}, users
+            for path in (q, "/v1/dashboard/requests?limit=5", "/v1/fleet/ledger/requests?limit=5"):
+                st, out = j(px.get(f"{path}&token={vo['id']}", view))
+                assert st == 403 and out["error"]["permission"] == "users", (path, st, out)
+                assert vo["id"] not in json.dumps(out) and "ops-a" not in json.dumps(out)
+            st, out = j(px.get(f"{q}&token={vv['id']}", view))
+            assert st == 200 and out["totals"]["requests"] == 2, out
+            st, out = j(px.get(f"/v1/dashboard/requests?token={vv['id']}", view))
+            assert st == 200 and len(out["requests"]) == 2, out
+            # an operator without users too; its usage:read token reads its owner's tokens
+            dims, groups, _ = seen(ops)
+            assert set(dims) == {vo["id"]} and set(groups) == {vo["id"]}, (dims, groups)
+            dims, groups, _ = seen(bearer(reader))
+            assert set(dims) == {vo["id"]} and set(groups) == {vo["id"]}, (dims, groups)
+            assert px.get(f"{q}&token={vv['id']}", bearer(reader))[0] == 403
+            # one cache, three readers: the answer follows the reader, never the last one
+            for who, want in ((adm, everyone), (view, {vv["id"]}), (adm, everyone)):
+                assert want <= set(seen(who)[0]), who
+                if want != everyone:
+                    assert set(seen(who)[0]) == want
+            st, out = j(px.get(f"{q}&token={vo['id']}", adm))
+            assert st == 200 and out["totals"]["requests"] == 3, out
     finally:
         srv.shutdown()
 

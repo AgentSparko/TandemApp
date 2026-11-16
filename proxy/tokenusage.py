@@ -22,7 +22,7 @@ per limit that holds, the limit, what is used, what is left and whether it is re
 `over`. An account's rows are its own requests: the ledger's `user` is its username (the page,
 its tokens' memory owner) or one of its tokens. A token never calls these routes (the gate
 refuses every /v1/auth/* route to a token); a token with `usage:read` reads the same rows through
-the ledger views' `token=` filter.
+the ledger views' `token=` filter, for its owner's tokens only (another's needs `users`).
 """
 
 from __future__ import annotations
