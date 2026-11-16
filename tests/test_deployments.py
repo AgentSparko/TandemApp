@@ -283,12 +283,12 @@ def test_ledger_filter():
     finally:
         fx.close()
     # a schema-10 ledger gains the two columns and their indexes in place, its rows kept (and
-    # schema 12's upstream_request, SRV-733)
+    # schema 12's upstream_request, SRV-733, and 13's token_id and api, SRV-867)
     from tandemapp import ledger as ledger_mod
     path = os.path.join(tempfile.mkdtemp(prefix="led10-"), "ledger.sqlite3")
     c = sqlite3.connect(path)
     c.executescript(ledger_mod.DDL)
-    for name, kind in ledger_mod.ADDED[:-3]:
+    for name, kind in ledger_mod.ADDED[:-5]:
         c.execute(f"ALTER TABLE requests ADD COLUMN {name} {kind}")
     c.execute("INSERT INTO meta(key, value) VALUES ('schema_version', '10')")
     c.execute("INSERT INTO requests(ts_ms, request_id, model, client_id, client_kind, endpoint, "
@@ -296,12 +296,12 @@ def test_ledger_filter():
     c.commit()
     assert ledger_mod.migrate(c) == 10
     cols = [r[1] for r in c.execute("PRAGMA table_info(requests)")]
-    assert cols[-3:] == ["node", "deployment", "upstream_request"] and \
-        ledger_mod.SCHEMA_VERSION == 12, cols
+    assert cols[-5:] == ["node", "deployment", "upstream_request", "token_id", "api"] and \
+        ledger_mod.SCHEMA_VERSION == 13, cols
     idx = {r[1] for r in c.execute("PRAGMA index_list(requests)")}
     assert {"requests_node_ts", "requests_deployment_ts"} <= idx, idx
     assert c.execute("SELECT request_id, node FROM requests").fetchall() == [("r1", None)]
-    assert c.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone() == ("12",)
+    assert c.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone() == ("13",)
     c.close()
 
 

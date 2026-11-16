@@ -28,9 +28,16 @@ import time
 from tandemapp import usage as usage_mod
 
 
+#: the ledger's `api` (SRV-867): the Messages API's requests are `anthropic`
+API_NAMES = {"messages": "anthropic"}
+
+
 class RelayRecord(usage_mod.RequestRecord):
     """A `RequestRecord` whose engine-only fields stay null. The live view and the ledger read
     it as they read an engine request; `track` is never used (a frame is not a token)."""
+
+    token_id = None                    # SRV-867: the API token that sent it
+    api = None                         # the inbound protocol: openai, or the Messages API's
 
     def __init__(self, request_id: str, endpoint: str, stream: bool, t_arrival=None):
         super().__init__(request_id, endpoint, stream, t_arrival=t_arrival)
@@ -162,5 +169,8 @@ class RelayRecord(usage_mod.RequestRecord):
             "system_fingerprint": self.system_fingerprint,
             "node": self.node, "deployment": self.deployment,
             "upstream_request": self.upstream_request,
+            # ledger schema 13 (SRV-867)
+            "token_id": self.token_id,
+            "api": API_NAMES.get(self.api, self.api) or "openai",
         })
         return out

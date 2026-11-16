@@ -86,6 +86,11 @@ alias, which the user may change) and the deployment that served a relayed reque
 (proxy/deployments.py); null for an engine's own rows, for a cloud backend and on a proxy without
 a fleet. Indexed with the time, as the backend is, for the Usage filters `node=` and `deployment=`.
 
+SCHEMA VERSION 13 (SRV-867), additive: `token_id`, the API token a relayed request came with
+(null without one, and for an engine's own rows), and `api`, the protocol it came in (`openai`,
+`anthropic`). `user` holds the token's memory owner. Indexed with the time for a token's usage.
+The release before ignores both columns and keeps writing its rows.
+
 SCHEMA VERSION 12 (SRV-733): `upstream_request`, the id the backend gave a relayed answer (its
 `id`, a Responses answer's `response.id`). Our engine's answer id is the `request_id` of its own
 row for the request, so a TandemApp controller's row and the engine's row of one request join on
@@ -115,7 +120,7 @@ import time
 from tandemapp.conductor import signals
 
 PRODUCTION = "~/.qwen38-spark-engine/usage/ledger.sqlite3"
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 MIN_RETENTION_DAYS = 400
 QUEUE_MAX = 10_000
 BACKUP_KEEP = 8
@@ -131,7 +136,7 @@ COLUMNS = ("ts_ms", "request_id", "model", "client_id", "client_kind", "endpoint
            "proxy_ms", "retries", "fallback_from", "upstream_status", "user", "preemptions",
            "engine_finish", "corrupted", "l2_join", "wait_own_ms", "parent_request",
            "slot", "engine_cached", "forwarded_tokens", "wait_mem_ms", "sampling",
-           "system_fingerprint", "node", "deployment", "upstream_request")
+           "system_fingerprint", "node", "deployment", "upstream_request", "token_id", "api")
 
 # The conductor's columns (SRV-117, then SRV-115's three of schema version 2), added in place to a
 # ledger that lacks them. Additive and idempotent: an old row reads null in each.
@@ -168,7 +173,9 @@ ADDED = (("model_served", "TEXT"), ("profile", "TEXT"), ("profile_version", "INT
          # schema version 11 (SRV-731): the fleet node and the deployment that served it
          ("node", "TEXT"), ("deployment", "TEXT"),
          # schema version 12 (SRV-733): a relayed answer's own id (the engine row it joins)
-         ("upstream_request", "TEXT"))
+         ("upstream_request", "TEXT"),
+         # schema version 13 (SRV-867): the API token and the inbound protocol
+         ("token_id", "TEXT"), ("api", "TEXT"))
 
 # the columns `Ledger.amend` may set on a row already written (proxy/collect_api.py)
 AMENDABLE = ("queue_ms", "prompt_ms", "decode_ms", "decode_tps", "prefill_tps", "cached_tokens",
@@ -287,6 +294,7 @@ def client_of(headers, body: dict | None = None) -> tuple[str, str]:
             return ""
     auth = get("Authorization").strip()
     token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+    token = token or get("x-api-key").strip()          # SRV-867: the Messages API's header
     cid = "k:" + hashlib.sha256(token.encode()).hexdigest()[:12] if token else "anon"
     ua = get("User-Agent").lower()
     referer = get("Referer")
@@ -349,6 +357,8 @@ def migrate(conn: sqlite3.Connection, now_ms: int | None = None) -> int:
                  "WHERE node IS NOT NULL")
     conn.execute("CREATE INDEX IF NOT EXISTS requests_deployment_ts ON requests(deployment, ts_ms) "
                  "WHERE deployment IS NOT NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS requests_token_ts ON requests(token_id, ts_ms) "
+                 "WHERE token_id IS NOT NULL")
     # FX14 (2026-10-08): the dashboard's filter lists answer from these by seeks instead of reading
     # every row on each usage call (dimensions(): VIS-60's "internal only" pairs and the proxy's
     # users cost 230 ms of a 1.1 s 365-day query over 500k rows). Indexes only, no row touched
