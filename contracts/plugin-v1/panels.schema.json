@@ -1,0 +1,77 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "a plugin's panels",
+ "description": "GET /v1/fleet/plugins/{id}/panels (SRV-859): each panel's URL, the frame's sandbox, the CSP every answer of it carries and the bridge's methods its capabilities allow",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "contract_version",
+  "id",
+  "panels"
+ ],
+ "properties": {
+  "contract_version": {
+   "type": "string"
+  },
+  "id": {
+   "type": "string"
+  },
+  "panels": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "name",
+     "title",
+     "url",
+     "sandbox",
+     "csp",
+     "bridge"
+    ],
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "url": {
+      "type": "string"
+     },
+     "sandbox": {
+      "type": "string"
+     },
+     "csp": {
+      "type": "string"
+     },
+     "bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "message",
+       "methods"
+      ],
+      "properties": {
+       "message": {
+        "type": "string"
+       },
+       "methods": {
+        "type": "array",
+        "items": {
+         "enum": [
+          "plugin.info",
+          "plugin.status",
+          "settings.read",
+          "tools.call",
+          "engine.control"
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

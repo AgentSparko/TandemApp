@@ -159,6 +159,13 @@ CATALOG: dict[str, tuple[int, str, str]] = {
     "backend_down": (502, "The backend {backend} does not answer: {detail}",
                      "Check that it runs and that its address and key are right; Backends tests "
                      "it."),
+    # the plugin host (SRV-859)
+    "plugin_failed": (409, "The plugin {plugin} does not run: {detail}",
+                      "Its page's log says why; fix it, then enable or start it again."),
+    "plugin_no_sandbox": (409, "The plugin {plugin} waits for a sandbox: {detail}",
+                          "Give TandemApp the container runtime chatd uses (QSE_SANDBOX_SOCKET "
+                          "in chatd.env, or the Kubernetes sandbox), or set "
+                          "TANDEM_PLUGIN_SANDBOX."),
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
     "too_many_fixes": (429, "{node} had too many fixes in the last minute.",
@@ -169,13 +176,16 @@ CATALOG: dict[str, tuple[int, str, str]] = {
 FACTS = ("address", "port", "host", "user", "dir", "tries_left", "state", "retry_after",
          "expected", "offered", "pinned", "model", "job", "node", "alias",
          # the health page (SRV-835)
-         "path", "image", "free_gb", "need_gb", "backend", "engine_api", "speaks")
+         "path", "image", "free_gb", "need_gb", "backend", "engine_api", "speaks",
+         # the plugin host (SRV-859)
+         "plugin")
 _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "address": "the address",
             "host": "the engine host", "user": "the user", "dir": "the engine's folder",
             "detail": "no reason given", "expected": "one", "offered": "another",
             "pinned": "another", "model": "asked for", "node": "This node",
             "state": "starting", "path": "its folder", "image": "tandem-sandbox:1", "free_gb": "a few", "need_gb": "5",
-            "backend": "named", "engine_api": "another version", "speaks": "another"}
+            "backend": "named", "engine_api": "another version", "speaks": "another",
+            "plugin": "named"}
 
 
 class _Facts(dict):

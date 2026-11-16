@@ -1,0 +1,17 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "a bridge call's answer",
+ "description": "POST /v1/fleet/plugins/{id}/bridge (SRV-859): the method's result; a method outside the plugin's capabilities is 403 refused and journaled",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "contract_version",
+  "result"
+ ],
+ "properties": {
+  "contract_version": {
+   "type": "string"
+  },
+  "result": {}
+ }
+}

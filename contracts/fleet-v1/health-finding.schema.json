@@ -35,7 +35,9 @@
         "sandbox_no_image",
         "no_memory_cgroup",
         "disk_low",
-        "backend_down"
+        "backend_down",
+        "plugin_failed",
+        "plugin_no_sandbox"
       ]
     },
     "severity": {
@@ -150,6 +152,9 @@
           "type": "number"
         },
         "backend": {
+          "type": "string"
+        },
+        "plugin": {
           "type": "string"
         },
         "engine_api": {

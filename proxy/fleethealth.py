@@ -155,6 +155,9 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "no_memory_cgroup": ("warning", None),
     "disk_low": ("warning", None),
     "backend_down": ("warning", "retry"),
+    # the plugin host (SRV-859)
+    "plugin_failed": ("warning", None),
+    "plugin_no_sandbox": ("warning", None),
 }
 
 ERR = enginecodes.error
@@ -642,6 +645,13 @@ class Health:
             found.append(finding("backend_down", (b.get("last_error") or "")[:200] or None,
                                  backend=b["label"] or b["id"]))
         checks.append(_check("backends", not down, "backend_down" if down else None))
+        # the plugins (SRV-859): one that gave up or may not start, one with no sandbox
+        host = getattr(self.fleet.svc, "plugin_host", None)
+        probs = host.problems() if host is not None else []
+        for pr in probs:
+            found.append(finding(pr["code"], (pr.get("detail") or "")[:300] or None,
+                                 plugin=pr["plugin"]))
+        checks.append(_check("plugins", not probs, probs[0]["code"] if probs else None))
         # the first run
         setup = setup_state(self.fleet)
         if setup["needs_setup"]:

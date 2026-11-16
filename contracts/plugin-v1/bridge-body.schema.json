@@ -1,0 +1,21 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "a bridge call",
+ "description": "POST /v1/fleet/plugins/{id}/bridge (SRV-859): one call a panel made, as the page relays it",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "method"
+ ],
+ "properties": {
+  "method": {
+   "type": "string"
+  },
+  "params": {
+   "type": "object"
+  },
+  "panel": {
+   "type": "string"
+  }
+ }
+}

@@ -50,6 +50,49 @@
    "path": "/v1/fleet/plugins/{id}",
    "schema": "removed.schema.json",
    "rights": "fleet_trust"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/status",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/logs",
+   "schema": "logs.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/start",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/stop",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/restart",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/panels",
+   "schema": "panels.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/bridge",
+   "body": "bridge-body.schema.json",
+   "schema": "bridge.schema.json",
+   "rights": "conductor_write"
   }
  ],
  "settings": "a plugin's settings, secrets and capability grants: /v1/settings/plugins?target=<id> (contracts/settings-v1 1.1, the plugins scope)",
@@ -86,7 +129,11 @@
   "git_missing": 503,
   "git_timeout": 504,
   "unavailable": 503,
-  "unreadable": 422
+  "unreadable": 422,
+  "plugin_down": 503,
+  "refused": 403,
+  "plugin_error": 502,
+  "bad_arguments": 400
  },
  "checks": {
   "manifest_missing": "no plugin.json at the plugin's root",
