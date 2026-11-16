@@ -10,7 +10,6 @@
   {
    "method": "POST",
    "path": "/v1/fleet/plugins/upload",
-   "body": "application/octet-stream: the wheel's bytes, ?name=<file>.whl",
    "schema": "upload.schema.json",
    "rights": "fleet_trust"
   },
