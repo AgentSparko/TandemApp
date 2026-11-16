@@ -9,7 +9,8 @@
                                                                  test_new_release
   2  An upgrade: Given the Secret of the release before holds its admin token, When the
      controller starts in accounts mode, Then it starts, the token works once as the setup code,
-     and after the next start it is an API token for scripts (30 days) that never signs in
+     and from that setup on, with no restart, it is an API token for scripts (30 days) that
+     never signs in; the next start finds that one token
                                                                  test_upgrade
   3  A rollback: Given the upgraded state, When the legacy mode starts on it with the kept
      Secret's token in TANDEM_ADMIN_TOKEN (the old template), Then it starts and the token signs
@@ -190,6 +191,9 @@ def test_upgrade():
         assert st == 201, out[:200]
         assert ask(port, "POST", "/v1/auth/setup", {"code": OLD_TOKEN, "username": "two",
                                                      "password": PW})[0] == 404
+        # SEC-28: scripts keep working at once, with no pod restart
+        assert ask(port, "GET", "/v1/settings", headers={
+            "Authorization": f"Bearer {OLD_TOKEN}"})[0] == 200, "a token for scripts at once"
     finally:
         stop(proc)
     proc, port, lines = serve(state, env)

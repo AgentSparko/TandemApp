@@ -12,8 +12,9 @@ admin token set, no account is made: the token is accepted once as the setup cod
 
 THE KEYS (SRV-867, proxy/tokens.py import_legacy): the rows of `users`, TANDEM_API_KEYS and
 TANDEM_API_USERS_FROM become API tokens with the same hash, under review; the admin token, once
-an owner exists, a 30-day management token of the first owner. After it none of them is read to
-let a request in.
+an owner exists, a 30-day management token of the first owner: at the setup that made that owner
+with it (SEC-28), in the same process, so scripts keep working with no restart; a later start
+only finds it done. After it none of them is read to let a request in.
 
 THE WAY BACK. The config database keeps its schema number and its tables; admin.json is never
 removed. Each change of the first owner's password (the page, the setup, `tandem-app password
@@ -206,12 +207,25 @@ def migrate(a, state_dir: str) -> dict:
                               detail={"username": name, "role": "owner", "from": "admin.json"})
                 st._c.commit()
                 did["owner"] = name
-    token = (a.env.get("TANDEM_ADMIN_TOKEN") or a.env.get("QSE_ADMIN_TOKEN") or "").strip()
+    token = admin_token(a.env)
     if len(token) >= 32 and st.setup_required():
         a.codes.add_secret(token, "admin_token")
         did["token_code"] = True
     # SRV-867: the legacy keys and the admin token as API tokens
-    did["tokens"] = st.tokens.import_legacy(a.env, keys_env=dict(st.cfg.env_users),
-                                            users_from=getattr(st.cfg, "users_from", None),
-                                            first_owner=st.first_owner())
+    did["tokens"] = import_tokens(a)
     return did
+
+
+def admin_token(env) -> str:
+    """The admin token of before (TANDEM_ADMIN_TOKEN, else QSE_ADMIN_TOKEN), or ""."""
+    return (env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN") or "").strip()
+
+
+def import_tokens(a) -> dict:
+    """The legacy keys and the admin token as API tokens (proxy/tokens.py import_legacy): at each
+    start, and right after the setup made the first owner (SEC-28), so the admin token that was
+    the setup code works for scripts at once, with no restart. Each source runs once."""
+    st = a.store
+    return st.tokens.import_legacy(a.env, keys_env=dict(st.cfg.env_users),
+                                   users_from=getattr(st.cfg, "users_from", None),
+                                   first_owner=st.first_owner())

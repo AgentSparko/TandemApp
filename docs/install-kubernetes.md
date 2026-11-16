@@ -340,8 +340,8 @@ after an install or upgrade with an MCP `initialize` and `tools/list` from the c
    for a few minutes (the same pod, restarts unchanged, the page answering).
 
 **From the admin token to accounts.** Upgrade (leave `auth.mode` and `auth.bootstrap` empty). The Secret keeps its name, key and value: the old admin token works once as the setup code,
-and once an owner exists (made with it, or from the controller's admin password) it is an API token
-for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
+and once an owner exists (made with it, or from the controller's admin password) it is an API token,
+from that moment and with no restart, for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
 Secret while you may roll back: `helm rollback` to the revision before brings back the template
 that reads it into `TANDEM_ADMIN_TOKEN`, and the admin token signs in there as before. A network-
 reachable release with no admin password answers 401 everywhere after this upgrade until the

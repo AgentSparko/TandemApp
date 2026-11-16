@@ -45,10 +45,12 @@ owner it answers 404. GET /v1/dashboard/session without a session then says
 
 from __future__ import annotations
 
+import hmac
 import json
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from proxy import accounts as acc_mod
+from proxy import authlegacy
 from proxy import authz
 from proxy import identity as identity_mod
 from tandemapp import auth as auth_mod
@@ -219,6 +221,13 @@ def _setup(handler, a, body) -> None:
     if st.by_username(name) is not None:
         return _err(handler, 409, "conflict", f"the username {name!r} is taken")
     st.check_password(body["password"])
+    legacy = authlegacy.admin_token(a.env)
+    if legacy and isinstance(body["password"], str) and \
+            hmac.compare_digest(body["password"].encode(), legacy.encode()):
+        # SEC-28: a password never doubles as a token; the old admin token stays a token for
+        # scripts (made at this setup), so it cannot also be the first owner's password
+        return _err(handler, 400, "bad_request", "pick a password other than the old admin "
+                    "token: it stays a token for scripts")
     peer = handler._peer()
     address = a.limits.key(peer, handler.headers)
     if not local:
@@ -247,6 +256,13 @@ def _setup(handler, a, body) -> None:
     doc = st.get(row["id"])["pw"]
     st._password_changed(row["id"], doc)    # admin.json follows the first owner (SRV-865)
     a.local.seen = None
+    # SEC-28: the old admin token, the setup code a moment ago, is a token for scripts from now
+    # on (30 days, under review), as the next start would make it: no restart in between
+    try:
+        authlegacy.import_tokens(a)
+    except Exception as exc:                                       # noqa: BLE001
+        a.log(f"[auth] the legacy tokens were not imported at the setup ({type(exc).__name__});"
+              f" the next start imports them")
     return _signed_in(handler, a, row, address, 201)
 
 

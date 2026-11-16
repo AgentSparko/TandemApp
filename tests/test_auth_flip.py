@@ -35,8 +35,9 @@ schema itself; the rollout kit repeats the same steps with the release's own cod
      only)                                   test_upgraded_install, test_an_install_that_was_open,
                                                                    test_token_only_install
   d  an admin token only (what the installer wrote beyond loopback): no local mode, the token
-     once as the setup code, then a management token for 30 days that never signs in; the
-     release before signs in with it and with the new password    test_token_only_install
+     once as the setup code (never as the password), then at once, with no restart, a
+     management token for 30 days that never signs in; the release before signs in with it and
+     with the new password                                         test_token_only_install
   e  the old flags and variables never stop the start           test_leftovers_never_stop
 
     python tests/test_auth_flip.py
@@ -341,18 +342,35 @@ def test_token_only_install():
             assert px.get("/v1/settings", bearer(ADMIN_TOKEN))[0] == 401
             st, out = j(px.get("/v1/auth/session"))
             assert out["setup_required"] and not out["local_mode"], out
+            # a password never doubles as a token: the old token is refused as the password,
+            # and the code is not spent by that
+            st, out = j(px.post("/v1/auth/setup", {"code": ADMIN_TOKEN, "username": "kim",
+                                                   "password": ADMIN_TOKEN}))
+            assert st == 400 and "admin token" in out["error"]["message"], (st, out)
+            assert ADMIN_TOKEN not in json.dumps(out)
             h = signed(px.post("/v1/auth/setup", {"code": ADMIN_TOKEN, "username": "kim",
                                                   "password": NEW_PW}))
             assert px.get("/v1/settings", h)[0] == 200
             assert px.post("/v1/auth/setup", {"code": ADMIN_TOKEN, "username": "lee",
                                               "password": NEW_PW})[0] == 404
+            # at once, with no restart: the token for scripts (settings 200), never a sign-in
+            assert px.get("/v1/settings", bearer(ADMIN_TOKEN))[0] == 200
+            assert px.get("/v1/auth/users", bearer(ADMIN_TOKEN))[0] == 403
+            assert px.post("/v1/auth/session", {"username": "kim",
+                                                "password": ADMIN_TOKEN})[0] == 401
+            assert px.post("/v1/fleet/session", {"token": ADMIN_TOKEN})[0] == 401
+            rows = [r for r in a.tokens.all() if r["source"] == "admin_token"]
+            assert len(rows) == 1 and rows[0]["owner_id"] == a.store.first_owner()["id"], rows
             keep(px, folder)
         back_to_int5(folder, {}, password=NEW_PW, admin_token=ADMIN_TOKEN)
         for round_ in (1, 2):
             with on(folder, env) as px:
                 a = accounts()
-                # the next start: a management token of the first owner, 30 days, under review
-                row = next(r for r in a.tokens.all() if r["label"] == tokens_mod.ADMIN_LABEL)
+                # the next start: still the one management token of the first owner, 30 days
+                # from the setup, under review
+                rows = [r for r in a.tokens.all() if r["label"] == tokens_mod.ADMIN_LABEL]
+                assert len(rows) == 1, rows
+                row = rows[0]
                 assert set(row["scopes"]) == set(tokens_mod.ADMIN_TOKEN_SCOPES), row
                 assert "trust" not in row["scopes"] and row["needs_review"]
                 days = (row["expires_at"] - row["created_at"]) / 86_400_000
