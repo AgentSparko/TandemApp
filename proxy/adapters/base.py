@@ -32,7 +32,8 @@ Usage, normalised:
     prompt_tokens       all prompt tokens, the cached ones included
     completion_tokens   all output tokens, the reasoning ones included
     cached_tokens       prompt tokens served from the provider's cache
-    cache_write_tokens  prompt tokens written to a cache at a price of their own (Anthropic later)
+    cache_write_tokens  prompt tokens written to a cache at a price of their own (Anthropic);
+                        counted in prompt_tokens too, like the cached ones
     reasoning_tokens    output tokens spent reasoning
 """
 
@@ -489,10 +490,11 @@ class Adapter:
 
     @staticmethod
     def cost(usage: dict, price: dict | None) -> int | None:
-        """Micro-dollars: (prompt - cached) x input + cached x cached input + cache write x its
-        price + completion x output, prices in USD per million tokens (so USD per million x tokens
-        is micro-dollars). None without a price, without the counts, or without a price a non-zero
-        count needs."""
+        """Micro-dollars: (prompt - cached - written) x input + cached x cached input + written x
+        the cache write price + completion x output, prices in USD per million tokens (so USD per
+        million x tokens is micro-dollars). `prompt_tokens` counts the cache writes too (SRV-877),
+        so each written token is paid once, at the write price (the input price without one).
+        None without a price, without the counts, or without a price a non-zero count needs."""
         if not price or usage.get("prompt_tokens") is None or \
                 usage.get("completion_tokens") is None:
             return None
@@ -506,7 +508,7 @@ class Adapter:
         pcw = price.get("cache_write")
         if cw and pcw is None:
             pcw = pin
-        cost = ((usage["prompt_tokens"] - cached) * pin + cached * pc + cw * (pcw or 0)
+        cost = ((usage["prompt_tokens"] - cached - cw) * pin + cached * pc + cw * (pcw or 0)
                 + usage["completion_tokens"] * pout)
         return int(round(cost))
 
