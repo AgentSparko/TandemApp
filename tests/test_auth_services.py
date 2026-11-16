@@ -228,6 +228,17 @@ def test_the_cli():
             rc, out = _doctor(px)
             assert rc == 0 and "full, with" in out and '"backends"' in out, out
             assert first not in out
+            # the same through the command itself: `tandem-app doctor`
+            from proxy import __main__ as main_mod
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                try:
+                    main_mod.main(["doctor", "--config-db", px.svc.cfg.path, "--host",
+                                   "127.0.0.1", "--port", str(px.port)])
+                    code = 0
+                except SystemExit as exc:
+                    code = exc.code
+            assert code == 0 and "full, with" in buf.getvalue(), (code, buf.getvalue())
             # svc:cli acts as an operator would through a token, never with trust
             assert px.get("/v1/settings", bearer(first))[0] == 200
             assert px.get("/v1/fleet/nodes", bearer(first))[0] == 200
