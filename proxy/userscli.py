@@ -209,22 +209,6 @@ def owner_ready(path: str) -> bool:
         return False
 
 
-def accounts_in(env_file: str | None, env=None) -> bool:
-    """TANDEM_AUTH=accounts in the environment or in the env file the controller starts with."""
-    env = os.environ if env is None else env
-    v = env.get("TANDEM_AUTH") or ""
-    if env_file:
-        try:
-            with open(os.path.expanduser(env_file)) as f:
-                for line in f:
-                    k, sep, val = line.strip().removeprefix("export ").partition("=")
-                    if sep and k.strip() == "TANDEM_AUTH":
-                        v = val.strip()
-        except OSError:
-            pass
-    return v.strip().lower() == "accounts"
-
-
 def password_main(argv: list[str]) -> int:
     """`tandem-app password set|remove|status`: the first owner's once the accounts hold one."""
     from proxy import adminpw

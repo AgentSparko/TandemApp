@@ -780,9 +780,9 @@ class Health:
         worst = min(probs, key=lambda pr: SEVERITIES.index(
             FINDINGS.get(pr["code"], ("error", None))[0])) if probs else None
         checks.append(_check("plugins", not probs, worst["code"] if worst else None))
-        # the sign-in (SEC-26, SRV-865), with TANDEM_AUTH=accounts only
+        # the sign-in (SEC-26, SRV-865)
         auth = getattr(self.fleet.svc, "auth", None)
-        if getattr(auth, "accounts", False) and hasattr(auth, "findings"):
+        if hasattr(auth, "findings"):
             for f in auth.findings():
                 found.append(finding(f["code"], f.get("detail"), **f.get("facts", {})))
         # the first run

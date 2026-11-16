@@ -1,4 +1,4 @@
-"""API tokens (SRV-867), with TANDEM_AUTH=accounts only.
+"""API tokens (SRV-867).
 
 A token has a label, an owner, scopes, a model list, an expiry and optional limits. It is shown
 once and stored as the SHA-256 of the whole token (config.key_hash), with its id and its last four

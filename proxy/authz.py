@@ -1,11 +1,10 @@
-"""Who may do what with accounts on (SEC-22): four roles, one permission table, one route table.
+"""Who may do what (SEC-22): four roles, one permission table, one route table.
 
-Used only while TANDEM_AUTH=accounts (proxy/accounts.py); with it off tandemapp/auth.py decides as
-before and nothing here runs.
+The one table of the server's sign-in (proxy/accounts.py; SEC-28: there is no other).
 
     allow(principal, permission, policy) -> bool
     permission_for(method, path) -> str | None     None: the route has no entry and is refused
-    KIND_PERMISSION                                tandemapp/auth.py's route kinds -> a permission
+    KIND_PERMISSION                                the handlers' route kinds -> a permission
     role_permissions(role, policy) -> frozenset
 
 ROLES, lowest first. Each role holds the permissions of the roles below it.
@@ -35,7 +34,7 @@ THE ROUTE TABLE (ROUTES) names every route family the server dispatches: an exac
 prefix (the path itself, or anything under it), the methods, and the permission the caller needs
 at least. OPEN routes need no credential (the page shell, /health's status, the sign-in, the
 first-run setup, which checks its own setup code). A family
-whose handler checks a finer route kind (tandemapp/auth.py's `decide`: the fleet, the settings,
+whose handler checks a finer route kind (proxy/accounts.py `decide`: the fleet, the settings,
 the configuration, the conductor) is listed with `read` here; the kind then asks for its own
 permission through KIND_PERMISSION. A path with no entry is refused with 403 and logged once;
 tests/test_auth_accounts.py walks the dispatch code and fails on a route without one.
@@ -58,7 +57,7 @@ BY_ROLE = {"viewer": VIEWER, "operator": OPERATOR, "admin": ADMIN, "owner": OWNE
 SERVICE = frozenset({"collect:write", "chat-engine", "plugin-backend"})
 PERMISSIONS = OWNER | SERVICE | {SESSION_ADDRESS}
 
-# tandemapp/auth.py's route kinds, one to one
+# the handlers' route kinds (proxy/accounts.py decide), one to one
 KIND_PERMISSION = {
     "dashboard": "read", "health_full": "read",
     "metrics": "metrics:read",

@@ -10,7 +10,7 @@ when the client sends that turn back, sends those blocks upstream in place of th
 ones.
 
 KEY: the client's credential (a hash of its bearer, or of a Messages API client's key; one
-stash cannot be read with another key; with TANDEM_AUTH=accounts the token's id, so a rotated
+stash cannot be read with another key; with an API token the token's id, so a rotated
 token keeps its stash, or the signed-in principal's),
 the backend, the upstream model (blocks never go to another backend or model), and the turn: its
 tool call ids, or for a turn without calls its place in the history and a hash of its text. A

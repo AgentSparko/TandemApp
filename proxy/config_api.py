@@ -56,13 +56,8 @@ SEED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices.seed.jso
 def _who(handler, svc) -> str:
     a = svc.auth
     who_of = getattr(a, "who_of", None)
-    if who_of is not None:              # SEC-22: with accounts on, the account's name
+    if who_of is not None:              # SEC-22: the account's name
         return who_of(handler)
-    try:
-        if a is not None and a.admin_any(handler.headers):
-            return "admin"
-    except Exception:                                              # noqa: BLE001
-        pass
     return "local"
 
 
@@ -160,11 +155,11 @@ def _harness_defaults(cloud: bool) -> dict:
 
 
 def _audit_rows(handler, svc, cfg) -> list:
-    """The last 50 changes. With the accounts on (SRV-875) the rows about people (sign-ins with
-    their addresses, accounts, sessions, tokens, the auth and api settings) are left out for a
-    caller without the permission `users`; they are read at GET /v1/auth/audit."""
+    """The last 50 changes. The rows about people (sign-ins with their addresses, accounts,
+    sessions, tokens, the auth and api settings; SRV-875) are left out for a caller without the
+    permission `users`; they are read at GET /v1/auth/audit."""
     acc = svc.auth
-    if getattr(acc, "who_of", None) is None:        # the accounts are off: as before
+    if getattr(acc, "who_of", None) is None:        # no sign-in at all: a test of the store
         return cfg.audit()
     from proxy import authapi
     if authapi.may_read_audit(acc, getattr(handler, "_principal", None)):

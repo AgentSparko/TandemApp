@@ -123,15 +123,11 @@ def parser() -> argparse.ArgumentParser:
                     default=int(env.get("TANDEM_FLEET_RETENTION_DAYS", "30")),
                     help="days of 10-minute history, events and resolved alerts (at least 7); "
                          "TANDEM_FLEET_RETENTION_DAYS")
-    ap.add_argument("--dashboard-login",
-                    default=env.get("TANDEM_DASHBOARD_LOGIN", env.get("QSE_DASHBOARD_LOGIN",
-                                                                      "off")),
-                    choices=("on", "off"),
-                    help="on, with TANDEM_ADMIN_TOKEN (the admin password) set: the dashboard "
-                         "API needs it or a session too; with no password set every route is open")
+    # SEC-28: the old sign-in's two flags, accepted (an old service unit still passes them) and
+    # ignored; the variables behind them are health findings (proxy/authlegacy.py)
+    ap.add_argument("--dashboard-login", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--dashboard-dir", default=None, help="default: dashboard/dist")
-    ap.add_argument("--trust-loopback", default="on", choices=("on", "off"),
-                    help="a request from this machine without proxy headers counts as the admin")
+    ap.add_argument("--trust-loopback", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--no-keychain", action="store_true",
                     help="do not ask the OS keychain for the master key")
     ap.add_argument("--conductor-config",

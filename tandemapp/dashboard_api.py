@@ -58,7 +58,7 @@ from tandemapp.activity import REPLAY  # noqa: E402  (answered from memory, noth
 # `backend=` / `user=` filter usage and requests. Every new field is optional in the schemas.
 # SRV-731 (ledger schema 11, still 1.3: optional fields only): rows gain `node` and `deployment`,
 # the dimensions `nodes` and `deployments`, and `node=` / `deployment=` filter usage and requests.
-# SRV-873 (ledger schema 13, still 1.3: optional fields only, and only with TANDEM_AUTH=accounts):
+# SRV-873 (ledger schema 13, still 1.3: optional fields only, and only with the accounts):
 # the dimension `tokens` (each API token the ledger has seen, its label and owner), `token=`
 # filters usage and requests, and usage's `group=token` or `group=user` adds `groups`: the
 # range's sums per token or per user, each the sum of the ledger's rows. A reader without the
@@ -375,7 +375,7 @@ class DashboardAPI:
                  clients_path: str = CLIENTS_JSON, cache_ttl: float = CACHE_TTL_S,
                  backends=None, tokens=None):
         self.ledger = ledger
-        # SRV-873: {token id: {label, owner, kind}} of the API tokens (TANDEM_AUTH=accounts);
+        # SRV-873: {token id: {label, owner, kind}} of the API tokens (the accounts);
         # None: no token dimension, no `groups`
         self.tokens_fn = tokens
         # 1.3: the configured backends (proxy/config.py), for their labels and kinds; None on a
@@ -539,7 +539,7 @@ class DashboardAPI:
         if group is not None and group not in GROUPS:
             raise _bad(f"group must be one of {', '.join(GROUPS)}, got {group!r}")
         if (token or group) and self.tokens_fn is None:
-            raise _bad("token= and group= need the accounts (TANDEM_AUTH=accounts)")
+            raise _bad("token= and group= need the accounts")
         own = None if own is None or self.tokens_fn is None else tuple(sorted(set(own)))
         _not_own(token, own)
         key = ("usage", tz_name, bucket, first, last, model, client, backend, user, internal,

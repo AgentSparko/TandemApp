@@ -1,4 +1,4 @@
-"""Local mode and the first-run setup code (SEC-26), with TANDEM_AUTH=accounts only.
+"""Local mode and the first-run setup code (SEC-26).
 
 LOCAL MODE. A bare process bound to loopback only, with no owner that has a password and
 `auth.local_mode` auto: a request that passes trusted-local (a loopback peer, no forwarding
@@ -63,11 +63,11 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def this_machine(peer: str, headers) -> bool:
-    """The one test of "a caller on this machine" with the accounts on (SRV-869): a loopback
-    peer, a loopback Host, no forwarding header. Two callers, each named in tests/
-    test_auth_services.py: local mode (LocalMode below, the only place it lets a request in) and
-    the exposure rule (proxy/exposure.py, which only narrows a token that is valid already)."""
+def trusted_local(peer: str, headers) -> bool:
+    """The one test of "a caller on this machine" (SRV-869, SEC-28): a loopback peer, a loopback
+    Host, no forwarding header. Two callers, each named in tests/test_auth_services.py: local
+    mode (LocalMode below, the only place it lets a request in) and the exposure rule
+    (proxy/exposure.py, which only narrows a token that is valid already)."""
     return peer in auth_mod.LOOPBACK and not LocalMode.proxied(headers)
 
 
@@ -210,8 +210,8 @@ class LocalMode:
         self.log = log or (lambda m: None)
         self.bind: str | None = None             # where the process listens (serve() sets it)
         self.seen: float | None = None           # the last proxied request while on
-        self.legacy_guard = bool((self.env.get("TANDEM_ADMIN_TOKEN") or "").strip()
-                                 or (self.env.get("QSE_ADMIN_TOKEN") or "").strip())
+        from proxy import authlegacy
+        self.legacy_guard = authlegacy.admin_token_set(self.env)
 
     def why_not(self) -> str | None:
         """Why local mode cannot be on here, whatever the accounts; None: it can."""
@@ -244,7 +244,7 @@ class LocalMode:
     def __call__(self, peer: str, headers):
         if peer not in auth_mod.LOOPBACK or not self.on():
             return None
-        if not this_machine(peer, headers):
+        if not trusted_local(peer, headers):
             if self.seen is None:
                 self.log("[auth] a request came through a proxy while TandemApp trusts this "
                          "machine: it was refused; set a password")

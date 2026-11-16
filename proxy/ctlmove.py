@@ -478,8 +478,8 @@ def call(url: str, method: str, path: str, body=None, token: str | None = None,
 
 
 def sign_in(url: str, password: str, timeout: float = 20.0) -> str | None:
-    """A session at another controller with its admin password (one set in App settings is no
-    bearer, server/auth.py): the cookie's value, or None."""
+    """A session at an older controller (before SEC-28) with its admin password: the cookie's
+    value, or None. A controller of now is taken with a trust token made there."""
     req = urllib.request.Request(url.rstrip("/") + "/v1/fleet/session",
                                  data=json.dumps({"token": password}).encode(), method="POST",
                                  headers={"Content-Type": "application/json"})
@@ -629,8 +629,9 @@ class Mover:
                 p["nodes"].append({"id": r["id"], "alias": r["alias"], "how": "repin",
                                    "why": "does not answer: pair it again from the new "
                                           "controller" if off else None})
-        admin = getattr(f.svc.auth, "admin", None) if getattr(f.svc, "auth", None) else None
-        p["needs_password"] = not admin
+        # SEC-28: no admin token is read here; the new controller's first secret comes with the
+        # move (its setup code once it starts with no owner)
+        p["needs_password"] = True
         moved = [x for x in p["nodes"] if x["how"] in ("repin", "release", "own")]
         p["impact"] += [f"{a} runs TandemApp's controller from now on (a systemd user unit, port "
                         f"{port}); this controller starts it there with this fleet's export",
@@ -656,9 +657,6 @@ class Mover:
                        "(fleet.sqlite3)",
                        "this controller keeps running for its page; it no longer reads the "
                        "moved nodes"]
-        if getattr(getattr(f.svc, "auth", None), "has_password", False):
-            p["keeps"].append("this controller's admin password (App settings) stays here: the "
-                              "new controller has the admin token it runs with")
         if p["needs_password"]:
             p["impact"].append(f"the new controller listens on the LAN: give it an admin "
                                f"password ({MIN_PASSWORD} or more characters)")
@@ -670,7 +668,7 @@ class Mover:
                 self._tokens = {k: v for k, v in self._tokens.items() if v[2] > now}
                 self._tokens[token] = (to, port, now + CONFIRM_S)
             p["confirm"], p["expires_at"] = token, round(now + CONFIRM_S, 3)
-        return p, {"row": row, "src": src, "virtual": virtual, "admin": admin}
+        return p, {"row": row, "src": src, "virtual": virtual}
 
     # ------------------------------------------------------------------ push
     def move(self, body, who: str, now: float) -> dict:
@@ -691,7 +689,7 @@ class Mover:
         if got is None or got[:2] != (body["to"], int(port)) or got[2] <= now:
             raise MoveError(409, "confirm_invalid", "that confirm is spent, too old or another "
                                                    "move's: read the plan again")
-        password = body.get("password") or ctx["admin"]
+        password = body.get("password")
         if not isinstance(password, str) or len(password) < MIN_PASSWORD or \
                 any(c.isspace() for c in password):
             raise MoveError(409, "password_needed", f"the new controller listens on the LAN: give "
@@ -1009,7 +1007,7 @@ class Mover:
         return job
 
     def _pull(self, job: dict, url: str, password: str | None, token: str | None = None) -> None:
-        """SRV-869: with `token` (a trust token made on the giver, TANDEM_AUTH=accounts there)
+        """SRV-869: with `token` (a trust token made on the giver)
         every call carries it as the bearer, and nothing signs in: no password, no cookie."""
         f = self.fleet
         sid = "check"

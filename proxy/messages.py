@@ -14,8 +14,8 @@ THE PIPELINE sees the OpenAI chat shape (the design's 4.5): the request is trans
 (proxy/translate/anthropic.py, cell 4) and goes through `Service.serve` as a chat completion, so
 the route table, the deployments, the hooks, the harness, the relay and the ledger work as for
 an OpenAI client. The ledger row's endpoint is `messages` (`count_tokens` for a count) and its
-`api` column `anthropic` (schema 13, SRV-867; `rec.api` is `messages`). With TANDEM_AUTH=accounts
-the gate has checked and removed the key before this handler runs; `Service.authorize` and the
+`api` column `anthropic` (schema 13, SRV-867; `rec.api` is `messages`). The
+gate has checked and removed the key before this handler runs; `Service.authorize` and the
 row take the gate's principal (its token, its client id). A request whose route is all backends
 of kind `anthropic` passes through instead (SRV-881, proxy/passthrough.py): no translation, the
 client's bytes upstream and the backend's back; a route with any other backend in it is

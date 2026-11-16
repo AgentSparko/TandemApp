@@ -3,12 +3,12 @@
 The browser talks to one origin; chatd (python -m chatd, 127.0.0.1:8016) holds the chats. This
 module is the engine server's side of that: the auth check, then a byte forward.
 
-    auth        the dashboard's one switch (server/auth.py, AU1): no admin password set, every chat
-                route answers; a password set, the `qse_dash` session or the admin bearer token, or
-                trusted-local. `GET /capabilities` and `GET /session` always pass (the dashboard's
-                probe must get JSON, and the capabilities say `signed_in: false` so the tab shows
-                its sign-in); `POST /session {password}` signs in with the dashboard's own login
-                (`DELETE` signs out). A write with `Sec-Fetch-Site: cross-site` is refused.
+    auth        the controller's sign-in (proxy/accounts.py, SEC-28): a session, local mode or an
+                API token, checked by the gate before this runs. `GET /capabilities` and `GET
+                /session` always pass (the dashboard's probe must get JSON, and the capabilities
+                say `signed_in: false` so the tab shows its sign-in); `POST /session {password}`
+                signs in as the first owner, one release more (`DELETE` signs out). A write with
+                `Sec-Fetch-Site: cross-site` is refused.
     forward     the request line, the headers (hop-by-hop ones and any `X-Tandem-*` a client sent
                 dropped) and the body, to chatd with `X-Tandem-Forward: <key>`,
                 `X-Tandem-Principal: owner`, `X-Tandem-Password-Set` and `X-Tandem-Signed-In`;
@@ -130,7 +130,8 @@ def _json(handler, code: int, kind: str, message: str) -> None:
 
 def route(handler, method: str, auth, *, peer: str | None = None) -> bool:
     """Answer `handler`'s request when its path is a chat route; False for any other path.
-    `auth`: server/auth.py's Auth (None: no auth at all, e.g. the front in a test)."""
+    `auth`: the controller's sign-in (proxy/accounts.py AccountsAuth; its gate ran before); None
+    in a test without a controller."""
     path = handler.path.split("?")[0]
     if not wanted(path):
         return False
@@ -140,10 +141,9 @@ def route(handler, method: str, auth, *, peer: str | None = None) -> bool:
             handler.close_connection = True          # its body is not read
         _json(handler, 503, "chat_off", _OFF["message"])
         return True
-    password_set = bool(auth is not None and auth.password_set)
-    peer = peer if peer is not None else (handler.client_address or ("",))[0]
-    signed_in = (not password_set or auth.admin_any(handler.headers)
-                 or auth.trusted_local(peer, handler.headers))
+    # SEC-28: a sign-in is always needed; `password_set` keeps its name in chatd's contract
+    password_set = auth is not None
+    signed_in = auth is None or auth.signed_in(handler.headers)
     if path == PREFIX + "/session" and method in ("POST", "DELETE"):
         # the dashboard's own login (`POST /v1/dashboard/session {token}`), under the chat's name
         if not hasattr(handler, "_session"):

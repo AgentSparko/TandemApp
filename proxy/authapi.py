@@ -1,4 +1,4 @@
-"""The sign-in, session and account routes (SEC-22, SEC-24), with TANDEM_AUTH=accounts only.
+"""The sign-in, session and account routes (SEC-22, SEC-24).
 
     GET    /v1/auth/session            who am I: account, role, permissions, the CSRF token, the
                                        provider and its capabilities, setup_required, local_mode

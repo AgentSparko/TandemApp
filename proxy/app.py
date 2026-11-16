@@ -209,8 +209,7 @@ def dashboard() -> "dashboard_api.DashboardAPI":
         api = STATE["dashboard_api"] = dashboard_api.DashboardAPI(
             STATE.get("ledger"), live=_live_status, system=_system,
             backends=lambda: STATE["svc"].cfg.backends(), clients_path=clients_path(),
-            tokens=(lambda: STATE["accounts"].tokens.labels())
-            if STATE.get("accounts") is not None else None)
+            tokens=lambda: STATE["accounts"].tokens.labels())
     return api
 
 
@@ -240,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
             super().handle_one_request()
         finally:
             acc = STATE.get("accounts")
-            if acc is not None:
+            if acc is not None:         # None only between a test's build and its server
                 acc.done(self)          # SEC-24: no longer one of its session's open streams
         # a chunked body the handler never read stayed on the wire and the next request on
         # the keep-alive connection was parsed from the middle of it (the size line as a
@@ -260,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(None)                  # the answer: no timeout
         super().send_response(code, message)
 
-    _principal = None                # SEC-22: who asks, with TANDEM_AUTH=accounts (the gate's)
+    _principal = None                # SEC-22: who asks (the gate's)
 
     def end_headers(self):
         # SEC-24: a session's renewed cookie (at most once a day), unless the answer sets its own
@@ -365,8 +364,7 @@ class Handler(BaseHTTPRequestHandler):
                                        "message": f"this needs the permission {perm}"}})
         else:
             self._json(401, {"error": {"type": "unauthorized",
-                                       "message": "a bearer token or the dashboard session is "
-                                                  "needed"}},
+                                       "message": "sign in, or send an API token"}},
                        extra_headers=(("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
         return False
 
@@ -388,15 +386,14 @@ class Handler(BaseHTTPRequestHandler):
 
     # ----------------------------------------------------------------- routes
     def _gate(self, method: str) -> bool:
-        """SEC-22/SEC-24: with TANDEM_AUTH=accounts, the one rule in front of every route
-        (proxy/accounts.py); True when it answered. Off: nothing."""
-        acc = STATE.get("accounts")
-        return acc is not None and acc.gate(self, method)
+        """SEC-22/SEC-24: the one rule in front of every route (proxy/accounts.py); True when
+        it answered."""
+        return STATE["accounts"].gate(self, method)
 
     def _auth_api(self, method: str, path: str, raw: bytes | None) -> bool:
-        """`/v1/auth/*` (proxy/authapi.py), with TANDEM_AUTH=accounts only."""
-        acc = STATE.get("accounts")
-        if acc is None or not (path == "/v1/auth" or path.startswith("/v1/auth/")):
+        """`/v1/auth/*` (proxy/authapi.py)."""
+        acc = STATE["accounts"]
+        if not (path == "/v1/auth" or path.startswith("/v1/auth/")):
             return False
         from proxy import authapi
         authapi.handle(self, acc, method, path, raw)
@@ -441,10 +438,9 @@ class Handler(BaseHTTPRequestHandler):
                 out["version"] = STATE.get("version")
                 # OPS-246: the page's bundle this server serves (its content hash and manifest)
                 out["dashboard"] = static.bundle_info(STATE.get("dashboard_dir"))
-            # SEC-26: the page shows its sign-in when the accounts are on (a header: the body of
-            # /health keeps its keys)
-            return self._json(code, out, extra_headers=(("X-Tandem-Auth", "accounts"),) if
-                              STATE.get("accounts") is not None else ())
+            # SEC-26: the page shows the accounts' sign-in (a header: the body of /health keeps
+            # its keys)
+            return self._json(code, out, extra_headers=(("X-Tandem-Auth", "accounts"),))
         if path == "/metrics":
             if not self._allowed("metrics"):
                 return
@@ -848,13 +844,6 @@ class Handler(BaseHTTPRequestHandler):
             route = "fleet_trust"
         else:
             route = "conductor_write"
-        a = STATE["auth"]
-        if route == "fleet_trust" and not a.password_set and \
-                a.decide(route, self._peer(), self.headers) != "ok":
-            return self._json(401, {"error": {
-                "type": "unauthorized", "message": "pairing and release change who controls a "
-                "node: set an admin password (App settings, or TANDEM_ADMIN_TOKEN) to do it from another "
-                "machine, or ask from this one"}})
         if not self._allowed(route):
             return
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
@@ -906,8 +895,7 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
         # pairing's rights (a hook's full payload is granted only with them, SEC-16)
         trust = STATE["auth"].decide("fleet_trust", self._peer(), self.headers) == "ok"
-        acc = STATE.get("accounts")
-        principal = acc.request_principal() if acc is not None else None
+        principal = STATE["accounts"].request_principal()
         if principal is not None and principal.via == "token" and parts[:1] in (["auth"],
                                                                                 ["api"]):
             # SRV-871: never with a token, not even to read
@@ -920,91 +908,26 @@ class Handler(BaseHTTPRequestHandler):
                               trust=trust, principal=principal)
         return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
 
-    # ----------------------------------------------------------------- the admin password (6.3b)
+    # ----------------------------------------------------------------- the old password route
     def _password_view(self) -> dict:
+        """The answer's `password` of /v1/fleet/app (6.3b's shape, kept one release, SEC-28):
+        `set` means a sign-in is needed, always now; `password` that an owner has one. The
+        accounts' passwords change at PUT /v1/auth/password."""
         from proxy import adminpw
-        a = STATE["auth"]
-        return {"set": a.password_set, "password": a.has_password, "token": bool(a.admin),
-                "set_at": a.password.set_at if a.has_password else None,
-                "min_length": adminpw.MIN_LEN, "max_length": adminpw.MAX_LEN,
-                "this_machine": a.trusted_local(self._peer(), self.headers)}
+        return {"set": True, "password": not STATE["accounts"].store.setup_required(),
+                "token": False, "set_at": None, "min_length": adminpw.MIN_LEN,
+                "max_length": adminpw.MAX_LEN, "this_machine": False}
 
     def _app_password(self, method: str, body) -> None:
-        """`/v1/fleet/app/password` (proxy/adminpw.py): GET its state under the reads' rule; PUT
-        {current?, password} sets or changes it, DELETE {current} removes it, under pairing's rule
-        (no password yet: from this machine only), each with the current password or the admin
-        token whenever one is set, as a JSON request of this origin. Setting, changing or
-        removing it ends every other session; this browser gets a new cookie."""
-        from proxy import adminpw
-        a = STATE["auth"]
-        nostore = (("Cache-Control", "no-store"),)
-        if STATE.get("accounts") is not None and method != "GET":
-            from proxy import authapi           # SEC-24: an account's password, not this one
+        """`/v1/fleet/app/password` (kept one release, SEC-28): GET its state under the reads'
+        rule; a change is made at PUT /v1/auth/password (404 here)."""
+        if method != "GET":
+            from proxy import authapi
             return authapi.legacy_password(self)
-        if method == "GET":
-            if not self._allowed("dashboard"):
-                return
-            return self._json(200, {"contract_version": fleet_mod.CONTRACT,
-                                    **self._password_view()}, extra_headers=nostore)
-        if method not in ("PUT", "DELETE"):
-            return self._json(405, {"error": {"type": "method_not_allowed", "message":
-                                              "the password takes GET, PUT and DELETE"}})
-        bad = auth_mod.same_origin_json(self.headers)
-        if bad is not None:
-            return self._json(bad[0], {"error": {"type": bad[1], "message": bad[2]}})
-        if not a.password_set and not a.trusted_local(self._peer(), self.headers):
-            return self._json(401, {"error": {"type": "unauthorized", "message":
-                                              "no admin password is set yet: set the first one "
-                                              "from this machine (its own browser), or run "
-                                              "`tandem-app password set` on it"}})
-        if not self._allowed("fleet_trust"):
+        if not self._allowed("dashboard"):
             return
-        want = {"current", "password"} if method == "PUT" else {"current"}
-        if not isinstance(body, dict) or set(body) - want or \
-                (method == "PUT" and "password" not in body):
-            return self._json(400, {"error": {"type": "bad_request", "message": (
-                "the body is {current?, password}" if method == "PUT" else
-                "the body is {current}")}})
-        who = self.headers.get("X-Real-IP") or self._peer()
-        if a.password_set:
-            v = a.sign_in(body.get("current"), who)
-            if v == "held":
-                return self._json(429, {"error": {"type": "too_many", "message":
-                                                  "too many wrong passwords; wait a minute"}},
-                                  extra_headers=(("Retry-After", "60"),))
-            if v != "ok":
-                return self._json(403, {"error": {"type": "wrong_password", "message":
-                                                  "the current password (or the admin token) "
-                                                  "is not right"}})
-        actor = config_api._who(self, STATE["svc"])
-        if method == "PUT":
-            had = a.has_password
-            try:
-                a.password.set(body["password"])
-            except adminpw.PasswordError as exc:
-                return self._json(exc.status, {"error": {"type": exc.kind,
-                                                         "message": exc.message}})
-            what = "changed" if had else "set"
-        else:
-            if not a.has_password:
-                return self._json(409, {"error": {"type": "conflict", "message": (
-                    "no password is set here: the admin token stays, change it in the env "
-                    "file" if a.admin else "no admin password is set")}})
-            a.password.remove()
-            what = "removed"
-        STATE["svc"].cfg.log_audit(actor, "password", "controller", None,
-                                   detail={"text": f"admin password {what}"})
-        STATE["svc"].log(f"[fleet] admin password {what} ({actor}); every session before it "
-                         f"ends")
-        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "") == "https" else ""
-        if a.password_set:
-            value, _ = a.make_cookie()
-            cookie = (f"{auth_mod.COOKIE}={value}; HttpOnly; SameSite=Strict; Path=/; "
-                      f"Max-Age={auth_mod.SESSION_S}{secure}")
-        else:
-            cookie = f"{auth_mod.COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0{secure}"
         return self._json(200, {"contract_version": fleet_mod.CONTRACT, **self._password_view()},
-                          extra_headers=nostore + (("Set-Cookie", cookie),))
+                          extra_headers=(("Cache-Control", "no-store"),))
 
     def _fleet_setup(self, method: str, nid: str, sub: list[str], raw: bytes | None) -> None:
         """`/v1/fleet/nodes/{id}/setup/<route>` (proxy/fleetsetup.py, VIS-252): the node's Setup
@@ -1116,96 +1039,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(exc.status, exc.body())
 
     def _session(self, method: str, body=None, fleet: bool = False) -> None:
-        a = STATE["auth"]
-        if STATE.get("accounts") is not None:
-            from proxy import authapi           # SEC-24: over the accounts' sessions
-            return authapi.legacy_session(self, STATE["accounts"], method, fleet, body)
-        if fleet:
-            return self._fleet_session(method, body)
-        # AU1: no admin password set, or the login off -- nothing to sign in to. GET says so
-        # (`login: false`, `password_set`), POST and DELETE do not exist.
-        if not a.login or not a.password_set:
-            if method == "GET":
-                return self._json(200, {"contract_version": dashboard_api.SESSION_CONTRACT,
-                                        "authenticated": True, "login": False,
-                                        "password_set": a.password_set, "expires_at": None},
-                                  extra_headers=(("Cache-Control", "no-store"),))
-            return self._json(404, {"error": {"type": "not_found",
-                                              "message": "the dashboard login is off" if
-                                              a.password_set else "no admin password is set"}})
-        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "") == "https" else ""
-        if method == "GET":
-            exp = a.session(self.headers)
-            if exp is None and not a.admin_bearer(self.headers):
-                return self._allowed("dashboard")
-            exp = exp or int(time.time()) + auth_mod.SESSION_S
-            return self._json(200, {"contract_version": dashboard_api.SESSION_CONTRACT,
-                                    "authenticated": True, "login": True, "password_set": True,
-                                    "expires_at": dashboard_api.iso_utc_s(exp)})
-        if method == "DELETE":
-            a.revoke(self.headers)
-            return self._send_empty(204, (("Set-Cookie", f"{auth_mod.COOKIE}=; HttpOnly; "
-                                                         f"SameSite=Strict; Path=/; Max-Age=0"
-                                                         f"{secure}"),))
-        who = a.login_key(self._peer(), self.headers)
-        # the one rule, in server/auth.py: X-Real-IP counts from loopback (an nginx on this
-        # host) or from a peer named by TANDEM_TRUSTED_PROXY; every other peer is keyed as
-        # itself, so a browser that reached us directly cannot pick its own bucket.
-        token = (body or {}).get("token") if isinstance(body, dict) else None
-        v = a.sign_in(token, who)
-        if v == "held":
-            return self._json(429, {"error": {"type": "too_many",
-                                              "message": "too many failed logins; wait a minute"}},
-                              extra_headers=(("Retry-After", "60"),))
-        if v != "ok":
-            return self._json(401, {"error": {"type": "unauthorized", "message": "wrong token"}},
-                              extra_headers=(("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
-        value, _ = a.make_cookie()
-        return self._send_empty(204, (("Set-Cookie", f"{auth_mod.COOKIE}={value}; HttpOnly; "
-                                                     f"SameSite=Strict; Path=/; "
-                                                     f"Max-Age={auth_mod.SESSION_S}{secure}"),))
-
-    def _fleet_session(self, method: str, body) -> None:
-        """`/v1/fleet/session`: the controller's sign-in for its writes (pairing, release, a
-        node's alias), whatever the dashboard login says: with an admin password set the writes
-        need it, and a page behind a reverse proxy that sends /v1/fleet/* here and the rest to an
-        engine signs in to the controller here. GET says whether a password is set and whether
-        this browser is signed in; POST {token} signs in (the same cookie and limits as
-        /v1/dashboard/session); DELETE signs out. No password set: GET only."""
-        a = STATE["auth"]
-        nostore = (("Cache-Control", "no-store"),)
-        if method == "GET":
-            exp = a.session(self.headers) if a.password_set else None
-            ok = not a.password_set or exp is not None or a.admin_bearer(self.headers)
-            return self._json(200, {"contract_version": fleet_mod.CONTRACT,
-                                    "password_set": a.password_set, "authenticated": ok,
-                                    "expires_at": dashboard_api.iso_utc_s(exp) if exp else None},
-                              extra_headers=nostore)
-        if not a.password_set:
-            return self._json(404, {"error": {"type": "not_found",
-                                              "message": "no admin password is set"}})
-        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "") == "https" else ""
-        if method == "DELETE":
-            a.revoke(self.headers)
-            return self._send_empty(204, (("Set-Cookie", f"{auth_mod.COOKIE}=; HttpOnly; "
-                                                         f"SameSite=Strict; Path=/; Max-Age=0"
-                                                         f"{secure}"),))
-        if method != "POST":
-            return self._json(404, {"error": {"type": "not_found",
-                                              "message": f"no route {method} /v1/fleet/session"}})
-        who = self.headers.get("X-Real-IP") or self._peer()
-        token = body.get("token") if isinstance(body, dict) else None
-        v = a.sign_in(token, who)
-        if v == "held":
-            return self._json(429, {"error": {"type": "too_many",
-                                              "message": "too many failed logins; wait a minute"}},
-                              extra_headers=(("Retry-After", "60"),))
-        if v != "ok":
-            return self._json(401, {"error": {"type": "unauthorized", "message": "wrong token"}})
-        value, _ = a.make_cookie()
-        return self._send_empty(204, (("Set-Cookie", f"{auth_mod.COOKIE}={value}; HttpOnly; "
-                                                     f"SameSite=Strict; Path=/; "
-                                                     f"Max-Age={auth_mod.SESSION_S}{secure}"),))
+        """/v1/dashboard/session and /v1/fleet/session, kept one release over the accounts'
+        sessions (SEC-28, proxy/authapi.py legacy_session)."""
+        from proxy import authapi
+        return authapi.legacy_session(self, STATE["accounts"], method, fleet, body)
 
     def _sse_head(self) -> None:
         self.send_response(200)
@@ -1348,22 +1185,19 @@ def build(args, env=None) -> Service:
     from tandemapp import ledger as ledger_mod
     env = os.environ if env is None else env
     Handler.timeout = getattr(args, "idle_timeout", IDLE_TIMEOUT_S) or None
-    mode = (env.get("TANDEM_AUTH") or "").strip().lower()
-    legacy = []
-    files: dict = {}
     # OPS-298: addresses and CIDR ranges; an entry that reads as neither is ignored, never a stop
     proxies = auth_mod.TrustedProxies.from_env(env)
     if proxies.bad:
         print(f"[auth] {auth_mod.TRUSTED_PROXY_ENV}: ignored {', '.join(proxies.bad)[:300]!r} "
               f"(neither an address nor a CIDR range)", flush=True)
-    if mode == "accounts":
-        # SRV-865: a legacy variable that does not read is a health finding, never a stop
-        from proxy import authlegacy
-        env_file = getattr(args, "env_file", None)
-        # OPS-298: on Kubernetes the old admin token is a mounted file, not a variable
-        env, files = authlegacy.token_from_file(env, {v: env_file for v in
-                                                      authlegacy.env_file_vars(env_file)})
-        env, legacy = authlegacy.scan(env, files)
+    # SRV-865, SEC-28: a variable of the old sign-in is a health finding, never a stop; it is
+    # read once, to import it (proxy/authlegacy.py), and opens nothing itself
+    from proxy import authlegacy
+    env_file = getattr(args, "env_file", None)
+    # OPS-298: on Kubernetes the old admin token is a mounted file, not a variable
+    env, files = authlegacy.token_from_file(env, {v: env_file for v in
+                                                  authlegacy.env_file_vars(env_file)})
+    env, legacy = authlegacy.scan(env, files)
     cfg = config_mod.ConfigDB(args.config_db, env=env,
                               use_keychain=not getattr(args, "no_keychain", False)).open()
     cfg.apply_env()
@@ -1380,38 +1214,22 @@ def build(args, env=None) -> Service:
         ledger_mod.check_config(args.usage_ledger, args.usage_retention_days,
                                 test=env.get("QSE_TEST") == "1")
         led = ledger_mod.Ledger(args.usage_ledger, retention_days=args.usage_retention_days).open()
-    # SEC-22: TANDEM_AUTH=accounts turns on the accounts, their sessions and one permission
-    # table (proxy/accounts.py); anything else keeps the rule below, unchanged
-    accounts = None
-    if mode == "accounts":
-        from proxy import accounts as accounts_mod
-        from proxy import authlegacy
-        a = accounts = accounts_mod.AccountsAuth(
-            cfg, trusted_proxies=proxies,
-            log=lambda m: STATE["svc"].log(m), env=env)
-        accounts.session_tokens = lambda: STATE.get("session_tokens")
-        accounts.legacy = legacy
-        accounts.trusted_proxy_file = files.get(auth_mod.TRUSTED_PROXY_ENV)
-        # SRV-865: admin.json's password becomes the owner; the admin token alone, the setup code
-        did = authlegacy.migrate(accounts, os.path.dirname(cfg.path))
-        if did["owner"]:
-            print(f"[auth] admin.json's password signs in as the owner account {did['owner']!r}",
-                  flush=True)
-        for f in legacy:
-            print(f"[auth] {f['variable']} ({f['file']}): {f['code']}; sign-in and API tokens "
-                  f"replace it", flush=True)
-    else:
-        if mode not in ("", "legacy", "off"):
-            print(f"[auth] TANDEM_AUTH={mode[:40]!r} is not a mode (accounts, legacy); the admin "
-                  f"password rule stays", flush=True)
-        login = (args.dashboard_login == "on")
-        admin = env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN") or None
-        from proxy import adminpw
-        a = auth_mod.Auth(admin, env.get("QSE_METRICS_TOKEN") or None, login=login,
-                          trust_loopback=args.trust_loopback == "on", local_host_only=True,
-                          trusted_proxies=proxies,
-                          password=adminpw.Password(os.path.join(os.path.dirname(cfg.path),
-                                                                 "admin.json")))
+    # SEC-22..SEC-28: the accounts, their sessions, API tokens and one permission table
+    # (proxy/accounts.py); there is no other sign-in
+    from proxy import accounts as accounts_mod
+    a = accounts = accounts_mod.AccountsAuth(
+        cfg, trusted_proxies=proxies, log=lambda m: STATE["svc"].log(m), env=env)
+    accounts.session_tokens = lambda: STATE.get("session_tokens")
+    accounts.legacy = legacy
+    accounts.trusted_proxy_file = files.get(auth_mod.TRUSTED_PROXY_ENV)
+    # SRV-865: admin.json's password becomes the owner; the admin token alone, the setup code
+    did = authlegacy.migrate(accounts, os.path.dirname(cfg.path))
+    if did["owner"]:
+        print(f"[auth] admin.json's password signs in as the owner account {did['owner']!r}",
+              flush=True)
+    for f in legacy:
+        print(f"[auth] {f['variable']} ({f['file']}): {f['code']}; sign-in and API tokens "
+              f"replace it", flush=True)
     registry = metrics_mod.Registry()
     live = live_mod.LiveRegistry(blocks=lambda: None, last_prefill=lambda: None,
                                  engine=_live_engine, hz=live_mod.DEFAULT_HZ, activity=False,
@@ -1427,20 +1245,18 @@ def build(args, env=None) -> Service:
                   engine_version=STATE["version"], log=lambda m: print(m, flush=True),
                   conductor=cond, monitor_base=base)
     STATE["svc"] = svc
-    if accounts is not None:
-        # SRV-873: an API token's limits, kept in memory and read from the ledger at first sight
-        from proxy import tokenlimits
-        svc.limits = accounts.token_limits = tokenlimits.TokenLimits(
-            accounts.policy, reader=led.reader if led is not None else None)
+    # SRV-873: an API token's limits, kept in memory and read from the ledger at first sight
+    from proxy import tokenlimits
+    svc.limits = accounts.token_limits = tokenlimits.TokenLimits(
+        accounts.policy, reader=led.reader if led is not None else None)
     # SRV-859: the plugin host reads the conductor's Library of the moment (the page's switch)
     svc.plugin_host.library = lambda: getattr(STATE.get("conductor"), "library", None)
     svc.plugin_host.env = dict(env)
     svc.plugin_host.state_dir = state_dir
     if getattr(args, "port", 0):
         svc.plugin_host.own_url = gateway_url(getattr(args, "host", "127.0.0.1"), args.port)
-    if accounts is not None:
-        # SRV-869: the relay reaches a plugin's backend with this process's own secret
-        cfg.service_key = lambda url: accounts.relay_key(url, svc.plugin_host.own_url)
+    # SRV-869: the relay reaches a plugin's backend with this process's own secret
+    cfg.service_key = lambda url: accounts.relay_key(url, svc.plugin_host.own_url)
     if env.get("TANDEM_DECISION_REPLAY"):
         # SRV-851: recorded provider answers in place of every provider (tools/decision_replay.py)
         n = svc.providers.load_replay(env["TANDEM_DECISION_REPLAY"])
@@ -1551,7 +1367,7 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
     }
     acc = STATE.get("accounts")
     if acc is not None:
-        # SRV-871: the sign-in's and the API's settings, with the accounts on only
+        # SRV-871: the sign-in's and the API's settings
         env_file = (STATE.get("args") or {}).get("env_file")
         scopes["auth"] = settingscopes.AuthScope(cfg, acc, env_file)
         scopes["api"] = settingscopes.ApiScope(cfg, acc, env_file)
@@ -1597,12 +1413,11 @@ def own_chat(args, cfg, env):
         chat.gateway = gateway_url(getattr(args, "host", "127.0.0.1"), port)
     chat_forward.configure(url=chat.url, data=chat.data, key=chat.forward_key)
     # SRV-843: chatd's engine is this gateway; whether the chat engine runs here sizes its
-    # sandboxes, and once the controller has users chatd gets a key of its own
+    # sandboxes. SEC-28: chatd's key is its service identity, never a `users` row
     from proxy import chatengine
     svc = STATE.get("svc")
     if svc is not None:
         chat.engine_here = lambda: chatengine.engine_here(svc)
-        chat.users = cfg
     acc = STATE.get("accounts")
     if acc is not None:
         # SRV-869: chatd's identity svc:chatd, a fresh secret at each start of chatd, into its
@@ -1809,10 +1624,9 @@ def serve(args) -> None:
     logbuf.install()
     svc = build(args)
     srv = Server((args.host, args.port), Handler)
-    if STATE.get("accounts") is not None:
-        # SEC-26: the bound address decides local mode; no owner: a setup code in the log
-        STATE["accounts"].listen(args.host, srv.server_address[1],
-                                 say=lambda m: print(m, flush=True))
+    # SEC-26: the bound address decides local mode; no owner: a setup code in the log
+    STATE["accounts"].listen(args.host, srv.server_address[1],
+                             say=lambda m: print(m, flush=True))
     svc.plugin_host.own_url = gateway_url(args.host, srv.server_address[1])
     svc.start()
     STATE["fleet"].start()

@@ -46,13 +46,12 @@ class TandemLLM(Generic):
     SRV-733: a client that reached the engine through this proxy is the client the engine would
     have seen. Every header it sent goes on (its agent and referer for the client kind, the
     conductor's and memory's headers, the session headers, `X-Real-IP` and `X-Forwarded-For` as
-    the reverse proxy set them, its `Authorization` when the backend has no key of its own)
-    except NOT_FORWARDED; every header of the answer comes back except NOT_PASSED. The engine's
+    the reverse proxy set them) except NOT_FORWARDED and the client's credential; every header of the answer comes back except NOT_PASSED. The engine's
     model list is kept whole (`cards`): /v1/models here lists its cards as the engine does.
 
-    SRV-867: with the accounts on, the client's credential is TandemApp's own API token. The
-    request gate removes `Authorization` and `x-api-key` after its check and marks the headers;
-    marked headers never pass either on, so the engine sees the backend's key or none."""
+    SRV-867, SEC-28: the client's credential is TandemApp's own API token. The request gate
+    removes `Authorization` and `x-api-key` after its check, and neither is ever passed on here
+    either, so the engine sees the backend's key or none."""
 
     kind = "tandemllm"
     cards = True
@@ -62,11 +61,8 @@ class TandemLLM(Generic):
             items = list(client_headers.items())
         except Exception:                                          # noqa: BLE001
             return []
-        checked = getattr(client_headers, "tandem_credentials_checked", False)
         return [(k, v) for k, v in items
-                if v and k.lower() not in NOT_FORWARDED
-                and not (key and k.lower() == "authorization")
-                and not (checked and k.lower() in CREDENTIALS)]
+                if v and k.lower() not in NOT_FORWARDED and k.lower() not in CREDENTIALS]
 
     def passes(self, name: str) -> bool:
         return name.lower() not in NOT_PASSED

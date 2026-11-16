@@ -8,9 +8,9 @@
                        the page only through the bridge (/v1/fleet/plugins/<id>/bridge, which
                        the page relays and the host checks against the plugin's capabilities)
     *    /plugin-backends/<plugin>/<backend>/...
-                       a plugin's backend as the gateway's relay reaches it: this machine's own
-                       calls only (the backends store's URL for it is this controller's loopback
-                       address); GET /v1/models answers the manifest's models, any other request
+                       a plugin's backend as the gateway's relay reaches it: the relay's own
+                       in-process secret (SRV-869, checked by the gate), from this machine's
+                       loopback only; GET /v1/models answers the manifest's models, any other request
                        goes to the plugin as backend/request
 """
 

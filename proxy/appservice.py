@@ -341,7 +341,7 @@ def main(argv: list[str]) -> int:
                                                  f"systemd user unit (default {UNIT})")
     ap.add_argument("--host", default="127.0.0.1",
                     help="the address it listens on (default 127.0.0.1: this machine only; a "
-                         "controller others reach needs TANDEM_ADMIN_TOKEN in its env file)")
+                         "controller others reach needs an owner with a password)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--state-dir", default=DEFAULT_DIR,
                     help="config.sqlite3, ledger.sqlite3, conductor/ and the logs (default "
@@ -349,8 +349,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--env-file", default=None, help="KEY=VALUE lines read at each start")
     ap.add_argument("--open", action="store_true", help="install: open the page in the browser")
     ap.add_argument("--setup-code", action="store_true",
-                    help="install, with TANDEM_AUTH=accounts beyond this machine while no owner "
-                         "has a password: go on and print a one-time setup code that makes one")
+                    help="install beyond this machine while no owner has a password: go on and "
+                         "print a one-time setup code that makes one")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     say = (lambda m: None) if a.json else (lambda m: print(f"[service] {m}", flush=True))
@@ -359,20 +359,16 @@ def main(argv: list[str]) -> int:
         if a.action == "install":
             spec = Spec(host=a.host, port=a.port, state_dir=a.state_dir, env_file=a.env_file)
             beyond = a.host not in ("127.0.0.1", "::1", "localhost")
-            # OPS-298: with the accounts, a controller others reach needs an owner who can sign
-            # in, or a setup code to make one
+            # OPS-298, SEC-28: a controller others reach needs an owner who can sign in, or a
+            # setup code to make one
             from proxy import userscli
-            accounts = userscli.accounts_in(a.env_file, {})
             db = os.path.join(_expand(a.state_dir, svc.home), "config.sqlite3")
-            code_wanted = accounts and beyond and not userscli.owner_ready(db)
+            code_wanted = beyond and not userscli.owner_ready(db)
             if code_wanted and not a.setup_code:
                 say(f"REFUSED {a.host} is beyond this machine and no owner has a password yet: "
                     "nobody could sign in. Give --setup-code for a one-time code that makes the "
                     "owner, or install on 127.0.0.1 and set the owner's password first")
                 return 2
-            if beyond and not accounts and not a.env_file:
-                say("WARN listening beyond this machine: set TANDEM_ADMIN_TOKEN in an env file "
-                    "(--env-file), or anyone on the network changes the fleet")
             st = svc.install(spec, say)
             if code_wanted:
                 cfg, _, codes = userscli.open_store(db)

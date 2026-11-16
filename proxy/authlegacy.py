@@ -1,4 +1,4 @@
-"""The way from the old sign-in to the accounts (SRV-865), with TANDEM_AUTH=accounts only.
+"""The way from the old sign-in to the accounts (SRV-865, SEC-28).
 
     migrate(a, state_dir) -> dict        at each start, before the first request; a second run
                                          changes nothing
@@ -20,12 +20,14 @@ removed. Each change of the first owner's password (the page, the setup, `tandem
 set`, a reset's one-time code) rewrites admin.json in the old format, so the release before
 signs in with the password of now.
 
-THE LEGACY VARIABLES never stop the start. Each one that is set is a health finding naming it and
+THE LEGACY VARIABLES never stop the start (SEC-28: nothing else reads them). Each one that is set is a health finding naming it and
 the file it is in: `legacy_env_set` when it reads, `legacy_env_invalid` when it does not (it is
 then ignored: an admin or metrics token under 32 characters, a TANDEM_API_KEYS entry that is not
 label:key with 16 characters or more, a dashboard login that is not on or off; the valid
 TANDEM_API_KEYS entries stay), `legacy_users_from_unreadable` for a TANDEM_API_USERS_FROM file
-that cannot be read. `--dashboard-login` and `--trust-loopback` are accepted and ignored.
+that cannot be read. TANDEM_AUTH (the accounts' switch before SEC-28) is read by nothing: any
+value but `accounts` is `legacy_env_set`. `--dashboard-login` and `--trust-loopback` are accepted
+and ignored.
 
 THE ADMIN TOKEN AS A FILE (OPS-298). On Kubernetes the chart puts no auth secret into the pod's
 environment: the Secret that held the admin token is a mounted file, named by
@@ -46,10 +48,17 @@ TOKENS = ("TANDEM_ADMIN_TOKEN", "QSE_ADMIN_TOKEN", "QSE_METRICS_TOKEN")
 LOGINS = ("TANDEM_DASHBOARD_LOGIN", "QSE_DASHBOARD_LOGIN")
 KEYS = "TANDEM_API_KEYS"
 USERS_FROM = "TANDEM_API_USERS_FROM"
-VARIABLES = TOKENS + (KEYS, USERS_FROM) + LOGINS
+SWITCH = "TANDEM_AUTH"                  # SEC-28: the accounts' switch of before; read by nothing
+VARIABLES = TOKENS + (KEYS, USERS_FROM) + LOGINS + (SWITCH,)
 OLD_FIELDS = ("v", "kdf", "n", "r", "p", "rounds", "salt", "hash", "set_at")
 ENVIRONMENT = "the environment"
 TOKEN_FILE = "TANDEM_ADMIN_TOKEN_FILE"
+
+
+def admin_token_set(env) -> bool:
+    """SEC-26: an install guarded by the old admin token is never opened by local mode (the only
+    other reader of the variable is the import, proxy/tokens.py import_legacy)."""
+    return any((env.get(v) or "").strip() for v in TOKENS[:2])
 
 
 def token_from_file(env, files: dict | None = None) -> tuple[dict, dict]:
@@ -140,6 +149,12 @@ def scan(env, files: dict | None = None) -> tuple[dict, list[dict]]:
         else:
             note("legacy_env_invalid", var)
             out.pop(var, None)
+    # SEC-28: the accounts are the only sign-in. `accounts` says what happens anyway and is
+    # quiet; any other value (`legacy`, a typo) asked for the old way, which is gone
+    v = (env.get(SWITCH) or "").strip().lower()
+    if v and v != "accounts":
+        note("legacy_env_set", SWITCH)
+    out.pop(SWITCH, None)
     return out, found
 
 

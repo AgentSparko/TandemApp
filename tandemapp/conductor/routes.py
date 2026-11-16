@@ -138,16 +138,7 @@ def _author(handler, a) -> str:
     """Who wrote a version: how they were let in, and from where (never a token)."""
     h = handler.headers
     who_of = getattr(a, "who_of", None)
-    if who_of is not None:              # SEC-22: with accounts on, the account's name
-        how = who_of(handler)
-    elif a.admin_bearer(h):
-        how = "admin token"
-    elif a.session(h) is not None:
-        how = "dashboard session"
-    elif not a.password_set and not a.trusted_local(handler._peer(), h):
-        how = "open"                    # AU1: no admin password set, a write from the network
-    else:
-        how = "box"
+    how = who_of(handler) if who_of is not None else "box"     # SEC-22: the account's name
     who = (h.get("X-Real-IP") or handler._peer() or "")[:64]
     return f"{how} {who}".strip()
 

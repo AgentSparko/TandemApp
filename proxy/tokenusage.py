@@ -1,4 +1,4 @@
-"""What an API token and an account used (SRV-873), with TANDEM_AUTH=accounts only.
+"""What an API token and an account used (SRV-873).
 
     GET /v1/auth/tokens/{id}/usage[?days=30&tz=]   one token (its owner, or the permission `users`)
     GET /v1/auth/usage[?user=<account id>&days=&tz=]  an account: yourself; another account

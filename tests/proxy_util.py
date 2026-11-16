@@ -2,6 +2,10 @@
 
     with Proxy(env={...}) as px:          # its own temp dir: config, ledger, key file; no node
                                           # agent unless env names the test's own (SRV-745)
+                                          # SEC-28: bound to loopback, a bare process: local mode
+                                          # (this machine's requests act as the owner `local`)
+                                          # until an owner has a password; local=False: as a
+                                          # network-bound install, every route needs a sign-in
         px.post("/v1/chat/completions", {...}) -> (status, headers, body bytes)
         px.rows()                         the ledger's rows, flushed
 
@@ -38,7 +42,8 @@ FIXTURE_KEYS = ("sk-fixture-ABCDEFGH1234", "sk-fixture-ZYXWVUTS9876", "dsk-fixtu
 
 class Proxy:
     def __init__(self, env: dict | None = None, login: str = "off", ledger: bool = True,
-                 health_kw: dict | None = None, conductor: bool = False, port: int = 0):
+                 health_kw: dict | None = None, conductor: bool = False, port: int = 0,
+                 local: bool = True):
         self.dir = tempfile.mkdtemp(prefix="px-test-")
         self.env = dict(env or {})
         self.env.setdefault("QSE_TEST", "1")
@@ -50,6 +55,7 @@ class Proxy:
         self.health_kw = health_kw
         self.conductor = conductor
         self.want_port = port
+        self.local = local
         self.logs: list[str] = []
 
     def __enter__(self) -> "Proxy":
@@ -84,6 +90,11 @@ class Proxy:
                 setattr(self.svc.health, k, v)
         self.srv = proxy_app.Server(("127.0.0.1", self.want_port), proxy_app.Handler)
         self.port = self.srv.server_address[1]
+        # SEC-28: what serve() says to the sign-in: where it listens (local mode needs loopback
+        # and a bare process; the box's test scope must not count as a container)
+        acc = proxy_app.STATE["accounts"]
+        acc.local.exists = lambda _p: False
+        acc.local.bind = "127.0.0.1" if self.local else "0.0.0.0"
         threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.05},
                          daemon=True).start()
         return self

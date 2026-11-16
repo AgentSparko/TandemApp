@@ -158,14 +158,16 @@ def call(svc, b: dict, method: str, path: str, body: bytes | None = None,
 
 
 def _facts_ok(handler, state) -> bool:
-    """This machine's own call (chatd beside the controller), the dashboard's rule, or a key of
-    one of the controller's users."""
+    """The dashboard's rule (`read`), chatd's identity (svc:chatd), or an API token that may use
+    the API (SEC-28: the gate's principal, never the peer's address)."""
     a = state.get("auth")
-    if a is not None and (a.trusted_local(handler._peer(), handler.headers) or
-                          a.decide("dashboard", handler._peer(), handler.headers) == "ok"):
+    if a is None:
+        return False
+    if a.decide("dashboard", handler._peer(), handler.headers) == "ok":
         return True
-    tok = a.bearer(handler.headers) if a is not None else None
-    return bool(tok and state["svc"].cfg.user_for_key(tok))
+    from proxy import authz
+    p = getattr(handler, "_principal", None)
+    return any(authz.allow(p, x, a.policy) for x in ("chat-engine", "inference"))
 
 
 def _pass(handler, st: int, raw: bytes) -> None:
@@ -193,8 +195,8 @@ def handle(handler, state: dict, method: str, path: str, query: str) -> None:
     if method == "GET" and path in ("/v1/dashboard/system", "/v1/dashboard/live"):
         if not _facts_ok(handler, state):
             return handler._json(401, {"error": {"type": "unauthorized", "message":
-                                                 "the engine's facts need the dashboard's rule "
-                                                 "or a user's key"}})
+                                                 "the engine's facts need a sign-in or an "
+                                                 "API token"}})
         if b is None:
             return handler._json(404, {"error": {"type": "not_found", "message":
                                                  "no TandemLLM engine behind this controller"}})

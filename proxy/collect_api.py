@@ -11,7 +11,7 @@ the first need and kept in the config database's settings (`collect_token`); `ta
 hands the same one to the engine. Every batch needs it, from loopback too; a wrong one is a 401.
 It only lets its holder post numbers for a backend that exists.
 
-SRV-869, with TANDEM_AUTH=accounts: each backend has a collect identity of its own,
+SRV-869: each backend has a collect identity of its own,
 `svc:collect:<id>` (scope collect:write), which `tandem-app launch` mints afresh for the engine it
 starts. The request gate checks it; a batch for another backend is 403. The shared token of the
 release before is imported once as `svc:collect` (any backend, under Review).
@@ -603,11 +603,8 @@ def collect_identity(auth, p, bid: str):
 
 
 def token_for(cfg, env, bid: str, mint: bool = True) -> str:
-    """The token a launched engine's plugin posts with: with TANDEM_AUTH=accounts a fresh
-    secret of the backend's own collect identity svc:collect:<id> (SRV-869), else the proxy's
-    shared one (token_of)."""
-    if (env.get("TANDEM_AUTH") or "").strip().lower() != "accounts":
-        return token_of(cfg, env)
+    """The token a launched engine's plugin posts with: a fresh secret of the backend's own
+    collect identity svc:collect:<id> (SRV-869; SEC-28: there is no shared one any more)."""
     if not mint:
         return "(minted at the launch)"
     from proxy import accounts as accounts_mod
@@ -639,13 +636,13 @@ def handle(handler, svc, path: str, payload) -> None:
                                     "type": "not_found"}})
     bid = path[len("/v1/collect/"):].strip("/") if path.startswith("/v1/collect/") else ""
     auth = getattr(svc, "auth", None)
-    if getattr(auth, "accounts", False):
+    if auth is not None:
         # SRV-869: the gate checked the caller and took the header away; a collect identity
         # posts for its own backend only (svc:collect:<id>); the imported shared one for any
         bad = collect_identity(auth, svc.principal(handler), bid)
         if bad is not None:
             return send(*bad)
-    elif not col.check_token(handler.headers.get("Authorization")):
+    elif not col.check_token(handler.headers.get("Authorization")):    # a collector alone
         return send(401, {"error": {"message": "the collect token is needed (Authorization: "
                                                "Bearer <TANDEM_COLLECT_TOKEN>)",
                                     "type": "unauthorized"}})

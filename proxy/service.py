@@ -26,16 +26,10 @@ and route.select run here, before the harness; request.before_engine, the answer
 request.error in the relay; request.finished after the ledger row. A hook's deny is the client's
 answer (403 hook_denied, or 503 hook_unavailable for a closed hook that failed).
 
-THE USERS' KEYS. With at least one user in the config (or `TANDEM_API_KEYS` set), a request to the
-OpenAI routes without a known key is a 401, for a backend's model and for the engine's alike. The
-box's own tools stay open the way the admin routes treat them: a request from loopback with
-neither `X-Forwarded-For` nor `X-Real-IP` (trusted-local, server/auth.py) needs no key. The
-label of the key fills the ledger's `user` column; the client id stays the token's hash.
-`TANDEM_API_USERS_FROM` (SRV-733) makes another config database's users count too: a controller in
-front of an engine takes the keys the engine takes, read from the engine's file, never copied.
-
-With TANDEM_AUTH=accounts (SRV-867) none of that is read: the request gate's principal decides
-(proxy/accounts.py), an API token's included (proxy/tokens.py). The user is the principal's
+WHO MAY ASK (SRV-867, SEC-28). The request gate's principal decides (proxy/accounts.py), an API
+token's included (proxy/tokens.py). The keys of before (the `users` rows, `TANDEM_API_KEYS`,
+`TANDEM_API_USERS_FROM`) are imported once as tokens with the same hash (proxy/authlegacy.py)
+and are not read here. The user is the principal's
 memory owner: a token's owner's username, an imported key's old label. A token with a model list
 answers 403 for any other model (`resolve`), and the ledger row names the token (`token_id`) with
 the same client id the bearer's hash gave before. SRV-873: `serve` holds a token to its limits
@@ -207,7 +201,7 @@ class Service:
         # the monitor's policy: its stall watchdog's ntfy settings carry the push of a new model
         self.monitor_base = monitor_base
         self.notifier = None                   # notify.send; a test puts its own here
-        # SRV-873: an API token's limits (proxy/tokenlimits.py), with TANDEM_AUTH=accounts only
+        # SRV-873: an API token's limits (proxy/tokenlimits.py)
         self.limits = None
         # SRV-849: the remote hooks around the relay (proxy/hooks.py); idle while none is enabled
         self.hooks = hooks_mod.Runner(cfg, log=lambda m: self.log(m))
@@ -325,40 +319,18 @@ class Service:
     # ----------------------------------------------------------------- the OpenAI routes
     def authorize(self, handler, headers: tuple = ()) -> tuple[bool, str | None]:
         """(may it go on, the user's label). On False a 401 is already written, with `headers`
-        beside its own."""
-        if getattr(self.auth, "accounts", False):
-            # SEC-22, SRV-867: with accounts on, the gate's principal decides (proxy/accounts.py):
-            # a session, local mode, or an API token checked there and stripped from the request
-            from proxy import authz
-            p = self.principal(handler)
-            if p is not None and (authz.allow(p, "inference", self.auth.policy)
-                                  or authz.allow(p, "chat-engine", self.auth.policy)):
-                return True, p.name
-            active, legacy_keys = True, False
-        else:
-            legacy_keys = True
-            try:
-                active = self.cfg.users_active()
-            except Exception:                                      # noqa: BLE001
-                active = False
-        if not active:
+        beside its own. SEC-22..SEC-28: the gate's principal decides (proxy/accounts.py): a
+        session, local mode, or an API token checked there and stripped from the request. A
+        service with no sign-in (`auth` None: a test of the relay alone) lets everything in."""
+        if self.auth is None:
             return True, None
-        token = None
-        auth = ""
-        try:
-            auth = (handler.headers.get("Authorization") or "").strip()
-        except Exception:                                          # noqa: BLE001
-            pass
-        if auth[:7].lower() == "bearer ":
-            token = auth[7:].strip()
-        label = self.cfg.user_for_key(token) if legacy_keys else None
-        if label is not None:
-            return True, label
-        peer = (getattr(handler, "client_address", None) or ("",))[0]
-        if self.auth is not None and self.auth.trusted_local(peer, handler.headers):
-            return True, None
-        body = (b'{"error": {"message": "a proxy API key is needed (Authorization: Bearer '
-                b'<key>); the admin makes one under Backends, Users", "type": '
+        from proxy import authz
+        p = self.principal(handler)
+        if p is not None and (authz.allow(p, "inference", self.auth.policy)
+                              or authz.allow(p, "chat-engine", self.auth.policy)):
+            return True, p.name
+        body = (b'{"error": {"message": "an API token is needed (Authorization: Bearer '
+                b'<token>); `tandem-app tokens create` makes one", "type": '
                 b'"invalid_request_error", "code": "invalid_api_key"}}')
         try:
             handler.send_response(401)
@@ -374,9 +346,9 @@ class Service:
         return False, None
 
     def principal(self, handler=None):
-        """SRV-867: the request's principal with accounts on (the gate's), else None. A handler
-        that rebuilt the request (the Messages API's) finds it through the gate's thread."""
-        if not getattr(self.auth, "accounts", False):
+        """SRV-867: the request's principal (the gate's); None without a sign-in. A handler that
+        rebuilt the request (the Messages API's) finds it through the gate's thread."""
+        if self.auth is None:
             return None
         p = getattr(handler, "_principal", None) if handler is not None else None
         if p is None and hasattr(self.auth, "request_principal"):

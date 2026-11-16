@@ -1,7 +1,7 @@
-"""Accounts, sessions and the request gate (SEC-22, SEC-24), behind TANDEM_AUTH=accounts.
+"""Accounts, sessions and the request gate (SEC-22, SEC-24): the sign-in of the server.
 
-With the switch off (the default until the new sign-in becomes the default) none of this runs and
-tandemapp/auth.py decides every route as before; no table below is made.
+Since SEC-28 there is no other: no shared admin token, no open default, no dashboard login
+switch, no loopback exemption. proxy/authlegacy.py imports what the old sign-in left once.
 
 THE TABLES (in the config database, new; no existing table or column changes):
 
@@ -51,11 +51,11 @@ store for a request with a bearer: the plugin relay's in-process secret, relay_p
 `exposure` (SRV-871, proxy/exposure.py: `(principal, method, path, peer, headers) -> (status,
 code, message) | None`, the protocol's exposure switch for a token), `on_account_removed`.
 
-SRV-869: being on the same machine opens nothing outside local mode: `trusted_local` is False
-here for every old guard, and the one this-machine test (proxy/authlocal.py this_machine) has two
-callers, local mode and the exposure rule. The controller's own callers have identities: chatd's
-svc:chatd, the CLI's svc:cli (<state>/run/cli.token, write_cli_token at each start), a backend's
-collect identity, the plugin relay's secret. A revoked token's open stream closes as an ended
+SRV-869: being on the same machine opens nothing outside local mode: the one this-machine test
+(proxy/authlocal.py trusted_local) has two callers, local mode and the exposure rule. The
+controller's own callers have identities: chatd's svc:chatd, the CLI's svc:cli
+(<state>/run/cli.token, write_cli_token at each start), a backend's collect identity, the plugin
+relay's secret. A revoked token's open stream closes as an ended
 session's does (Streams).
 
 SRV-867 adds API tokens (proxy/tokens.py): `token_resolver` is the token store's. A request with
@@ -95,8 +95,6 @@ from proxy import identity as identity_mod
 from proxy import tokens as tokens_mod
 from tandemapp import auth as auth_mod
 
-ENV = "TANDEM_AUTH"
-MODE = "accounts"
 COOKIE_HTTP = "tandem_session"
 COOKIE_HTTPS = "__Host-tandem_session"
 CSRF_HEADER = "X-Tandem-CSRF"
@@ -670,7 +668,7 @@ class SignInLimits:
 
     def __init__(self, trusted_proxies=(), *, clock=time.time):
         self.clock = clock
-        self.by_address = auth_mod.Auth(None, None, trusted_proxies=trusted_proxies, clock=clock)
+        self.by_address = auth_mod.LoginLimit(trusted_proxies, clock=clock)
         self._names: dict[str, list] = {}           # name -> [failures, wait until, last failure]
         self._lock = threading.Lock()
 
@@ -752,20 +750,12 @@ def _messages_shape(handler, raw: str) -> bool:
 
 
 class AccountsAuth:
-    """tandemapp/auth.py's Auth, as every guard of the server calls it, over the accounts: a
-    route kind is a permission (proxy/authz.py), the caller is the request's principal. The
-    legacy secrets (the admin token, the `qse_dash` cookie, admin.json, trusted-local) open
-    nothing here."""
+    """The sign-in of the server (SEC-28: the only one): a route kind is a permission
+    (proxy/authz.py), the caller is the request's principal. The secrets of before (the admin
+    token, the `qse_dash` cookie, admin.json, a loopback peer) open nothing here; only
+    proxy/authlegacy.py reads them, to import them once."""
 
     accounts = True
-    admin = None
-    metrics = None
-    login = True
-    trust_loopback = False
-    local_host_only = True
-    password = None
-    has_password = False
-    password_set = True                 # "sign-in is needed" for every old reader of the flag
 
     def __init__(self, cfg, *, trusted_proxies=(), clock=time.time, listener_tls: bool = False,
                  log=None, env=None):
@@ -1002,8 +992,11 @@ class AccountsAuth:
             return "anonymous"
         return p.name if p.kind == "account" else f"{p.kind}:{p.name}"
 
-    # ------------------------------------------------------------------ the old interface
+    # ------------------------------------------------------------------ a route kind's check
     def decide(self, route: str, peer: str, headers) -> str:
+        """`ok`, `unauthorized` (no principal) or `forbidden` for a route kind of the handlers
+        (proxy/authz.py KIND_PERMISSION): the writes of the fleet, settings, config and
+        conductor families are checked here, after the gate's read."""
         perm = authz.KIND_PERMISSION.get(route)
         p = self.current(headers)
         if perm is None:
@@ -1012,27 +1005,12 @@ class AccountsAuth:
             return "unauthorized"
         return "ok" if authz.allow(p, perm, self.policy) else "forbidden"
 
-    def trusted_local(self, peer, headers) -> bool:
-        return False
-
-    def bearer(self, headers):
-        return None
-
-    def admin_bearer(self, headers) -> bool:
-        return False
-
-    def metrics_bearer(self, headers) -> bool:
-        return False
-
-    def admin_any(self, headers) -> bool:
+    def signed_in(self, headers) -> bool:
         return self.current(headers) is not None
 
     def session(self, headers, now=None) -> int | None:
         p = self.current(headers)
         return int(p.expires_at // 1000) if p is not None and p.via == "cookie" else None
-
-    def sign_in(self, value, who: str) -> str:
-        return "wrong"                      # no legacy secret signs in here
 
     def revoke(self, headers) -> None:
         p = self.current(headers)

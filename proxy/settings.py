@@ -25,7 +25,7 @@ versions, restore and audit. contracts/settings-v1 is its truth; docs/settings.m
     GET  /v1/settings/audit[?change_set=&limit=]
 
 THE SCOPES, in dependency order (SCOPES): app (proxy/settingscopes.py, the page's switches),
-auth and api (SRV-871, with TANDEM_AUTH=accounts only: the sign-in's settings and the API's
+auth and api (SRV-871: the sign-in's settings and the API's
 exposure switches, listen address and token rules; owner-only writes, never with a token),
 backends (backends, routes and users in the config database), conductor (this controller's
 conductor documents, tandemapp/conductor/store.py), engine (per engine host over SSH, its managed
@@ -83,7 +83,7 @@ from datetime import datetime, timezone
 
 CONTRACT = "1.2"
 #: the scopes in dependency order: a change set applies them in this order. `auth` and `api`
-#: (SRV-871, proxy/settingscopes.py AccountsScope) exist with TANDEM_AUTH=accounts only
+#: (SRV-871, proxy/settingscopes.py AccountsScope) exist wherever the sign-in does
 SCOPES = ("app", "auth", "api", "backends", "conductor", "engine", "hooks", "plugins")
 OPS = ("schema", "get", "plan", "apply", "versions", "restore")
 RESTART = ("none", "app", "hot", "engine")
@@ -147,7 +147,7 @@ def trusted() -> bool:
 
 
 def caller():
-    """SRV-871: the request's principal with TANDEM_AUTH=accounts (proxy/accounts.py), else None:
+    """SRV-871: the request's principal (proxy/accounts.py), else None:
     the auth and api scopes decide by it."""
     return getattr(_CALLER, "principal", None)
 

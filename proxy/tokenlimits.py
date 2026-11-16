@@ -1,4 +1,4 @@
-"""Limits per API token (SRV-873), with TANDEM_AUTH=accounts only.
+"""Limits per API token (SRV-873).
 
 A token's `limits` (proxy/tokens.py LIMIT_KEYS) hold at each request that reaches a model:
 

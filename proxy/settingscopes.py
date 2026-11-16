@@ -668,7 +668,7 @@ def _spec(type_, default, text, *, values=None, lo=None, hi=None, perm="owner",
 
 
 class AccountsScope(KeyValueScope):
-    """SRV-871: the `auth` and `api` scopes (TANDEM_AUTH=accounts only; proxy/app.py adds them),
+    """SRV-871: the `auth` and `api` scopes (proxy/app.py adds them),
     flat keys over the config database's settings `auth.<key>` and `api.<key>`, the keys
     proxy/authz.py Policy, proxy/authlocal.py and proxy/exposure.py read. Owner-only for writes
     (but `api.tokens.viewers_may_create` and SRV-873's `api.limits.default.<role>.<limit>`, which

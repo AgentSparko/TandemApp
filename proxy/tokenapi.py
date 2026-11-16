@@ -1,4 +1,4 @@
-"""The API token routes (SRV-867), with TANDEM_AUTH=accounts only (proxy/tokens.py).
+"""The API token routes (SRV-867, proxy/tokens.py).
 
     GET    /v1/auth/tokens[?all=1]       your tokens; with all=1 every token (permission `users`),
                                          the service identities and the imported keys under review

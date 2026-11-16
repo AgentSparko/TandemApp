@@ -10,8 +10,7 @@ One command from nothing to a backend with L2 data:
    /metrics scrape (L1) and the host collector find it at once.
 2. The engine gets the plugin's two variables: `TANDEM_COLLECT_URL` (this proxy's
    `/v1/collect/<id>`; `--collect-url` names another proxy's base URL) and `TANDEM_COLLECT_TOKEN`
-   (the proxy's collect token, made and stored at the first need; with TANDEM_AUTH=accounts
-   the backend's own collect identity, a fresh one at each launch). When `VLLM_PLUGINS` or
+   (the backend's own collect identity, a fresh one at each launch). When `VLLM_PLUGINS` or
    `SGLANG_PLUGINS` is already set, the plugin's name is added to it; unset, the engine loads
    every installed plugin of the group, ours included.
 3. The flags each engine needs for the numbers the dashboard shows are added when the arguments

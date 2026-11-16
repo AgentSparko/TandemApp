@@ -1,4 +1,4 @@
-"""API exposure (SRV-871), with TANDEM_AUTH=accounts only: one switch per protocol saying whether
+"""API exposure (SRV-871): one switch per protocol saying whether
 other devices may use it with a token.
 
     api.openai.exposure, api.anthropic.exposure     this-machine (the default) | network
@@ -10,7 +10,7 @@ other devices may use it with a token.
 No value lets another device in without a token: the request gate answers 401 before this rule
 runs. The rule runs in the gate for an API token only (AccountsAuth.exposure), after the token's
 scope was checked, so it only ever narrows a token that is valid already. "On this machine" is
-proxy/authlocal.py this_machine (a loopback peer, a loopback Host, no forwarding header); in a
+proxy/authlocal.py trusted_local (a loopback peer, a loopback Host, no forwarding header); in a
 container or on Kubernetes nothing counts as this machine, so a token caller there needs network.
 A call from another device while the switch is this-machine is 403 `api_not_exposed`, in the
 protocol's own error shape (proxy/tokens.py refusal). The rule is per route; one listener stays.
@@ -91,7 +91,7 @@ class Exposure:
         """A caller on this machine: never in a container or on Kubernetes."""
         if authlocal.deploy_kind(self.auth.env, self.auth.local.exists) != "bare":
             return False
-        return authlocal.this_machine(peer, headers)
+        return authlocal.trusted_local(peer, headers)
 
     # ------------------------------------------------------------------ the rule
     def __call__(self, p, method: str, path: str, peer: str, headers):
