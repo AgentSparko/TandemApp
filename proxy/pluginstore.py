@@ -7,7 +7,10 @@ folder a plugin version under the controller's state dir.
                      commit and subdir), sha256 (the tree's, proxy/pluginmanifest.py THE DIGEST),
                      signature (JSON), manifest (JSON), manifest_dir, path (the installed tree),
                      enabled, trust (requested), trust_granted (sandboxed, or host once the
-                     admin granted it: SRV-859), granted (JSON:
+                     admin granted it: SRV-859), trust_grant (JSON: the host grant's level,
+                     basis signature or typed, the key, who and when: SEC-18), engine_grants
+                     (JSON: engine host -> its grant: SEC-18), sig_file (the sha256 of
+                     plugin.sig.json as installed, or null), granted (JSON:
                      capability -> {by, at, confirmed_by, confirmed_at}), settings (JSON: the set
                      values; a key not here holds its schema's default), integrity (ok, mismatch,
                      missing) and when it was checked, installed and updated (when, by whom),
@@ -34,8 +37,9 @@ value holds against the new schema, a secret whose name is still declared, a cap
 requested; the rest is dropped and listed in the answer (`kept`, `dropped`). It keeps enabled as it
 was. The old version's folder is removed after the row is written.
 
-ENABLE checks the tree again (its sha256 against the row's) and the compatibility with this
-TandemApp; DISABLE always works. REMOVE is refused while a hook names the plugin (kind plugin or
+ENABLE checks the tree again (its sha256 against the row's, and plugin.sig.json against the one
+installed: the tree's digest leaves the signature out) and the compatibility with this TandemApp;
+DISABLE always works. REMOVE is refused while a hook names the plugin (kind plugin or
 mcp, target `<id>` or `<id>/<hook>`): 409 referenced with the hooks. `load(id)` is what the plugin
 host (proxy/pluginhost.py, SRV-859) calls before it starts a plugin: enabled, the tree checked,
 the settings with their defaults, the granted capabilities and trust; secrets only through
@@ -45,12 +49,26 @@ removal (`before_remove`).
 CAPABILITIES are deny by default: the manifest requests, the settings interface grants
 (proxy/pluginsettings.py: pairing's rights, and a second confirm for prompts:full, engine:control
 and a network host outside the LAN). Granted is always a subset of requested. The plugin host
-enforces them (SRV-859); signatures and trusted keys are F3's.
+enforces them (SRV-859). A capability an upgrade asks for anew starts ungranted (`new` in the
+answer): it takes its own grant.
 
-TRUST. A manifest asks `sandboxed` (the default), `host` or `engine`. `host` runs only once the
-admin granted it (`trust_granted`, the plugins scope's `trust` key: pairing's rights and the second
-confirm); `engine` is refused until the in-process chain exists. An upgrade keeps a host grant
-while the new manifest still asks host.
+TRUST (SEC-18, proxy/plugintrust.py). A manifest asks `sandboxed` (the default), `host` or
+`engine`; `trust_state` says whether it may run at that level now, `load` refuses it otherwise:
+
+    sandboxed   always, unless the policy requires a trusted signature for sandboxed plugins
+    host        once granted (`grant_trust`, pairing's rights): with a signature by a trusted key
+                (basis signature) or with the plugin's id typed (basis typed). A grant on a
+                signature holds while that signature stays trusted
+    engine      a grant per engine host needs a trusted signature AND the typed confirmation;
+                granted or not, it does not run until the in-process chain exists
+
+AN UPGRADE that asks a higher level than the installed one, or whose host grant rested on a
+signature this version does not carry, is refused (409 trust_confirm_needed) and the installed
+version keeps running, until it comes again with `confirm_trust` = the plugin's id: that also
+grants host (on the new version's trusted signature, else typed). An upgrade keeps a host grant
+while the new manifest still asks host, and an engine grant while the new version is still
+signed by a key trusted for engine. With the policy on, a sandboxed plugin without a trusted
+signature is refused at install, enable and load (409 signature_required).
 
 Every write is audited (field names and capability names, never a value or a secret).
 """
@@ -76,7 +94,8 @@ CREATE TABLE IF NOT EXISTS plugins (
   trust TEXT NOT NULL DEFAULT 'sandboxed', granted TEXT NOT NULL DEFAULT '{}',
   settings TEXT NOT NULL DEFAULT '{}', integrity TEXT NOT NULL DEFAULT 'ok', checked_at INTEGER,
   installed_at INTEGER NOT NULL, installed_by TEXT, updated_at INTEGER NOT NULL, updated_by TEXT,
-  row_version INTEGER NOT NULL DEFAULT 1, trust_granted TEXT NOT NULL DEFAULT 'sandboxed');
+  row_version INTEGER NOT NULL DEFAULT 1, trust_granted TEXT NOT NULL DEFAULT 'sandboxed',
+  trust_grant TEXT, engine_grants TEXT NOT NULL DEFAULT '{}', sig_file TEXT);
 CREATE TABLE IF NOT EXISTS plugin_secrets (
   plugin_id TEXT NOT NULL, name TEXT NOT NULL, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
   master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT, set_at INTEGER NOT NULL, set_by TEXT,
@@ -86,8 +105,13 @@ SECRET_MAX = 8192
 _COLS = ("id", "name", "version", "kind", "title", "source", "sha256", "signature", "manifest",
          "manifest_dir", "path", "enabled", "trust", "granted", "settings", "integrity",
          "checked_at", "installed_at", "installed_by", "updated_at", "updated_by", "row_version",
-         "trust_granted")
+         "trust_granted", "trust_grant", "engine_grants", "sig_file")
+#: the columns added after a table was first made, with their definitions
+_ADDED = (("trust_granted", "TEXT NOT NULL DEFAULT 'sandboxed'"),      # SRV-859
+          ("trust_grant", "TEXT"), ("engine_grants", "TEXT NOT NULL DEFAULT '{}'"),
+          ("sig_file", "TEXT"))                                         # SEC-18
 TRUST_GRANTS = ("sandboxed", "host")
+_TRUST_ROUTE = "/v1/fleet/plugins/{pid}/trust"
 
 
 class PluginError(Exception):
@@ -126,6 +150,8 @@ class PluginStore:
         self._ready = False
         self.listeners: list = []           # fn(plugin id or None), after every change
         self.before_remove = None           # fn(plugin id): the plugin host stops it first
+        from proxy import plugintrust
+        self.keys = plugintrust.TrustedKeys(cfg)          # SEC-18: the trusted publisher keys
 
     def _changed(self, pid: str | None) -> None:
         self.gen += 1
@@ -161,9 +187,9 @@ class PluginStore:
             if not self._ready:
                 conn.executescript(DDL)
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(plugins)").fetchall()}
-                if "trust_granted" not in cols:              # a table made before SRV-859
-                    conn.execute("ALTER TABLE plugins ADD COLUMN trust_granted TEXT NOT NULL "
-                                 "DEFAULT 'sandboxed'")
+                for col, decl in _ADDED:                    # a table made before them
+                    if col not in cols:
+                        conn.execute(f"ALTER TABLE plugins ADD COLUMN {col} {decl}")
                 conn.commit()
                 self._ready = True
         self._sweep()
@@ -201,7 +227,7 @@ class PluginStore:
     def _row(self, r) -> dict:
         d = dict(zip(_COLS, r))
         for k, dflt in (("source", {}), ("signature", None), ("manifest", {}), ("granted", {}),
-                        ("settings", {})):
+                        ("settings", {}), ("trust_grant", None), ("engine_grants", {})):
             try:
                 d[k] = json.loads(d[k]) if d[k] else dflt
             except ValueError:
@@ -287,9 +313,11 @@ class PluginStore:
         m = rep["manifest"] if isinstance(rep["manifest"], dict) else None
         installed = self.get(m["name"]) if m and isinstance(m.get("name"), str) else None
         sch = m.get("settings") if m else None
+        sig = self.judged(rep["signature"], m.get("name") if m else None,
+                          (m or {}).get("trust", "sandboxed"))["signature"]
         return {"ok": rep["ok"], "source": st.record, "manifest": m, "errors": rep["errors"],
                 "warnings": rep["warnings"] + [f"left as they are: {s}" for s in st.skipped],
-                "sha256": rep["sha256"], "signature": rep["signature"], "files": rep["files"],
+                "sha256": rep["sha256"], "signature": sig, "files": rep["files"],
                 "bytes": rep["bytes"], "manifest_dir": st.manifest_dir,
                 "capabilities": {"requested": rep["capabilities"],
                                  "confirm": [c for c in rep["capabilities"]
@@ -300,21 +328,36 @@ class PluginStore:
                 "settings_form": schemaform.describe(sch) if rep["ok"] and sch else None}
 
     def install(self, source, who: str = "gui", *, upgrade: bool = False,
-                allow_downgrade: bool = False) -> tuple[dict, dict]:
+                allow_downgrade: bool = False, confirm_trust=None) -> tuple[dict, dict]:
         """(the plugin, what happened: {action: installed|upgraded|unchanged, from?, kept,
-        dropped, warnings})."""
+        dropped, new, warnings}). `confirm_trust`: the plugin's id typed, for an upgrade that asks
+        more trust (TRUST above)."""
         self.ready()
         st, rep = self._stage(source)
         try:
             if not rep["ok"]:
                 first = rep["errors"][0] if rep["errors"] else {"message": "refused"}
+                bad_sig = [e for e in rep["errors"] if e.get("code") == "signature_invalid"]
+                if bad_sig:                          # a trust decision: journaled (SEC-18)
+                    m0 = rep["manifest"] if isinstance(rep["manifest"], dict) else {}
+                    self._refused_audit(who, m0.get("name"), "install", "signature_invalid",
+                                        bad_sig[0]["message"])
                 raise PluginError(422, "plugin_refused", first["message"], first.get("field"),
                                   extra={"errors": rep["errors"], "warnings": rep["warnings"],
                                          "sha256": rep["sha256"]})
             m = rep["manifest"]
             pid = m["name"]
             old = self.get(pid)
-            note = {"action": "installed", "kept": [], "dropped": [],
+            level = m.get("trust", "sandboxed")
+            rep["judged"] = self.judged(rep["signature"], pid, level)
+            if level == "sandboxed" and m.get("kind", "plugin") == "plugin" and \
+                    self.keys.policy()["require_signature_sandboxed"] and \
+                    not rep["judged"]["trusted"]:
+                why = (f"this TandemApp requires a trusted signature for sandboxed plugins and "
+                       f"{pid} has none: {rep['judged']['why']}")
+                self._refused_audit(who, pid, "install", "signature_required", why)
+                raise PluginError(409, "signature_required", why, "plugin.sig.json")
+            note = {"action": "installed", "kept": [], "dropped": [], "new": [],
                     "warnings": rep["warnings"] + [f"left as they are: {s}" for s in st.skipped]}
             if old is not None:
                 if old["version"] == m["version"]:
@@ -337,6 +380,7 @@ class PluginStore:
                         f"with allow_downgrade true to go back"), "version")
                 note["action"] = "upgraded"
                 note["from"] = old["version"]
+                rep["typed"] = self._upgrade_trust(old, m, rep["judged"], confirm_trust, who)
             return self._commit(pid, st, rep, old, who, note), note
         finally:
             shutil.rmtree(st.dir, ignore_errors=True)
@@ -362,11 +406,8 @@ class PluginStore:
                 note["kept"].append(f"capabilities.{c}")
             else:
                 note["dropped"].append(f"capabilities.{c}")
-        if old.get("trust_granted") == "host":
-            if m.get("trust") == "host":
-                note["kept"].append("trust")
-            else:
-                note["dropped"].append("trust")
+        note["new"] += sorted(f"capabilities.{c}"
+                              for c in req - set(PM.requested(old["manifest"])))
         names = {s["name"] for s in m.get("secrets") or []}
         drop = []
         for n in self._secret_rows(old["id"]):
@@ -379,6 +420,9 @@ class PluginStore:
 
     def _commit(self, pid: str, st, rep: dict, old: dict | None, who: str, note: dict) -> dict:
         m = rep["manifest"]
+        sig_file = PM.signature_file_sha256(st.dir)
+        tgrant, tg, eg = self._carry_trust(old, m, rep.get("judged") or {}, rep.get("typed"),
+                                           who, note)
         dst = self.version_dir(pid, m["version"])
         os.makedirs(os.path.dirname(dst), mode=0o755, exist_ok=True)
         if os.path.exists(dst):
@@ -399,33 +443,39 @@ class PluginStore:
                         json.dumps(m, sort_keys=True), st.manifest_dir, dst,
                         m.get("trust", "sandboxed"), json.dumps(granted, sort_keys=True),
                         json.dumps(settings, sort_keys=True))
-                tgrant = "host" if old is not None and old.get("trust_granted") == "host" \
-                    and m.get("trust") == "host" else "sandboxed"
+                signed = {"key_id": (rep["signature"] or {}).get("key_id"),
+                          "trusted": bool((rep.get("judged") or {}).get("trusted"))}
+                tvals = (tgrant, json.dumps(tg, sort_keys=True) if tg else None,
+                         json.dumps(eg, sort_keys=True), sig_file)
                 if old is None:
                     c.execute("INSERT INTO plugins(id, name, version, kind, title, source, sha256, "
                               "signature, manifest, manifest_dir, path, trust, granted, settings, "
                               "enabled, integrity, checked_at, installed_at, installed_by, "
-                              "updated_at, updated_by, row_version) VALUES (?, ?, ?, ?, ?, ?, ?, "
-                              "?, ?, ?, ?, ?, ?, ?, 0, 'ok', ?, ?, ?, ?, ?, 1)",
-                              (pid, m["name"], *vals, now, now, who, now, who))
+                              "updated_at, updated_by, row_version, trust_granted, trust_grant, "
+                              "engine_grants, sig_file) VALUES (?, ?, ?, ?, ?, ?, ?, "
+                              "?, ?, ?, ?, ?, ?, ?, 0, 'ok', ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                              (pid, m["name"], *vals, now, now, who, now, who, *tvals))
                     self.cfg._audit(who, "install", "plugin", pid, ["version", "sha256"],
                                     detail={"version": m["version"], "source": st.record["type"],
-                                            "sha256": rep["sha256"][:16]})
+                                            "sha256": rep["sha256"][:16], "signed": signed})
                 else:
                     c.execute("UPDATE plugins SET version = ?, kind = ?, title = ?, source = ?, "
                               "sha256 = ?, signature = ?, manifest = ?, manifest_dir = ?, "
                               "path = ?, trust = ?, granted = ?, settings = ?, integrity = 'ok', "
                               "checked_at = ?, updated_at = ?, updated_by = ?, trust_granted = ?, "
+                              "trust_grant = ?, engine_grants = ?, sig_file = ?, "
                               "row_version = row_version + 1 WHERE id = ?",
-                              (*vals, now, now, who, tgrant, pid))
+                              (*vals, now, now, who, *tvals, pid))
                     for n in drop:
                         c.execute("DELETE FROM plugin_secrets WHERE plugin_id = ? AND name = ?",
                                   (pid, n))
                     self.cfg._audit(who, "upgrade", "plugin", pid, ["version", "sha256"],
                                     detail={"from": old["version"], "version": m["version"],
                                             "source": st.record["type"],
-                                            "sha256": rep["sha256"][:16],
-                                            "dropped": note["dropped"][:50]})
+                                            "sha256": rep["sha256"][:16], "signed": signed,
+                                            "trust": tg["basis"] if tg else None,
+                                            "dropped": note["dropped"][:50],
+                                            "new": note["new"][:50]})
                 c.commit()
                 self._changed(pid)
         except BaseException:
@@ -438,30 +488,40 @@ class PluginStore:
 
     # ------------------------------------------------------------------ integrity
     def verify(self, pid: str, record: bool = True) -> dict:
-        """Check the tree against the row's sha256 now: {integrity, sha256, expected}. `record`:
-        write the result to the row (a plan does not)."""
+        """Check the tree against the row's sha256 now, and plugin.sig.json against the one
+        installed: {integrity, sha256, expected, reason}. `record`: write the result to the row
+        (a plan does not)."""
         p = self.need(pid)
+        reason = None
         if not os.path.isdir(p["path"]):
-            got, state = None, "missing"
+            got, state, reason = None, "missing", "its folder is gone"
         else:
             try:
                 got = PM.tree_digest(p["path"])
                 state = "ok" if got == p["sha256"] else "mismatch"
-            except PM.TreeError:
-                got, state = None, "mismatch"
+                if state != "ok":
+                    reason = "a file changed, was added or was removed since the install"
+            except PM.TreeError as exc:
+                got, state, reason = None, "mismatch", exc.message
+            if state == "ok" and PM.signature_file_sha256(p["path"]) != p.get("sig_file"):
+                state = "mismatch"
+                reason = (f"{PM.SIGNATURE} changed, appeared or went away since the install"
+                          if p.get("sig_file") or not (p["signature"] or {}).get("present")
+                          else f"{PM.SIGNATURE} was not recorded at its install")
+        out = {"integrity": state, "sha256": got, "expected": p["sha256"], "reason": reason}
         if not record:
-            return {"integrity": state, "sha256": got, "expected": p["sha256"]}
+            return out
         with self.cfg._lock:
             self._c().execute("UPDATE plugins SET integrity = ?, checked_at = ? WHERE id = ?",
                               (state, _now_ms(), pid))
             if state != p["integrity"]:
                 self.cfg._audit(None, "verify", "plugin", pid, ["integrity"],
-                                detail={"integrity": state})
+                                detail={"integrity": state, "reason": reason})
             self._c().commit()
         if state != "ok":
-            self.log(f"plugins: {pid} {p['version']}: its tree is {state} (sha256 "
+            self.log(f"plugins: {pid} {p['version']}: its tree is {state}: {reason} (sha256 "
                      f"{p['sha256'][:12]} recorded)")
-        return {"integrity": state, "sha256": got, "expected": p["sha256"]}
+        return out
 
     def load(self, pid: str) -> dict:
         """What the plugin host (F2) starts a plugin from; refuses one that is disabled, whose
@@ -471,14 +531,21 @@ class PluginStore:
             raise PluginError(409, "disabled", f"{pid} is disabled")
         v = self.verify(pid)
         if v["integrity"] != "ok":
-            raise PluginError(409, "integrity", f"{pid}: its tree is {v['integrity']} since the "
-                                                f"install; install it again")
+            why = f"{pid}: its tree is {v['integrity']} since the install ({v['reason']}); " \
+                  f"install it again"
+            self._refused_audit("plugin-host", pid, "load", "integrity", why)
+            raise PluginError(409, "integrity", why)
         self._compatible(p)
+        ts = self.trust_state(p)
+        if not ts["runs"]:
+            self._refused_audit("plugin-host", pid, "load", ts["code"], ts["why"])
+            raise PluginError(409, ts["code"], ts["why"], "trust")
         return {"id": pid, "version": p["version"], "kind": p["kind"], "path": p["path"],
                 "manifest_dir": p["manifest_dir"], "manifest": p["manifest"],
                 "settings": self.effective_settings(p), "granted": sorted(p["granted"]),
                 "trust": p["trust"], "trust_granted": p["trust_granted"] or "sandboxed",
-                "row_version": p["row_version"], "secrets": sorted(self._secret_rows(pid))}
+                "trust_state": ts, "row_version": p["row_version"],
+                "secrets": sorted(self._secret_rows(pid))}
 
     def _compatible(self, p: dict) -> None:
         ta, ha = self._versions()
@@ -488,16 +555,261 @@ class PluginStore:
                               extra={"needed": errs[0].get("needed"),
                                      "have": errs[0].get("have")})
 
+    # ------------------------------------------------------------------ trust (SEC-18)
+    def judged(self, sig: dict | None, pid: str | None, level: str) -> dict:
+        """A checked signature judged against the trusted keys for `pid` at `level`:
+        {trusted, key, why, signature: the signature with `trusted` and `key_name` filled}."""
+        from proxy import plugintrust
+        j = plugintrust.judge(sig, pid or "", level, self.keys)
+        view = {**PM.no_signature(), **(sig or {})}
+        view["trusted"] = None if not view.get("present") else j["trusted"]
+        view["key_name"] = j["key"]["name"] if j["key"] else None
+        return dict(j, signature=view)
+
+    def signature_now(self, p: dict) -> dict:
+        """The installed plugin.sig.json checked again against the recorded tree."""
+        if not os.path.isdir(p["path"]):
+            return dict(p["signature"] or PM.no_signature(), verified=False,
+                        error="its folder is gone")
+        sig = PM.check_signature(p["path"], p["sha256"], p["manifest_dir"] or "")
+        m = p["manifest"]
+        if sig["verified"] and (sig["plugin"], sig["version"]) != (m.get("name"),
+                                                                    m.get("version")):
+            sig.update(verified=False, error=f"it signs {sig['plugin']} {sig['version']}")
+        return sig
+
+    def trust_state(self, p: dict, sig: dict | None = None) -> dict:
+        """Whether the plugin may run at its level now: {level, granted, grant, engines,
+        trusted_for, runs, code, why, signature}. `code`: why not, untrusted or
+        signature_required."""
+        from proxy import plugintrust
+        level = p["trust"] or "sandboxed"
+        sig = self.signature_now(p) if sig is None else sig
+        j = self.judged(sig, p["id"], level)
+        trusted_for = [lv for lv in plugintrust.LEVELS
+                       if self.judged(sig, p["id"], lv)["trusted"]]
+        granted = p.get("trust_granted") or "sandboxed"
+        grant = p.get("trust_grant")
+        if granted == "host" and not grant:          # granted before SEC-18: the second confirm
+            grant = {"level": "host", "basis": "typed", "key_id": None, "by": p["updated_by"],
+                     "at": p["updated_at"]}
+        engines = p.get("engine_grants") or {}
+        out = {"level": level, "granted": granted, "grant": grant, "engines": engines,
+               "trusted_for": trusted_for, "runs": False, "code": None, "why": None,
+               "signature": j["signature"], "signed": j["why"]}
+        if level == "sandboxed":
+            if self.keys.policy()["require_signature_sandboxed"] and not j["trusted"] and \
+                    p.get("kind", "plugin") == "plugin":
+                out.update(code="signature_required", why=(
+                    f"this TandemApp requires a trusted signature for sandboxed plugins: "
+                    f"{j['why']}"))
+            else:
+                out["runs"] = True
+        elif level == "host":
+            if granted != "host":
+                out.update(code="untrusted", why=(
+                    "it asks to run as a process of the app's user (trust host), which the admin "
+                    "has not granted: grant it on its trust page (a trusted signature, or its id "
+                    "typed)"))
+            elif grant.get("basis") == "signature" and not j["trusted"]:
+                out.update(code="untrusted", why=(
+                    f"its trust host grant rested on a trusted signature, and now {j['why']}: "
+                    f"grant it again"))
+            else:
+                out["runs"] = True
+        else:
+            out.update(code="untrusted", why=(
+                "trust engine (a wheel inside the engine) is not available yet: it comes with the "
+                "in-process chain" + (f"; granted for {', '.join(sorted(engines))}" if engines
+                                      else "; no engine host is granted")))
+        return out
+
+    def trust_view(self, pid: str) -> dict:
+        """GET /v1/fleet/plugins/{id}/trust: the trust state and what a grant at the requested
+        level takes (`grant_needs`: none, rights, typed, signature)."""
+        p = self.need(pid)
+        ts = self.trust_state(p)
+        level = ts["level"]
+        needs = ("none" if level == "sandboxed" else
+                 ("rights" if "host" in ts["trusted_for"] else "typed") if level == "host" else
+                 ("typed" if "engine" in ts["trusted_for"] else "signature"))
+        return {"id": pid, "version": p["version"], "requested": level,
+                "granted": ts["granted"], "grant": ts["grant"], "engines": ts["engines"],
+                "signature": ts["signature"], "signed": ts["signed"],
+                "trusted_for": ts["trusted_for"], "grant_needs": needs, "runs": ts["runs"],
+                "why": ts["why"], "policy": self.keys.policy()}
+
+    def grant_trust(self, pid: str, level, *, engine=None, confirm=None,
+                    who: str = "gui") -> dict:
+        """Grant or revoke a trust level (pairing's rights, checked by the caller). host: a
+        trusted signature, or `confirm` = the plugin's id typed. engine: a trusted signature AND
+        the typed confirmation, for one engine host. sandboxed: revoke host and every engine
+        grant, or one engine's with `engine`."""
+        from proxy import plugintrust
+        try:
+            return self._grant_trust(pid, level, engine, confirm, who, plugintrust)
+        except PluginError as exc:
+            if exc.code not in ("not_found", "conflict"):
+                self._refused_audit(who, pid if isinstance(pid, str) else None, "trust",
+                                    exc.code, exc.message)
+            raise
+
+    def _grant_trust(self, pid, level, engine, confirm, who, plugintrust) -> dict:
+        p = self.need(pid)
+        if level not in plugintrust.LEVELS:
+            raise PluginError(400, "bad_request", "level: sandboxed, host or engine", "level")
+        if engine is not None and level == "host":
+            raise PluginError(400, "bad_request", "engine: only with level engine or sandboxed",
+                              "engine")
+        now = _now_ms()
+        tgrant, tg = p["trust_granted"] or "sandboxed", p.get("trust_grant")
+        eg = dict(p.get("engine_grants") or {})
+        detail = {"level": level}
+        if level == "sandboxed":
+            if engine is None:
+                detail["revoked"] = (["host"] if tgrant == "host" else []) + sorted(eg)
+                tgrant, tg, eg = "sandboxed", None, {}
+            else:
+                plugintrust.check_engine(engine)
+                detail["revoked"] = [engine] if engine in eg else []
+                eg.pop(engine, None)
+        else:
+            if p["trust"] != level:
+                raise PluginError(422, "not_requested", f"{pid} asks trust {p['trust']}, not "
+                                                        f"{level}", "level")
+            v = self.verify(pid)
+            if v["integrity"] != "ok":
+                raise PluginError(409, "integrity", f"{pid}: its tree is {v['integrity']} since "
+                                                    f"the install ({v['reason']}); install it "
+                                                    f"again", "level")
+            j = self.judged(self.signature_now(p), pid, level)
+            if level == "host":
+                if j["trusted"]:
+                    if confirm not in (None, ""):
+                        plugintrust.check_typed(pid, confirm, level)
+                    basis = "signature"
+                else:
+                    plugintrust.check_typed(pid, confirm, level)
+                    basis = "typed"
+                tgrant = "host"
+                tg = {"level": "host", "basis": basis,
+                      "key_id": j["key"]["id"] if basis == "signature" else None,
+                      "by": who, "at": now}
+                detail.update(basis=basis, key_id=tg["key_id"])
+            else:
+                plugintrust.check_engine(engine)
+                if not j["trusted"]:
+                    raise PluginError(409, "signature_required", (
+                        f"trust engine takes a signature by a key trusted for engine, and "
+                        f"{j['why']}"), "level")
+                plugintrust.check_typed(pid, confirm, level)
+                eg[engine] = {"basis": "signature+typed", "key_id": j["key"]["id"], "by": who,
+                              "at": now}
+                detail.update(engine=engine, basis="signature+typed", key_id=j["key"]["id"])
+        with self.cfg._lock:
+            c = self._c()
+            if self.need(pid)["row_version"] != p["row_version"]:
+                raise PluginError(409, "conflict", f"{pid} changed meanwhile; read it again")
+            c.execute("UPDATE plugins SET trust_granted = ?, trust_grant = ?, engine_grants = ?, "
+                      "updated_at = ?, updated_by = ?, row_version = row_version + 1 "
+                      "WHERE id = ?",
+                      (tgrant, json.dumps(tg, sort_keys=True) if tg else None,
+                       json.dumps(eg, sort_keys=True), now, who, pid))
+            self.cfg._audit(who, "trust", "plugin", pid, ["trust"], detail=detail)
+            c.commit()
+        self._changed(pid)
+        return self.trust_view(pid)
+
+    def _upgrade_trust(self, old: dict, m: dict, judged: dict, confirm, who: str) -> bool:
+        """Refuse an upgrade that asks more trust without the typed confirmation (the installed
+        version keeps running); True when the confirmation was given for it."""
+        from proxy import plugintrust
+        pid, lv = old["id"], plugintrust.LEVELS
+        new, was = m.get("trust", "sandboxed"), old["trust"] or "sandboxed"
+        grant = old.get("trust_grant") or {}
+        why = None
+        if lv.index(new) > lv.index(was):
+            why = f"{pid} {m['version']} asks trust {new}; the installed {old['version']} runs " \
+                  f"at {was}"
+        elif new == "host" and old.get("trust_granted") == "host" and \
+                grant.get("basis") == "signature" and not judged.get("trusted"):
+            why = (f"the trust host grant of {pid} rested on a trusted signature, and "
+                   f"{m['version']}: {judged.get('why')}")
+        if why is None:
+            return False
+        if confirm in (None, ""):
+            why += (f". The installed version keeps running; install again with confirm_trust = "
+                    f"{pid} (the plugin's id typed) to go ahead")
+            self._refused_audit(who, pid, "upgrade", "trust_confirm_needed", why)
+            raise PluginError(409, "trust_confirm_needed", why, "confirm_trust",
+                              extra={"installed": old["version"], "version": m["version"],
+                                     "level": new})
+        if not isinstance(confirm, str) or confirm.strip() != pid:
+            raise PluginError(422, "typed_confirm_mismatch", f"confirm_trust is not the "
+                                                             f"plugin's id: type {pid} exactly",
+                              "confirm_trust")
+        return True
+
+    def _carry_trust(self, old: dict | None, m: dict, judged: dict, typed: bool, who: str,
+                     note: dict) -> tuple[str, dict | None, dict]:
+        """(trust_granted, trust_grant, engine_grants) of an install or upgrade."""
+        if old is None:
+            return "sandboxed", None, {}
+        level, now = m.get("trust", "sandboxed"), _now_ms()
+        tgrant, tg = "sandboxed", None
+        if level == "host" and typed:
+            basis = "signature" if judged.get("trusted") else "typed"
+            tg = {"level": "host", "basis": basis,
+                  "key_id": judged["key"]["id"] if basis == "signature" else None,
+                  "by": who, "at": now}
+            tgrant = "host"
+            note["new"].append("trust")
+        elif level == "host" and old.get("trust_granted") == "host":
+            tg = dict(old.get("trust_grant") or {"level": "host", "basis": "typed",
+                                                 "key_id": None, "by": old["updated_by"],
+                                                 "at": old["updated_at"]})
+            if tg["basis"] == "signature":
+                tg["key_id"] = judged["key"]["id"]
+            tgrant = "host"
+            note["kept"].append("trust")
+        elif old.get("trust_granted") == "host":
+            note["dropped"].append("trust")
+        eg = {}
+        for e in sorted(old.get("engine_grants") or {}):
+            if level == "engine" and judged.get("trusted"):
+                eg[e] = dict(old["engine_grants"][e], key_id=judged["key"]["id"])
+                note["kept"].append(f"trust.engine.{e}")
+            else:
+                note["dropped"].append(f"trust.engine.{e}")
+        return tgrant, tg, eg
+
+    def _refused_audit(self, who, pid, at: str, code, why: str) -> None:
+        """A trust or integrity refusal, journaled in the audit table (never a secret)."""
+        try:
+            with self.cfg._lock:
+                self.cfg._audit(who, "refused", "plugin", pid, ["trust"],
+                                detail={"at": at, "code": code, "why": (why or "")[:300]})
+                self.cfg._conn.commit()
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f"plugins: the audit of a refusal failed: {type(exc).__name__}")
+
     # ------------------------------------------------------------------ switches and removal
     def enable_check(self, pid: str, record: bool = True) -> None:
         """Raise PluginError when the plugin may not be enabled now."""
         p = self.need(pid)
         v = self.verify(pid, record=record)
         if v["integrity"] != "ok":
-            raise PluginError(409, "integrity", f"{pid}: its tree is {v['integrity']} since the "
-                                                f"install (sha256 {p['sha256'][:12]} recorded); "
-                                                f"install it again", "enabled")
+            why = (f"{pid}: its tree is {v['integrity']} since the install ({v['reason']}; "
+                   f"sha256 {p['sha256'][:12]} recorded); install it again")
+            if record:
+                self._refused_audit(None, pid, "enable", "integrity", why)
+            raise PluginError(409, "integrity", why, "enabled")
         self._compatible(p)
+        ts = self.trust_state(p)
+        if ts["code"] == "signature_required":
+            if record:
+                self._refused_audit(None, pid, "enable", ts["code"], ts["why"])
+            raise PluginError(409, "signature_required", ts["why"], "enabled")
 
     def set_enabled(self, pid: str, on: bool, who: str = "gui") -> dict:
         if on:
@@ -596,15 +908,30 @@ class PluginStore:
         for cap in revoke:
             granted.pop(cap, None)
         tgrant = p["trust_granted"] or "sandboxed"
+        tg = p.get("trust_grant")
         if trust is not None:
             if trust not in TRUST_GRANTS:
                 raise PluginError(422, "bad_value", "trust: sandboxed or host", "trust")
             if trust == "host" and p["trust"] != "host":
                 raise PluginError(422, "not_requested", f"{pid} does not ask to run as the "
                                                         f"app's user (trust host)", "trust")
-            if trust == "host" and tgrant != "host" and "trust" not in confirmed:
-                raise PluginError(409, "confirm_needed", "trust host takes the second confirm",
-                                  "trust")
+            if trust == "host" and tgrant != "host":
+                # SEC-18: through the settings, only on a trusted signature; unsigned, the grant
+                # takes the typed confirmation on the plugin's trust route
+                j = self.judged(self.signature_now(p), pid, "host")
+                if not j["trusted"]:
+                    why = (f"{pid}: {j['why']}, so its host grant takes the typed "
+                           f"confirmation: POST {_TRUST_ROUTE.format(pid=pid)} with level host "
+                           f"and confirm = {pid}")
+                    self._refused_audit(who, pid, "trust", "typed_confirm_required", why)
+                    raise PluginError(409, "typed_confirm_required", why, "trust")
+                if "trust" not in confirmed:
+                    raise PluginError(409, "confirm_needed", "trust host takes the second confirm",
+                                      "trust")
+                tg = {"level": "host", "basis": "signature", "key_id": j["key"]["id"],
+                      "by": who, "at": now}
+            if trust == "sandboxed":
+                tg = None
             tgrant = trust
         names = set(self.secret_names(p))
         vault = None
@@ -631,10 +958,11 @@ class PluginStore:
                 fields.append(f"secrets.{n}")
             on = p["enabled"] if enabled is None else bool(enabled)
             c.execute("UPDATE plugins SET enabled = ?, settings = ?, granted = ?, updated_at = ?, "
-                      "updated_by = ?, trust_granted = ?, row_version = row_version + 1 "
-                      "WHERE id = ?",
+                      "updated_by = ?, trust_granted = ?, trust_grant = ?, "
+                      "row_version = row_version + 1 WHERE id = ?",
                       (int(on), json.dumps(settings, sort_keys=True),
-                       json.dumps(granted, sort_keys=True), now, who, tgrant, pid))
+                       json.dumps(granted, sort_keys=True), now, who, tgrant,
+                       json.dumps(tg, sort_keys=True) if tg else None, pid))
             fields += [f"settings.{k}" for k in sorted(set(settings_set or {}) |
                                                         set(settings_unset))]
             if enabled is not None and on != p["enabled"]:
@@ -650,7 +978,9 @@ class PluginStore:
                             detail={"granted": added, "revoked": gone,
                                     "confirmed": sorted(x for x in added if x in confirmed or
                                                         (x == "trust:host" and
-                                                         "trust" in confirmed))}
+                                                         "trust" in confirmed)),
+                                    **({"basis": tg["basis"], "key_id": tg.get("key_id")}
+                                       if tg and "trust:host" in added else {})}
                             if added or gone else None)
             c.commit()
         self._changed(pid)

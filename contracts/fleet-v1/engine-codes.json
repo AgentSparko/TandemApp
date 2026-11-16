@@ -267,6 +267,16 @@
       "message": "The plugin {plugin} waits for a sandbox: {detail}",
       "fix": "Give TandemApp the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env, or the Kubernetes sandbox), or set TANDEM_PLUGIN_SANDBOX."
     },
+    "plugin_tampered": {
+      "status": 409,
+      "message": "The plugin {plugin} changed since its install: {detail}",
+      "fix": "Install it again from its source; do not enable a plugin whose files changed under it."
+    },
+    "plugin_untrusted": {
+      "status": 409,
+      "message": "The plugin {plugin} is not trusted to run as it asks: {detail}",
+      "fix": "Its trust page says what a grant takes: a trusted publisher key or its id typed."
+    },
     "not_offered": {
       "status": 409,
       "message": "{node} does not need that fix now.",
@@ -400,6 +410,14 @@
       "action": null
     },
     "plugin_no_sandbox": {
+      "severity": "warning",
+      "action": null
+    },
+    "plugin_tampered": {
+      "severity": "error",
+      "action": null
+    },
+    "plugin_untrusted": {
       "severity": "warning",
       "action": null
     }

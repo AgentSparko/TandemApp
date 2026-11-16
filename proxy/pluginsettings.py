@@ -21,7 +21,11 @@ THE KEYS of a plugin `<id>` (target `<id>`):
                                        default: deny by default)
     trust                    sandboxed | host   only for a manifest that asks `trust: host`: host
                                        lets the plugin host run it as a process of the app's user
-                                       (SRV-859); sandboxed, the default, keeps it from starting
+                                       (SRV-859); sandboxed, the default, keeps it from starting.
+                                       SEC-18: set host here only for a plugin signed by a key
+                                       trusted for host (the grant's basis is that signature);
+                                       an unsigned plugin's grant takes the typed confirmation on
+                                       /v1/fleet/plugins/<id>/trust (409 store_refused here)
 
 A GRANT (a capability set true that is not granted yet) and enabling a plugin are planned only for
 a caller with pairing's rights (403 trust_required; the hooks' full payload's rule, SEC-16).
@@ -114,8 +118,10 @@ class PluginsScope(KeyValueScope):
             out["trust"] = key_spec("trust", "enum", values=["sandboxed", "host"],
                                     default="sandboxed",
                                     text="host: the plugin runs as a process of the app's user, "
-                                         "outside any sandbox (granting it takes a second "
-                                         "confirm); sandboxed: it does not start")
+                                         "outside any sandbox (granting it here takes a "
+                                         "signature by a trusted key and a second confirm; "
+                                         "unsigned, its trust page takes its id typed); "
+                                         "sandboxed: it does not start")
         return out
 
     def values(self, target: str) -> dict:

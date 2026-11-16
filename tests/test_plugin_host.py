@@ -21,8 +21,8 @@ relay end to end: tests/test_plugin_relay.py).
                                                                 test_crash_loop_disables
   6  A hand stop holds; start and restart; a changed setting restarts it; uninstall while
      running ends the process first                             test_supervision
-  7  Trust: host only with its grant (second confirm), engine refused 'not available yet', no
-     sandbox runtime: unavailable with a finding, not a failure
+  7  Trust: host only with its grant (unsigned: the typed confirmation, SEC-18), engine refused
+     'not available yet', no sandbox runtime: unavailable with a finding, not a failure
                                                                 test_trust_levels
   8  A plugin that hangs on hooks/call: the runner's timeout and breaker  test_hang_opens_breaker
   9  Panels and the bridge: a panel only of a running plugin, no path out of its folder; the
@@ -369,17 +369,23 @@ def test_trust_levels():
         r.host.sync()
         assert wait(lambda: r.host.status(hid)["state"] == "refused", 10)
         assert "trust host" in r.host.status(hid)["last_error"]
-        assert r.host.problems()[0]["code"] == "plugin_failed"
+        assert r.host.problems()[0]["code"] == "plugin_untrusted"
+        # unsigned: the settings' trust key refuses, the typed confirmation grants (SEC-18)
         try:
-            r.store.write(hid, trust="host", who="admin")
-            raise AssertionError("trust host without the second confirm")
+            r.store.write(hid, trust="host", confirmed={"trust"}, who="admin")
+            raise AssertionError("trust host for an unsigned plugin through the settings")
         except PluginError as exc:
-            assert exc.code == "confirm_needed"
-        r.store.write(hid, trust="host", confirmed={"trust"}, who="admin")
+            assert exc.code == "typed_confirm_required"
+        try:
+            r.store.grant_trust(hid, "host", who="admin")
+            raise AssertionError("trust host without the typed confirmation")
+        except PluginError as exc:
+            assert exc.code == "typed_confirm_required"
+        r.store.grant_trust(hid, "host", confirm=hid, who="admin")
         st = r.running(hid)
         assert st["trust"] == {"requested": "host", "granted": "host"} and st["runtime"] == "host"
-        a = [x for x in r.audit() if x["object_id"] == hid and x["action"] == "settings"][-1]
-        assert "trust" in a["fields"] and "trust:host" in a["detail"], a
+        a = [x for x in r.audit() if x["object_id"] == hid and x["action"] == "trust"][-1]
+        assert "trust" in a["fields"] and '"basis": "typed"' in a["detail"], a
         try:
             r.store.write(r.add(plain, enable=False), trust="host", confirmed={"trust"},
                           who="admin")
@@ -407,7 +413,7 @@ def test_trust_levels():
         r.close()
         for d in (host_src, eng, plain):
             shutil.rmtree(d, ignore_errors=True)
-    return "host only once granted (confirm), engine refused, no sandbox: unavailable"
+    return "host only once granted (typed), engine refused, no sandbox: unavailable"
 
 
 # ---------------------------------------------------------------------------- 8

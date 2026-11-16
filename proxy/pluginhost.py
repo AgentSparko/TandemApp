@@ -38,7 +38,8 @@ and the plugin may ask the host (requests from its side):
 
     tandem/settings   its own settings: needs settings:read
     tandem/secret     {name}: a secret granted by secrets:<name>; another plugin's never
-    tandem/engine     engine control: refused until it exists (engine:control, F3)
+    tandem/engine     engine control: refused until it exists (engine:control, with the
+                      in-process chain)
 
 A request whose capability was not granted is refused (JSON-RPC error -32001) and journaled: the
 plugin's `refusals` and the config database's audit (`refused`, the capability's name, never a
@@ -121,7 +122,17 @@ PANEL_CSP = ("sandbox allow-scripts allow-forms; default-src 'none'; script-src 
 
 class Refused(Exception):
     """The plugin may not start as it is (disabled, a changed tree, incompatible, a trust not
-    granted, engine trust): no restart until the registry changes."""
+    granted, engine trust): no restart until the registry changes. `code`: the registry's
+    refusal (integrity, untrusted, signature_required, ...), which names the health finding."""
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
+
+
+#: a refusal's code -> the health page's finding (SEC-18); any other: plugin_failed
+FINDING_OF = {"integrity": "plugin_tampered", "untrusted": "plugin_untrusted",
+              "signature_required": "plugin_untrusted"}
 
 
 class CapabilityRefused(Exception):
@@ -292,6 +303,7 @@ class Plugin:
         self.tools: list[dict] = []
         self.granted: set = set()
         self.notes: list[str] = []      # contributions refused at registration
+        self.refused_code: str | None = None   # the registry's refusal, when state is refused
         self.backends: list[str] = []
         self.stop_ev = threading.Event()
         self.thread: threading.Thread | None = None
@@ -335,6 +347,7 @@ class PluginHost:
         self._sandbox = None
         self._sandbox_cfg = None
         self._kick = threading.Event()
+        self._trust_gen = None              # the trusted keys' and policy's generation seen
         self._stopping = threading.Event()
         self._watcher: threading.Thread | None = None
         store.listeners.append(lambda pid: self._kick.set())
@@ -439,9 +452,42 @@ class PluginHost:
                 elif p.thread is None or not p.thread.is_alive():
                     if p.state in ("stopped",):
                         self._start(pid, keep=p)
+            self._trust_changed(rows)
         lib = self.library()
         if lib is not None:
             lib.extra_dirs = self.skill_dirs
+
+    def _trust_changed(self, rows: dict) -> None:
+        """A trusted key or the signature policy changed (SEC-18): a running plugin whose trust
+        no longer lets it run is stopped (its next start is refused, with a finding), and one
+        refused for its trust is looked at again."""
+        keys = getattr(self.store, "keys", None)
+        gen = getattr(keys, "gen", 0)
+        if gen == self._trust_gen:
+            return
+        first, self._trust_gen = self._trust_gen is None, gen
+        if first:
+            return
+        for pid, row in rows.items():
+            p = self.plugins.get(pid)
+            if p is None or p.held or not row["enabled"] or pid in self.gave_up:
+                continue
+            if p.state == "refused" and p.refused_code in ("untrusted", "signature_required"):
+                if p.thread is None or not p.thread.is_alive():
+                    self._start(pid, keep=p)
+                continue
+            if p.state not in ("running", "starting", "backoff"):
+                continue
+            try:
+                runs = self.store.trust_state(row)["runs"]
+            except Exception:                                      # noqa: BLE001
+                runs = True
+            if not runs:
+                self.log(f"[plugins] {pid}: its trust changed; stopping it")
+                p.log.line("[host] its trust changed (a trusted key or the policy): looked at "
+                           "again")
+                self._stop(pid)
+                self._start(pid, keep=p)
 
     # ------------------------------------------------------------------ admin
     def start_plugin(self, pid: str) -> dict:
@@ -525,6 +571,7 @@ class PluginHost:
                 spec, runtime = self._spec(p)
             except Refused as exc:
                 p.state, p.last_error = "refused", str(exc)
+                p.refused_code = exc.code
                 p.log.line(f"[host] not started: {exc}")
                 self.log(f"[plugins] {p.id} not started: {exc}")
                 return
@@ -592,22 +639,23 @@ class PluginHost:
     # ------------------------------------------------------------------ the spec
     def _spec(self, p: Plugin) -> tuple[dict, object]:
         try:
-            info = self.store.load(p.id)
+            info = self.store.load(p.id)       # the tree, the signature and the trust (SEC-18)
         except PluginError as exc:
-            raise Refused(exc.message) from None
+            raise Refused(exc.message, exc.code) from None
         m = info["manifest"]
         p.info, p.version, p.row_version = info, info["version"], info["row_version"]
         p.granted = set(info["granted"])
         trust = m.get("trust", "sandboxed")
+        ts = info.get("trust_state") or {}
         if trust == "engine":
-            raise Refused("trust engine (a wheel inside the engine) is not available yet: it "
-                          "comes with the in-process chain and signing")
+            raise Refused(ts.get("why") or "trust engine (a wheel inside the engine) is not "
+                          "available yet: it comes with the in-process chain", "untrusted")
         if m.get("contributes", {}).get("engine_hooks"):
             raise Refused("engine_hooks run inside the engine, which is not available yet")
         if trust == "host":
-            if info.get("trust_granted") != "host":
-                raise Refused("it asks to run as a process of the app's user (trust host), "
-                              "which the admin has not granted (its settings: trust host)")
+            if info.get("trust_granted") != "host" or not ts.get("runs"):
+                raise Refused(ts.get("why") or "it asks to run as a process of the app's user "
+                              "(trust host), which the admin has not granted", "untrusted")
             runtime = self._runtimes["host"]
         else:
             runtime, why = self.sandbox()
@@ -754,7 +802,7 @@ class PluginHost:
                            "registered")
             self._refuse(p, "prompts:meta", "its decision providers")
         if "engine:control" in p.granted:
-            p.notes.append("engine:control is granted but not available yet (F3): every use "
+            p.notes.append("engine:control is granted but not available yet: every use "
                            "is refused")
         self._backends_on(p)
         self._bump()
@@ -1162,7 +1210,8 @@ class PluginHost:
             out.append({"code": "plugin_failed", "plugin": pid, "detail": g.get("error")})
         for p in sorted(self.plugins.values(), key=lambda x: x.id):
             if p.state == "refused":
-                out.append({"code": "plugin_failed", "plugin": p.id, "detail": p.last_error})
+                out.append({"code": FINDING_OF.get(p.refused_code, "plugin_failed"),
+                            "plugin": p.id, "detail": p.last_error})
             elif p.state == "unavailable":
                 out.append({"code": "plugin_no_sandbox", "plugin": p.id,
                             "detail": p.last_error})

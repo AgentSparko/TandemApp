@@ -37,7 +37,9 @@
         "disk_low",
         "backend_down",
         "plugin_failed",
-        "plugin_no_sandbox"
+        "plugin_no_sandbox",
+        "plugin_tampered",
+        "plugin_untrusted"
       ]
     },
     "severity": {

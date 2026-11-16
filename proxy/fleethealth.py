@@ -158,6 +158,8 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     # the plugin host (SRV-859)
     "plugin_failed": ("warning", None),
     "plugin_no_sandbox": ("warning", None),
+    "plugin_tampered": ("error", None),                             # SEC-18
+    "plugin_untrusted": ("warning", None),
 }
 
 ERR = enginecodes.error
