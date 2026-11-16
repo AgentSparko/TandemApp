@@ -30,9 +30,12 @@ function check(name: string, data: unknown) {
 }
 
 describe('contract files', () => {
-  it('there are twelve schemas and twelve examples', () => {
+  it('there are thirteen schemas and twelve examples', () => {
     const files = readdirSync(DIR);
-    expect(files.filter((f) => f.endsWith('.schema.json'))).toHaveLength(12);
+    // the thirteenth, usage-tokens: the fields the accounts add to a usage answer (SRV-873); usage
+    // itself stays the engine's byte copy
+    expect(files.filter((f) => f.endsWith('.schema.json'))).toHaveLength(13);
+    expect(files).toContain('usage-tokens.schema.json');
     expect(files.filter((f) => f.endsWith('.example.json'))).toHaveLength(12);
     expect(files).toContain('README.md');
   });
