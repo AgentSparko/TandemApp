@@ -1,7 +1,8 @@
-// <qse-app-settings>: Settings → App (OPS-234, concept §8.13, the v3 prototype's App page): where
-// TandemApp's controller runs, its API URL, and moving it; how it runs and its release; the admin
-// password; the machine's permissions; the fleet's configuration as a file. A chunk of its own,
-// loaded when the page opens.
+// <qse-app-settings>: Settings → App, the controller's own part (OPS-234, concept §8.13, the v3
+// prototype's App page): where TandemApp's controller runs, its API URL, and moving it; how it runs
+// and its release; the admin password; the machine's permissions; the fleet's configuration as a
+// file. It stands on the settings area's App page (VIS-280, views/settings/area.ts), which has the
+// page's head and What runs here above it.
 //
 // Controller host: a card for the machine it runs on (This Mac, with the sleep warning while a Mac
 // runs it) and one per Spark it may move to (a rented or tunnelled one says why not); Move… reads the
@@ -18,8 +19,8 @@
 // fallback and its button (Check now asks macOS once; notifications are this browser's). Fleet
 // configuration: Export downloads the file (secrets left out, the page lists which); Import reads a
 // file, shows the controller's plan item by item (merge or replace) and applies it with the plan's
-// confirm. What runs here (OPS-288: Chat, the conductor, the engines' own mode, what is connected,
-// each switched with its plan) is its own element, app-parts.ts.
+// confirm. What runs here (OPS-288: Chat, the conductor, the engines' own mode, what is connected)
+// is its own element, app-parts.ts, placed above this one by the settings area.
 
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
@@ -33,7 +34,6 @@ import { LightElement } from '../../ui/base';
 import { nodeChip } from '../../ui/node-chip';
 import { signInCard } from '../monitor/bits';
 import { checkSession } from '../monitor/data';
-import './app-parts';
 import '../../styles/sparks.css';
 
 const FOLLOW_S = 5;
@@ -593,16 +593,13 @@ export class QseAppSettings extends LightElement {
 
   render() {
     const v = this.view;
-    const head = html`<header class="page-head" data-page="app"><div class="eyebrow">Settings</div><h1>App</h1><p class="page-sub">Where TandemApp’s controller runs, what it runs, its API, who may change the fleet, and its configuration.</p></header>`;
-    if (!v) return html`${head}${this.loadErr ? html`<p class="page-soon">${this.loadErr}</p>` : html`<div class="skeleton" style="height:240px"></div>`}`;
+    if (!v) return this.loadErr ? html`<p class="page-soon">${this.loadErr}</p>` : html`<div class="skeleton" style="height:240px"></div>`;
     const p = this.plan;
     const a = this.app;
     const ip = this.iplan;
-    return html`${head}
-      ${v.moved_to ? this.moved(v.moved_to) : nothing}
+    return html`${v.moved_to ? this.moved(v.moved_to) : nothing}
       ${this.hostPanel(v)}
       ${this.takePanel(v)}
-      <qse-app-parts></qse-app-parts>
       ${a ? html`${this.servicePanel(a)}${this.passwordPanel(a)}${this.permPanel(a)}${this.configPanel(a)}` : this.msg.app ? html`<p class="small err-ink">${this.msg.app}</p>` : nothing}
       <dialog class="act-dialog" aria-labelledby="import-title" data-dialog="import" @close=${() => ((this.iplan = null), (this.file = null), (this.msg = { ...this.msg, imp: '' }))}>
         <form method="dialog" class="act-body" @submit=${(e: Event) => (e.preventDefault(), void this.applyImport())}>

@@ -1,26 +1,32 @@
 // <qse-app-parts>: Settings → App, "What runs here" (OPS-288, VIS-280, SRV-845). A new TandemApp is
 // bare: the gateway in front of the engines it pairs, with Chat and the conductor off and nothing
-// connected. Here an admin switches Chat and the conductor on and off (each from the controller's
-// plan: what changes, then its confirm), sees each engine host's own mode (the engine's setting,
-// switched over SSH where it is paired that way), and disables or removes what is connected: the
-// backends, and Chat's MCP servers while Chat is on. Every change asks first, in a dialog that says
-// what it changes. The words are lib/app-parts.ts.
+// connected. Here an admin switches Chat and the conductor on and off: the two switches are the
+// app scope of the settings interface, so a flip is staged like every other setting and applies
+// with the change set's plan and confirm (the settings area, views/settings/area.ts, hands the
+// scope's fields in and holds the draft). Below them: each engine host's own mode (the engine's
+// setting, switched over SSH where it is paired that way, and one of its settings on its Engines
+// page), and what is connected, to disable or remove: the backends, and Chat's MCP servers while
+// Chat is on. Those ask first, in a dialog that says what changes. The words are lib/app-parts.ts.
 
-import { html, nothing, type TemplateResult } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { describeError, request } from '../../api/client';
 import { config } from '../../api/config';
 import { engines as enginesApi } from '../../api/engines';
-import { fleet, type AppParts, type PartPlan } from '../../api/fleet';
+import { fleet, type AppParts } from '../../api/fleet';
+import type { SettingsError } from '../../api/settings';
 import type { McpServer } from '../../chat/types';
-import { backendChanges, backendRows, doneWords, ENGINE_MODE_NOTE, engineModeChanges, isParts, mcpChanges, partRows, planTitle, type BackendAct, type BackendRow, type McpAct, type PartRow } from '../../lib/app-parts';
+import { backendChanges, backendRows, ENGINE_MODE_NOTE, engineModeChanges, mcpChanges, partRows, stagedWords, type BackendAct, type BackendRow, type McpAct, type PartRow } from '../../lib/app-parts';
+import { settingsHref } from '../../lib/menu';
+import { draft } from '../../lib/settings-draft';
+import { sentence, type Field } from '../../lib/settings-form';
+import { errorWords } from '../../lib/settings-words';
 import { poll, type Poller } from '../../lib/poll';
 import { LightElement } from '../../ui/base';
 import { signInCard } from '../monitor/bits';
 import { checkSession } from '../monitor/data';
 
 type Pending =
-  | { kind: 'part'; plan: PartPlan }
   | { kind: 'backend'; row: BackendRow; act: BackendAct }
   | { kind: 'mcp'; server: McpServer; act: McpAct }
   | { kind: 'engine'; id: string; alias: string; to: 'engine' | 'chat' };
@@ -29,6 +35,13 @@ const MCP_PATH = '/v1/chat-app/mcp/servers';
 
 @customElement('qse-app-parts')
 export class QseAppParts extends LightElement {
+  /** the app scope's keys as fields (chat, conductor), with what is staged for each; null until
+   *  the settings interface answered */
+  @property({ attribute: false }) fields: Field[] | null = null;
+  /** why the switches cannot be changed here, when they cannot */
+  @property({ attribute: false }) why: string | null = null;
+  /** the settings interface's refusal of the app scope */
+  @property({ attribute: false }) refused: SettingsError | null = null;
   @state() private parts: AppParts | null = null;
   @state() private mcp: McpServer[] | null = null;
   @state() private modes: Record<string, string | null> = {};
@@ -60,6 +73,10 @@ export class QseAppParts extends LightElement {
     this.signIn = false;
     void this.poller?.refresh();
   };
+  protected willUpdate(changed: PropertyValues): void {
+    // the switches' values changed (a change set applied): what runs is read again
+    if (changed.has('fields') && changed.get('fields')) void this.poller?.refresh();
+  }
 
   private async load(): Promise<void> {
     try {
@@ -103,33 +120,14 @@ export class QseAppParts extends LightElement {
     this.modes = out;
   }
 
-  private async refused(e: unknown): Promise<boolean> {
+  private async denied(e: unknown): Promise<boolean> {
     if (describeError(e).status !== 401) return false;
     await checkSession(true);
     this.signIn = true;
     return true;
   }
 
-  // ---- the plan, then the confirm ---------------------------------------------------------------
-
-  private async ask(row: PartRow): Promise<void> {
-    this.busy = `plan-${row.id}`;
-    this.err = '';
-    this.msg = '';
-    try {
-      const plan = await fleet.planPart(row.id, !row.on);
-      if (!plan.changed) {
-        this.msg = plan.changes.join(' ');
-        void this.poller?.refresh();
-        return;
-      }
-      this.open({ kind: 'part', plan }, plan.changes);
-    } catch (e) {
-      if (!(await this.refused(e))) this.err = describeError(e).message;
-    } finally {
-      this.busy = '';
-    }
-  }
+  // ---- what is connected: the plan in words, then the confirm ------------------------------------
 
   private open(p: Pending, changes: string[]): void {
     this.pending = p;
@@ -139,8 +137,6 @@ export class QseAppParts extends LightElement {
 
   private dialogTitle(p: Pending): string {
     switch (p.kind) {
-      case 'part':
-        return planTitle(p.plan);
       case 'backend':
         return `${p.act === 'remove' ? 'Remove' : p.act === 'disable' ? 'Disable' : 'Enable'} ${p.row.name}`;
       case 'mcp':
@@ -156,14 +152,7 @@ export class QseAppParts extends LightElement {
     this.busy = 'apply';
     this.err = '';
     try {
-      if (p.kind === 'part') {
-        const r = await fleet.switchPart(p.plan.part, p.plan.on, p.plan.confirm ?? '');
-        if (isParts(r)) {
-          this.parts = r;
-          this.msg = doneWords(r) ?? '';
-          void this.loadMcp(r);
-        }
-      } else if (p.kind === 'backend') {
+      if (p.kind === 'backend') {
         if (p.act === 'remove') await config.remove(p.row.id);
         else await config.update(p.row.id, { enabled: p.act === 'enable' });
         this.msg = `${p.row.name}: ${p.act === 'remove' ? 'removed' : p.act === 'disable' ? 'disabled' : 'enabled'}.`;
@@ -180,7 +169,7 @@ export class QseAppParts extends LightElement {
       this.dialog?.close();
       void this.poller?.refresh();
     } catch (e) {
-      if (await this.refused(e)) this.dialog?.close();
+      if (await this.denied(e)) this.dialog?.close();
       else this.err = describeError(e).message;
     } finally {
       this.busy = '';
@@ -189,14 +178,39 @@ export class QseAppParts extends LightElement {
 
   // ---- the panel --------------------------------------------------------------------------------
 
-  private partCard(r: PartRow): TemplateResult {
-    return html`<li class="app-perm" data-part=${r.id} data-on=${r.on}>
-      <div class="app-perm-head"><b>${r.title}</b><span class="app-state is-${r.tone}">${r.badge}</span></div>
-      <p class="small">${r.why}</p>
-      <p class="small muted" data-part-detail>${r.detail}</p>
-      <p class="xs faint">${r.source}</p>
-      <div class="app-acts"><button type="button" class="btn btn-sm ${r.on ? '' : 'btn-primary'}" data-act=${`part-${r.id}`} ?disabled=${this.busy !== ''} @click=${() => void this.ask(r)}>${this.busy === `plan-${r.id}` ? 'Reading the plan…' : r.action}</button></div>
+  /** One switch: what the part is and does now, and the switch itself. A flip is staged in the
+   *  settings draft (the bar at the bottom reviews and applies it); nothing changes before that. */
+  private partCard(r: PartRow | null, f: Field | null): TemplateResult {
+    const id = r?.id ?? f!.key;
+    const want = f ? f.value === 'on' : !!r?.on;
+    const locked = !f || f.locked;
+    return html`<li class="app-perm st-part ${f?.staged ? 'is-staged' : ''}" data-part=${id} data-on=${r?.on ?? want} data-staged=${f?.staged ?? 'no'}>
+      <div class="app-perm-head"><b>${r?.title ?? f!.label}</b>${r ? html`<span class="app-state is-${r.tone}">${r.badge}</span>` : nothing}</div>
+      <p class="small">${r?.why ?? (f?.text ? sentence(f.text) : '')}</p>
+      ${r ? html`<p class="small muted" data-part-detail>${r.detail}</p>` : nothing}
+      <div class="st-part-sw">
+        <label class="switch"><input type="checkbox" role="switch" data-act=${`part-${id}`} .checked=${want} ?disabled=${locked}
+          @change=${(e: Event) => {
+            const to = (e.target as HTMLInputElement).checked ? 'on' : 'off';
+            if (f!.held?.value === to) draft.drop('app', f!.target, f!.key);
+            else draft.set('app', f!.target, f!.key, to, f!.held);
+          }} /><span>${r?.title ?? f?.label} ${want ? 'on' : 'off'}</span></label>
+        ${f?.staged
+          ? html`<span class="st-mark" data-mark>${stagedWords(f.staged, want)}</span><button type="button" class="btn btn-sm btn-ghost" data-act="part-undo" @click=${() => draft.drop('app', f.target, f.key)}>Undo</button>`
+          : f?.reset && !locked
+            ? html`<button type="button" class="btn btn-sm btn-ghost" data-act="part-reset" @click=${() => draft.unset('app', f.target, f.key, f.held)}>${f.reset}</button>`
+            : nothing}
+      </div>
+      ${r ? html`<p class="xs faint">${r.source}</p>` : nothing}
     </li>`;
+  }
+
+  private switches(p: AppParts | null): TemplateResult {
+    const rows = p ? partRows(p) : [];
+    const ids = [...new Set([...rows.map((r) => r.id as string), ...(this.fields ?? []).map((f) => f.key)])];
+    return html`<ul class="app-perms" data-parts>${ids.map((id) => this.partCard(rows.find((r) => r.id === id) ?? null, this.fields?.find((f) => f.key === id) ?? null))}</ul>
+      ${this.why ? html`<p class="small muted" data-parts-locked>${sentence(this.why)}</p>` : nothing}
+      ${this.refused ? html`<p class="small err-ink" role="alert" data-parts-refused>${errorWords(this.refused).title} The switches show what runs; they cannot be changed until it answers.</p>` : nothing}`;
   }
 
   private engineList(p: AppParts): TemplateResult {
@@ -206,7 +220,8 @@ export class QseAppParts extends LightElement {
         const mode = this.modes[e.id];
         const to = mode === 'chat' ? 'engine' : 'chat';
         return html`<li data-engine=${e.id}><span><b>${e.alias}</b> <span class="small muted">${mode == null ? 'mode not read' : mode === 'chat' ? 'chat mode' : 'bare engine'}</span></span>
-          ${mode == null ? nothing : html`<button type="button" class="btn btn-sm btn-ghost" data-act="engine-mode" ?disabled=${this.busy !== ''} @click=${() => this.open({ kind: 'engine', id: e.id, alias: e.alias, to }, engineModeChanges(e.alias, to))}>${to === 'engine' ? 'Bare engine…' : 'Chat mode…'}</button>`}</li>`;
+          <span class="app-parts-acts"><a class="btn btn-sm btn-ghost" href=${settingsHref('engines', e.id)} data-act="engine-settings">Its settings</a>
+          ${mode == null ? nothing : html`<button type="button" class="btn btn-sm btn-ghost" data-act="engine-mode" ?disabled=${this.busy !== ''} @click=${() => this.open({ kind: 'engine', id: e.id, alias: e.alias, to }, engineModeChanges(e.alias, to))}>${to === 'engine' ? 'Bare engine…' : 'Chat mode…'}</button>`}</span></li>`;
       })}</ul>`;
   }
 
@@ -237,18 +252,20 @@ export class QseAppParts extends LightElement {
 
   render() {
     const p = this.parts;
-    if (!p) return this.err ? html`<p class="small err-ink">${this.err}</p>` : nothing;
+    if (!p && !this.fields) return this.err ? html`<p class="small err-ink">${this.err}</p>` : nothing;
     const pend = this.pending;
     return html`<section class="panel" data-panel="parts">
-        <header class="panel-head"><div class="panel-titles"><h2 class="panel-title">What runs here</h2><p class="panel-sub">A new TandemApp runs only the gateway in front of the engines it pairs. Switch on what you want; each switch says what it changes first.</p></div></header>
-        <ul class="app-perms" data-parts>${partRows(p).map((r) => this.partCard(r))}</ul>
-        <h3 class="eyebrow app-parts-h">Engine hosts’ own mode</h3>
-        ${this.engineList(p)}
-        <h3 class="eyebrow app-parts-h">Connected</h3>
-        <p class="small"><b>Backends</b></p>
-        ${this.backendList(p)}
-        <p class="small"><b>MCP servers</b></p>
-        ${this.mcpList(p)}
+        <header class="panel-head"><div class="panel-titles"><h2 class="panel-title">What runs here</h2><p class="panel-sub">A new TandemApp runs only the gateway in front of the engines it pairs. Switch on what you want: a flip is staged, and the plan says what it changes before anything is written.</p></div></header>
+        ${this.switches(p)}
+        ${p
+          ? html`<h3 class="eyebrow app-parts-h">Engine hosts’ own mode</h3>
+              ${this.engineList(p)}
+              <h3 class="eyebrow app-parts-h">Connected</h3>
+              <p class="small"><b>Backends</b></p>
+              ${this.backendList(p)}
+              <p class="small"><b>MCP servers</b></p>
+              ${this.mcpList(p)}`
+          : nothing}
         ${this.signIn ? signInCard('These switches') : nothing}
         ${this.msg ? html`<p class="small ok-ink" role="status" data-parts-done>${this.msg}</p>` : nothing}
         ${this.err ? html`<p class="small err-ink" role="alert" data-parts-error>${this.err}</p>` : nothing}

@@ -1,7 +1,8 @@
 // What runs here (OPS-288, VIS-280): the App page's switches in words. A new TandemApp is bare --
 // the gateway in front of the engines it pairs, Chat and the conductor off, no MCP server -- and
-// each part is switched on here, with a plan that says what changes and its confirm. Kept pure so it
-// is tested without a browser; the panel is views/fleet/app-parts.ts.
+// each part is switched on here: the switch is the app scope's key of the settings interface, so a
+// flip is staged and applies with the change set's plan and confirm. Kept pure so it is tested
+// without a browser; the panel is views/fleet/app-parts.ts.
 
 import type { AppParts, PartId, PartPlan } from '../api/fleet';
 import type { McpServer } from '../chat/types';
@@ -67,6 +68,10 @@ export function partRows(p: AppParts): PartRow[] {
     },
   ];
 }
+
+/** A staged flip in words, beside its switch (VIS-280: the switches are staged in the settings
+ *  draft and apply with the change set). */
+export const stagedWords = (staged: 'set' | 'unset', on: boolean): string => (staged === 'unset' ? `goes back to the install’s setting (${on ? 'on' : 'off'}) when applied` : `switches ${on ? 'on' : 'off'} when applied`);
 
 /** The plan dialog's title. */
 export const planTitle = (plan: PartPlan): string => `Switch ${plan.part === 'chat' ? 'Chat' : 'the conductor'} ${plan.on ? 'on' : 'off'}`;

@@ -157,3 +157,30 @@ The registry gives:
 - a write.
 
 The scope does the plan, the confirm, the versions, the restore and the audit.
+
+## The pages
+
+The dashboard shows this interface under Settings, App: one page per scope.
+
+| page | what it holds |
+|-|-|
+| App | the `app` scope: the Chat and conductor switches under What runs here, above the controller's own page |
+| Backends | the `backends` scope: a group for each backend, the routing rules, the users' keys |
+| Conductor | the `conductor` scope: each document, edited whole |
+| Engines | the `engine` scope: a page for each engine host. An HTTP-only one is read-only and says why. |
+| Hooks | the `hooks` scope: "No hooks yet" until a hook registers |
+| History | the audit rows and the restarts that ended. `#/app/history?change_set=cs-...` shows one change set. |
+
+Each page draws its form from the scope's schema. A key gets the control its type asks for: a switch for `on` and `off`, a number field for an integer, a JSON editor for a document. The row also shows the default and the value's source. The environment locks some keys; such a row names the variable, for example `TANDEM_BACKENDS`. No page shows a secret. You set one or remove it.
+
+Changing a field writes nothing. The page stages the change, and a bar at the bottom carries the staged changes from page to page. Review then reads the plan of the whole set from `POST /v1/settings/plan`:
+
+- every part in the order it applies, with its changes and warnings;
+- whether a part restarts an engine. The plan then asks when: once idle (it waits 10 minutes by default), at a set time, or now;
+- a second confirm for a key that feeds the fingerprint.
+
+Apply answers with each part's state. An applied part has a Restore button. After a failure you can plan the same changes again.
+
+While an engine restarts, every page of the area shows it: the state, the countdown to the deadline, the engine's job, and Cancel while `can_cancel` holds. After a failed start the card names the version the engine runs again.
+
+Versions sit at the bottom of each page, with what differs from now. A restore goes through the same plan as any other change.

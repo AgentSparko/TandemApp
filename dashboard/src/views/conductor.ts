@@ -178,7 +178,7 @@ export class QseConductor extends LightElement {
         </div>
         ${this.renderDeployment()}
         ${this.switchError ? html`<div class="guard-line" role="alert">${icon('warn')} ${this.switchError}</div>` : nothing}
-        ${this.error ? html`<div class="guard-line" role="alert">${icon('warn')} ${this.error}</div>` : nothing}
+        ${this.error ? html`<div class="guard-line" role="alert">${icon('warn')} ${this.error}${this.error.startsWith('The conductor is off') ? html` <a href="#/app" data-act="conductor-switch">On TandemApp, switch it on under Settings, App.</a>` : nothing}</div>` : nothing}
         ${loadErrors.map(([k, d]) => html`<div class="guard-line" role="alert">${icon('warn')} ${k}: ${d.error?.message} (kept version ${d.version})</div>`)}
         ${tile?.locked ? html`<div class="note" data-locked>${icon('warn')} ${tile.name} is locked: ${tile.locked}.</div>` : nothing}
         <nav class="cond-tabs" aria-label="conductor screens">

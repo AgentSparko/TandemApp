@@ -97,9 +97,10 @@ describe('AU1: no password prompt in the source', () => {
       // set) and the Add Spark wizard's SSH login to the box being added (VIS-246: the box's own
       // password, used once, never the dashboard's) are the password-type inputs; so are App settings'
       // (OPS-234: the admin password a moved controller gets, and the one of the controller a fleet is
-      // taken from, never this page's own); and Add engine's password once (SRV-831: the engine
-      // host's own login, used for one SSH session and kept nowhere)
-      if (/type="password"/.test(text) && ![join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts')].includes(rel)) bad.push(`${rel}: a password input`);
+      // taken from, never this page's own); Add engine's password once (SRV-831: the engine
+      // host's own login, used for one SSH session and kept nowhere); and a settings form's secret
+      // (VIS-280: a backend's API key or a hook's token, set or removed and never shown)
+      if (/type="password"/.test(text) && ![join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts'), join('views', 'settings', 'form.ts')].includes(rel)) bad.push(`${rel}: a password input`);
       for (const [re, what] of [
         [/Unlock editing|>Unlock<|'Unlock'/, 'an unlock step'],
         [/Admin token needed|Enter admin token|Enter the admin token/, 'a token prompt'],

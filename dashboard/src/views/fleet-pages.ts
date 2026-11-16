@@ -2,8 +2,9 @@
 // opens. Overview, Hardware and Events & Alerts (VIS-248, views/monitor/) and Sparks with its
 // topology and each Spark's page (VIS-250, views/fleet/) are built, and Add Spark (VIS-246,
 // views/fleet/wizard.ts, a chunk of its own that loads when it opens), the setup wizard (VIS-278: Add
-// engine, views/fleet/engine-wizard.ts, its own chunk too) and App (OPS-234, the controller's
-// host and its move: views/fleet/app-settings.ts, a chunk of its own too) and Models (VIS-252: the
+// engine, views/fleet/engine-wizard.ts, its own chunk too) and App (VIS-280, the settings area:
+// views/settings/area.ts, a chunk of its own too, with OPS-234's controller host and its move in
+// views/fleet/app-settings.ts) and Models (VIS-252: the
 // deployments, Serve a model with its placement step, the weights matrix: views/fleet/models.ts,
 // serve.ts, weights.ts); API still shows its head, what it will hold and the step that builds it.
 
@@ -53,8 +54,10 @@ const loadEngineWizard = () => (engineChunk ??= import('./fleet/engine-wizard'))
 /** Get started (SRV-749): the ways into a fleet and the connect-a-server form, its own chunk */
 let startChunk: Promise<unknown> | null = null;
 const loadStart = () => (startChunk ??= import('./fleet/start'));
+/** The settings area (VIS-280): App with the controller's own page, a page a settings scope and
+ *  History, with the run sheet and the restart card; its own chunk */
 let appChunk: Promise<unknown> | null = null;
-const loadApp = () => (appChunk ??= import('./fleet/app-settings'));
+const loadApp = () => (appChunk ??= import('./settings/area'));
 
 @customElement('qse-fleet-page')
 export class QseFleetPage extends LightElement {
@@ -80,7 +83,7 @@ export class QseFleetPage extends LightElement {
     }
     if (this.view === 'app') {
       void loadApp();
-      return html`<qse-app-settings></qse-app-settings>`;
+      return html`<qse-settings .path=${this.path}></qse-settings>`;
     }
     if (this.view === 'models') return this.path[0] === 'weights' ? html`<qse-weights></qse-weights>` : this.path[0] === 'place' ? html`<qse-serve></qse-serve>` : html`<qse-models></qse-models>`;
     if (this.view === 'sparks') {

@@ -93,6 +93,13 @@
 // page's switches for Chat and the conductor with their plan dialog, the engine hosts' own mode, the backends
 // and MCP servers with disable and remove, the Chat tab's Chat-is-off state and the wizard's Playground step.
 // Room looked for first: the panel sits in the App page's chunk, and the words are one module the tests share.
+// 671 KB with the settings pages (VIS-280, 2026-11-16: 669.3 KB, 685,366 bytes, from 645.6 KB): a page a scope of
+// the settings interface drawn from its schema, the staged change set with its bar, the run sheet (plan, second
+// confirm, result, restore), the restart card and its line in the dock with the countdown and Cancel, versions and
+// the audit list, with the interface's client, the draft, the flow and every refusal's words. Room looked for first: the area is one
+// chunk with the App page it now holds (47.3 KB js, 3.1 KB css), loaded when Settings opens;
+// What runs here lost its own plan dialog for the two switches; the tab strip is styled in the chunk, so the
+// Conductor's stylesheet stays out of it.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';
