@@ -130,7 +130,7 @@
 // chunk grew from 29.8 KB with a wheel's upload, the list's run state, the controller's word on which grants ask
 // twice and the words of the trust routes' refusals. The entry chunk stays at 106.0 KB.
 // 772 KB with the controller's sign-in (SEC-26, 2026-11-16): the sign-in, first-run and password screens in a chunk of their own, the CSRF header on every write in the entry.
-// 788 KB with U1, the account and access pages (SRV-875, 2026-11-16: 786.0 KB from 770.3): a chunk of their own (12.6 KB js, 1.1 KB css); the menu, the routes and the 401 watch in the entry (0.8 KB); the rest in the settings area and the health page.
+// 788 KB with U1, the account and access pages (SRV-875, 2026-11-16: 786.1 KB from 770.3): a chunk of their own (12.7 KB js, 1.1 KB css); the menu, the routes and the 401 watch in the entry (0.8 KB); the rest in the settings area and the health page.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

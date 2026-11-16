@@ -38,7 +38,11 @@ import { PAGES, pageOf, type Page, type TokenForm } from '../src/lib/access.ts';
 import { signedOutBy } from '../src/lib/csrf.ts';
 import { menuNow, setRights, subPages } from '../src/lib/menu.ts';
 import { parseHash } from '../src/lib/router.ts';
+import type { SchemaView, ValuesView } from '../src/api/settings.ts';
+import { fieldsOf, groupsOf, type Field } from '../src/lib/settings-form.ts';
 import { T } from '../src/views/access/view.ts';
+import { groupPanel, type FormHandlers, type FormView } from '../src/views/settings/form.ts';
+import { text } from './engine-rig.ts';
 import { ORIGIN, acts, dialog, open, page, panelText, rig, rowText, type AccessRig } from './access-rig.ts';
 
 const SRC = join(__dirname, '..', 'src');
@@ -573,6 +577,71 @@ describe('Sessions and the audit', () => {
     r.flow.only('sign-ins');
     expect([...page(r).matchAll(/data-audit=(\w+)/g)].every((m) => m[1].startsWith('sign_'))).toBe(true);
     expect(page(r)).toContain('aria-pressed=true data-only=sign-ins');
+  });
+});
+
+describe('a page shows its own lists only', () => {
+  it('My tokens never shows under All tokens’ head, and an answer that comes late for another page is dropped', async () => {
+    const r = rig('kim');
+    await open(r, 'my-tokens');
+    expect(r.flow.tokens!.every((t) => t.owner === 'kim')).toBe(true);
+    // the next page starts empty: its head never stands over the list of the page before
+    const going = open(r, 'tokens');
+    expect(r.flow.tokens).toBeNull();
+    expect(page(r)).not.toContain('data-row=');
+    await going;
+    expect(panelText(page(r), 'review')).toContain('3 imported keys');
+    // two pages asked one after the other: the slower answer of the first is not kept
+    const first = open(r, 'my-tokens');
+    const second = open(r, 'sessions');
+    await Promise.all([first, second]);
+    expect(r.flow.page).toBe('sessions');
+    expect(r.flow.tokens).toBeNull();
+    expect(r.flow.sessions!.length).toBe(r.mock.sessions.length);
+  });
+});
+
+describe('Settings: the Sign-in and the API page', () => {
+  /** a scope's page as the settings area draws it: the schema's keys as fields, in their groups */
+  async function scopePage(r: AccessRig, scope: 'auth' | 'api'): Promise<{ text: string; fields: Field[] }> {
+    const schema = (await r.send('GET', `/v1/settings/${scope}/schema`)).body as SchemaView;
+    const values = (await r.send('GET', `/v1/settings/${scope}`)).body as ValuesView;
+    expect((await r.send('GET', `/v1/settings/${scope}/versions`)).status).toBe(200);
+    const fields = fieldsOf(schema, values, undefined);
+    const view: FormView = { raw: new Map(), invalid: new Map(), secrets: new Set(), open: new Set(), backends: [] };
+    const noop = (): void => undefined;
+    const on: FormHandlers = { edit: noop, blur: noop, set: noop, unset: noop, undo: noop, secret: noop, toggle: noop } as unknown as FormHandlers;
+    return { text: groupsOf(scope, fields).map((g) => text(groupPanel(g, view, on))).join('\n'), fields };
+  }
+
+  it('Sign-in draws every key of the auth scope by name, with the session times and their limits', async () => {
+    const r = rig('kim');
+    const { text: t, fields } = await scopePage(r, 'auth');
+    expect(fields.map((f) => f.key).sort()).toEqual(['chat_min_role', 'local_login', 'local_mode', 'password.min_length', 'provider', 'session.absolute_days', 'session.idle_days']);
+    for (const label of ['Idle days before a session ends', 'Longest session, in days', 'Shortest password', 'Local mode', 'Who may chat', 'The password form', 'Who checks a sign-in']) expect(t, label).toContain(label);
+    expect(fields.find((f) => f.key === 'session.idle_days')!.value).toBe(30);
+    expect(fields.find((f) => f.key === 'session.absolute_days')!.value).toBe(180);
+    // the form that nothing reads yet says so
+    expect(t).toContain('It takes effect once another way to sign in exists');
+    // a change of the session time goes through the settings interface and is kept
+    const changes = [{ scope: 'auth', set: { 'session.idle_days': 14 } }];
+    const plan = (await r.send('POST', '/v1/settings/plan', { changes })).body as { confirm: string };
+    expect((await r.send('POST', '/v1/settings/apply', { changes, confirm: plan.confirm })).status).toBe(200);
+    expect((await scopePage(r, 'auth')).fields.find((f) => f.key === 'session.idle_days')!.value).toBe(14);
+    expect((await r.send('POST', '/v1/settings/plan', { changes: [{ scope: 'auth', set: { 'session.idle_days': 401 } }] })).status).toBe(422);
+  });
+
+  it('API draws the exposure switches, the listen address and the tokens’ rules, the viewers’ switch among them', async () => {
+    const r = rig('kim');
+    const { text: t, fields } = await scopePage(r, 'api');
+    expect(fields.map((f) => f.key).sort()).toEqual(['anthropic.exposure', 'listen', 'openai.exposure', 'tokens.default_days', 'tokens.max_days', 'tokens.max_days_external', 'tokens.viewers_may_create']);
+    expect([...t.matchAll(/data-group=([\w:]+)/g)].map((m) => m[1])).toEqual(['api:exposure', 'api:tokens']);
+    for (const label of ['Who may use the APIs', 'API tokens', 'OpenAI-compatible API', 'Messages API', 'Listen address', 'Viewers create inference tokens', 'A new token’s days']) expect(t, label).toContain(label);
+    expect(fields.find((f) => f.key === 'tokens.viewers_may_create')!.value).toBe('off');
+    expect(fields.find((f) => f.key === 'listen')!.spec.restart).toBe('app');
+    // a pod's listen address is not changed from the page
+    r.mock.kubernetes = true;
+    expect((await scopePage(r, 'api')).fields.find((f) => f.key === 'listen')!.spec.writable).toBe(false);
   });
 });
 

@@ -10,6 +10,9 @@
      or a token; no row holds a password or a code                       test_the_audit
   4  GET /v1/config/audit leaves those rows out for a caller without users  test_the_audit
   5  both routes have a permission; with the switch off they do not exist  test_routes
+  6  the page's writes without a body (a DELETE: revoke, end a session, sign out everywhere,
+     remove) pass the gate with the session's header and this server's Origin, and are refused
+     without either                                          test_the_pages_writes_without_a_body
 
     python tests/test_auth_users_page.py
 """
@@ -189,6 +192,68 @@ def test_the_audit():
             got = [r for r in out["audit"] if authapi.private_audit(r)]
             assert bool(got) is sees, (who, got[:2])
             assert "not her password" not in json.dumps(out)
+
+
+def browser(px, method: str, path: str, who: dict, body=None, origin: str | None = None,
+            csrf: bool = True):
+    """A write as the page's fetch sends it: the cookie, the session's header, an Origin, and a
+    content type only with a body (a DELETE has none)."""
+    import http.client
+    h = {"Cookie": who["Cookie"], "Origin": origin or f"http://127.0.0.1:{px.port}",
+         "Sec-Fetch-Site": "same-origin"}
+    if csrf:
+        h["X-Tandem-CSRF"] = who["X-Tandem-CSRF"]
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        h["Content-Type"] = "application/json"
+    c = http.client.HTTPConnection("127.0.0.1", px.port, timeout=30)
+    c.request(method, path, body=data, headers=h)
+    r = c.getresponse()
+    out = r.read()
+    c.close()
+    return r.status, (json.loads(out) if out else None)
+
+
+def test_the_pages_writes_without_a_body():
+    """The page's DELETEs carry no body and no content type: the gate takes them with the
+    session's header and this server's Origin, and refuses them without either."""
+    with Proxy(env=ON) as px:
+        make("own", "owner")
+        view_id = make("view", "viewer")["id"]
+        ops_id = make("ops", "operator")["id"]
+        own, own2, ops = sign_in(px, "own"), sign_in(px, "own"), sign_in(px, "ops")
+        st, tok = browser(px, "POST", "/v1/auth/tokens", own, {"label": "desk", "scopes": [
+            "inference:openai"]})
+        assert st == 201, tok
+        url = f"/v1/auth/tokens/{tok['id']}"
+        # without the session's header, or from another origin: refused, nothing changed
+        st, out = browser(px, "DELETE", url, own, csrf=False)
+        assert st == 403 and out["error"]["code"] == "csrf", out
+        st, out = browser(px, "DELETE", url, own, origin="http://elsewhere.example")
+        assert st == 403 and out["error"]["code"] == "cross_origin", out
+        assert accounts().tokens.get(tok["id"])["revoked_at"] is None
+        st, out = browser(px, "DELETE", url, own)
+        assert st == 200 and out["state"] == "revoked", (st, out)
+        # a session of another browser, every session of another account, an account
+        other = next(s for s in j(px.get("/v1/auth/sessions", own))[1]["sessions"]
+                     if not s["current"])
+        assert browser(px, "DELETE", f"/v1/auth/sessions/{other['id']}", own)[0] == 204
+        assert j(px.get("/v1/auth/session", own2))[1]["authenticated"] is False
+        assert browser(px, "DELETE", f"/v1/auth/sessions?user={ops_id}", own)[0] == 204
+        assert j(px.get("/v1/auth/session", ops))[1]["authenticated"] is False
+        assert browser(px, "DELETE", f"/v1/auth/users/{view_id}", own)[0] == 204
+        # the reset sends an empty JSON object; a POST with no body at all passes too
+        st, out = browser(px, "POST", f"/v1/auth/users/{ops_id}/reset", own, {})
+        assert st == 200 and out["code"], out
+        st, out = browser(px, "POST", f"/v1/auth/users/{ops_id}/reset", own)
+        assert st == 200 and out["code"], out
+        # sign out, then sign out everywhere: this browser's cookie is cleared
+        own3 = sign_in(px, "own")
+        assert browser(px, "DELETE", "/v1/auth/session", own3)[0] == 204
+        assert j(px.get("/v1/auth/session", own3))[1]["authenticated"] is False
+        assert browser(px, "DELETE", "/v1/auth/sessions", own)[0] == 204
+        assert j(px.get("/v1/auth/session", own))[1]["authenticated"] is False
 
 
 def test_routes():

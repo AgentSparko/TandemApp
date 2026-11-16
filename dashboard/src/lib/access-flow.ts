@@ -60,7 +60,12 @@ export class AccessFlow {
     const moved = page !== this.page;
     this.page = page;
     this.filter = filter;
-    if (moved) this.note = this.failed = this.error = null;
+    if (moved) {
+      this.note = this.failed = this.error = null;
+      // nothing of the page before shows under this one's head
+      this.users = this.sessions = this.tokens = this.audit = this.exposure = null;
+      this.findings = [];
+    }
     this.loading = true;
     this.changed();
     try {
@@ -74,32 +79,27 @@ export class AccessFlow {
     this.changed();
   }
 
+  /** Reads what the page shows. An answer that comes back after the person went on to another
+   *  page is dropped: `tokens` and `sessions` mean one's own on one page and everyone's on another. */
   private async read(): Promise<void> {
     const a = this.api;
-    switch (this.page) {
-      case 'account':
-        this.sessions = await a.sessions();
-        break;
-      case 'my-tokens':
-        this.tokens = await a.tokens();
-        break;
-      case 'users':
-        this.users = await a.users();
-        break;
-      case 'tokens':
-        this.tokens = await a.tokens(true);
-        break;
-      case 'sessions':
-        this.sessions = await a.sessions('*');
-        break;
-      case 'audit':
-        this.audit = await a.audit();
-        break;
-      case 'exposure':
-        this.exposure = await a.exposure();
-        this.findings = await a.findings().catch(() => []);
-        this.tokens = this.me?.local_mode ? [] : await a.tokens(true).catch(() => []);
-        break;
+    const page = this.page;
+    const here = (): boolean => page === this.page;
+    if (page === 'account' || page === 'sessions') {
+      const got = await a.sessions(page === 'sessions' ? '*' : undefined);
+      if (here()) this.sessions = got;
+    } else if (page === 'my-tokens' || page === 'tokens') {
+      const got = await a.tokens(page === 'tokens');
+      if (here()) this.tokens = got;
+    } else if (page === 'users') {
+      const got = await a.users();
+      if (here()) this.users = got;
+    } else if (page === 'audit') {
+      const got = await a.audit();
+      if (here()) this.audit = got;
+    } else {
+      const [x, findings, tokens] = [await a.exposure(), await a.findings().catch(() => []), this.me?.local_mode ? [] : await a.tokens(true).catch(() => [])];
+      if (here()) [this.exposure, this.findings, this.tokens] = [x, findings, tokens];
     }
   }
 
