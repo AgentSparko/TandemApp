@@ -32,6 +32,9 @@ counters.
   c3 SEC-28: nor another account's username: the users list and a request row's user say
      "another account", user= names only its own (403 else), in /v1/dashboard/* and
      /v1/fleet/ledger/*; an admin sees every name                     test_no_other_username
+  c4 SEC-28: the parallel view the same: a lane's user (in flight and just finished) of
+     another account says "another account" to a viewer, its own stays; an admin sees every
+     name, also right after the viewer read           test_parallel_no_other_username
 
   Also:
   d  defaults per role from api.limits.default.*, written by an admin; a token never above its
@@ -587,6 +590,58 @@ def test_no_other_username():
             assert st == 200 and [g["key"] for g in out["groups"]] == ["view"], out
             # one cache: the admin after the viewer still sees every name
             assert names <= set(users_of(adm, "/v1/dashboard")[0])
+    finally:
+        srv.shutdown()
+
+
+def _stream_as(port: int, token: str, text: str, out: list) -> None:
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+    c.request("POST", "/v1/chat/completions", json.dumps(
+        {"model": "small-1", "stream": True, "messages": [{"role": "user", "content": text}]}),
+        {"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
+    r = c.getresponse()
+    r.read()
+    out.append(r.status)
+    c.close()
+
+
+def test_parallel_no_other_username():
+    srv, port = engine()
+    try:
+        with controller(port) as px:
+            px.sync()
+            setting(px, "api.tokens.viewers_may_create", True)
+            make("ops", "operator")
+            make("view", "viewer")
+            make("adm", "admin")
+            who = {n: sign_in(px, n) for n in ("ops", "view", "adm")}
+            toks = {n: new_token(px, h, label=n, scopes=["inference:openai"])[0]
+                    for n, h in who.items()}
+            out: list = []
+            ths = [threading.Thread(target=_stream_as, args=(
+                px.port, toks[n], "go FAKE_LONG 120 FAKE_TPS 40", out)) for n in toks]
+            for t in ths:
+                t.start()
+
+            def users(reader, key="lanes"):
+                st, doc = j(px.get("/v1/dashboard/parallel", who[reader]))
+                assert st == 200, (st, doc)
+                return sorted(x["client"]["user"] for x in doc[key])
+
+            end = time.time() + 10
+            while len(users("adm")) < 3 and time.time() < end:
+                time.sleep(0.1)
+            assert users("adm") == ["adm", "ops", "view"]
+            assert users("view") == ["another account", "another account", "view"]
+            assert users("ops") == ["another account", "another account", "ops"]
+            assert users("adm") == ["adm", "ops", "view"], "the viewer's read changed the board"
+            for t in ths:
+                t.join()
+            assert out == [200, 200, 200], out
+            # just finished: the same in `recent`
+            assert users("view", "recent") == ["another account", "another account", "view"]
+            assert users("adm", "recent") == ["adm", "ops", "view"]
     finally:
         srv.shutdown()
 

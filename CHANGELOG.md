@@ -14,7 +14,7 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 - The installer writes no admin token: beyond loopback (`--listen`) or with `--behind-proxy` it prints a setup code while no owner exists, and it leaves the lines of an older install in `app.env`. The Helm chart's `auth.mode` is `accounts`; `legacy` is refused with a message.
 - A client's `Authorization` or `x-api-key` never reaches a backend: the gate checks it and removes it.
 - A move of the controller to a Spark gives the new controller's account `owner` the move's password and nothing else: the Spark keeps only its hash, and it never becomes an admin token or a token for scripts.
-- The Usage and request views show a reader without the right `users` no other account's username: the user list and a request's user say "another account", and `user=` takes only the reader's own (SRV-873).
+- The Usage, request and parallel views show a reader without the right `users` no other account's username: the user list, a request's user and a lane's user say "another account", and `user=` takes only the reader's own (SRV-873).
 
 ### The engine without TandemApp
 

@@ -1068,7 +1068,8 @@ class Handler(BaseHTTPRequestHandler):
             since = float(q["since"]) if q.get("since") else None
         except ValueError:
             raise dashboard_api.ApiError(400, "bad_request", "since: a number (unix seconds)")
-        data = parallel_mod.encode(board.snapshot(since))
+        own, me = self._reader()            # SEC-28: no other account's username without users
+        data = parallel_mod.encode(board.snapshot(since, own, me))
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")

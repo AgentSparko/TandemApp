@@ -161,7 +161,7 @@ class ParallelBoard:
         self._series: collections.deque = collections.deque(maxlen=HISTORY)
         self._frames: dict[tuple, FrameCheck] = {}
         self._kinds: dict[str, str] = {}
-        self._built: tuple[float, dict] | None = None
+        self._built: tuple[float, dict, dict] | None = None   # (perf, document, lane: token)
         self.builds = 0
         self.build_us = {"last": 0.0, "max": 0.0}
         # TandemLLM backends behind this proxy: [(backend id, base url)], and their lanes
@@ -555,15 +555,20 @@ class ParallelBoard:
                 "prompt": lane["prompt_tokens"], "cached": lane["cached_tokens"],
                 "cost": lane["cost_micros"], "tokens": lane["tokens"],
                 "error": rec.finish_reason in ("error", "timeout") or int(rec.status or 0) >= 500,
-                "refused": rec.finish_reason == "refused", "decode_avg": lane["decode_avg"]}
+                "refused": rec.finish_reason == "refused", "decode_avg": lane["decode_avg"],
+                # SEC-28: the API token that sent it (never in the document: the mask's key)
+                "token_id": getattr(rec, "token_id", None)}
 
     def _prune(self, now_p: float) -> None:
         while self._done and now_p - self._done[0][0] > STATS_S:
             self._done.popleft()
 
     # ----------------------------------------------------------------- the document
-    def snapshot(self, since: float | None = None) -> dict:
-        """The lanes, the sums and the series (all of it, or the samples after `since`)."""
+    def snapshot(self, since: float | None = None, own=None, me=()) -> dict:
+        """The lanes, the sums and the series (all of it, or the samples after `since`).
+        `own`, `me` (SEC-28, as the ledger views': tandemapp/dashboard_api.py usage): None for a
+        reader that sees every name; else the reader's own tokens' ids and names, and any other
+        account's username on a lane says "another account"."""
         now_p = self.perf()
         built = self._built
         if built is None or now_p - built[0] > BUILD_S:
@@ -573,12 +578,19 @@ class ParallelBoard:
             with self._lock:
                 self._prune(now_p)
                 doc = self._build(live, now_p)
-            self._built = built = (now_p, doc)
+                tokens = {getattr(r, "request_id", None): getattr(r, "token_id", None)
+                          for r in live}
+                tokens.update({l["id"]: s.get("token_id") for _p, l, s in self._done})
+            self._built = built = (now_p, doc, tokens)
             self.builds += 1
             us = (time.perf_counter() - t0) * 1e6
             self.build_us["last"] = _r(us, 0)
             self.build_us["max"] = max(self.build_us["max"], _r(us, 0))
         doc = dict(built[1])
+        if own is not None:
+            # copies: the built document is every reader's
+            doc["lanes"] = [_masked_lane(x, built[2], own, me) for x in doc["lanes"]]
+            doc["recent"] = [_masked_lane(x, built[2], own, me) for x in doc["recent"]]
         with self._lock:
             ser = [{"t": s["t"], "by": s["by"], "in_flight": s["in_flight"]}
                    for s in self._series if since is None or s["t"] > since]
@@ -715,6 +727,16 @@ def _fetch_json(url: str, headers: dict | None = None, timeout: float = 0.8):
             return json.loads(r.read())
     except (OSError, ValueError, urllib.error.URLError):
         return None
+
+
+def _masked_lane(lane: dict, tokens: dict, own, me) -> dict:
+    """SEC-28: a lane as a reader without the permission `users` sees it: another account's
+    username is "another account" (its own tokens' lanes and its own names stay)."""
+    from tandemapp.dashboard_api import _masked
+    c = lane.get("client") or {}
+    user = c.get("user")
+    shown = _masked(user, tokens.get(lane.get("id")), own, me)
+    return lane if shown == user else dict(lane, client=dict(c, user=shown))
 
 
 def encode(doc: dict) -> bytes:
