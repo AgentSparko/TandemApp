@@ -1309,7 +1309,7 @@ def build(args, env=None) -> Service:
             log=lambda m: STATE["svc"].log(m))
         accounts.session_tokens = lambda: STATE.get("session_tokens")
     else:
-        if mode not in ("", "legacy"):
+        if mode not in ("", "legacy", "off"):
             print(f"[auth] TANDEM_AUTH={mode[:40]!r} is not a mode (accounts, legacy); the admin "
                   f"password rule stays", flush=True)
         login = (args.dashboard_login == "on")
