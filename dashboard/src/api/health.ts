@@ -208,6 +208,8 @@ export interface HealthFix {
   /** the finding the action was for, if it is still there */
   finding: HealthFinding | null;
   cleared: boolean;
+  /** each instance the fix was for (a finding of its code, the backend or plugin it names where there are several) */
+  instances?: { code: string; instance: string | null; cleared: boolean }[];
 }
 
 export interface FixBody {
@@ -215,6 +217,8 @@ export interface FixBody {
   ref?: string;
   confirm?: string;
   when?: 'now' | 'idle';
+  /** the backend or plugin the finding names: `cleared` and `finding` are of that one */
+  instance?: string;
 }
 
 export interface HealthApi {

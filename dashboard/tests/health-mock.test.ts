@@ -99,6 +99,8 @@ describe('what the scenarios find', () => {
     const moved = engine(v, 'spark-moved');
     const f = moved.findings[0];
     expect([f.code, f.action?.id, f.action?.changes]).toEqual(['host_key_changed', 're_pair', false]);
+    // an error whatever its HTTP port answers: no token went there, so that it serves is not proven
+    expect([f.severity, moved.state]).toEqual(['error', 'error']);
     expect([f.facts.pinned, f.facts.offered].every((x) => /^SHA256:[A-Za-z0-9+/]{43}$/.test(x ?? ''))).toBe(true);
     expect(f.facts.pinned).not.toBe(f.facts.offered);
     expect(f.sentence).toContain(f.facts.offered);
@@ -130,6 +132,8 @@ describe('what the scenarios find', () => {
     const r = rig('all');
     const v = await r.api.all();
     expect(v.pairings.map((p) => p.finding.code)).toEqual(['wrong_code', 'code_spent', 'no_window', 'host_key_mismatch', 'rate_limited']);
+    // no target, so no fix: none of them carries an action
+    expect(v.pairings.map((p) => p.finding.action)).toEqual([null, null, null, null, null]);
     expect(v.pairings[0]).toMatchObject({ address: '192.0.2.84', port: 8000 });
     r.wait(700_000);
     expect((await r.api.all()).pairings).toEqual([]);
@@ -208,11 +212,31 @@ describe('the fixes', () => {
     const r = rig('all');
     for (let i = 0; i < FIXES_PER_MIN; i++) expect((await fix(r, 'spark-far', 'retry')).cleared).toBe(false);
     const no = await refused(fix(r, 'spark-far', 'retry'));
-    expect([no.code, no.status, no.message, no.fix]).toEqual(['too_many_fixes', 429, 'spark-far had too many fixes in the last minute.', 'Wait a minute, then try again.']);
+    expect([no.code, no.status, no.message, no.fix, no.retry_after]).toEqual(['too_many_fixes', 429, 'spark-far had too many fixes in the last minute.', 'Wait 60 seconds, then try again.', 60]);
+    r.wait(25_000);
+    expect((await refused(fix(r, 'spark-far', 'retry'))).retry_after).toBe(35);
     // another target has its own count
     expect((await fix(r, 'spark-odd', 'retry')).done).toBe(true);
-    r.wait(61_000);
+    r.wait(36_000);
     expect((await fix(r, 'spark-far', 'retry')).done).toBe(true);
+  });
+  it('two backends down and one back: the fix says so of each, and of the one it names', async () => {
+    const r = rig('mixed');
+    r.mock.controller.backendsDown = [
+      { label: 'DeepSeek', error: 'HTTP 401 from /v1/models', back: false },
+      { label: 'rack-gpu', error: 'connection refused', back: true },
+    ];
+    const d = await fix(r, 'controller', 'retry');
+    expect([d.cleared, d.finding?.facts.backend, d.instances]).toEqual([false, 'DeepSeek', [{ code: 'backend_down', instance: 'DeepSeek', cleared: false }, { code: 'backend_down', instance: 'rack-gpu', cleared: true }]]);
+    // the one a row is for: that one cleared, the other not
+    r.mock.controller.backendsDown.push({ label: 'rack-gpu', error: 'connection refused', back: true });
+    r.wait(61_000);
+    const one = await fix(r, 'controller', 'retry', { instance: 'rack-gpu' });
+    expect([one.cleared, one.finding, one.instances]).toEqual([true, null, [{ code: 'backend_down', instance: 'rack-gpu', cleared: true }]]);
+    const other = await fix(r, 'controller', 'retry', { instance: 'DeepSeek' });
+    expect([other.cleared, other.finding?.facts.backend]).toEqual([false, 'DeepSeek']);
+    const raw = (body: unknown) => r.fleet.handle('POST', '/v1/fleet/health/controller/fix', new URLSearchParams(), body, r.now());
+    expect([raw({ action: 'retry', instance: '' }).status, raw({ action: 'retry', instance: 3 }).status]).toEqual([400, 400]);
   });
   it(`Start: a job, the engine loads for ${START_S} s and then serves`, async () => {
     const r = rig('mixed');

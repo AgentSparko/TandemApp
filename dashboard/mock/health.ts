@@ -29,6 +29,7 @@
 // forgets the kept answers after a test changed a condition by hand.
 
 import type { ActionId, CheckName, HealthAction, HealthCheck, HealthFinding, HealthGuide, HealthState, HealthTarget, Severity, TokenHint, UpgradePlan } from '../src/api/health.ts';
+import { instanceOf } from '../src/lib/health.ts';
 import { ENGINE_CODES, filled, refusal, type Facts, type Reply } from './enginecodes.ts';
 
 const CONTRACT = '1.0';
@@ -81,11 +82,11 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   not_an_engine: ['error', 'retry'],
   token_missing: ['error', 'rotate_token'],
   token_refused: ['error', 'rotate_token'],
-  // a pairing code the engine refused (Add engine)
-  wrong_code: ['warning', 're_pair'],
-  code_spent: ['warning', 're_pair'],
-  no_window: ['warning', 're_pair'],
-  host_key_mismatch: ['error', 're_pair'],
+  // a pairing code the engine refused: no target, so no fix (the page links to Add engine)
+  wrong_code: ['warning', null],
+  code_spent: ['warning', null],
+  no_window: ['warning', null],
+  host_key_mismatch: ['error', null],
   rate_limited: ['warning', null],
   // the controller
   no_engine: ['info', 'add_engine'],
@@ -538,7 +539,7 @@ export class MockHealth {
         if (!answered) {
           ssh.detail = [ssh.detail, `its HTTP port ${h.httpPort} does not answer either`].filter(Boolean).join('; ');
           hf = null;
-        } else if (hf === null && tok === null) ssh.severity = 'warning'; // it serves; only the control is cut off
+        } else if (hf === null && tok === null && trusted) ssh.severity = 'warning'; // it serves with the token; only the control is cut off (never for a key changed or refused: no token went there)
       }
       if (hf) found.push(hf);
       if (tok) found.push(tok);
@@ -630,7 +631,7 @@ export class MockHealth {
     if (typeof body !== 'object' || body === null || Array.isArray(body)) no('bad_request', {}, 'the body is a JSON object');
     const b = body as Record<string, unknown>;
     const extra = Object.keys(b)
-      .filter((k) => !['action', 'ref', 'confirm', 'when'].includes(k))
+      .filter((k) => !['action', 'ref', 'confirm', 'when', 'instance'].includes(k))
       .sort();
     if (extra.length) no('bad_request', {}, `unknown field '${extra[0]}'`);
     if (b.action == null) no('bad_request', {}, 'action is missing');
@@ -641,7 +642,7 @@ export class MockHealth {
     const q = (this.fixes.get(id) ?? []).filter((t) => now - t <= 60);
     if (q.length >= FIXES_PER_MIN) {
       this.fixes.set(id, q);
-      no('too_many_fixes', { node: alias });
+      no('too_many_fixes', { node: alias, retry_after: Math.max(1, Math.ceil(60 - (now - q[0]))) });
     }
     q.push(now);
     this.fixes.set(id, q);
@@ -653,6 +654,8 @@ export class MockHealth {
     const action = b.action as ActionId;
     const when = b.when ?? 'idle';
     if (when !== 'now' && when !== 'idle') no('bad_request', {}, 'when is now or idle');
+    const inst = b.instance;
+    if (inst !== undefined && (typeof inst !== 'string' || !inst.length || inst.length > 200)) no('bad_request', {}, 'instance is the backend or plugin a finding names');
     const row = id === CONTROLLER ? null : this.row(id, now);
     const alias = row ? row.alias : 'TandemApp';
     const before = this.target(id, now);
@@ -661,7 +664,9 @@ export class MockHealth {
     this.rate(id, alias, now);
     const forced = this.fails.get(action);
     if (forced) no(forced, { node: alias, host: row?.address, port: row?.sshPort, user: row?.user, address: row?.address }, ENGINE_CODES[forced][1].includes('{detail}') ? 'the other side gave no reason' : null);
-    const codes = before.findings.filter((f) => f.action?.id === action).map((f) => f.code);
+    // what the fix is for: each finding that offers it, one instance each (narrowed to the one named)
+    const forKeys = before.findings.filter((f) => f.action?.id === action && (inst === undefined || instanceOf(f) === inst)).map((f) => [f.code, instanceOf(f)] as const);
+    const isFor = (f: HealthFinding): boolean => forKeys.some(([c, i]) => c === f.code && i === instanceOf(f));
     const out: Record<string, unknown> = { contract_version: CONTRACT, id, action, done: true, needs_confirm: false, job: null, result: null, guide: null };
     if (action === 'retry') {
       // the backends the poll found down are probed now
@@ -686,8 +691,9 @@ export class MockHealth {
       } else Object.assign(out, this.upgrade(h, b, when as 'now' | 'idle', now));
     }
     const after = this.target(id, now, { force: true });
-    const still = after.findings.filter((f) => codes.includes(f.code));
-    return { ...out, target: after, finding: still[0] ?? null, cleared: !still.length };
+    const still = after.findings.filter(isFor);
+    const instances = forKeys.map(([code, instance]) => ({ code, instance, cleared: !still.some((f) => f.code === code && instanceOf(f) === instance) }));
+    return { ...out, target: after, finding: still[0] ?? null, cleared: !still.length, instances };
   }
 
   /** a fix that goes over SSH needs SSH: else the control's own refusal */

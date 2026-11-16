@@ -285,7 +285,7 @@
     "too_many_fixes": {
       "status": 429,
       "message": "{node} had too many fixes in the last minute.",
-      "fix": "Wait a minute, then try again."
+      "fix": "Wait {retry_after} seconds, then try again."
     }
   },
   "findings": {
@@ -347,19 +347,19 @@
     },
     "wrong_code": {
       "severity": "warning",
-      "action": "re_pair"
+      "action": null
     },
     "code_spent": {
       "severity": "warning",
-      "action": "re_pair"
+      "action": null
     },
     "no_window": {
       "severity": "warning",
-      "action": "re_pair"
+      "action": null
     },
     "host_key_mismatch": {
       "severity": "error",
-      "action": "re_pair"
+      "action": null
     },
     "rate_limited": {
       "severity": "warning",

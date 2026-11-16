@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-fix-body.schema.json",
-  "title": "the body of POST /v1/fleet/health/{id}/fix: the action a finding offers (retry always); upgrade takes ref (else TANDEM_ENGINE_REF) and, after its plan, the plan's confirm; when for Start's and an upgrade's restart (idle by default)",
+  "title": "the body of POST /v1/fleet/health/{id}/fix: the action a finding offers (retry always); upgrade takes ref (else TANDEM_ENGINE_REF) and, after its plan, the plan's confirm; when for Start's and an upgrade's restart (idle by default); instance narrows the answer's cleared and finding to the finding that names that backend or plugin",
   "type": "object",
   "properties": {
     "action": {
@@ -29,6 +29,12 @@
         "now",
         "idle"
       ]
+    },
+    "instance": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "the backend or plugin the finding names (its facts' backend or plugin), where a target has several findings of one code"
     }
   },
   "required": [

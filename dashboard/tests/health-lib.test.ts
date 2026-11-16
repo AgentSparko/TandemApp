@@ -178,8 +178,9 @@ describe('a host key that is not the one expected', () => {
   it('is shown as something that does not work, also where the controller lowered it to a warning', async () => {
     const r = rig('all');
     await r.flow.load();
-    // the engine's port still answers there, so the controller says warning
-    expect(JSON.parse(r.seen[0]).engines.find((e: HealthTarget) => e.id === 'spark-moved').findings[0].severity).toBe('warning');
+    // the engine's port still answers there; the controller keeps it an error all the same (no token
+    // went there, so that it serves is not proven), and the page holds to that for one that does not
+    expect(JSON.parse(r.seen[0]).engines.find((e: HealthTarget) => e.id === 'spark-moved').findings[0].severity).toBe('error');
     const c = card(r, 'spark-moved');
     expect([c.state, c.rows[0].finding.severity, stateWords(c)]).toEqual(['error', 'error', 'Needs a fix']);
     const lowered: HealthView = { ...r.flow.view!, state: 'ok', controller: { ...r.flow.view!.controller, findings: [], state: 'ok' }, pairings: [], engines: [{ ...r.flow.view!.engines[2], state: 'warning', findings: [healthFinding('host_key_changed', { pinned: FP_A, offered: FP_B }, null, { severity: 'warning' })] }] };

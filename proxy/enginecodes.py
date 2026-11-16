@@ -176,7 +176,7 @@ CATALOG: dict[str, tuple[int, str, str]] = {
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
     "too_many_fixes": (429, "{node} had too many fixes in the last minute.",
-                       "Wait a minute, then try again."),
+                       "Wait {retry_after} seconds, then try again."),
 }
 
 #: the facts a sentence may name (never a secret)

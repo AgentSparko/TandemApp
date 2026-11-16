@@ -10,12 +10,14 @@
 import { EngineError, SignInNeeded, type EngineFinding } from '../api/engines';
 import { CONTROLLER, type ActionId, type FixBody, type HealthAction, type HealthApi, type HealthFix, type HealthGuide, type HealthTarget, type HealthView, type UpgradePlan } from '../api/health';
 import { SIGN_IN, findingOf } from './engine-words';
-import { actionOf, cardsOf, isGuide, merged, noteOf, refusalNote, withTarget, type Card, type Note, type Row } from './health';
+import { actionOf, cardsOf, instanceOf, isGuide, merged, noteOf, refusalNote, withTarget, type Card, type Note, type Row } from './health';
 
 /** `fresh=1` is taken once every 3 s a target */
 export const REFRESH_GAP_MS = 3000;
 /** a target takes 6 fixes a minute: after a 429 its buttons wait this long */
 export const FIX_WAIT_MS = 60_000;
+/** how long a target refuses fixes: the controller's `retry_after`, else a minute */
+const waitOf = (f: { retry_after?: number }): number => (typeof f.retry_after === 'number' && f.retry_after > 0 ? Math.min(f.retry_after * 1000, FIX_WAIT_MS) : FIX_WAIT_MS);
 /** the page reads again by itself this often while it shows */
 export const POLL_MS = 20_000;
 /** after a fix that changed something: the target read again this often, for this long at most */
@@ -227,7 +229,9 @@ export class HealthFlow {
       this.changed();
       return;
     }
-    await this.run(row, a, { action: a.id }, (fix) => this.left(row, a, fix));
+    // the fix is for this row's finding: where its target has several of its code, the one it names
+    const inst = instanceOf(row.finding);
+    await this.run(row, a, { action: a.id, ...(inst === null ? {} : { instance: inst }) }, (fix) => this.left(row, a, fix));
   }
 
   /** The steps of an action that changes nothing: asked once, then shown and hidden in place. */
@@ -282,7 +286,7 @@ export class HealthFlow {
       this.signIn = a.id;
       this.notes[row.key] = refusalNote(f, id, a, row.finding, this.now(), 'sign_in');
     } else if (is429(e)) {
-      this.waits[id] = this.now() + FIX_WAIT_MS;
+      this.waits[id] = this.now() + waitOf(f);
       this.notes[row.key] = refusalNote(f, id, a, row.finding, this.now(), 'wait');
     } else {
       this.notes[row.key] = refusalNote(f, id, a, row.finding, this.now());
@@ -340,7 +344,7 @@ export class HealthFlow {
     } catch (e) {
       const f = findingOf(e);
       if (e instanceof SignInNeeded) this.signIn = d.action.id;
-      else if (is429(e)) this.waits[id] = this.now() + FIX_WAIT_MS;
+      else if (is429(e)) this.waits[id] = this.now() + waitOf(f);
       if (this.dialog) this.dialog = { ...this.dialog, phase: back, error: f };
       return null;
     } finally {

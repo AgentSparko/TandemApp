@@ -11,7 +11,7 @@ import type { EngineFinding } from '../../api/engines';
 import type { UpgradeSide } from '../../api/health';
 import { SIGN_IN, segments } from '../../lib/engine-words';
 import type { DialogState, HealthFlow } from '../../lib/health-flow';
-import { SEVERITY_WORDS, actionOf, ago, busyWords, cardTarget, cardsOf, factsOf, fingerprintsOf, foldWords, guideLink, isGuide, isHostKeyStop, reachOf, stateWords, traceOf, verdict, type Card, type Fact, type Note, type Row, type Stop, type StopState } from '../../lib/health';
+import { SEVERITY_WORDS, actionOf, ago, busyWords, cardTarget, cardsOf, factsOf, fingerprintsOf, foldWords, guideLink, isGuide, pairAgain, reachOf, stateWords, traceOf, verdict, type Card, type Fact, type Note, type Row, type Stop, type StopState } from '../../lib/health';
 import { SETTINGS_TABS } from '../../lib/menu';
 import { icon, skeleton } from '../../ui/bits';
 
@@ -105,9 +105,10 @@ function note(n: Note, wait: number, dismiss: (() => void) | null): TemplateResu
 function rowButton(f: HealthFlow, row: Row, card: Card, on: HealthHandlers): TemplateResult | typeof nothing {
   const a = actionOf(row.finding);
   if (row.pairing) {
-    // a refused pairing is no target: the way on is Add engine, by a new code. A host key that is
-    // not the one shown gets none: nothing here pairs or connects past it
-    if (!a || isHostKeyStop(row.finding.code)) return nothing;
+    // a refused pairing is no target, so its finding carries no action: the way on is Add engine,
+    // by a new code. A host key that is not the one shown gets none: nothing here pairs or
+    // connects past it
+    if (!pairAgain(row.finding.code)) return nothing;
     return html`<a class="btn hl-act" href="#/add-engine" data-act="open-add-engine">Open Add engine</a>`;
   }
   if (!a || row.target === null) {

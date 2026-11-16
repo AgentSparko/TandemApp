@@ -7,7 +7,7 @@ words, and the fixes TandemApp can run itself.
     GET  /v1/fleet/health[?fresh=1]                      the controller, every engine host and
                                                          the pairing codes refused lately
     GET  /v1/fleet/health/{id}[?fresh=1]                 one of them (`controller`: this one)
-    POST /v1/fleet/health/{id}/fix {action, ref?, confirm?, when?}
+    POST /v1/fleet/health/{id}/fix {action, ref?, confirm?, when?, instance?}
                                                          one fix, then that target checked again
 
 A FINDING is one code of proxy/enginecodes.py (contracts/fleet-v1/engine-codes.json, `findings`
@@ -43,7 +43,11 @@ when an earlier one made it moot):
               `tandem remote token rotate`, the new token straight into the sealed table)
 
 When SSH fails but the engine serves over HTTP with the token, the SSH finding is a warning:
-inference works, control does not.
+inference works, control does not. A changed host key and a refused key stay errors whatever
+the HTTP port answers: the token is never sent there, so that the engine serves is not proven.
+
+A REFUSED PAIRING CODE (`pairings`) is no target: no fix runs for it, so its finding carries no
+action; the page's way on is Add engine, with a new code.
 
 THE CONTROLLER'S CHECKS (`controller`): chatd (own: running and answering, else chatd_down or
 chatd_silent with Restart; external: QSE_CHAT_URL answers, else chat_unreachable; off, OPS-288:
@@ -63,14 +67,17 @@ THE FIXES. `retry` checks again (and probes the down backends); `start`, `rotate
 `add_engine` change nothing and answer how (`guide`). An action is run only when the target's
 current findings offer it (`retry` always), else 409 not_offered. `upgrade` without `confirm`
 answers the engine's plan (`needs_confirm` true); with the plan's `confirm` it applies, idle-gated
-unless `when` is now. Each fix that changes something is audited. The rights (proxy/app.py) are
-ACTIONS' `route`: a read's for retry and the guides, the Setup Guide's for Start, pairing's for
-the token and an upgrade, the conductor's writes for chatd.
+unless `when` is now. Each fix that changes something is audited. A fix answers for each
+INSTANCE it was for, a finding of its code and, where a target has several of one code, the
+backend or plugin it names (`instances`: each with `cleared`); `instance` in the body narrows the
+fix's `cleared` and `finding` to that one (two backends down, one back: that one cleared). The
+rights (proxy/app.py) are ACTIONS' `route`: a read's for retry and the guides, the Setup Guide's
+for Start, pairing's for the token and an upgrade, the conductor's writes for chatd.
 
 LIMITS. A target's result is kept CACHE_S and answered `cached` with its `age_s`; `fresh=1` checks
 again unless the last check is younger than MIN_GAP_S (then `limited`). One check of a target runs
 at a time; the engine hosts are checked in parallel (at most PARALLEL). At most FIXES_PER_MIN fixes
-a target a minute (429 too_many_fixes).
+a target a minute (429 too_many_fixes, with `retry_after`: the seconds until one may run).
 
 SECRETS. No finding, fact, guide or log line holds the HTTP token, a private key, a password or a
 pairing code: the facts are enginecodes.FACTS only, the token goes only into an Authorization
@@ -83,6 +90,7 @@ import collections
 import concurrent.futures
 import http.client
 import json
+import math
 import os
 import re
 import shutil
@@ -138,11 +146,11 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "not_an_engine": ("error", "retry"),
     "token_missing": ("error", "rotate_token"),
     "token_refused": ("error", "rotate_token"),
-    # a pairing code the engine refused (Add engine)
-    "wrong_code": ("warning", "re_pair"),
-    "code_spent": ("warning", "re_pair"),
-    "no_window": ("warning", "re_pair"),
-    "host_key_mismatch": ("error", "re_pair"),
+    # a pairing code the engine refused: no target, so no fix (the page links to Add engine)
+    "wrong_code": ("warning", None),
+    "code_spent": ("warning", None),
+    "no_window": ("warning", None),
+    "host_key_mismatch": ("error", None),
     "rate_limited": ("warning", None),
     # the controller
     "no_engine": ("info", "add_engine"),
@@ -199,6 +207,14 @@ def route_for(method: str, parts: list[str], body) -> str:
         act = ACTIONS.get(body.get("action")) if isinstance(body.get("action"), str) else None
         return act[3] if act else "dashboard"
     return "dashboard"
+
+
+def instance_of(f: dict) -> str | None:
+    """Which one of its code a finding is, where a target has several: the backend or plugin it
+    names; None for the others."""
+    facts = f.get("facts") or {}
+    got = facts.get("backend") or facts.get("plugin")
+    return str(got) if got is not None else None
 
 
 def state_of(findings: list[dict]) -> str:
@@ -505,8 +521,10 @@ class Health:
                         ssh_finding.get("detail"),
                         f"its HTTP port {http_port} does not answer either") if x)
                     h = None
-                elif h is None and tok is None:
-                    ssh_finding["severity"] = "warning"  # it serves; only the control is cut off
+                elif h is None and tok is None and trusted:
+                    # it serves with the token; only the control is cut off. Never for a changed
+                    # host key or a refused key: no token went there, so serving is not proven
+                    ssh_finding["severity"] = "warning"
             found += [x for x in (h, tok) if x is not None]
             http_ok = False if h is not None else True if answered else None
             checks.append(_check("http", http_ok, h and h["code"]))
@@ -702,18 +720,23 @@ class Health:
             while q and now - q[0] > 60:
                 q.popleft()
             if len(q) >= FIXES_PER_MIN:
-                raise ERR("too_many_fixes", node=alias)
+                raise ERR("too_many_fixes", node=alias,
+                          retry_after=max(1, math.ceil(60 - (now - q[0]))))
             q.append(now)
 
     def fix(self, tid: str, body, who: str) -> dict:
         from proxy import engineonboard
-        b = engineonboard._fields(body, {"action", "ref", "confirm", "when"}, ("action",))
+        b = engineonboard._fields(body, {"action", "ref", "confirm", "when", "instance"},
+                                  ("action",))
         action = b["action"]
         if not isinstance(action, str) or action not in ACTIONS:
             raise ERR("bad_request", f"action is one of {', '.join(ACTIONS)}")
         when = b.get("when", "idle")
         if when not in ("now", "idle"):
             raise ERR("bad_request", "when is now or idle")
+        inst = b.get("instance")
+        if inst is not None and (not isinstance(inst, str) or not 0 < len(inst) <= 200):
+            raise ERR("bad_request", "instance is the backend or plugin a finding names")
         row = None if tid == CONTROLLER else self.onboarding._row(tid)
         alias = "TandemApp" if row is None else row["alias"]
         before = self.target(tid)
@@ -721,8 +744,11 @@ class Health:
         if action not in offered:
             raise ERR("not_offered", f"it offers {', '.join(sorted(offered))}", node=alias)
         self._rate(tid, alias)
-        codes = [f["code"] for f in before["findings"]
-                 if f["action"] and f["action"]["id"] == action]
+        # what the fix is for: each finding that offers it, one instance each (narrowed to the
+        # instance named)
+        codes = [(f["code"], instance_of(f)) for f in before["findings"]
+                 if f["action"] and f["action"]["id"] == action
+                 and (inst is None or instance_of(f) == inst)]
         with self._busy(tid):
             return self._fix(tid, row, alias, action, b, when, before, codes, who)
 
@@ -752,10 +778,13 @@ class Health:
         elif action == "upgrade":
             out.update(self._upgrade(row, b, when, who))
         after = self.target(tid, force=True)
-        still = [f for f in after["findings"] if f["code"] in codes]
+        still = [f for f in after["findings"] if (f["code"], instance_of(f)) in codes]
+        left = {(f["code"], instance_of(f)) for f in still}
         out["target"] = after
         out["finding"] = still[0] if still else None
         out["cleared"] = not still
+        out["instances"] = [{"code": c, "instance": i, "cleared": (c, i) not in left}
+                            for c, i in codes]
         if ACTIONS[action][1]:
             self.log(f"[health] {alias} ({tid}): {action} by {who} -> "
                      f"{'cleared' if not still else 'still ' + still[0]['code']}")

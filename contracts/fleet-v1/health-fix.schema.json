@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-fix.schema.json",
-  "title": "POST /v1/fleet/health/{id}/fix: what the fix did (job: the engine's or chatd's job; result: the rotated token's hint, an upgrade's plan; guide: the steps of an action that changes nothing), the target checked again, the finding the action was for if it is still there (null: cleared)",
+  "title": "POST /v1/fleet/health/{id}/fix: what the fix did (job: the engine's or chatd's job; result: the rotated token's hint, an upgrade's plan; guide: the steps of an action that changes nothing), the target checked again, the finding the action was for if it is still there (null: cleared), and each instance it was for with whether it cleared (a finding of its code, the backend or plugin it names where there are several)",
   "type": "object",
   "properties": {
     "contract_version": {
@@ -106,6 +106,32 @@
     },
     "cleared": {
       "type": "boolean"
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cleared": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "instance",
+          "cleared"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -119,7 +145,8 @@
     "guide",
     "target",
     "finding",
-    "cleared"
+    "cleared",
+    "instances"
   ],
   "additionalProperties": false
 }

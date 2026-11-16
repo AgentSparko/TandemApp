@@ -174,7 +174,7 @@ describe('Acceptance criteria (SRV-835)', () => {
           const want = HEALTH_FINDINGS[f.code][1];
           // a refused pairing is no target: its way on is Add engine; a host key that does not match gets none;
           // a plugin's finding without a fix links to its page, which the plugins pages (VIS-284) hold
-          const button = c.kind === 'pairings' ? (want && f.code !== 'host_key_mismatch' ? ['open-add-engine'] : []) : want ? [want] : c.kind === 'plugins' && f.facts.plugin ? ['open-plugin'] : [];
+          const button = c.kind === 'pairings' ? (['wrong_code', 'code_spent', 'no_window'].includes(f.code) ? ['open-add-engine'] : []) : want ? [want] : c.kind === 'plugins' && f.facts.plugin ? ['open-plugin'] : [];
           if (button[0] === 'open-plugin') expect(t, f.code).toContain(`href=#/app/plugins/p/${encodeURIComponent(String(f.facts.plugin))}`);
           expect(acts(t), f.code).toEqual(button);
         }
@@ -191,6 +191,8 @@ describe('Acceptance criteria (SRV-835)', () => {
     await r.flow.press(row(r, 'controller', 'backend_down'), 'TandemApp');
     expect(codes(r, 'controller')).not.toContain('backend_down');
     expect(cardText(r, 'controller')).toContain('Checked again: this passes now.');
+    // the fix is for the row's backend: the answer's cleared is of that one
+    expect(r.bodies[0]).toEqual({ action: 'retry', instance: 'DeepSeek' });
     // Start and Rotate
     await r.flow.press(row(r, 'spark-rack', 'engine_down'), 'spark-rack');
     await r.flow.press(row(r, 'gpu-box', 'token_refused'), 'gpu-box');
@@ -482,7 +484,7 @@ describe('sign-in and limits', () => {
     const t = rowText(r, 'spark-far', 'ssh_unreachable');
     expect(t).toContain('data-note=wait');
     expect(t).toContain('spark-far had too many fixes in the last minute.');
-    expect(t).toContain('Wait a minute, then try again.');
+    expect(t).toContain('Wait 60 seconds, then try again.');
     expect(t).toContain('The buttons of this card work again in 60 s.');
     expect(r.flow.waitLeft('spark-far')).toBe(FIX_WAIT_MS / 1000);
     // the button waits: pressing it sends nothing; another card's buttons do not wait

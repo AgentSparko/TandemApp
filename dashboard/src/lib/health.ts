@@ -28,6 +28,16 @@ export const isPluginFinding = (f: Pick<HealthFinding, 'code'>): boolean => f.co
 /** A host key that is not the one expected: the page shows both and offers nothing that connects. */
 export const isHostKeyStop = (code: string): boolean => code === 'host_key_changed' || code === 'host_key_mismatch';
 
+/** Which one of its code a finding is, where a target has several: the backend or plugin it names. */
+export const instanceOf = (f: Pick<HealthFinding, 'facts'>): string | null => {
+  const x = f.facts.backend ?? f.facts.plugin;
+  return x == null ? null : String(x);
+};
+
+/** A refused pairing code whose way on is a new code in Add engine (it is no target: no fix runs
+ *  for it). A host key that does not match gets nothing; a code tried too often waits first. */
+export const pairAgain = (code: string): boolean => code === 'wrong_code' || code === 'code_spent' || code === 'no_window';
+
 /** An action that changes nothing and answers how: its button opens the steps. */
 export const isGuide = (a: Pick<HealthAction, 'id' | 'changes'>): boolean => !a.changes && a.id !== 'retry';
 

@@ -69,7 +69,7 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   plugin_tampered: [409, "The plugin {plugin} changed since its install: {detail}", "Install it again from its source; do not enable a plugin whose files changed under it."],
   plugin_untrusted: [409, "The plugin {plugin} is not trusted to run as it asks: {detail}", "Its trust page says what a grant takes: a trusted publisher key or its id typed."],
   not_offered: [409, "{node} does not need that fix now.", "Check again, then use a button the health page shows."],
-  too_many_fixes: [429, "{node} had too many fixes in the last minute.", "Wait a minute, then try again."],
+  too_many_fixes: [429, "{node} had too many fixes in the last minute.", "Wait {retry_after} seconds, then try again."],
 };
 
 /** the facts a sentence may name; never a secret */

@@ -13,19 +13,20 @@ injected. The health service's clock is a test clock, so the cache and the limit
      clears                                                       test_stopped_engine_start
   2  Given a changed host key, Then both fingerprints are shown and no button connects anyway
      (the only action shows how to pair again; Start and Rotate are refused; no token goes to
-     that address)                                               test_changed_host_key
+     that address); it stays an error while the HTTP port answers test_changed_host_key
   3  every engine finding on a fake host, each with its sentence, fix and action, and each
      action's effect: SSH unreachable (retry; a warning while HTTP serves), key refused
-     (re_pair), no model (pick_model), token refused and missing (Rotate clears them, the new
-     token sealed), engine too old (Upgrade: a plan, then the apply with its confirm), another
-     major (no action), allow-from (no action), port blocked (retry), a refused pairing code
-                                                                  test_engine_findings
+     (re_pair; an error while HTTP serves), no model (pick_model), token refused and missing
+     (Rotate clears them, the new token sealed), engine too old (Upgrade: a plan, then the
+     apply with its confirm), another major (no action), allow-from (no action), port blocked
+     (retry), a refused pairing code (no target, so no action)    test_engine_findings
   4  the controller: chatd down and silent (Restart clears it), the sandbox socket missing,
      silent, without its image and fine, the memory cgroup, low disk (warning, error), a backend
-     down (retry probes it), no engine yet (setup.needs_setup, add_engine), chat elsewhere
-     unreachable                                                  test_controller_findings
+     down (retry probes it), two down and one back (cleared per instance), no engine yet
+     (setup.needs_setup, add_engine), chat elsewhere unreachable  test_controller_findings
   5  the cache and the limits: a second read is cached with its age, fresh=1 within 3 s is
-     limited, an action not offered is 409, six fixes a minute then 429, bad bodies 400
+     limited, an action not offered is 409, six fixes a minute then 429 with retry_after, bad
+     bodies 400
                                                                   test_cache_and_limits
   6  the rights: reads and retry with the reads' rule; Start with the Setup Guide's; Rotate and
      Upgrade with pairing's (from this machine only while no password is set)
@@ -169,6 +170,9 @@ def test_changed_host_key(tmp_path, monkeypatch):
         v = health(r, hid, clk)
         f = one(v, "host_key_changed")
         assert f["facts"]["pinned"] == r.host_fp and f["facts"]["offered"] == fake_engine.fp_of(b64), f
+        # the engine's HTTP port answers, yet no token went there: serving is not proven
+        assert f["severity"] == "error" and v["state"] == "error", (f, v)
+        assert checks(v)["http"] is True, v["checks"]
         assert r.host_fp in f["sentence"] and fake_engine.fp_of(b64) in f["sentence"]
         assert f["action"]["id"] == "re_pair" and f["action"]["changes"] is False, f
         assert not any(x["action"] and x["action"]["changes"] for x in v["findings"]), \
@@ -267,6 +271,7 @@ def test_engine_findings(tmp_path, monkeypatch):
         v = health(r, hid, clk)
         f = one(v, "not_paired")
         assert f["action"]["id"] == "re_pair" and checks(v)["token"] is None, f
+        assert f["severity"] == "error" and checks(v)["http"] is True, (f, v["checks"])
         with open(r.ak, "w") as fh:
             fh.write(lines)
         # SSH unreachable while HTTP serves with the token: a warning, retry
@@ -291,7 +296,7 @@ def test_engine_findings(tmp_path, monkeypatch):
         st, all_ = req(r, "GET", "/v1/fleet/health")
         ok(all_, "health.schema.json")
         pf = all_["pairings"][0]["finding"]
-        assert pf["code"] == "wrong_code" and pf["action"]["id"] == "re_pair", pf
+        assert pf["code"] == "wrong_code" and pf["action"] is None, pf
         assert all_["pairings"][0]["port"] == r.engine.port and all_["state"] in ("warning", "error")
         r.pair(code)
         st, all_ = req(r, "GET", "/v1/fleet/health")
@@ -472,6 +477,35 @@ def test_controller_findings(tmp_path, monkeypatch):
             assert "no_engine" not in codes(v), "a backend is there: no first run"
             st, d = fix(r, "controller", "retry")
             assert st == 200 and d["finding"]["code"] == "backend_down" and not d["cleared"]
+            assert d["instances"] == [{"code": "backend_down", "instance": "Gone box",
+                                       "cleared": False}], d["instances"]
+            # two down, then one no longer down (removed, as good as back for the page): the fix
+            # says so of each, and of the one it names
+            port2 = tf_free_port()
+            px.svc.cfg.create_backend({"id": "gone2", "kind": "generic", "label": "Gone too",
+                                    "url": f"http://127.0.0.1:{port2}/v1"})
+            px.svc.health.check(next(x for x in px.svc.cfg.backends() if x["id"] == "gone2"))
+            clk.tick(61)
+            v = health(r, "controller", clk)
+            assert sorted(f["facts"]["backend"] for f in v["findings"]
+                          if f["code"] == "backend_down") == ["Gone box", "Gone too"], v
+            px.svc.cfg.delete_backend("gone2")
+            st, d = fix(r, "controller", "retry")
+            assert st == 200 and not d["cleared"] and d["finding"]["facts"]["backend"] == "Gone box"
+            assert sorted((x["instance"], x["cleared"]) for x in d["instances"]) == \
+                [("Gone box", False), ("Gone too", True)], d["instances"]
+            px.svc.cfg.create_backend({"id": "gone2", "kind": "generic", "label": "Gone too",
+                                    "url": f"http://127.0.0.1:{port2}/v1"})
+            px.svc.health.check(next(x for x in px.svc.cfg.backends() if x["id"] == "gone2"))
+            clk.tick(61)
+            health(r, "controller", clk)
+            px.svc.cfg.delete_backend("gone2")
+            st, d = fix(r, "controller", "retry", instance="Gone too")
+            assert st == 200 and d["cleared"] and d["finding"] is None, d
+            assert d["instances"] == [{"code": "backend_down", "instance": "Gone too",
+                                       "cleared": True}], d["instances"]
+            st, d = fix(r, "controller", "retry", instance="Gone box")
+            assert st == 200 and not d["cleared"] and d["finding"]["facts"]["backend"] == "Gone box"
             app = req(r, "GET", "/v1/fleet/app")[1]
             assert app["setup"]["needs_setup"] is False and app["setup"]["backends"] == 1
             rt2.close()
@@ -528,7 +562,14 @@ def test_cache_and_limits(tmp_path, monkeypatch):
         st, e = fix(r, hid, "retry")
         assert st == 429 and e["error"]["code"] == "too_many_fixes" and "a node" not in \
             e["error"]["message"], e
-        clk.tick(61)
+        assert e["error"]["retry_after"] == 60 and "Wait 60 seconds" in e["error"]["fix"], e
+        clk.tick(25)
+        st, e = fix(r, hid, "retry")
+        assert st == 429 and e["error"]["retry_after"] == 35, e
+        for body in ({"action": "retry", "instance": ""}, {"action": "retry", "instance": 3}):
+            st, e = req(r, "POST", f"/v1/fleet/health/{hid}/fix", body)
+            assert st == 400 and e["error"]["code"] == "bad_request", (body, e)
+        clk.tick(36)
         assert fix(r, hid, "retry")[0] == 200
     return "cached with age, fresh limited, not offered, 400s, 404, not_ssh, 429"
 
