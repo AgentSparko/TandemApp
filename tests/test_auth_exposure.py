@@ -1,8 +1,8 @@
 """SRV-871: the exposure switches per protocol, the `auth` and `api` settings scopes and the health
 findings of the sign-in and the API, with TANDEM_AUTH=accounts. "Another device" is a request
 through a proxy's header (X-Real-IP), which is never this machine (proxy/authlocal.py
-this_machine); the Messages API's routes come with SRV-879, so its cells check the gate's answer
-(a refusal, or through it to the route's 404).
+this_machine). The Messages API's cells go to its real route (SRV-879): a refusal in its shape,
+or the route's answer, with the token in Authorization or in x-api-key.
 
   Gherkin "API exposure":
   1  Off by default: both switches this-machine; another device with a token: 403
@@ -25,7 +25,7 @@ this_machine); the Messages API's routes come with SRV-879, so its cells check t
 
   Acceptance criteria:
   a  the matrix protocol x switch x caller (page, service, local token, remote token, remote no
-     token)                                                          test_the_matrix
+     token; the tokens also in x-api-key)                            test_the_matrix
   b  each finding of design 6.3 fires and clears (idp_unreachable comes with the providers)
                                                                     test_each_finding_fires_and_clears
   c  a change of either scope is an audit row with the old and the new value
@@ -358,6 +358,8 @@ def test_the_matrix():
                 "service": {**bearer(svc), **LAN},
                 "local token": bearer(tok),
                 "remote token": {**bearer(tok), **LAN},
+                "local token in x-api-key": {"x-api-key": tok},
+                "remote token in x-api-key": {"x-api-key": tok, **LAN},
                 "remote no token": dict(LAN),
             }
             routes = {"openai": ("/v1/chat/completions", CHAT), "anthropic": ("/v1/messages", MSG)}
@@ -369,22 +371,24 @@ def test_the_matrix():
                         st, out = j(px.post(path, body, h))
                         if caller == "remote no token":
                             want = 401
-                        elif caller == "remote token" and switch == "this-machine":
+                        elif caller.startswith("remote token") and switch == "this-machine":
                             want = 403
                         else:
-                            want = "in"
-                        if want == "in":
-                            # through the gate: the OpenAI route answers, the Messages API's
-                            # route comes with SRV-879 (its 404 here)
-                            ok = st == 200 if proto == "openai" else st == 404
-                            assert ok, (proto, switch, caller, st, out)
+                            want = 200
+                        assert st == want, (proto, switch, caller, st, out)
+                        if proto == "anthropic":
+                            # the real route: its answer, or a refusal in its shape
+                            assert out["type"] == ("message" if want == 200 else "error"), out
+                            if want == 403:
+                                assert out["error"] == {"type": "permission_error",
+                                                        "message": exposure_mod.NOT_EXPOSED}
                         else:
-                            assert st == want, (proto, switch, caller, st, out)
+                            assert ("choices" in out) == (want == 200), out
                         cells += 1
-            assert cells == 20
+            assert cells == 28
     finally:
         srv.shutdown()
-    return "2 protocols x 2 switches x 5 callers"
+    return "2 protocols x 2 switches x 7 callers"
 
 
 # ---------------------------------------------------------------------------- AC b
