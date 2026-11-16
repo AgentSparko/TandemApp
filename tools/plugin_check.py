@@ -39,6 +39,10 @@ def main(argv=None) -> int:
     if rep["ok"]:
         print(f"ok {m.get('name')} {m.get('version')} sha256 {rep['sha256']} "
               f"({rep['files']} files)")
+        sig = rep["signature"] or {}
+        if sig.get("verified"):
+            print(f"signed by key {sig['key_id']} (sha256:{sig['fingerprint']}): whether that key "
+                  f"is trusted is the controller's to say")
         for w in rep["warnings"]:
             print(f"warning: {w}")
         return 0

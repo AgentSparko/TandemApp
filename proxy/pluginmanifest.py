@@ -22,11 +22,25 @@ THE DIGEST. sha256 over "plugin-tree-v1\\n" and one line a file in byte order of
 "<sha256 of the file> <x|-> <path>\\n" (x: executable by its owner). The registry records it at
 install and checks it again on load: a tree that changed since reads `mismatch` and does not load.
 
-THE SIGNATURE (optional). `plugin.sig.json` at the root: {algorithm: "ed25519", public_key (base64 of
-32 bytes), signed (the tree's digest, hex), signature (base64 of 64 bytes over
-"tandemapp-plugin-v1\\0" + the digest in hex)}. When present it must hold for this tree, else the
-install is refused (`signature_invalid`). Which keys are trusted is F3's (SEC-18); F1 records the
-key's id and whether the signature holds.
+THE SIGNATURE (optional). `plugin.sig.json` at the root (tools/plugin_sign.py writes it):
+
+    {format: "tandemapp-plugin-sig-1", algorithm: "ed25519", public_key (base64 of 32 bytes),
+     plugin, version, tree_sha256 (the tree's digest), manifest_sha256 (sha256 of plugin.json's
+     bytes), signature (base64 of 64 bytes)}
+
+The signature is over the STATEMENT, five lines of UTF-8 each ending in "\\n":
+
+    tandemapp-plugin-sig-1
+    plugin <name>
+    version <version>
+    tree <the tree's digest, hex>
+    manifest <sha256 of plugin.json, hex>
+
+The tree's digest is itself the sha256 over every file's sha256 (THE DIGEST), so the statement
+covers every file, the manifest and the version. When present the signature must hold for this
+tree and this manifest, else the install is refused (`signature_invalid`). Which keys are trusted
+is proxy/plugintrust.py's (SEC-18): this module only says whether the signature holds, and by
+which key (its id: the first 16 hex digits of its fingerprint, the sha256 of the 32 bytes).
 
 THE CHECKS (each refusal one {code, field, message} with its facts): the manifest parses and fits
 MANIFEST_SCHEMA (unknown fields are refused, not ignored); the kind's own rules; every MCP tool has
@@ -42,6 +56,7 @@ names a declared secret; the settings schema is one a form can draw (proxy/schem
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import os
@@ -339,48 +354,99 @@ def tree_digest(root: str, files=None) -> str:
     return h.hexdigest()
 
 
-def signature_message(digest: str) -> bytes:
-    return b"tandemapp-plugin-v1\0" + digest.encode()
+SIG_FORMAT = "tandemapp-plugin-sig-1"
+SIG_FIELDS = ("format", "algorithm", "public_key", "plugin", "version", "tree_sha256",
+              "manifest_sha256", "signature")
+SIG_MAX = 16 * 1024
 
 
-def check_signature(root: str, digest: str) -> dict:
-    """{present, verified, algorithm, key_id, trusted, error}: `error` set when present and it
-    does not hold. `trusted` is null until F3 decides which keys are trusted."""
+def signature_statement(plugin: str, version: str, tree_sha256: str,
+                        manifest_sha256: str) -> bytes:
+    """What a plugin's signature is over (THE SIGNATURE)."""
+    return (f"{SIG_FORMAT}\nplugin {plugin}\nversion {version}\ntree {tree_sha256}\n"
+            f"manifest {manifest_sha256}\n").encode()
+
+
+def manifest_path(root: str, manifest_dir: str = "") -> str:
+    return os.path.join(root, *[p for p in manifest_dir.split("/") if p], MANIFEST)
+
+
+def no_signature() -> dict:
+    return {"present": False, "verified": False, "algorithm": None, "key_id": None,
+            "fingerprint": None, "public_key": None, "plugin": None, "version": None,
+            "trusted": None, "key_name": None, "error": None}
+
+
+def signature_file_sha256(root: str) -> str | None:
+    """The sha256 of plugin.sig.json as it is now, or None without one: the registry records it,
+    since the tree's digest leaves the signature out."""
     path = os.path.join(root, SIGNATURE)
     if not os.path.isfile(path) or os.path.islink(path):
-        return {"present": False, "verified": False, "algorithm": None, "key_id": None,
-                "trusted": None, "error": None}
-    out = {"present": True, "verified": False, "algorithm": None, "key_id": None,
-           "trusted": None, "error": None}
+        return None
+    return file_sha256(path)
+
+
+def check_signature(root: str, digest: str, manifest_dir: str = "") -> dict:
+    """{present, verified, algorithm, key_id, fingerprint, public_key, plugin, version, trusted,
+    key_name, error}: `error` set when present and it does not hold. `trusted` and `key_name` are
+    the registry's (proxy/plugintrust.py), null here."""
+    path = os.path.join(root, SIGNATURE)
+    out = no_signature()
+    if os.path.lexists(path) and (os.path.islink(path) or not os.path.isfile(path)):
+        out.update(present=True, error=f"{SIGNATURE} is not a regular file")
+        return out
+    if not os.path.isfile(path):
+        return out
+    out["present"] = True
     try:
-        if os.path.getsize(path) > 16 * 1024:
-            raise ValueError("over 16 KiB")
+        if os.path.getsize(path) > SIG_MAX:
+            raise ValueError(f"over {SIG_MAX // 1024} KiB")
         with open(path, encoding="utf-8") as f:
             doc = json.load(f)
-        if not isinstance(doc, dict) or set(doc) != {"algorithm", "public_key", "signed",
-                                                     "signature"}:
-            raise ValueError("fields: algorithm, public_key, signed, signature")
+        if not isinstance(doc, dict):
+            raise ValueError("a JSON object")
+        if "signed" in doc and "format" not in doc:
+            raise ValueError("an older signature format: sign it again with "
+                             "tools/plugin_sign.py")
+        if set(doc) != set(SIG_FIELDS):
+            raise ValueError(f"fields: {', '.join(SIG_FIELDS)}")
+        if doc["format"] != SIG_FORMAT:
+            raise ValueError(f"format: {SIG_FORMAT}")
         out["algorithm"] = doc["algorithm"]
         if doc["algorithm"] != "ed25519":
             raise ValueError("algorithm: ed25519")
+        for k in ("public_key", "plugin", "version", "tree_sha256", "manifest_sha256",
+                  "signature"):
+            if not isinstance(doc[k], str):
+                raise ValueError(f"{k}: a string")
         pub = base64.b64decode(doc["public_key"], validate=True)
         sig = base64.b64decode(doc["signature"], validate=True)
         if len(pub) != 32 or len(sig) != 64:
             raise ValueError("public_key is 32 bytes, signature 64")
-        out["key_id"] = hashlib.sha256(pub).hexdigest()[:16]
-        if doc["signed"] != digest:
-            raise ValueError("it signs another tree (signed differs from this tree's digest)")
+        fp = hashlib.sha256(pub).hexdigest()
+        out.update(key_id=fp[:16], fingerprint=fp, public_key=doc["public_key"],
+                   plugin=doc["plugin"], version=doc["version"])
+        if not re.match(NAME_RE, doc["plugin"]) or not re.match(VERSION_RE, doc["version"]):
+            raise ValueError("plugin and version: a plugin's name and version")
+        if doc["tree_sha256"] != digest:
+            raise ValueError("it signs another tree: a file changed, was added or was removed "
+                             "after signing (tree_sha256 differs from this tree's digest)")
+        mpath = manifest_path(root, manifest_dir)
+        msha = file_sha256(mpath) if os.path.isfile(mpath) else None
+        if doc["manifest_sha256"] != msha:
+            raise ValueError("it signs another plugin.json (manifest_sha256 differs)")
         try:
             from cryptography.exceptions import InvalidSignature
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         except ImportError:                                        # pragma: no cover
             raise ValueError("the cryptography package is missing")
         try:
-            Ed25519PublicKey.from_public_bytes(pub).verify(sig, signature_message(digest))
+            Ed25519PublicKey.from_public_bytes(pub).verify(sig, signature_statement(
+                doc["plugin"], doc["version"], digest, msha))
         except InvalidSignature:
             raise ValueError("the signature does not hold for this tree")
         out["verified"] = True
-    except (ValueError, TypeError, KeyError, OSError) as exc:
+    except (ValueError, TypeError, KeyError, OSError, binascii.Error) as exc:
         out["error"] = str(exc) or type(exc).__name__
     return out
 
@@ -660,7 +726,7 @@ def inspect(root: str, *, manifest_dir: str = "", tandemapp: str | None = None,
     rep["files"] = len(files)
     rep["bytes"] = sum(f[3] for f in files)
     rep["sha256"] = tree_digest(root, files)
-    rep["signature"] = check_signature(root, rep["sha256"])
+    rep["signature"] = check_signature(root, rep["sha256"], manifest_dir)
     if rep["signature"]["error"]:
         rep["errors"].append(_e("signature_invalid", SIGNATURE,
                                 f"{SIGNATURE}: {rep['signature']['error']}"))
@@ -683,6 +749,12 @@ def inspect(root: str, *, manifest_dir: str = "", tandemapp: str | None = None,
         rep["errors"].append(_e("bad_value", None, f"{MANIFEST} is a JSON object"))
         return rep
     rep["manifest"] = m
+    sig = rep["signature"]
+    if sig["verified"] and (sig["plugin"], sig["version"]) != (m.get("name"), m.get("version")):
+        sig["verified"] = False
+        sig["error"] = (f"it signs {sig['plugin']} {sig['version']}, this is {m.get('name')} "
+                        f"{m.get('version')}")
+        rep["errors"].append(_e("signature_invalid", SIGNATURE, f"{SIGNATURE}: {sig['error']}"))
     errs = _schema_errors(m)
     rel_files = set()
     prefix = (manifest_dir.strip("/") + "/") if manifest_dir else ""

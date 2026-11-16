@@ -22,9 +22,11 @@ held to contracts/plugin-v1.
      new file; litter (.git, __pycache__, .pyc, .DS_Store, ._*) and plugin.sig.json are not
      part of it; a symlink or a control character refuses the tree
                                                               test_tree_digest
-  7  A signature is verified when present: a good one holds (its key id recorded, trusted null
-     until F3), a tampered tree, another tree's digest, a wrong key or a broken file refuse the
-     install (signature_invalid)                              test_signature
+  7  A signature is verified when present (SEC-18's statement: the plugin, its version, the
+     tree's and plugin.json's sha256): a good one holds (its key id and fingerprint recorded,
+     trusted null here: the registry's), a tampered tree, another tree's digest or plugin.json,
+     another version, a wrong key, F1's older format or a broken file refuse the install
+     (signature_invalid)                                      test_signature
   8  The vLLM and SGLang stats plugins have a manifest of kind engine-stats that passes, and their
      packages still import as before                          test_engine_stats_manifests
   9  The capabilities: the grammar of capabilities.json, which grants take the second confirm
@@ -329,15 +331,22 @@ def test_tree_digest():
 
 
 # ---------------------------------------------------------------------------- 7
-def _sign(d: str, key=None, digest: str | None = None) -> str:
+def _sign(d: str, key=None, digest: str | None = None, **over) -> str:
+    """Sign the tree at `d` as tools/plugin_sign.py does; `digest` and `over` forge a part."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     key = key or Ed25519PrivateKey.generate()
     dg = digest or PM.tree_digest(d)
     pub = key.public_key().public_bytes(serialization.Encoding.Raw,
                                         serialization.PublicFormat.Raw)
-    doc = {"algorithm": "ed25519", "public_key": base64.b64encode(pub).decode(), "signed": dg,
-           "signature": base64.b64encode(key.sign(PM.signature_message(dg))).decode()}
+    with open(os.path.join(d, "plugin.json")) as f:
+        m = json.load(f)
+    facts = {"plugin": m["name"], "version": m["version"], "tree_sha256": dg,
+             "manifest_sha256": PM.file_sha256(os.path.join(d, "plugin.json"))}
+    facts.update(over)
+    doc = {"format": PM.SIG_FORMAT, "algorithm": "ed25519",
+           "public_key": base64.b64encode(pub).decode(), **facts,
+           "signature": base64.b64encode(key.sign(PM.signature_statement(**facts))).decode()}
     with open(os.path.join(d, PM.SIGNATURE), "w") as f:
         json.dump(doc, f)
     return dg
@@ -355,6 +364,12 @@ def test_signature():
         sig = rep["signature"]
         assert rep["ok"] and sig["present"] and sig["verified"] and sig["error"] is None, rep
         assert sig["trusted"] is None and len(sig["key_id"]) == 16 and rep["sha256"] == dg
+        assert sig["fingerprint"].startswith(sig["key_id"]) and len(sig["fingerprint"]) == 64
+        assert (sig["plugin"], sig["version"]) == ("hello-tool", "0.1.0")
+        # the statement: five lines, the format, plugin, version, tree and manifest
+        msg = PM.signature_statement("hello-tool", "0.1.0", dg, "m" * 64).decode()
+        assert msg == (f"tandemapp-plugin-sig-1\nplugin hello-tool\nversion 0.1.0\ntree {dg}\n"
+                       f"manifest {'m' * 64}\n"), msg
         with open(os.path.join(d, "server.py"), "a") as f:
             f.write("# changed after signing\n")
         rep = PM.inspect(d, **VERSIONS)
@@ -362,23 +377,43 @@ def test_signature():
         assert "another tree" in rep["errors"][0]["message"]
         _sign(d, digest="0" * 64)                                    # a digest of another tree
         assert codes(PM.inspect(d, **VERSIONS)) == [("signature_invalid", PM.SIGNATURE)]
+        _sign(d, manifest_sha256="0" * 64)                          # another plugin.json
+        rep = PM.inspect(d, **VERSIONS)
+        assert codes(rep) == [("signature_invalid", PM.SIGNATURE)]
+        assert "another plugin.json" in rep["errors"][0]["message"]
+        _sign(d, version="0.0.9")                                   # names another version
+        rep = PM.inspect(d, **VERSIONS)
+        assert codes(rep) == [("signature_invalid", PM.SIGNATURE)], codes(rep)
+        assert "0.0.9" in rep["errors"][0]["message"]
         dg = PM.tree_digest(d)
         _sign(d)
         with open(os.path.join(d, PM.SIGNATURE)) as f:
             doc = json.load(f)
         other = Ed25519PrivateKey.generate()
-        doc["signature"] = base64.b64encode(other.sign(PM.signature_message(dg))).decode()
+        doc["signature"] = base64.b64encode(other.sign(PM.signature_statement(
+            doc["plugin"], doc["version"], doc["tree_sha256"], doc["manifest_sha256"]))).decode()
         with open(os.path.join(d, PM.SIGNATURE), "w") as f:
             json.dump(doc, f)
         rep = PM.inspect(d, **VERSIONS)
         assert codes(rep) == [("signature_invalid", PM.SIGNATURE)]
         assert "does not hold" in rep["errors"][0]["message"]
+        # F1's format (signed, no format) is refused with what to do
+        with open(os.path.join(d, PM.SIGNATURE), "w") as f:
+            json.dump({"algorithm": "ed25519", "public_key": doc["public_key"], "signed": dg,
+                       "signature": doc["signature"]}, f)
+        rep = PM.inspect(d, **VERSIONS)
+        assert codes(rep) == [("signature_invalid", PM.SIGNATURE)]
+        assert "older signature format" in rep["errors"][0]["message"]
         with open(os.path.join(d, PM.SIGNATURE), "w") as f:
             f.write("{broken")
         assert codes(PM.inspect(d, **VERSIONS)) == [("signature_invalid", PM.SIGNATURE)]
+        os.remove(os.path.join(d, PM.SIGNATURE))
+        os.mkdir(os.path.join(d, PM.SIGNATURE))                    # not a regular file
+        rep = PM.inspect(d, **VERSIONS)
+        assert ("signature_invalid", PM.SIGNATURE) in codes(rep), codes(rep)
     finally:
         shutil.rmtree(d)
-    return "verified when present; tampered, foreign, wrong-key and broken refused"
+    return "verified when present; tampered, foreign, wrong-key, renamed, old and broken refused"
 
 
 # ---------------------------------------------------------------------------- 8
