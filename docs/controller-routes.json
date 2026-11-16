@@ -48,6 +48,13 @@
       "probe": "GET /v1/config"
     },
     {
+      "prefix": "/v1/auth",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the sign-in, the first-run setup, sessions and accounts",
+      "when": "the accounts are on (TANDEM_AUTH=accounts)"
+    },
+    {
       "prefix": "/v1/chat-app",
       "owner": "controller",
       "match": "prefix",

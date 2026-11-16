@@ -86,6 +86,7 @@ controller takes it from loopback only, and a proxy there connects from loopback
 | `/v1/fleet` and below | TandemApp | always | the fleet: nodes, engine hosts, deployments, health, hooks, decision providers, plugins, the App page, the gateway for a page whose /v1 is an engine's |
 | `/v1/settings` and below | TandemApp | always | the settings interface: every scope, change sets, versions, the audit |
 | `/v1/config` and below | TandemApp | always | the Backends and Setup screens: backends, rules, prices, users |
+| `/v1/auth` and below | TandemApp | with `TANDEM_AUTH=accounts` | the sign-in, the first-run setup, sessions and accounts |
 | `/v1/chat-app` and below | TandemApp | always | the Chat tab: chatd behind the controller (off, own or external) |
 | `/v1/collect` and below | TandemApp | always | a plugin's or a host collector's batches, with its own token |
 | `/plugin-panels` and below | TandemApp | always | a running plugin's panels, in the page's frame |

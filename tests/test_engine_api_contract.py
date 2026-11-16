@@ -102,6 +102,10 @@ CLIENTS = ("proxy/nodeengines.py", "proxy/nodesource.py", "proxy/nodeagent.py",
            "tandemapp/conductor/classify.py", "chatd/engine.py", "chatd/agent.py",
            "chatd/service.py", "chatd/skills.py", "chatd/tools.py", "tools/tandem_eval.py")
 LISTS = ("routes", "app_routes_via_engine", "app_families")
+#: TandemApp's own families newer than the pinned engine contract: the engine answers 404 for them
+#: as for any path it does not know, and docs/controller-routes.json sends them to TandemApp. Each
+#: one becomes an app family of the engine's routes.json at its next pin. SEC-26: the sign-in.
+CONTROLLER_ONLY = ("/v1/auth",)
 #: where an engine path starts in a literal: its beginning, or right after a `${...}`
 LEAD = re.compile(r"(?:^|(?<=\}))(/v1/|/health|/metrics|/readyz|/_tandem|/s/|/dashboard/)")
 #: the API root alone (a base URL's `/v1`) is no route
@@ -369,6 +373,8 @@ def test_every_literal_is_classified():
             seen += 1
             got, prefix = classify(p, ents)
             if len(got) == 1 or (prefix and p in shared and got == set(shared[p])):
+                continue
+            if not got and any(p == f or p.startswith(f + "/") for f in CONTROLLER_ONLY):
                 continue
             bad.append(f"{rel}:{ln} {p} -> {sorted(got) or 'unclassified'}")
     assert not bad, f"{len(bad)} literals: " + "; ".join(bad[:20])
