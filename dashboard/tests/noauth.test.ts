@@ -111,6 +111,9 @@ describe('AU1: no password prompt in the source', () => {
         [/Sign out|Open the dashboard/, 'a sign-in screen'],
         [/\bwithToken\b|\baskToken\b|\btokenState\b|token_needed/, 'the token plumbing'],
       ] as const) {
+        // SEC-26: the controller's sign-in, its first-run setup and the password step replace this
+        // rule where the controller's accounts are on (TANDEM_AUTH=accounts, /health's X-Tandem-Auth)
+        if (rel === join('auth', 'view.ts') && what === 'a sign-in screen') continue;
         if (re.test(text)) bad.push(`${rel}: ${what}`);
       }
     }

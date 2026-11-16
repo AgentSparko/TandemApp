@@ -222,6 +222,8 @@ export interface ControllerSim {
   statePath: string;
   backendsDown: { label: string; error: string; back: boolean }[];
   plugins: PluginProblem[];
+  /** the sign-in's findings (SEC-26, SRV-865), with the accounts on */
+  signIn?: { code: string; facts: Facts }[];
   /** the next Restart does not bring chatd back */
   restartFails?: boolean;
 }
@@ -266,7 +268,23 @@ function build(name: HealthScenario, t0: number): Sim {
     case 'external':
       return { hosts: [desk()], controller: controller({ chat: 'external', chatUrl: 'http://192.0.2.60:8016', chatReachable: false }), pairings: [] };
     case 'cluster':
-      return { hosts: [desk()], controller: controller({ backend: 'kubernetes', sandbox: 'unavailable', sandboxWhy: "the runtimeClass 'gvisor' does not exist in this cluster" }), pairings: [] };
+      return {
+        hosts: [desk()],
+        controller: controller({
+          backend: 'kubernetes', sandbox: 'unavailable', sandboxWhy: "the runtimeClass 'gvisor' does not exist in this cluster",
+          // every finding of the sign-in, so each one is drawn (one install never has them all)
+          signIn: [
+            { code: 'auth_setup_pending', facts: {} },
+            { code: 'auth_owner_no_password', facts: {} },
+            { code: 'local_mode_proxy_seen', facts: {} },
+            { code: 'legacy_env_set', facts: { variable: 'TANDEM_ADMIN_TOKEN', file: '/data/app.env' } },
+            { code: 'legacy_env_invalid', facts: { variable: 'TANDEM_API_KEYS', file: 'the environment' } },
+            { code: 'legacy_users_from_unreadable', facts: { variable: 'TANDEM_API_USERS_FROM', file: '/data/app.env' } },
+            { code: 'bootstrap_secret_left', facts: { path: '/etc/tandemapp/setup/code' } },
+          ],
+        }),
+        pairings: [],
+      };
     case 'all':
       return {
         hosts: [
@@ -677,6 +695,7 @@ export class MockHealth {
     for (const b of c.backendsDown) found.push(healthFinding('backend_down', { backend: b.label }, b.error.slice(0, 200)));
     checks.push(check('backends', !c.backendsDown.length, c.backendsDown.length ? 'backend_down' : null));
     for (const p of c.plugins) found.push(healthFinding(p.code, { plugin: p.plugin }, p.detail.slice(0, 300)));
+    for (const f of c.signIn ?? []) found.push(healthFinding(f.code, f.facts));
     const rank = (code: string) => (['error', 'warning', 'info'] as Severity[]).indexOf(HEALTH_FINDINGS[code]?.[0] ?? 'error');
     const worst = [...c.plugins].sort((a, b) => rank(a.code) - rank(b.code))[0];
     checks.push(check('plugins', !c.plugins.length, worst?.code ?? null));
