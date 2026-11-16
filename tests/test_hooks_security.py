@@ -13,7 +13,7 @@
   8  a secret is never in a log, an answer after its creation, the
      audit, the export, the journal or the database file's bytes     test_secrets_never_leak
   9  the admin API's rights: the admin's, and pairing's for full and
-     secrets                                                        test_admin_rights
+     secrets (403 trust_required without them, SRV-849)            test_admin_rights
 
 Run: python tests/test_hooks_security.py
 """
@@ -30,11 +30,11 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hooks_util import ROOT, hook_server  # noqa: E402
+from hooks_util import CONTRACT, ROOT, hook_server  # noqa: E402
 from proxy_util import Proxy, fake, run  # noqa: E402
 
 from proxy import hookcall  # noqa: E402
-from tools import hooks_gate  # noqa: E402
+from tools import contract_check, hooks_gate  # noqa: E402
 
 KEY = hooks_gate.KEY
 PROMPT = "the quiet ORCHID-4471 question"
@@ -47,6 +47,11 @@ def _env(port):
 
 def _chat(text, **kw):
     return dict({"model": "fake-a", "messages": [{"role": "user", "content": text}]}, **kw)
+
+
+def _contract(name):
+    with open(os.path.join(CONTRACT, name), encoding="utf-8") as f:
+        return json.load(f)
 
 
 def _hook(px, doc, status=201, headers=None):
@@ -358,16 +363,25 @@ def test_admin_rights():
             "stages": ["request.finished"]}
     with Proxy({}) as px:                                          # no admin password
         _hook(px, meta, headers=away)
-        err = _hook(px, dict(meta, name="f", payload="full"), 401, headers=away)
-        assert "pairing" in err["error"]["message"]
-        st, _, _ = px.request("POST", "/v1/fleet/hooks/m/secret", {}, away)
-        assert st == 401
-        st, _, _ = px.request("PATCH", "/v1/fleet/hooks/m", {"payload": "full"}, away)
-        assert st == 401
+        # SRV-849: the writes are there, pairing's rights are not: 403 trust_required, as the
+        # settings interface answers the same grant
+        err = _hook(px, dict(meta, name="f", payload="full"), 403, headers=away)
+        assert err["error"]["type"] == "trust_required" and "pairing" in err["error"]["message"]
+        assert not contract_check.validate(err, _contract("error.schema.json"), root=CONTRACT)
+        st, _, out = px.request("POST", "/v1/fleet/hooks/m/secret", {}, away)
+        assert st == 403 and json.loads(out)["error"]["type"] == "trust_required"
+        st, _, out = px.request("PATCH", "/v1/fleet/hooks/m", {"payload": "full"}, away)
+        assert st == 403 and json.loads(out)["error"]["type"] == "trust_required"
         _hook(px, dict(meta, name="f", payload="full"))           # from this machine
-        st, _, _ = px.request("PATCH", "/v1/fleet/hooks/f", {"endpoint": "http://10.0.0.9/"},
-                              away)
-        assert st == 401                                           # a full hook's endpoint
+        st, _, out = px.request("PATCH", "/v1/fleet/hooks/f", {"endpoint": "http://10.0.0.9/"},
+                                away)
+        assert st == 403 and json.loads(out)["error"]["type"] == "trust_required"
+        st, _, out = px.request("PATCH", "/v1/fleet/hooks/f", {"priority": 3}, away)
+        assert st == 200                                           # a switch: the writes only
+        # the settings interface refuses the same grant the same way
+        st, _, out = px.request("POST", "/v1/settings/hooks/plan",
+                                {"set": {"hooks.m.payload": "full"}}, away)
+        assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", out
         st, _, _ = px.request("POST", "/v1/fleet/hooks", meta,
                               {"Origin": "http://evil.example", "Host": "127.0.0.1"})
         assert st == 403                                           # another origin
@@ -378,6 +392,8 @@ def test_admin_rights():
                                    ("GET", "/v1/fleet/hooks/stages", None)):
             st, _, _ = px.request(method, path, body, away)
             assert st == 401, (method, path, st)
+        st, _, out = px.request("POST", "/v1/fleet/hooks", dict(meta, payload="full"), away)
+        assert st == 401 and json.loads(out)["error"]["type"] == "unauthorized"  # no writes
         bearer = dict(away, Authorization=f"Bearer {token}")
         _hook(px, meta, headers=bearer)
         _hook(px, dict(meta, name="f2", payload="full"), headers=bearer)

@@ -60,7 +60,7 @@ A receiver recomputes the HMAC over the bytes it read, compares in constant time
 
 ## The admin API
 
-Under the controller's admin rights (the configuration's writes); granting `full`, moving a full hook's endpoint and rotating a secret take pairing's rights.
+Under the controller's admin rights (the configuration's writes); granting `full`, moving a full hook's endpoint and rotating a secret take pairing's rights. A caller with the writes but without pairing's rights is refused 403 `trust_required`, as the settings interface refuses the same grant; one without the writes 401 `unauthorized`.
 
 | route | answer |
 |-|-|

@@ -27,8 +27,10 @@
 THE RIGHTS. Every route takes the configuration's writes (`conductor_write`: the admin's token or
 session, or this machine; anyone while no admin password is set). Granting the full payload, moving
 a full hook's endpoint and rotating a secret take pairing's (`fleet_trust`): with no admin password
-set only this machine may, as pairing a node. A grant outside the LAN answers 409 confirm_needed
-with its `confirm` (proxy/hookstore.py). No answer holds a secret but the two that make one.
+set only this machine may, as pairing a node. A caller with the writes but not pairing's rights is
+refused 403 `trust_required`, as the settings interface refuses the same grant; one without the
+writes 401. A grant outside the LAN answers 409 confirm_needed with its `confirm`
+(proxy/hookstore.py). No answer holds a secret but the two that make one.
 """
 
 from __future__ import annotations
@@ -76,18 +78,13 @@ def _needs_trust(runner, method: str, sub: list, body) -> bool:
 def handle(handler, svc, method: str, sub: list[str], body) -> None:
     """One /v1/fleet/hooks request; `sub` is the path after /v1/fleet/hooks."""
     runner = svc.hooks
-    trust = _needs_trust(runner, method, sub, body)
-    route = "fleet_trust" if trust else "conductor_write"
-    from proxy import app as app_mod
-    a = app_mod.STATE.get("auth")
-    if trust and a is not None and not a.password_set and \
-            a.decide(route, handler._peer(), handler.headers) != "ok":
-        return _send(handler, 401, {"error": {
-            "type": "unauthorized", "message": "the full payload and a hook's secret take "
-            "pairing's rights: set an admin password (App settings) to do this from another "
-            "machine, or ask from this one"}})
-    if not handler._allowed(route):
+    if not handler._allowed("conductor_write"):
         return
+    if _needs_trust(runner, method, sub, body):
+        from proxy import app as app_mod
+        a = app_mod.STATE.get("auth")
+        if a is not None and a.decide("fleet_trust", handler._peer(), handler.headers) != "ok":
+            return _send(handler, 403, trust_required())
     from proxy import config_api
     who = config_api._who(handler, svc)
     q = {k: v[-1] for k, v in parse_qs(urlsplit(handler.path).query).items()}
@@ -96,6 +93,13 @@ def handle(handler, svc, method: str, sub: list[str], body) -> None:
     except HookError as exc:
         code, out = exc.status, exc.body()
     return _send(handler, code, out)
+
+
+def trust_required(what: str = "the full payload and a hook's secret") -> dict:
+    """The refusal of a write that takes pairing's rights to a caller without them (SEC-16)."""
+    return {"error": {"type": "trust_required", "message": (
+        f"{what} take pairing's rights: set an admin password (App settings) to do this "
+        f"from another machine, or ask from this one")}}
 
 
 def _send(handler, code: int, out) -> None:

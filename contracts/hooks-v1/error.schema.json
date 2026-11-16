@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "an error of /v1/fleet/hooks",
-  "description": "every refusal: 400, 401, 404, 409 (exists, conflict, confirm_needed with `confirm`, `destination`, `lan`), 422 (invalid, kind_unavailable, with `field`), 503",
+  "description": "every refusal: 400, 401 (no rights to the configuration's writes), 403 (trust_required: a write that takes pairing's rights, as the settings interface refuses it; another site or origin), 404, 409 (exists, conflict, confirm_needed with `confirm`, `destination`, `lan`), 422 (invalid, kind_unavailable, with `field`), 503",
   "type": "object",
   "properties": {
     "error": {
