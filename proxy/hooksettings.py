@@ -39,6 +39,11 @@ and removing a hook do. Each value row carries the hook's name as its `label`. T
 registry's own (`HookStore._check`), run on the hook as it would be; a write is the registry's
 update, audited there, and the runner reads it at the next request (restart class none).
 
+A DECISION PROVIDER'S TEXT (SEC-16) takes the same rules: a `providers.<id>.questions` set that
+sends a systemone-http provider's text to a host its grant does not name is a grant
+(proxy/providerstore.py THE PAYLOAD), planned only for pairing's rights, outside the LAN with the
+second confirm, which the write hands the store as the confirm it would have answered.
+
 THE FULL PAYLOAD (SEC-16) keeps its rules. A set of `payload` to `full` that grants it (the hook is
 not full yet, or its grant names another destination) is a grant: `grants()` lists it with the
 destination's host and whether it is on the LAN, and the scope plans it only for a caller with
@@ -288,7 +293,7 @@ class RegistryHooks(HooksAdapter):
         return []
 
     def grants(self, sets) -> list:
-        out = []
+        out = self._provider_grants(sets)
         for hid, patch in self._patches({k: v for k, v in sets.items()
                                          if k.endswith(".payload")}, []).items():
             if patch.get("payload") != "full":
@@ -301,6 +306,36 @@ class RegistryHooks(HooksAdapter):
             out.append({"key": f"hooks.{hid}.payload", "hook": hid,
                         "destination": dest["host"], "lan": bool(dest["lan"]),
                         "version": old["version"]})
+        return out
+
+    def _provider_grants(self, sets) -> list:
+        """SEC-16: a `providers.<id>.questions` set that sends a systemone-http provider's text
+        to a host its grant does not name is a grant, planned as the full payload's."""
+        out = []
+        if self.providers is None:
+            return out
+        for k, v in sets.items():
+            if not (k.startswith("providers.") and k.endswith(".questions")) or \
+                    not isinstance(v, dict):
+                continue
+            old = self.providers.get(k[len("providers."):-len(".questions")])
+            if old is None:
+                continue
+            new = dict(old, questions=v)
+            try:
+                if not self.providers.needs_grant(old, new):
+                    continue
+            except Exception:                                      # noqa: BLE001
+                continue                         # a bad mapping: check() refuses it on its key
+            from proxy.providerstore import destinations
+            dests = destinations(new)
+            away = self.providers.away(old, new)
+            out.append({"key": k, "hook": old["id"], "kind": "provider",
+                        "destination": ", ".join(sorted(h for h in dests
+                                                        if h not in ((old.get("grant") or {})
+                                                                     .get("destinations") or {}))))
+                        or ", ".join(sorted(dests)),
+                        "lan": not away, "away": away, "version": old["version"]})
         return out
 
     def write(self, sets, unsets, who, grants=None) -> None:
@@ -316,8 +351,11 @@ class RegistryHooks(HooksAdapter):
                 raise _refused(exc, f"hooks.{hid}.{f}" if f in HOOK_KEYS
                                else f"hooks.{hid}") from None
         for pid, patch in plan:
+            g = grants.get(f"providers.{pid}.questions")
+            confirm = self.providers.confirm_token(pid, g["away"], g["version"]) \
+                if g and g.get("away") else None
             try:
-                self.providers.update(pid, patch, who=who)
+                self.providers.update(pid, patch, who=who, confirm=confirm)
             except ProviderError as exc:
                 raise _refused(exc, self._provider_key(pid, exc.field)) from None
 

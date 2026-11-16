@@ -11,6 +11,16 @@
                             its last 4 characters and a sha256 prefix for the page; scope `*` is
                             the provider's own key, a question id that question's
 
+THE PAYLOAD (SEC-16). A systemone-http provider is sent the question's text (a digest of the
+conversation: what people wrote), so it takes the rules of a hook at payload `full`: making one,
+or changing where it or one of its questions answers, is a grant, which the API plans only for a
+caller with pairing's rights (403 trust_required). The grant (`grant_doc`) records who and when,
+each destination host and whether it is on the LAN; a host outside the LAN needs a second confirm
+(409 confirm_needed with a `confirm` bound to the provider, the hosts outside the LAN and its
+version; the same write again with it), and the grant then records who confirmed it. A call to a
+host the grant does not name, or outside the LAN without its confirm, is not made (`not_granted`:
+the built-in answers). A row from before the grant counts as granted for a host on the LAN.
+
 A key is write-only: a create or a change sets it (`api_key`, or `questions.<id>.api_key`; null
 clears it) and no answer, log line, audit row or journal row holds it, only its hint. Every write
 is audited (field names, never a key) and bumps `gen`, which the runtime reads.
@@ -23,6 +33,8 @@ question `on` or `ab`; any number may watch it in `shadow`.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 import secrets as _rand
@@ -39,7 +51,7 @@ CREATE TABLE IF NOT EXISTS decision_providers (
   questions TEXT NOT NULL DEFAULT '{}', mode TEXT NOT NULL DEFAULT 'shadow',
   ab_percent INTEGER NOT NULL DEFAULT 0, sticky TEXT NOT NULL DEFAULT 'session',
   enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-  updated_by TEXT, version INTEGER NOT NULL DEFAULT 1, target TEXT);
+  updated_by TEXT, version INTEGER NOT NULL DEFAULT 1, target TEXT, grant_doc TEXT);
 CREATE TABLE IF NOT EXISTS decision_provider_keys (
   ref TEXT PRIMARY KEY, provider_id TEXT NOT NULL, scope TEXT NOT NULL, ciphertext BLOB NOT NULL,
   nonce BLOB NOT NULL, master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT,
@@ -69,15 +81,57 @@ KEY_MAX = 4096
 
 
 class ProviderError(Exception):
-    def __init__(self, status: int, code: str, message: str, field: str | None = None):
+    def __init__(self, status: int, code: str, message: str, field: str | None = None,
+                 extra: dict | None = None):
         super().__init__(message)
         self.status, self.code, self.message, self.field = status, code, message, field
+        self.extra = dict(extra or {})
 
     def body(self) -> dict:
         err = {"type": self.code, "code": self.code, "message": self.message}
         if self.field:
             err["field"] = self.field
+        err.update(self.extra)
         return {"error": err}
+
+
+def destinations(d: dict) -> dict:
+    """host -> on the LAN, of every endpoint a systemone-http provider's text goes to (its own
+    and its questions'); empty for another kind (a hook has its own grant, a plugin and the
+    built-in run on this host)."""
+    if d.get("kind") != "systemone-http":
+        return {}
+    urls = [d.get("endpoint")] + [(spec or {}).get("endpoint")
+                                  for spec in (d.get("questions") or {}).values()
+                                  if isinstance(spec, dict)]
+    out = {}
+    for u in urls:
+        if isinstance(u, str) and u:
+            host = hookcall.destination(u)["host"]
+            if host and host not in out:
+                out[host] = hookcall.host_is_lan(host)
+    return out
+
+
+_LAN_SEEN: dict = {}
+
+
+def granted(p: dict, url: str | None) -> bool:
+    """A call may send the question's text to `url`: its host is in the provider's grant (outside
+    the LAN: confirmed); a row from before the grant, for a host on the LAN."""
+    if p.get("kind") != "systemone-http" or not url:
+        return True
+    host = hookcall.destination(url)["host"]
+    g = p.get("grant")
+    if g:
+        if host not in (g.get("destinations") or {}):
+            return False
+        return bool(g["destinations"][host]) or g.get("confirmed_by") is not None
+    now = time.monotonic()
+    got = _LAN_SEEN.get(host)
+    if got is None or now - got[0] > 60.0:
+        _LAN_SEEN[host] = got = (now, hookcall.host_is_lan(host))
+    return got[1]
 
 
 def _now_ms() -> int:
@@ -111,6 +165,7 @@ class ProviderStore:
         self.plugin_target = None
         self.gen = 0
         self._ready = False
+        self._secret = _rand.token_bytes(32)          # the confirm tokens' key, this process's
 
     # ------------------------------------------------------------------ lifecycle
     def ready(self) -> bool:
@@ -125,6 +180,8 @@ class ProviderStore:
                 cols = {r[1] for r in conn.execute("PRAGMA table_info(decision_providers)")}
                 if "target" not in cols:                     # a table made before SRV-859
                     conn.execute("ALTER TABLE decision_providers ADD COLUMN target TEXT")
+                if "grant_doc" not in cols:                  # a table made before SEC-16's
+                    conn.execute("ALTER TABLE decision_providers ADD COLUMN grant_doc TEXT")
                 conn.commit()
                 self._ready = True
         return True
@@ -144,7 +201,7 @@ class ProviderStore:
     # ------------------------------------------------------------------ reads
     _COLS = ("id", "name", "kind", "endpoint", "hook_id", "model", "timeout_ms", "questions",
              "mode", "ab_percent", "sticky", "enabled", "created_at", "updated_at", "updated_by",
-             "version", "target")
+             "version", "target", "grant_doc")
 
     def _row(self, r) -> dict:
         d = dict(zip(self._COLS, r))
@@ -152,6 +209,10 @@ class ProviderStore:
             d["questions"] = json.loads(d["questions"]) if d["questions"] else {}
         except ValueError:
             d["questions"] = {}
+        try:
+            d["grant"] = json.loads(d.pop("grant_doc")) if d.get("grant_doc") else None
+        except ValueError:
+            d["grant"] = None
         d["enabled"] = bool(d["enabled"])
         return d
 
@@ -275,6 +336,64 @@ class ProviderStore:
                     f"the provider {p['id']!r} serves {', '.join(both)} {p['mode']}: one provider "
                     f"a question on or ab (any number in shadow)"), "questions")
 
+    # ------------------------------------------------------------------ the payload (SEC-16)
+    def confirm_token(self, pid: str, hosts, version: int) -> str:
+        msg = f"{pid}\0{','.join(sorted(hosts))}\0{version}".encode()
+        return hmac.new(self._secret, msg, hashlib.sha256).hexdigest()[:32]
+
+    @staticmethod
+    def needs_grant(old: dict | None, new: dict) -> bool:
+        """The write sends the question's text to a host the provider's grant does not name yet
+        (a new systemone-http provider, or a new endpoint): pairing's rights."""
+        dests = destinations(new)
+        if not dests:
+            return False
+        g = (old or {}).get("grant") or {}
+        have = g.get("destinations") or {}
+        if old is not None and not g:
+            have = destinations(old)        # a row from before the grant: what it reached
+        return any(h not in have for h in dests)
+
+    @staticmethod
+    def away(old: dict | None, new: dict) -> list[str]:
+        """The hosts outside the LAN a write would send the text to that the grant does not hold
+        confirmed: the ones its confirm is bound to."""
+        g = (old or {}).get("grant") or {}
+        dests = destinations(new)
+        if g and all(h in (g.get("destinations") or {}) for h in dests):
+            return []
+        sure = set(g.get("destinations") or {}) if g.get("confirmed_by") else set()
+        return sorted(h for h, lan in dests.items() if not lan and h not in sure)
+
+    def _grant(self, old: dict | None, new: dict, who: str, confirm) -> tuple[dict | None, bool]:
+        """(the grant the new row carries, whether one was made now). A host outside the LAN
+        that the grant does not hold confirmed needs the confirm (409 confirm_needed)."""
+        dests = destinations(new)
+        if not dests:
+            return None, False
+        g = (old or {}).get("grant")
+        if g and all(h in (g.get("destinations") or {}) for h in dests):
+            kept = {h: g["destinations"][h] for h in dests}
+            return dict(g, destinations=kept), kept != g.get("destinations")
+        away = self.away(old, new)
+        pid = new.get("id") or ""
+        confirmed = bool(g and g.get("confirmed_by")) and not away
+        now = _now_ms()
+        if away:
+            want = self.confirm_token(pid, away, (old or {}).get("version", 0))
+            if not (isinstance(confirm, str) and hmac.compare_digest(confirm, want)):
+                raise ProviderError(409, "confirm_needed", (
+                    f"the questions' text would go to {', '.join(away)}, outside the LAN: send "
+                    f"the same request again with this confirm to grant it"), "endpoint",
+                    extra={"confirm": want, "destination": ", ".join(away), "lan": False})
+            confirmed = True
+        outside = any(not lan for lan in dests.values())
+        return {"by": who, "at": now, "destinations": dests,
+                "confirmed_by": (who if away else (g or {}).get("confirmed_by"))
+                if outside and confirmed else None,
+                "confirmed_at": (now if away else (g or {}).get("confirmed_at"))
+                if outside and confirmed else None}, True
+
     # ------------------------------------------------------------------ writes
     @staticmethod
     def _split(questions: dict) -> tuple[dict, dict]:
@@ -298,9 +417,11 @@ class ProviderStore:
             n += 1
         return pid
 
-    def create(self, doc: dict, who: str = "gui") -> dict:
+    def create(self, doc: dict, who: str = "gui", confirm=None) -> dict:
         if not isinstance(doc, dict):
             raise _bad("the body must be a JSON object")
+        confirm = confirm if confirm is not None else doc.get("confirm")
+        doc = {k: v for k, v in doc.items() if k != "confirm"}
         unknown = set(doc) - set(FIELDS) - {"id"}
         if unknown:
             raise _bad(f"unknown field {sorted(unknown)[0]!r}", sorted(unknown)[0])
@@ -318,6 +439,9 @@ class ProviderStore:
         elif not isinstance(pid, str) or not ID_RE.match(pid):
             raise _bad("id: [a-z0-9][a-z0-9._-]{0,47}", "id")
         mapping, qkeys = self._split(d["questions"])
+        if self.get(pid) is not None:
+            raise ProviderError(409, "exists", f"a decision provider {pid!r} exists", "id")
+        grant, _ = self._grant(None, dict(d, id=pid, questions=mapping), who, confirm)
         now = _now_ms()
         with self.cfg._lock:
             if self.get(pid) is not None:
@@ -326,26 +450,36 @@ class ProviderStore:
             c = self._c()
             c.execute("INSERT INTO decision_providers(id, name, kind, endpoint, hook_id, model, "
                       "timeout_ms, questions, mode, ab_percent, sticky, enabled, created_at, "
-                      "updated_at, updated_by, version, target) VALUES "
-                      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                      "updated_at, updated_by, version, target, grant_doc) VALUES "
+                      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
                       (pid, d["name"].strip(), d["kind"], d["endpoint"], d["hook_id"],
                        d["model"], d["timeout_ms"], json.dumps(mapping, sort_keys=True),
                        d["mode"], d["ab_percent"], d["sticky"], int(d["enabled"]), now, now,
-                       who, d["target"]))
+                       who, d["target"], json.dumps(grant, sort_keys=True) if grant else None))
             keys = dict(qkeys)
             if d["api_key"] is not None:
                 keys[DEFAULT_SCOPE] = d["api_key"]
             set_ = self._put_keys(pid, keys, now)
+            detail = {k: v for k, v in (("keys_set", set_),
+                                        ("grant", self._grant_detail(grant))) if v}
             self.cfg._audit(who, "create", "decision_provider", pid,
-                            [k for k in FIELDS if k in doc],
-                            detail={"keys_set": set_} if set_ else None)
+                            [k for k in FIELDS if k in doc], detail=detail or None)
             c.commit()
             self.gen += 1
         return self.get(pid)
 
-    def update(self, pid: str, patch: dict, who: str = "gui") -> dict:
+    @staticmethod
+    def _grant_detail(grant: dict | None) -> dict | None:
+        if not grant:
+            return None
+        return {"destinations": grant.get("destinations"),
+                "confirmed": grant.get("confirmed_by") is not None}
+
+    def update(self, pid: str, patch: dict, who: str = "gui", confirm=None) -> dict:
         if not isinstance(patch, dict):
             raise _bad("the body must be a JSON object")
+        confirm = confirm if confirm is not None else patch.get("confirm")
+        patch = {k: v for k, v in patch.items() if k != "confirm"}
         unknown = set(patch) - set(FIELDS)
         if unknown:
             raise _bad(f"unknown field {sorted(unknown)[0]!r}", sorted(unknown)[0])
@@ -367,6 +501,7 @@ class ProviderStore:
                    (k not in ("api_key", "questions") and patch[k] != old.get(k))]
         if not changed:
             return old
+        grant, granted = self._grant(old, dict(new, id=pid, questions=mapping), who, confirm)
         now = _now_ms()
         with self.cfg._lock:
             if self.need(pid)["version"] != old["version"]:
@@ -377,11 +512,12 @@ class ProviderStore:
             c.execute("UPDATE decision_providers SET name = ?, endpoint = ?, hook_id = ?, "
                       "model = ?, timeout_ms = ?, questions = ?, mode = ?, ab_percent = ?, "
                       "sticky = ?, enabled = ?, updated_at = ?, updated_by = ?, target = ?, "
-                      "version = version + 1 WHERE id = ?",
+                      "grant_doc = ?, version = version + 1 WHERE id = ?",
                       (new["name"].strip(), new["endpoint"], new["hook_id"], new["model"],
                        new["timeout_ms"], json.dumps(mapping, sort_keys=True), new["mode"],
                        new["ab_percent"], new["sticky"], int(new["enabled"]), now, who,
-                       new.get("target"), pid))
+                       new.get("target"), json.dumps(grant, sort_keys=True) if grant else None,
+                       pid))
             # a question no longer answered takes its key with it
             gone = [q for q in old["questions"] if q not in mapping]
             for q in gone:
@@ -392,7 +528,9 @@ class ProviderStore:
             for scope in cleared:
                 c.execute("DELETE FROM decision_provider_keys WHERE provider_id = ? AND "
                           "scope = ?", (pid, scope))
-            detail = {k: v for k, v in (("keys_set", set_), ("keys_cleared", cleared + gone))
+            detail = {k: v for k, v in (("keys_set", set_), ("keys_cleared", cleared + gone),
+                                        ("grant", self._grant_detail(grant) if granted
+                                         else None))
                       if v}
             self.cfg._audit(who, "update", "decision_provider", pid, changed,
                             detail=detail or None)

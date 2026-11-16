@@ -15,6 +15,11 @@ the conductor's harness, keys, the byte gate.
   4  no provider: the relay byte for byte (tools/hooks_gate.py's cases)
      with providers stored for every question; with the conductor on
      the decisions recorded are those of a controller without any  test_relay_unchanged_without_provider
+  5  SEC-16: a systemone-http provider is sent the questions' text, so
+     it takes the full payload's rules: pairing's rights (403
+     trust_required), a grant naming each host (who, when), a second
+     confirm outside the LAN, on the API and in the settings
+     interface; a call to a host the grant does not hold is not made test_text_grant
 
 Run: python tests/test_decision_providers_api.py
 """
@@ -342,6 +347,79 @@ def test_relay_unchanged_without_provider():
         fk.shutdown()
         ex.shutdown()
     return f"{len(hooks_gate.CASES)} relay cases byte for byte; {len(PROMPTS)} decisions equal"
+
+
+# ---------------------------------------------------------------------------------- 5
+def test_text_grant():
+    from proxy import providerstore
+    ex, eport = example(key=KEYS[0])
+    lan = f"http://127.0.0.1:{eport}"
+    far = "http://203.0.113.9:8720"
+    try:
+        with Proxy({}) as px:                                     # no admin password
+            body = {"name": "Jev", "endpoint": lan, "questions": {"classify": {}}}
+            err = _j(px, "POST", BASE, body, 403, AWAY)
+            assert err["error"]["type"] == "trust_required" and "pairing" in \
+                err["error"]["message"], err
+            # a builtin provider sends nothing away: the writes are enough
+            _j(px, "POST", BASE, {"name": "Own", "kind": "builtin",
+                                  "questions": {"judge": {}}}, 201, AWAY)
+            p = _j(px, "POST", BASE, body, 201)["provider"]          # this machine
+            _ok({"provider": p}, "decision-provider")
+            g = p["grant"]
+            assert g["destinations"] == {"127.0.0.1": True} and g["confirmed_by"] is None, g
+            assert g["by"] and g["at"] > 0
+            # a switch is the writes' alone; a new place for the text is a grant
+            _j(px, "PATCH", BASE + "/jev", {"name": "Jev 2"}, 200, AWAY)
+            _j(px, "PATCH", BASE + "/jev", {"endpoint": far}, 403, AWAY)
+            err = _j(px, "PATCH", BASE + "/jev", {"endpoint": far}, 409)["error"]
+            assert (err["type"], err["destination"], err["lan"], err["field"]) == \
+                ("confirm_needed", "203.0.113.9", False, "endpoint"), err
+            assert _j(px, "GET", BASE + "/jev")["provider"]["endpoint"] == lan  # nothing yet
+            _j(px, "PATCH", BASE + "/jev", {"endpoint": far, "confirm": "x" * 32}, 409)
+            got = _j(px, "PATCH", BASE + "/jev", {"endpoint": far,
+                                                  "confirm": err["confirm"]})["provider"]
+            g = got["grant"]
+            assert g["destinations"] == {"203.0.113.9": False} and g["confirmed_by"], g
+            # the same place again asks nothing; back on the LAN asks nothing either
+            _j(px, "PATCH", BASE + "/jev", {"endpoint": far + "/"}, 200)
+            back = _j(px, "PATCH", BASE + "/jev", {"endpoint": lan})["provider"]["grant"]
+            assert back["destinations"] == {"127.0.0.1": True}, back
+            # the settings interface: a question's endpoint outside the LAN is a grant
+            qs = {"classify": {"endpoint": "http://198.51.100.4:8720"}}
+            st, _, out = px.request("POST", "/v1/settings/hooks/plan",
+                                    {"set": {"providers.jev.questions": qs}}, AWAY)
+            assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", out
+            st, _, out = px.request("POST", "/v1/settings/hooks/plan",
+                                    {"set": {"providers.jev.questions": qs}})
+            plan = json.loads(out)
+            assert st == 200 and plan["grant_keys"] == ["hooks/controller:providers.jev.questions"], \
+                plan
+            ch = {"set": {"providers.jev.questions": qs}, "confirm": plan["confirm"]}
+            st, _, out = px.request("POST", "/v1/settings/hooks/apply", ch)
+            assert st == 428, out
+            st, _, out = px.request("POST", "/v1/settings/hooks/apply",
+                                    dict(ch, confirm_grant=plan["confirm_grant"]))
+            assert st == 200 and json.loads(out)["state"] == "applied", out
+            g = _j(px, "GET", BASE + "/jev")["provider"]["grant"]
+            assert g["destinations"] == {"127.0.0.1": True, "198.51.100.4": False} and \
+                g["confirmed_by"], g
+            # a call goes only where the grant says
+            ps = proxy_app.STATE["svc"].providers
+            row = ps.store.get("jev")
+            rep = ps.ask(dict(row, grant=dict(row["grant"], destinations={"127.0.0.1": True})),
+                         "classify", "x", "q?", {"a": "a", "b": "b"}, count=False, live=True)
+            assert rep.error == "not_granted", rep.error
+            assert not providerstore.granted({"kind": "systemone-http", "grant": None}, far)
+            assert providerstore.granted({"kind": "systemone-http", "grant": None}, lan)
+            assert not providerstore.granted({"kind": "systemone-http", "grant": {
+                "destinations": {"203.0.113.9": False}, "confirmed_by": None}}, far)
+            assert providerstore.granted({"kind": "hook", "grant": None}, far)
+            rows = [r for r in px.svc.cfg.audit(500) if r.get("object") == "decision_provider"]
+            assert any((r.get("detail") or {}).get("grant") for r in rows), rows
+    finally:
+        ex.shutdown()
+    return "trust, grant, confirm outside the LAN, settings plan, not_granted"
 
 
 if __name__ == "__main__":

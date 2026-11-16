@@ -603,16 +603,21 @@ class HooksScope(KeyValueScope):
         if not grants:
             return p
         if not settings_mod.trusted():
+            what = ("sending the questions' text there" if grants[0].get("kind") == "provider"
+                    else "the full payload")
             raise SettingsError(403, "trust_required", (
-                f"{grants[0]['key']}: the full payload takes pairing's rights: set an admin "
+                f"{grants[0]['key']}: {what} takes pairing's rights: set an admin "
                 f"password (App settings) to grant it from another machine, or grant it from "
                 f"this one"), key=grants[0]["key"])
         for g in grants:
             where = g["destination"] or "this controller"
+            what = (f"the decision provider {g['hook']} is sent the questions' text"
+                    if g.get("kind") == "provider" else
+                    f"the hook {g['hook']} gets the full payload (prompts and answers as they "
+                    f"are)")
             p["warnings"].append(
-                f"{g['key']}: the hook {g['hook']} gets the full payload (prompts and answers as "
-                f"they are) at {where}" + ("" if g["lan"] else ", outside the LAN: apply asks "
-                                                              "a second time"))
+                f"{g['key']}: {what} at {where}" + ("" if g["lan"] else ", outside the LAN: "
+                                                                      "apply asks a second time"))
         p["grant_keys"] = sorted(g["key"] for g in grants if not g["lan"])
         p["grants"] = {g["key"]: g for g in grants}
         p["state"] = digest([p["state"], sorted(grants, key=lambda g: g["key"])])

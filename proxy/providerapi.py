@@ -20,8 +20,11 @@
     GET    /v1/fleet/decision-providers/{id}/calls   ?limit=N: this process's recent calls
 
 THE RIGHTS. Every route takes the configuration's writes (`conductor_write`), as the hooks' and
-the backends' (a backend's key is set the same way). No answer, log line or audit row holds a
-key: the views carry its hint (set, last 4 characters, a sha256 prefix).
+the backends' (a backend's key is set the same way). A write that sends the questions' text to a
+host the provider's grant does not name yet (a new systemone-http provider, a new endpoint) takes
+pairing's rights, as a hook's full payload (SEC-16): 403 trust_required without them; outside
+the LAN 409 confirm_needed with its `confirm`, then the same write with it. No answer, log
+line or audit row holds a key: the views carry its hint (set, last 4 characters, a sha256 prefix).
 
 The settings interface (settings-v1) reads and writes a provider's switches and keys as keys of
 its hooks scope (`providers.<id>.*`, proxy/hooksettings.py), through this module's store.
@@ -41,6 +44,15 @@ def handle(handler, svc, method: str, sub: list[str], body) -> None:
     """One /v1/fleet/decision-providers request; `sub` is the path after it."""
     if not handler._allowed("conductor_write"):
         return
+    if _needs_trust(svc.providers.store, method, sub, body):
+        from proxy import app as app_mod
+        from proxy import hookapi
+        a = app_mod.STATE.get("auth")
+        if a is not None and a.decide("fleet_trust", handler._peer(), handler.headers) != "ok":
+            err = hookapi.trust_required("a provider the questions' text goes to, and each "
+                                         "new place it goes,")
+            err["error"]["code"] = "trust_required"
+            return handler._json(403, err, extra_headers=(("Cache-Control", "no-store"),))
     from proxy import config_api
     who = config_api._who(handler, svc)
     q = {k: v[-1] for k, v in parse_qs(urlsplit(handler.path).query).items()}
@@ -49,6 +61,26 @@ def handle(handler, svc, method: str, sub: list[str], body) -> None:
     except ProviderError as exc:
         code, out = exc.status, exc.body()
     handler._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
+
+
+def _needs_trust(st, method: str, sub: list, body) -> bool:
+    """The write makes a grant (SEC-16): a systemone-http provider, or a new place its text goes."""
+    if not isinstance(body, dict):
+        return False
+    try:
+        if method == "POST" and not sub:
+            doc = dict(body, kind=body.get("kind", "systemone-http"))
+            return st.needs_grant(None, doc)
+        if method == "PATCH" and len(sub) == 1 and ("endpoint" in body or "questions" in body):
+            old = st.get(sub[0])
+            if old is None:
+                return False
+            new = dict(old)
+            new.update({k: v for k, v in body.items() if k in ("endpoint", "questions")})
+            return st.needs_grant(old, new)
+    except Exception:                                              # noqa: BLE001
+        return False                     # a malformed write: the store refuses it on its field
+    return False
 
 
 def _flag(q: dict, k: str) -> bool:

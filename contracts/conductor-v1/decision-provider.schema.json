@@ -104,6 +104,50 @@
         "health": {
           "$ref": "#/$defs/health",
           "description": "in the list: from the last probes, nothing probed; with ?health=1: probed (cached 10 s)"
+        },
+        "grant": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "SEC-16: a systemone-http provider is sent the questions' text; its grant names each destination host and whether it is on the LAN, who granted it and when, and who confirmed a host outside the LAN; null for another kind",
+          "properties": {
+            "by": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "at": {
+              "type": "integer"
+            },
+            "destinations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "boolean"
+              }
+            },
+            "confirmed_by": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confirmed_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "by",
+            "at",
+            "destinations",
+            "confirmed_by",
+            "confirmed_at"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -125,7 +169,8 @@
         "updated_at",
         "updated_by",
         "version",
-        "breakers"
+        "breakers",
+        "grant"
       ],
       "additionalProperties": false
     },

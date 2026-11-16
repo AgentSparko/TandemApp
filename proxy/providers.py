@@ -33,8 +33,9 @@ MODES per provider:
              provider as in `on` (arm b), the rest the built-in (arm a); both arms journaled
 
 FALLBACK. A provider that times out, fails, answers an id that is not an option, has its breaker
-open, or whose last health probe said down is not used: the stage asks the built-in decider (the
-role's adapter) instead, or answers what it answered without a provider (`decider_role_off`,
+open, whose last health probe said down, or whose grant does not cover where it answers
+(`not_granted`, SEC-16: proxy/providerstore.py THE PAYLOAD) is not used: the stage asks the
+built-in decider (the role's adapter) instead, or answers what it answered without a provider (`decider_role_off`,
 `decider_no_endpoint`), and the stage's row names the provider and why (`provider.fallback`).
 The breaker is the hooks' (5 failures in a row, or a p95 at or over the timeout across 20 calls
 in 60 s, opens it for 30 s, then one probe), one per provider and endpoint.
@@ -61,8 +62,8 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 
 from proxy import hooks as hooks_mod
-from proxy.providerstore import (DEFAULT_SCOPE, QUESTIONS, ProviderError, ProviderStore, no_key,
-                                 origin)
+from proxy.providerstore import (DEFAULT_SCOPE, QUESTIONS, ProviderError, ProviderStore, granted,
+                                 no_key, origin)
 from tandemapp.conductor import classify
 
 HEALTH_TTL_S = 10.0
@@ -518,6 +519,9 @@ class Providers:
             rep = self.replay.reply(qid, state, question, options)
             rep.endpoint = "replay"
             return rep
+        if not granted(p, ep):
+            # SEC-16: the question's text goes only where the provider's grant says
+            return Reply(error="not_granted", endpoint=ep)
         bkey = (p["id"], ep)
         gate = "call"
         if count:
@@ -821,6 +825,7 @@ class Providers:
                                  "timeout_ms", "mode", "ab_percent", "sticky", "enabled",
                                  "created_at", "updated_at", "updated_by", "version")}
         out["target"] = p.get("target")
+        out["grant"] = p.get("grant")
         out["questions"] = qs
         out["key"] = hints.get(DEFAULT_SCOPE) or no_key() if p["kind"] == "systemone-http" \
             else None

@@ -119,6 +119,11 @@ A provider is not used for a call, and the built-in answer is, when:
 | `provider_down` | its last health probe (`/readyz`, kept 10 s) failed |
 | `hook_off`, `no_answer`, `out_of_scope` | a hook provider's hook is off or in shadow, answered no decision, or its scope does not take the request |
 | `replay_miss` | replaying recorded answers, and none recorded for this question |
+| `not_granted` | the endpoint's host is not in the provider's grant, or is outside the LAN without its confirm (below) |
+
+## Where the text goes
+
+A `systemone-http` provider is sent the question's text, a digest of what people wrote, so it takes the rules of a hook at the full payload ([hooks](hooks.md)). Making one, or changing where it or one of its questions answers, is a grant: it takes pairing's rights (403 `trust_required` without them; with no admin password set, only the controller's own machine). The grant (`grant` in the provider's view) names each destination host and whether it is on the LAN, who granted it and when. A host outside the LAN asks a second time: the write answers 409 `confirm_needed` with a `confirm`, and the same write with it grants it and records who confirmed. A call to a host the grant does not hold is not made (`not_granted`). In the settings interface a change of `providers.<id>.questions` that adds such a host is planned the same way (`grant_keys`, `confirm_grant`).
 
 The stage's row in the conductor's journal names the provider (`provider: {id, mode, arm?, fallback?}`) whenever one answered or fell back; without a provider the row is as it was. The health view (`GET .../{id}/health`) gives each endpoint's probe, its breaker and its questions, and a status: `ok`, `failing` (a breaker not closed, or the last call within a minute failed), `down` (a probe failed) or `off`; in the list's view also `unknown` (an endpoint not probed yet).
 
