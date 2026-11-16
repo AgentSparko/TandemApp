@@ -90,6 +90,12 @@ curl -X POST http://127.0.0.1:8080/v1/fleet/decision-providers \
 
 A provider's switches and keys are also keys of the settings interface's `hooks` scope (`providers.<id>.<field>`, [settings](settings.md#decision-providers)). There a change is planned, versioned and can be restored with the other settings. Its keys stay write-only there.
 
+## The Decision providers pages
+
+Settings, Hooks, Decision providers shows who answers each question and who watches in shadow, each provider with its health and mode, and the report with its arms side by side: on, shadow and both sides of an A/B. A provider's page has each endpoint's probe and breaker, the mapping per question with the last four characters of its key, a test call, the fallback reasons counted from its recent calls, and those calls. Add a provider offers the three kinds, and a new one starts in shadow.
+
+The mode, the A/B share, the sticky key, the questions and the keys are staged and go through the settings' review. The name, endpoint, model and time limit are written at once.
+
 ## Modes
 
 - **`on`**: the provider answers its questions. On any failure the built-in answer is used.

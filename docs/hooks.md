@@ -210,6 +210,19 @@ A builtin hook names its `target` and `options`, for example a guard that refuse
  "options": {"reason": "ask the admin for this model"}}
 ```
 
+## The Hooks pages
+
+The dashboard has all of this under Settings, Hooks.
+
+- **Pipeline.** The 15 stages as stops, in the order a request passes them, with the hooks at each stop in the order they run. Each row shows the mode, the kind, the scope, the priority, the failure policy and the breaker. Arrows and dragging change the order within a role. A move sets priorities, and a hook has one priority, so it moves at every stage it runs at. A bar shows how much of the 800 ms before the first token the hooks on the path use: each one's p95, added up.
+- **Add a hook.** Five steps: the stage, the role and the kind with its URL or built-in, the scope, the failure policy with the time limit, and the payload level. A new hook starts in shadow. A webhook's secret shows once, with the code that checks a signature.
+- **A hook's page.** Its state, breaker, figures and recent calls; a shadow call lists the fields it would have changed and their sizes. The secret's rotation is here, and the playground: one test call with the stage's sample event, and what the answer would do to a request.
+- **Trace.** One request by its id across every stage, read from the hooks' journals.
+
+The switches (on, mode, order, scope, policy, time limit, payload level) are staged and go through the settings' review, so each change is planned, versioned and audited. Adding and removing a hook, its stages, its endpoint and its secret are written at once.
+
+Replay is not built: the journal keeps no bodies. The Trace page says so and links the playground.
+
 ## Payload levels
 
 | level | the hook sees |

@@ -237,7 +237,7 @@ The dashboard shows this interface under Settings, App: one page per scope.
 | Backends | the `backends` scope: a group for each backend, the routing rules, the users' keys |
 | Conductor | the `conductor` scope: each document, edited whole |
 | Engines | the `engine` scope: a page for each engine host, its mode first (the two choice cards, and the extension once chat is chosen). An HTTP-only one is read-only and says why. |
-| Hooks | the `hooks` scope: a group for each hook and each decision provider, named after it. "No hooks yet" while there is none. |
+| Hooks | the hooks pages ([hooks](hooks.md#the-hooks-pages)) and the decision providers' ([decision providers](decision-providers.md#the-decision-providers-pages)). They stage their switches as keys of the `hooks` scope. Under the pipeline the same keys show as a plain form, a group for each hook and each provider. |
 | History | the audit rows and the restarts that ended. `#/app/history?change_set=cs-...` shows one change set. |
 
 Each page draws its form from the scope's schema. A key gets the control its type asks for: a switch for `on` and `off`, a number field for an integer, a JSON editor for a document. The row also shows the default and the value's source. The environment locks some keys; such a row names the variable, for example `TANDEM_BACKENDS`. No page shows a secret. You set one or remove it.
