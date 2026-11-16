@@ -242,6 +242,7 @@ class Plugin:
         self._plock = threading.Lock()
         self._nid = 0
         self._closed = threading.Event()
+        self._workers: set = set()
 
     # ------------------------------------------------------------------ what the host gives
     @property
@@ -517,7 +518,8 @@ class Plugin:
             else:
                 raise LookupError(f"no method {method}")
         except LookupError as exc:
-            return self._reply(rid, error=(NO_METHOD, str(exc).strip("'\"")))
+            return self._reply(rid, error=(NO_METHOD, str(exc.args[0]) if exc.args else
+                                           f"no method {method}"))
         except ValueError as exc:
             return self._reply(rid, error=(BAD_PARAMS, str(exc)))
         except Exception as exc:                                   # noqa: BLE001
@@ -535,8 +537,18 @@ class Plugin:
             return
         if "id" not in msg:                         # a notification: nothing to answer
             return
-        threading.Thread(target=self.handle, args=(msg,), name=f"sdk-{msg.get('method')}",
-                         daemon=True).start()
+        t = threading.Thread(target=self._work, args=(msg,), name=f"sdk-{msg.get('method')}",
+                             daemon=True)
+        with self._plock:
+            self._workers.add(t)
+        t.start()
+
+    def _work(self, msg: dict) -> None:
+        try:
+            self.handle(msg)
+        finally:
+            with self._plock:
+                self._workers.discard(threading.current_thread())
 
     def run(self, strict: bool = True) -> int:
         """The loop: until stdin closes. `strict`: refuse to start when the code and the manifest
@@ -563,6 +575,9 @@ class Plugin:
         with self._plock:
             for box in self._pending.values():
                 box.put(None)
+            busy = list(self._workers)
+        for t in busy:                              # the answers already asked for go out
+            t.join(timeout=5.0)
         return 0
 
     def main(self) -> None:
