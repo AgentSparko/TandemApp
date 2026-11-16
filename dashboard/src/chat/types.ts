@@ -544,7 +544,10 @@ export type McpStatus = 'connected' | 'starting' | 'failed' | 'stopped';
 export interface McpServer {
   id: string;
   name: string;
-  transport: 'stdio' | 'http';
+  /** `plugin`: a running TandemApp plugin's tools (SRV-859), read-only here */
+  transport: 'stdio' | 'http' | 'plugin';
+  plugin?: string;
+  read_only?: boolean;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
