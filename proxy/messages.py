@@ -13,12 +13,14 @@ or in `Authorization: Bearer`. Neither header goes on to a backend. `anthropic-v
 THE PIPELINE sees the OpenAI chat shape (the design's 4.5): the request is translated
 (proxy/translate/anthropic.py, cell 4) and goes through `Service.serve` as a chat completion, so
 the route table, the deployments, the hooks, the harness, the relay and the ledger work as for
-an OpenAI client. The ledger row's endpoint is `messages` (`count_tokens` for a count); the
-inbound protocol's own column (`api`) comes with the token schema (SRV-867), and `rec.api` is
-its seam. A request whose route is all backends of kind `anthropic` passes through instead (SRV-881,
-proxy/passthrough.py): no translation, the client's bytes upstream and the backend's back; a
-route with any other backend in it is translated, twice where it reaches a backend of kind
-`anthropic` (cell 4, then that adapter's cell 3).
+an OpenAI client. The ledger row's endpoint is `messages` (`count_tokens` for a count) and its
+`api` column `anthropic` (schema 13, SRV-867; `rec.api` is `messages`). With TANDEM_AUTH=accounts
+the gate has checked and removed the key before this handler runs; `Service.authorize` and the
+row take the gate's principal (its token, its client id). A request whose route is all backends
+of kind `anthropic` passes through instead (SRV-881, proxy/passthrough.py): no translation, the
+client's bytes upstream and the backend's back; a route with any other backend in it is
+translated, twice where it reaches a backend of kind `anthropic` (cell 4, then that adapter's
+cell 3).
 
 THE ANSWER. `Out` is the handler the pipeline writes to: what it writes in the OpenAI shape (a
 completion, a stream, an error, a 401, a hook's refusal, the relay's own 503) reaches the client
@@ -174,7 +176,17 @@ def handle(h, svc, path: str, raw: bytes, t_arrival: float | None = None) -> Non
         return refuse(h, 401, AUTH_MESSAGE, rid,
                       (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
     client = ledger_mod.client_of(view.headers, None)
-    native = _native_route(svc, body, h.headers)
+    from proxy import deployments
+
+    def refused(exc):
+        svc.account_refusal(view, path, body, exc.status, user=user, finish="refused",
+                            error_type=exc.code)
+        st, et, msg = tr.error_in(exc.status, json.dumps(exc.body()).encode())
+        return refuse(h, st, msg, rid, exc.headers, et)
+    try:
+        native = _native_route(svc, body, h.headers)
+    except deployments.Refused as exc:          # a model the token may not use (SRV-867)
+        return refused(exc)
     if native is not None:
         return _pass(h, svc, path, raw, body, native, user, view, client, rid, t_arrival)
     plain = _copy(h.headers, auth=False)
@@ -183,17 +195,13 @@ def handle(h, svc, path: str, raw: bytes, t_arrival: float | None = None) -> Non
     except tr.TranslateError as exc:
         svc.account_refusal(view, path, body, 400, user=user, error_type="untranslatable")
         return refuse(h, 400, exc.message, rid)
-    from proxy import deployments
     try:
         route = svc.resolve(chat, plain)
     except route_mod.NotFound as exc:
         svc.account_refusal(view, path, body, 404, user=user, error_type="model_not_found")
         return refuse(h, 404, exc.message, rid)
     except deployments.Refused as exc:
-        svc.account_refusal(view, path, body, exc.status, user=user, finish="refused",
-                            error_type=exc.code)
-        st, et, msg = tr.error_in(exc.status, json.dumps(exc.body()).encode())
-        return refuse(h, st, msg, rid, exc.headers, et)
+        return refused(exc)
     backend = svc.table.backend_for(route.backend)
     adapter = svc.adapter(backend) if backend is not None else None
     if backend is not None and backend.get("cloud") and "top_k" in chat:
@@ -215,7 +223,9 @@ def handle(h, svc, path: str, raw: bytes, t_arrival: float | None = None) -> Non
 # ----------------------------------------------------------------------------- pass-through
 def _native_route(svc, body: dict, headers):
     """SRV-881: the route when every candidate is a backend a Messages API request passes
-    through to, else None (the request is translated, and its route resolved there)."""
+    through to, else None (the request is translated, and its route resolved there). A model
+    the request's token may not use raises deployments.Refused, as on the translated path."""
+    from proxy import deployments
     model = body.get("model")
     if not isinstance(model, str) or not model:
         return None
@@ -224,6 +234,10 @@ def _native_route(svc, body: dict, headers):
             return None
         r = svc.resolve(body, _creds_off(headers))
         return r if svc.all_native(r) else None
+    except deployments.Refused as exc:
+        if exc.code == "permission_denied":
+            raise
+        return None
     except Exception:                                              # noqa: BLE001
         return None
 

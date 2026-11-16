@@ -431,17 +431,13 @@ class Service:
         rec = RelayRecord(rid, endpoint or relay_mod.endpoint_of(path),
                           bool(body.get("stream")) and path != "/v1/embeddings",
                           t_arrival=t_arrival)
-        # the inbound protocol: the ledger's `api` column comes with the token schema (SRV-867)
+        # the inbound protocol: the ledger's `api` column (schema 13, `messages` is `anthropic`)
         rec.api = "messages" if endpoint == "messages" else "openai"
         rec.native = native
         rec.model = route.public
         rec.model_served = route.public
         rec.user = user
-        rec.client_id, rec.client_kind = client or ledger_mod.client_of(handler.headers, body)
-        p = self.principal(handler)
-        if p is not None and getattr(p, "via", None) == "token":
-            # SRV-867: the token's row; the client id its hash gave before it was stripped
-            rec.token_id, rec.client_id = p.id, p.client or rec.client_id
+        self._caller(rec, handler, body, client)
         rec.sock = getattr(handler, "connection", None)
         try:                        # the session a client names (opencode's x-session-id)
             sess = handler.headers.get("x-session-id") or handler.headers.get("X-Session-Id")
@@ -714,11 +710,19 @@ class Service:
                           bool(isinstance(body, dict) and body.get("stream")))
         rec.model = model or (body.get("model") if isinstance(body, dict) else "") or ""
         rec.status, rec.finish_reason, rec.error_type, rec.user = status, finish, error_type, user
-        rec.client_id, rec.client_kind = ledger_mod.client_of(handler.headers,
-                                                              body if isinstance(body, dict)
-                                                              else None)
+        from proxy import tokens as tokens_mod
+        rec.api = "messages" if tokens_mod.anthropic(path) else "openai"
+        self._caller(rec, handler, body if isinstance(body, dict) else None)
         rec.end()
         self.account(rec)
+
+    def _caller(self, rec, handler, body, client: tuple | None = None) -> None:
+        """The row's client id and kind; with an API token (SRV-867) its id, and the client id
+        its hash gave before the gate stripped it."""
+        rec.client_id, rec.client_kind = client or ledger_mod.client_of(handler.headers, body)
+        p = self.principal(handler)
+        if p is not None and getattr(p, "via", None) == "token":
+            rec.token_id, rec.client_id = p.id, p.client or rec.client_id
 
     def models(self, created: int) -> list[dict]:
         if self.listing is not None:
