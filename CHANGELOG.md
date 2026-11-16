@@ -4,6 +4,17 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 
 ## Unreleased
 
+**Upgrading: an install that other devices reach and that had no password now answers 401 on every route but `/health`, the page and the sign-in until someone makes the owner with the setup code (SEC-28).** The code is single use and opens only the first-run setup. Get it from the controller's log (each start without an owner logs a fresh one, valid 24 hours), from `tandem-app users setup-code` on the controller's machine (on Kubernetes the `kubectl exec` line `helm status` prints under NOTES), or on Kubernetes from the chart's Secret (`kubectl get secret <release>-tandemapp-admin -o jsonpath='{.data.admin-token}' | base64 -d`; after an upgrade it holds the old admin token, which works once as the setup code). A bare process bound to 127.0.0.1 with no password stays open to this machine's browser only (local mode). An install that had an admin password keeps it: it signs in as the account `owner`. One that had only an admin token takes that token once as the setup code.
+
+### The sign-in
+
+- Accounts, sessions and API tokens are the only sign-in (SEC-28); `TANDEM_AUTH` is read by nothing. Gone: the shared admin token as a bearer and as a password, `TANDEM_API_KEYS` and `TANDEM_API_USERS_FROM` as live key lists, the rule that everything is open while no password is set, the dashboard login switch (`TANDEM_DASHBOARD_LOGIN`, `--dashboard-login`), the loopback peer as the admin (`--trust-loopback`) and the `qse_dash` cookie. Their values are imported once at the first start: `admin.json`'s password becomes the account `owner`, each key an API token with the same hash (to confirm under Access), the admin token a management token that ends after 30 days and never signs in, and the OpenAI API's exposure starts at "network" when keys existed. A variable or flag that is left is named on the health page (`legacy_env_set`, `legacy_env_invalid`) and never stops the start.
+- Going back to the release before works on the same state: its tables are untouched, `admin.json` follows the first owner's password, a key revoked here is disabled there too, and once a token exists the old key table holds a key nobody has, so the release before refuses requests instead of opening them.
+- `/v1/dashboard/session`, `/v1/fleet/session`, `/v1/chat-app/session` and `/v1/fleet/app/password` stay one release over the accounts: their sign-in is the first owner's password, and `password_set` in their answers means a sign-in is needed.
+- The installer writes no admin token: beyond loopback (`--listen`) or with `--behind-proxy` it prints a setup code while no owner exists, and it leaves the lines of an older install in `app.env`. The Helm chart's `auth.mode` is `accounts`; `legacy` is refused with a message.
+- A client's `Authorization` or `x-api-key` never reaches a backend: the gate checks it and removes it.
+- The Usage and request views show a reader without the right `users` no other account's username: the user list and a request's user say "another account", and `user=` takes only the reader's own (SRV-873).
+
 ### The engine without TandemApp
 
 - The engine carries no copy of TandemApp any more (ENG-413). TandemApp pins the engine's contracts at engine API 1.8 (`contracts/engine-api-v1/PIN`, `proxy.engineapi.SPEAKS`). In 1.8 the page, the Chat tab's forward and the other backends are this tree's controller's only: an engine answers them 404.
