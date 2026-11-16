@@ -10,7 +10,8 @@ when the client sends that turn back, sends those blocks upstream in place of th
 ones.
 
 KEY: the client's credential (a hash of its bearer, or of a Messages API client's key; one
-stash cannot be read with another key),
+stash cannot be read with another key; with TANDEM_AUTH=accounts the token's id, so a rotated
+token keeps its stash, or the signed-in principal's),
 the backend, the upstream model (blocks never go to another backend or model), and the turn: its
 tool call ids, or for a turn without calls its place in the history and a hash of its text. A
 turn with no thinking block is not kept: its translation is already what the backend saw.
@@ -49,6 +50,14 @@ def token_of(headers) -> str:
         auth = ""
     tok = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
     return "k:" + hashlib.sha256(tok.encode()).hexdigest() if tok else "anon"
+
+
+def owner_of(principal) -> str:
+    """The stash's owner with the accounts on (proxy/accounts.py Principal): an API token by its
+    id, any other caller by its kind and id."""
+    if getattr(principal, "via", None) == "token":
+        return "t:" + str(principal.id)
+    return f"p:{principal.kind}:{principal.id}"
 
 
 def _blocks(content) -> list:

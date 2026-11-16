@@ -833,11 +833,18 @@ class Relay:
         rec.thinking_dropped = 0
         if not (_translating(adapter, path) and path == CHAT):
             return {}
-        tok = stash_mod.token_of(handler.headers)
-        if tok == "anon":
-            # a Messages API client's request reaches here without its credential: its key's
-            # hash names it (proxy/messages.py, the ledger's client id)
-            tok = getattr(rec, "client_id", None) or "anon"
+        who = getattr(self.svc, "principal", None)
+        p = who(handler) if callable(who) else None
+        if p is not None:
+            # accounts on: the gate took the credential; a token's id (kept by a rotation), else
+            # the signed-in principal's
+            tok = stash_mod.owner_of(p)
+        else:
+            tok = stash_mod.token_of(handler.headers)
+            if tok == "anon":
+                # a Messages API client's request reaches here without its credential: its key's
+                # hash names it (proxy/messages.py, the ledger's client id)
+                tok = getattr(rec, "client_id", None) or "anon"
         scope = (tok, backend["id"], upstream_model)
 
         def restore(msgs):
