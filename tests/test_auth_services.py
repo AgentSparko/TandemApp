@@ -405,8 +405,8 @@ def test_two_callers_of_this_machine():
             line = src[:m.start()].rsplit("\n", 1)[-1]
             if not line.lstrip().startswith("def "):
                 calls.append(name)
-    assert sorted(calls) == ["authlocal.py"], calls
-    for name in ("accounts.py", "authlocal.py", "tokens.py", "authz.py"):
+    assert sorted(calls) == ["authlocal.py", "exposure.py"], calls
+    for name in ("accounts.py", "authlocal.py", "exposure.py", "tokens.py", "authz.py"):
         src = open(os.path.join(ROOT, "proxy", name)).read()
         assert ".trusted_local(" not in src, name
     # the behaviour: every old guard asks auth.trusted_local, which is False with accounts on,
