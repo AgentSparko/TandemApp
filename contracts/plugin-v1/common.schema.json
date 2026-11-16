@@ -268,6 +268,13 @@
       ],
       "additionalProperties": false
      }
+    },
+    "confirm": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "the requested capabilities whose grant takes the second confirm (prompts:full, engine:control, a network host outside the LAN), as inspect lists them (SRV-857)"
     }
    },
    "required": [
@@ -414,6 +421,70 @@
     },
     "row_version": {
      "type": "integer"
+    },
+    "run": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "object",
+       "properties": {
+        "state": {
+         "type": "string"
+        },
+        "held": {
+         "type": "boolean"
+        },
+        "restarts": {
+         "type": "integer"
+        },
+        "failures_last_hour": {
+         "type": "integer"
+        },
+        "next_start_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "started_at": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "last_error": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "gave_up": {
+         "anyOf": [
+          {
+           "type": "null"
+          },
+          {
+           "$ref": "common.schema.json#/$defs/gave_up"
+          }
+         ]
+        }
+       },
+       "required": [
+        "state",
+        "held",
+        "restarts",
+        "failures_last_hour",
+        "next_start_at",
+        "started_at",
+        "last_error",
+        "gave_up"
+       ],
+       "additionalProperties": false
+      }
+     ],
+     "description": "GET /v1/fleet/plugins only: its process as the plugin host has it (status.schema.json's state and figures, without its registrations); null where no host runs"
     }
    },
    "required": [
@@ -931,6 +1002,41 @@
     "runs",
     "why",
     "policy"
+   ],
+   "additionalProperties": false
+  },
+  "gave_up": {
+   "type": "object",
+   "description": "the host stopped starting it: when (milliseconds since the epoch, as every other time here), its last error, the failures within the hour, the row version and plugin version it gave up at",
+   "properties": {
+    "at": {
+     "type": "integer"
+    },
+    "error": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "failures": {
+     "type": "integer"
+    },
+    "row_version": {
+     "type": "integer"
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "at",
+    "error",
+    "failures",
+    "row_version",
+    "version"
    ],
    "additionalProperties": false
   }

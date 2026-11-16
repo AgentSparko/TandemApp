@@ -204,9 +204,13 @@
      }
     },
     "gave_up": {
-     "type": [
-      "object",
-      "null"
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "common.schema.json#/$defs/gave_up"
+      }
      ]
     }
    }

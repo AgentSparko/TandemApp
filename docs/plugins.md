@@ -135,6 +135,10 @@ POST /v1/fleet/plugins {"source": {"type": "git", "url": "https://example.com/he
 
 `POST /v1/fleet/plugins/inspect` with the same `source` runs every check and installs nothing.
 
+A wheel that is not on the controller's disk can be sent to it: `POST /v1/fleet/plugins/upload?name=hello_tool-0.1.0-py3-none-any.whl` with the wheel's bytes as the body (`Content-Type: application/octet-stream`, at most 32 MiB, pairing's rights). The controller keeps it in its plugins' upload folder for an hour and answers the `source` to inspect and install it with; after that it is removed.
+
+`GET /v1/fleet/plugins` carries each plugin's run state from the plugin host (`run`: its state, restarts, last error and `gave_up`), so a list needs no status call per plugin. Every plugin's view names the requested capabilities whose grant takes the second confirm (`capabilities.confirm`), as inspect does. Every time in the API is in milliseconds since the epoch.
+
 Nothing in a plugin runs at install. A folder is copied file by file. A wheel is read as a zip, never through pip: its manifest is at its root or in one top-level folder, every member stays inside the tree, no member is a symlink, and the hashes in its RECORD must hold. A git source is fetched into an empty repository with no system or user git config, no hooks and no prompt, over https, ssh or file only, and its files are read out of the commit one blob at a time: no checkout, so no filter, attribute or LFS smudge runs.
 
 A git source is pinned to a commit: the full id (40 hex digits). A branch name, a tag name or a short id is refused, because each can move. A submodule or an LFS file refuses the install, since its content is not in the commit, unless the manifest says `"git": {"submodules": "ignore"}` or `{"lfs": "ignore"}`: then the submodule's folder stays empty and an LFS file stays a pointer.
@@ -349,6 +353,7 @@ A panel is served at `/plugin-panels/<id>/<panel>/` (its HTML; the files beside 
 | `GET /v1/fleet/plugins` | the configuration's |
 | `POST /v1/fleet/plugins/inspect {source}` | the configuration's |
 | `POST /v1/fleet/plugins {source, upgrade?, allow_downgrade?, confirm_trust?}` | pairing's |
+| `POST /v1/fleet/plugins/upload?name=<file>.whl` (the wheel's bytes) | pairing's |
 | `GET /v1/fleet/plugins/{id}` | the configuration's |
 | `GET /v1/fleet/plugins/{id}/trust` | the configuration's |
 | `POST /v1/fleet/plugins/{id}/trust {level, engine?, confirm?}` | pairing's |

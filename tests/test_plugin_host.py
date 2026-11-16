@@ -291,6 +291,15 @@ def test_crash_loop_disables():
         r.host.sync()
         st = r.host.status(pid)
         assert st["gave_up"]["failures"] == 5, st
+        # SRV-857: in milliseconds, as every other time of the plugin API
+        import time
+        assert abs(st["gave_up"]["at"] - time.time() * 1000) < 120_000, st["gave_up"]
+        from tools import contract_check
+        pv = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "contracts", "plugin-v1")
+        assert not contract_check.validate({"contract_version": "1.0", "status": st},
+                                           contract_check.load("status.schema.json", pv),
+                                           root=pv), st
         assert "exited (code 3)" in st["gave_up"]["error"], st
         assert r.store.get(pid)["enabled"] is False
         lines = r.host.logs(pid, 200)

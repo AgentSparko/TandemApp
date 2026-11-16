@@ -626,7 +626,8 @@ class PluginHost:
                 rv = row["row_version"]
             except PluginError:
                 rv = p.row_version or 0
-            self.gave_up[p.id] = {"at": time.time(), "error": p.last_error, "failures": n,
+            self.gave_up[p.id] = {"at": int(time.time() * 1000), "error": p.last_error,
+                                  "failures": n,
                                   "row_version": rv, "version": p.version}
             return True
         delay = self.backoff_s[min(n - 1, len(self.backoff_s) - 1)]

@@ -1,8 +1,13 @@
 """`/v1/fleet/plugins/*`: the plugins' admin API (SRV-857, contracts/plugin-v1; the plugin pages
 are VIS-284's).
 
-    GET    /v1/fleet/plugins                  every installed plugin, and the versions this
+    GET    /v1/fleet/plugins                  every installed plugin with its run state from the
+                                              plugin host (`run`), and the versions this
                                               controller reads (plugin_api, hooks_api, tandemapp)
+    POST   /v1/fleet/plugins/upload           a wheel's bytes (application/octet-stream, at most
+                                              UPLOAD_MAX, ?name=<file>.whl): kept in the plugins'
+                                              upload folder for UPLOAD_TTL_S; answers the
+                                              `source` to inspect or install it with (201)
     POST   /v1/fleet/plugins/inspect          {source}: fetch and check a source without
                                               installing it: the manifest, every check, the
                                               requested capabilities, the settings' form
@@ -54,18 +59,27 @@ The plugin host's (SRV-859, proxy/pluginhost.py):
                                               as the page relays it; outside its capabilities
                                               403 refused (journaled)
 
+A plugin's view says which of its requested capabilities take the second confirm when granted
+(`capabilities.confirm`: prompts:full, engine:control, a network host outside the LAN), as
+inspect does.
+
 A plugin's settings, secrets and capability grants are the settings interface's plugins scope
 (/v1/settings/plugins?target=<id>, proxy/pluginsettings.py), with its plan, confirm, versions and
 audit.
 
 THE RIGHTS. Reads, inspect, disable and verify take the configuration's writes (`conductor_write`).
-Install, upgrade, enable, remove, a trust grant or revoke, a key added or removed and the policy
-take pairing's (`fleet_trust`): with no admin password set only this machine may, as pairing a
-node does. No answer holds a secret: a secret is set or unset with its hint.
+Install, upgrade, an upload, enable, remove, a trust grant or revoke, a key added or removed and
+the policy take pairing's (`fleet_trust`): with no admin password set only this machine may, as
+pairing a node does. No answer holds a secret: a secret is set or unset with its hint.
 """
 
 from __future__ import annotations
 
+import os
+import re
+import secrets as _rand
+import shutil
+import time
 from urllib.parse import parse_qs, urlsplit
 
 from proxy import hookstages
@@ -76,6 +90,29 @@ from proxy.pluginstore import PluginError
 CONTRACT = PM.PLUGIN_API
 BASE = "/v1/fleet/plugins"
 KEYS_BASE = "/v1/fleet/plugin-trust"
+UPLOAD_PATH = BASE + "/upload"
+UPLOAD_MAX = 32 * 1024 * 1024          # a wheel's bytes; its tree may unpack to MAX_TREE_BYTES
+UPLOAD_TTL_S = 3600
+UPLOAD_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}\.whl$")
+UPLOADS_KEPT = 16
+
+
+def confirm_of(requested) -> list[str]:
+    """The requested capabilities whose grant takes the second confirm (as inspect lists them)."""
+    from proxy.pluginstore import _confirm
+    return [c for c in requested if _confirm(c)]
+
+
+def run_of(host, pid: str) -> dict | None:
+    """What the list says of a plugin's process: the host's status, without its registrations."""
+    if host is None:
+        return None
+    try:
+        st = host.status(pid)
+    except Exception:                                                # noqa: BLE001
+        return None
+    return {k: st.get(k) for k in ("state", "held", "restarts", "failures_last_hour",
+                                   "next_start_at", "started_at", "last_error", "gave_up")}
 
 
 def view(store, p: dict, full: bool = False) -> dict:
@@ -89,7 +126,8 @@ def view(store, p: dict, full: bool = False) -> dict:
            "trust": {"requested": p["trust"], "granted": p.get("trust_granted") or "sandboxed"},
            "integrity": p["integrity"], "checked_at": p["checked_at"],
            "capabilities": {"requested": store.requested(p), "granted": sorted(p["granted"]),
-                            "grants": p["granted"]},
+                            "grants": p["granted"],
+                            "confirm": confirm_of(store.requested(p))},
            "contributes": {k: len(v) for k, v in contributes.items() if isinstance(v, list)},
            "installed_at": p["installed_at"], "installed_by": p["installed_by"],
            "updated_at": p["updated_at"], "updated_by": p["updated_by"],
@@ -148,7 +186,10 @@ def handle(handler, svc, method: str, sub: list[str], body) -> None:
         if len(sub) == 2 and sub[1] in HOST_ROUTES:
             code, out = _host_route(svc.plugin_host, store, method, sub, body, q)
         else:
-            code, out = _route(store, method, sub, body, who, q)
+            if sub in ([], ["inspect"]) and method == "POST":
+                sweep_uploads(store)            # an upload past its time is gone
+            code, out = _route(store, method, sub, body, who, q,
+                               host=getattr(svc, "plugin_host", None))
     except PluginError as exc:
         code, out = exc.status, exc.body()
     return _send(handler, code, out)
@@ -208,7 +249,84 @@ def _send(handler, code: int, out) -> None:
     handler._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
 
 
-def _route(store, method: str, sub: list[str], body, who: str, q: dict) -> tuple[int, dict]:
+# ---------------------------------------------------------------------------------- uploads
+
+def uploads_dir(store) -> str:
+    return os.path.join(store.root(), ".uploads")
+
+
+def sweep_uploads(store, now: float | None = None) -> None:
+    """Remove the uploads past UPLOAD_TTL_S, and the oldest beyond UPLOADS_KEPT."""
+    d = uploads_dir(store)
+    if not os.path.isdir(d):
+        return
+    now = time.time() if now is None else now
+    got = []
+    for name in os.listdir(d):
+        p = os.path.join(d, name)
+        try:
+            got.append((os.path.getmtime(p), p))
+        except OSError:
+            continue
+    got.sort()
+    for i, (t, p) in enumerate(got):
+        if now - t > UPLOAD_TTL_S or i < len(got) - UPLOADS_KEPT:
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def handle_upload(handler, svc, method: str, raw: bytes | None) -> None:
+    """`POST /v1/fleet/plugins/upload`: a wheel kept for its install (see the routes above)."""
+    store = svc.plugins
+    if _rights(handler, "fleet_trust", "uploading, installing, enabling, trusting and removing "
+                                       "a plugin"):
+        return
+    try:
+        code, out = _upload(store, method, handler.headers, handler.path, raw)
+    except PluginError as exc:
+        code, out = exc.status, exc.body()
+    return _send(handler, code, out)
+
+
+def _upload(store, method: str, headers, path: str, raw: bytes | None) -> tuple[int, dict]:
+    if method != "POST":
+        raise PluginError(404, "not_found", f"no route {method} {UPLOAD_PATH}")
+    ctype = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    if ctype not in ("application/octet-stream", "application/zip"):
+        raise PluginError(415, "unsupported_media_type", "the body is the wheel's bytes "
+                                              "(Content-Type: application/octet-stream)")
+    q = {k: v[-1] for k, v in parse_qs(urlsplit(path).query).items()}
+    name = q.get("name") or ""
+    if not UPLOAD_NAME_RE.match(name):
+        raise PluginError(400, "bad_request", "name: the wheel's file name (<name>-<version>-"
+                                              "...-.whl, letters, digits, . _ + -)", "name")
+    raw = raw or b""
+    if not raw:
+        raise PluginError(400, "bad_request", "the body is empty: send the wheel's bytes")
+    if len(raw) > UPLOAD_MAX:
+        raise PluginError(413, "upload_too_large", f"a wheel is at most "
+                                                   f"{UPLOAD_MAX // (1 << 20)} MiB")
+    if raw[:4] != b"PK\x03\x04":
+        raise PluginError(422, "bad_wheel", "not a wheel (a zip archive)", "name")
+    if not store.ready():
+        raise PluginError(503, "unavailable", "the config database is not open")
+    sweep_uploads(store)
+    base = uploads_dir(store)
+    os.makedirs(base, mode=0o700, exist_ok=True)
+    d = os.path.join(base, _rand.token_hex(8))
+    os.makedirs(d, mode=0o700)
+    p = os.path.join(d, name)
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(raw)
+    now = time.time()
+    return 201, {"contract_version": CONTRACT,
+                 "source": {"type": "wheel", "path": p},
+                 "name": name, "bytes": len(raw), "sha256": PM.file_sha256(p),
+                 "expires_at": int((now + UPLOAD_TTL_S) * 1000)}
+
+
+def _route(store, method: str, sub: list[str], body, who: str, q: dict,
+           host=None) -> tuple[int, dict]:
     if body is not None and not isinstance(body, dict):
         raise PluginError(400, "bad_request", "the body must be a JSON object")
     body = body or {}
@@ -218,7 +336,8 @@ def _route(store, method: str, sub: list[str], body, who: str, q: dict) -> tuple
         if method == "GET":
             return 200, {"contract_version": CONTRACT, "plugin_api": PM.PLUGIN_API,
                          "hooks_api": hookstages.VERSION, "tandemapp": PM.this_tandemapp(),
-                         "plugins": [view(store, p) for p in store.list()]}
+                         "plugins": [dict(view(store, p), run=run_of(host, p["id"]))
+                                     for p in store.list()]}
         if method == "POST":
             _fields(body, {"source", "upgrade", "allow_downgrade", "confirm_trust"})
             for f in ("upgrade", "allow_downgrade"):

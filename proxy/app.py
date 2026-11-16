@@ -308,7 +308,11 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = -1
-        if 0 <= n <= FLEET_BODY_MAX:
+        cap = FLEET_BODY_MAX
+        if path == "/v1/fleet/plugins/upload":
+            from proxy import pluginapi          # SRV-857: a wheel's bytes, their own cap
+            cap = pluginapi.UPLOAD_MAX
+        if 0 <= n <= cap:
             return False
         self.close_connection = True
         self._json(413, {"error": {"type": "too_large", "message": f"a fleet request's body is "
@@ -658,6 +662,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._fleet_ledger(sub[1])
         if len(sub) >= 4 and sub[0] == "nodes" and sub[2] == "setup":
             return self._fleet_setup(method, unquote(sub[1]), [unquote(x) for x in sub[3:]], raw)
+        if path.rstrip("/") == "/v1/fleet/plugins/upload":
+            # SRV-857: a wheel's bytes, not JSON (proxy/pluginapi.py)
+            from proxy import pluginapi
+            return pluginapi.handle_upload(self, STATE["svc"], method, raw)
         body = None
         if raw:
             try:

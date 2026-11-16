@@ -1,0 +1,48 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "plugin-v1/upload",
+ "description": "POST /v1/fleet/plugins/upload?name=<file>.whl (201): a wheel's bytes kept for an inspect or install: `source` is what to send them, until `expires_at` (milliseconds); 400 without a wheel name or with an empty body, 413 over 32 MiB, 415 without Content-Type application/octet-stream, 422 bad_wheel when the bytes are no zip",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "source": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "const": "wheel"
+    },
+    "path": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "path"
+   ],
+   "additionalProperties": false
+  },
+  "name": {
+   "type": "string"
+  },
+  "bytes": {
+   "type": "integer"
+  },
+  "sha256": {
+   "type": "string"
+  },
+  "expires_at": {
+   "type": "integer"
+  }
+ },
+ "required": [
+  "contract_version",
+  "source",
+  "name",
+  "bytes",
+  "sha256",
+  "expires_at"
+ ],
+ "additionalProperties": false
+}

@@ -9,6 +9,13 @@
   },
   {
    "method": "POST",
+   "path": "/v1/fleet/plugins/upload",
+   "body": "application/octet-stream: the wheel's bytes, ?name=<file>.whl",
+   "schema": "upload.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "POST",
    "path": "/v1/fleet/plugins/inspect",
    "body": "install-body.schema.json",
    "schema": "inspect.schema.json",
@@ -183,7 +190,9 @@
   "untrusted": 409,
   "fingerprint_confirm_required": 428,
   "fingerprint_mismatch": 422,
-  "key_exists": 409
+  "key_exists": 409,
+  "upload_too_large": 413,
+  "unsupported_media_type": 415
  },
  "checks": {
   "manifest_missing": "no plugin.json at the plugin's root",

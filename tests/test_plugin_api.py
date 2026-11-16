@@ -17,6 +17,11 @@ Every answer validates against contracts/plugin-v1 (and settings-v1).
   4  The settings, secrets and grants over /v1/settings/plugins; no secret in any answer, the log,
      a file under the controller's state dir in plain text, or the move's export
                                                                test_settings_and_secrets_over_http
+  5  A wheel uploaded as bytes is kept for an hour and answers the source to inspect and install it
+     with; no name, another content type, bytes that are no zip and another machine without
+     pairing's rights are refused; past its time it is gone. The list carries each plugin's run
+     state, and every plugin's view names the grants that take the second confirm, as inspect
+                                                               test_upload_run_and_confirm
 
 Run: python tests/test_plugin_api.py
 """
@@ -28,6 +33,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plugin_util import example, example_files, folder, repo, wheel  # noqa: E402
@@ -280,6 +286,65 @@ def test_settings_and_secrets_over_http():
     finally:
         shutil.rmtree(src)
     return "settings, a secret and a grant over HTTP; no secret anywhere"
+
+
+# ---------------------------------------------------------------------------- 5
+def test_upload_run_and_confirm():
+    from proxy import pluginapi
+    d = tempfile.mkdtemp(prefix="plugin-upload-")
+    whl = wheel(os.path.join(d, "hello_tool-0.1.0-py3-none-any.whl"),
+                example_files("hello-tool"))
+    with open(whl, "rb") as f:
+        data = f.read()
+    octet = {"Content-Type": "application/octet-stream"}
+    name = "?name=hello_tool-0.1.0-py3-none-any.whl"
+    m = example("classify-provider")
+    m["capabilities"] = m["capabilities"] + ["prompts:full", "network:203.0.113.9:443"]
+    src = folder("classify-provider", manifest=m)
+    try:
+        with Proxy({}) as px:
+            up = _ok(_j(px, "POST", BASE + "/upload" + name, data, 201, octet), "upload")
+            p = up["source"]["path"]
+            assert os.path.isfile(p) and p.startswith(os.path.join(px.dir, "plugins",
+                                                                   ".uploads"))
+            assert up["bytes"] == len(data) and len(up["sha256"]) == 64
+            assert stat_mode(p) == 0o600
+            assert up["expires_at"] > time.time() * 1000
+            ins = _ok(_j(px, "POST", BASE + "/inspect", {"source": up["source"]}), "inspect")
+            assert ins["ok"] and ins["manifest"]["name"] == "hello-tool", ins
+            _j(px, "POST", BASE + "/upload", data, 400, octet)              # no name
+            _j(px, "POST", BASE + "/upload?name=../x.whl", data, 400, octet)
+            _j(px, "POST", BASE + "/upload" + name, data, 415, {"Content-Type": "text/plain"})
+            _j(px, "POST", BASE + "/upload" + name, b"not a zip", 422, octet)
+            _j(px, "POST", BASE + "/upload" + name, b"", 400, octet)
+            _j(px, "POST", BASE + "/upload" + name, data, 401, dict(octet, **AWAY))
+            made = _ok(_j(px, "POST", BASE, {"source": up["source"]}, 201), "install")
+            assert made["plugin"]["source"]["type"] == "wheel"
+            # past its time it is gone, and so is what it answered
+            up2 = _j(px, "POST", BASE + "/upload" + name, data, 201, octet)
+            pluginapi.sweep_uploads(proxy_app.STATE["svc"].plugins,
+                                    now=time.time() + pluginapi.UPLOAD_TTL_S + 1)
+            assert not os.path.exists(up2["source"]["path"])
+            _j(px, "POST", BASE + "/inspect", {"source": up2["source"]}, 404)
+            # the list: each plugin's run state; the view: the grants that take the confirm
+            _j(px, "POST", BASE, {"source": {"type": "folder", "path": src}}, 201)
+            listed = _ok(_j(px, "GET", BASE), "plugins")
+            by = {x["id"]: x for x in listed["plugins"]}
+            assert by["hello-tool"]["run"]["state"] == "disabled", by["hello-tool"]["run"]
+            assert by["hello-tool"]["run"]["gave_up"] is None
+            want = ["prompts:full", "network:203.0.113.9:443"]
+            assert by["classify-provider"]["capabilities"]["confirm"] == want, by
+            one = _ok(_j(px, "GET", BASE + "/classify-provider"), "plugin-one")
+            assert one["plugin"]["capabilities"]["confirm"] == want
+            assert by["hello-tool"]["capabilities"]["confirm"] == []
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        shutil.rmtree(src, ignore_errors=True)
+    return "upload, inspect, install; refusals; expiry; run state; confirm list"
+
+
+def stat_mode(p: str) -> int:
+    return os.stat(p).st_mode & 0o777
 
 
 if __name__ == "__main__":
