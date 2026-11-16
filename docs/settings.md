@@ -13,8 +13,9 @@ The contract is [`contracts/settings-v1`](../contracts/settings-v1/README.md).
 | `conductor` | `controller` | this controller's conductor documents: `settings`, `router`, `roles`, `packages`, `monitor`, `residency`, `deciders`, `profiles.<name>` | hot |
 | `engine` | an engine host's id | the engine's managed overlay, through `tandem remote settings` over SSH | per key: hot or engine |
 | `hooks` | `controller` | the hook registry and the decision providers, through their adapter: `hooks.<id>.<field>`, `providers.<id>.<field>` | none; an in-process hook needs an engine restart |
+| `plugins` | an installed plugin's id | the plugin registry: `enabled`, `settings.<property>`, `secrets.<NAME>`, `capabilities.<capability>` ([plugins](plugins.md#settings-secrets-and-capabilities)) | none |
 
-They apply in this order. A change to the backends lands before a conductor document that may name one, and both land before an engine restart.
+They apply in this order. A change to the backends lands before a conductor document that may name one, and both land before an engine restart. Hooks apply before plugins, so a change set that turns off a plugin and the hooks that name it lets go of the hooks first.
 
 The restart classes:
 
@@ -226,6 +227,19 @@ A key is write-only. A string sets it and an unset clears it. An answer says onl
 One enabled provider serves a question `on` or `ab`. A change set may move a question from one provider to another. The provider that lets it go is written first.
 
 Adding or removing a provider and its kind stay on its API (`/v1/fleet/decision-providers`, [decision providers](decision-providers.md)).
+
+## Plugins
+
+The plugins scope (settings-v1 1.1) has one target a plugin. Its keys come from the plugin's manifest, so they differ plugin by plugin; each plugin keeps its own versions, and restoring one never touches another or the hooks. Installing, upgrading and removing a plugin stay on its API (`/v1/fleet/plugins`, [plugins](plugins.md)).
+
+| key | what |
+|-|-|
+| `enabled` | the plugin host may start it. The tree is checked against its recorded sha256 first. |
+| `settings.<property>` | one property of the plugin's settings schema, with its type and default. A value must hold against the property's schema. Unset: the default. |
+| `secrets.<NAME>` | a declared secret, write-only, sealed under the master key |
+| `capabilities.<capability>` | a requested capability, `false` until granted. Unset revokes it. |
+
+Enabling a plugin and every grant take pairing's rights (403 `trust_required` otherwise). A grant of `prompts:full`, `engine:control` or `network:<host>` outside the LAN is in the plan's `grant_keys` and needs `confirm_grant`. A restore that brings a grant back asks again.
 
 ## The pages
 
