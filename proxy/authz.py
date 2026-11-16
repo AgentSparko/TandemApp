@@ -22,8 +22,9 @@ owners, every session and (later) every token. `owner` is the owners, the identi
 exposure switches and the `auth` and `api` settings.
 
 Service permissions (collect:write, chat-engine, plugin-backend) belong to no role: only a service
-identity holds them, and service identities come with a later change. Until then those routes
-refuse everyone while accounts are on, but for an imported service key (proxy/tokens.py).
+identity holds them (SRV-869, proxy/tokens.py): chatd's svc:chatd, a backend's
+svc:collect:<id>, and the plugin relay's in-process secret (proxy/accounts.py relay_principal).
+Being on the same machine opens none of them; outside local mode it opens nothing at all.
 
 SRV-867: an API token acts with its `perms` (proxy/tokens.py `effective`: what its scopes imply,
 cut to its owner's role at each request); which routes take which scope is tokens.scope_for. The

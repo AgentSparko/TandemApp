@@ -15,7 +15,9 @@ A signed-in account only: a token never manages tokens (the gate refuses it), an
 none (a token is for another device: set the owner's password first). A person manages their own
 tokens; an admin also confirms or revokes an imported key and revokes another account's token,
 but never rotates or renames it. Only an owner touches an owner's token, but for the imported
-admin token, which every admin may confirm or revoke. A service identity is read-only here.
+admin token, which every admin may confirm or revoke. A service identity is read-only here
+(SRV-869), but for an imported one (the metrics token, the shared collect token), which an admin
+confirms or revokes under Review.
 Every answer is `Cache-Control: no-store`.
 """
 
@@ -90,7 +92,10 @@ def handle(handler, a, method: str, rest: list, body) -> None:
             return handler._json(200, {**view, "token": token}, extra_headers=NOSTORE)
         if method == "GET":
             return handler._json(200, ts.view(row), extra_headers=NOSTORE)
-        if row["kind"] == "service":
+        if row["kind"] == "service" and not (row["source"] in tokens_mod.SERVICE_IMPORTS
+                                             and admin):
+            # SRV-869: listed read-only; an imported one (the metrics or the shared collect
+            # token) an admin confirms or revokes under Review
             return _err(handler, 409, "service_identity", "a service identity is managed by "
                         "TandemApp itself")
         if method == "DELETE":

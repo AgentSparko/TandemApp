@@ -68,9 +68,24 @@ THE WAY BACK (the release before reads `users`). A revoked import is also set `e
 hash of a secret nobody holds is written (or enabled again): the release before then needs a key
 and fails closed, never open.
 
-SEAMS. `exposure` (SRV-871: the protocol's exposure switch), the `limits` field (SRV-873 enforces
-it), `/v1/auth/tokens/{id}/usage` (SRV-873), service identities minted at start (SRV-869), the
-Messages API's `/v1/messages` routes (their scope and refusal shape are here already).
+SERVICE IDENTITIES (SRV-869): rows of kind `service` with no owner, made by the controller and
+listed read-only. `mint_service(label, scopes)` gives a fresh secret under the same row (the
+one before stops at once): svc:chatd (inference:openai, chat-engine) at each start of chatd, into
+its environment only, or `tandem-app tokens chatd-key FILE` for a chatd started elsewhere; svc:cli
+(an operator's scopes, never trust) at each start of the controller into <state>/run/cli.token;
+svc:collect:<backend> (collect:write, for that backend only) at each `tandem-app launch`. The
+imports above add svc:metrics (QSE_METRICS_TOKEN) and svc:collect (the shared collect token, any
+backend), both under Review. The plugin relay's identity lives in memory only
+(proxy/accounts.py relay_principal). A service identity's scopes are not cut to a role; its routes
+are scope_for's: chat-engine opens /chat-engine/* alone (with the reads and the conductor writes
+chatd makes there), plugin-backend /plugin-backends/* alone.
+
+A token never exceeds its owner's role of now (`effective`, at each request): an inference scope
+counts only while the role may make inference tokens; the other scopes lose what the role lost.
+
+SEAMS. `exposure` (SRV-871: the protocol's exposure switch), the `limits` field (SRV-873 enforces it),
+`/v1/auth/tokens/{id}/usage` (SRV-873), the Messages API's `/v1/messages` routes (their scope and
+refusal shape are here already).
 """
 
 from __future__ import annotations
@@ -78,6 +93,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import secrets
 import time
@@ -102,11 +118,25 @@ INFERENCE = ("inference:openai", "inference:anthropic")
 MANAGEMENT = ("usage:read", "metrics:read", "settings:read", "settings:write", "fleet:read",
               "fleet:write")
 TRUST = "trust"
-SERVICE_SCOPES = ("collect:write", "chat-engine")
-SCOPES = INFERENCE + MANAGEMENT + (TRUST,) + SERVICE_SCOPES
+SERVICE_SCOPES = ("collect:write", "chat-engine", "plugin-backend")
+#: what a person may put on a token (the service scopes are the controller's own)
+USER_SCOPES = INFERENCE + MANAGEMENT + (TRUST,)
+SCOPES = USER_SCOPES + SERVICE_SCOPES
 ADMIN_TOKEN_SCOPES = ("settings:read", "settings:write", "fleet:read", "fleet:write",
                       "metrics:read")
 CHATD_SCOPES = ("inference:openai", "chat-engine")
+# SRV-869: the controller's own service identities (kind service, no owner, read-only on the page)
+SERVICE_PREFIX = "svc:"
+CLI_SERVICE = "svc:cli"                 # <state>/run/cli.token: this machine's CLI and scripts
+CLI_SCOPES = INFERENCE + MANAGEMENT     # an operator's reach, never trust
+COLLECT_SERVICE = "svc:collect"         # the imported shared collect token: every backend
+METRICS_SERVICE = "svc:metrics"         # the imported QSE_METRICS_TOKEN
+PLUGIN_SERVICE = "svc:plugin-host"      # the relay to /plugin-backends (in memory only)
+CLI_TOKEN = ("run", "cli.token")        # under the state dir: the file, 0600; its folder 0700
+COLLECT_SCOPES = ("collect:write",)
+METRICS_SCOPES = ("metrics:read",)
+#: imported service keys an admin confirms or revokes (a minted identity is TandemApp's own)
+SERVICE_IMPORTS = ("collect_token", "metrics_token")
 LIMIT_KEYS = ("requests_per_minute", "tokens_per_minute", "concurrent", "cost_per_day",
               "cost_per_month")
 
@@ -116,8 +146,16 @@ IMPLIES = {
     "usage:read": {"read"}, "metrics:read": {"metrics:read", "read"},
     "settings:read": {"read"}, "settings:write": {"read", "settings:write"},
     "fleet:read": {"read", "fleet:read"}, "fleet:write": {"read", "fleet:read", "fleet:write"},
-    "trust": {"trust"}, "collect:write": {"collect:write"}, "chat-engine": {"chat-engine"},
+    # SRV-869: trust takes the move's reads with it (GET /v1/fleet/controller before a take);
+    # chatd's identity reads the chat engine's facts and writes its user skills to the conductor,
+    # on /chat-engine/* only (scope_for keeps every other route from it)
+    "trust": {"trust", "read", "fleet:read"}, "collect:write": {"collect:write"},
+    "chat-engine": {"chat-engine", "read", "settings:write"},
+    "plugin-backend": {"plugin-backend"},
 }
+#: SRV-869: what the owner's role of now must hold for a scope of the token to count at all (an
+#: inference scope: the right to make one; the others are cut to the role's permissions)
+CREATE_RIGHT = {s: "tokens:inference" for s in INFERENCE}
 
 MESSAGES = ("/v1/messages", "/v1/messages/count_tokens")
 OPENAI_EXTRA = ("/v1/library", "/v1/laya")
@@ -142,6 +180,21 @@ COLS = ("id", "kind", "owner_id", "label", "hash", "last4", "scopes", "models", 
         "memory_user", "source", "legacy_user_id", "needs_review", "created_at", "created_by",
         "expires_at", "revoked_at", "revoked_by", "revoke_why", "last_used_at", "prev_hash",
         "prev_until")
+
+
+def cli_token_path(state_dir: str) -> str:
+    """SRV-869: where the controller leaves svc:cli's secret at each start."""
+    return os.path.join(os.path.expanduser(state_dir), *CLI_TOKEN)
+
+
+def read_cli_token(state_dir: str) -> str | None:
+    """The CLI's token when this user may read it (the owner of the state dir), else None."""
+    try:
+        with open(cli_token_path(state_dir)) as f:
+            got = f.read(512).strip()
+    except OSError:
+        return None
+    return got if TOKEN_RE.match(got) else None
 
 
 def key_hash(token: str) -> str:
@@ -178,13 +231,17 @@ def scope_for(method: str, path: str) -> tuple | None:
     if read and any(p == f"/v1/fleet/ledger/{v}" for v in LEDGER_VIEWS):
         return ("usage:read", "fleet:read")
     if _under(p, "/v1/fleet"):
-        return ("fleet:read",) if read else ("fleet:write",)
+        # SRV-869: a trust token pairs, releases, installs a plugin and moves the controller; the
+        # handler's route kind then asks for the permission itself (fleet_trust: trust)
+        return ("fleet:read", TRUST) if read else ("fleet:write", TRUST)
     if read and any(p == f"/v1/dashboard/{v}" for v in LEDGER_VIEWS):
         return ("usage:read",)
     if _under(p, "/v1/collect"):
         return ("collect:write",)
     if _under(p, "/chat-engine"):
         return ("chat-engine",)
+    if _under(p, "/plugin-backends"):
+        return ("plugin-backend",)
     return None
 
 
@@ -203,15 +260,27 @@ def refusal(path: str, status: int, code: str, message: str, **facts) -> dict:
                       "message": message, **facts}}
 
 
-def effective(scopes, role: str | None, kind: str, policy=None) -> frozenset:
-    """What a token may do: its scopes' permissions, cut to its owner's role (a service identity:
-    its scopes; an imported key without an owner: at most a viewer's)."""
+def effective(scopes, role: str | None, kind: str, policy=None, owned: bool = True) -> frozenset:
+    """What a token may do now: its scopes' permissions, cut to its owner's role (a service
+    identity: its scopes; an imported key without an owner: at most a viewer's).
+
+    SRV-869: a token never exceeds its owner's role of now, checked at each request. An inference
+    scope counts only while that role may make inference tokens (CREATE_RIGHT: an operator's
+    inference token stops when the owner becomes a viewer while `api.tokens.viewers_may_create`
+    is off); a management scope loses what the role lost (a settings:write token of an operator
+    made a viewer keeps the viewer's reads); trust needs an admin. Nothing is revoked: a promotion
+    back gives the rights back at the next request."""
     got: set = set()
-    for s in scopes or ():
-        got |= IMPLIES.get(s, set())
     if kind == "service":
+        for s in scopes or ():
+            got |= IMPLIES.get(s, set())
         return frozenset(got)
     cap = authz.role_permissions(role or "viewer", policy)
+    for s in scopes or ():
+        need = CREATE_RIGHT.get(s)
+        if owned and need is not None and need not in cap:
+            continue
+        got |= IMPLIES.get(s, set())
     return frozenset(got & cap)
 
 
@@ -276,6 +345,8 @@ class TokenStore:
         with self.cfg._lock:
             self.cfg._conn.executescript(DDL)
             self.cfg._conn.commit()
+
+    on_revoked = None               # SRV-869: (token ids) -> None, the open streams' close
 
     @property
     def _c(self):
@@ -373,12 +444,12 @@ class TokenStore:
         if not isinstance(scopes, list) or not scopes or \
                 not all(isinstance(s, str) for s in scopes):
             raise TokenError(400, "bad_request", f"scopes is a list of: "
-                                                 f"{', '.join(SCOPES[:-2])}")
+                                                 f"{', '.join(USER_SCOPES)}")
         out = list(dict.fromkeys(scopes))
         unknown = [s for s in out if s not in SCOPES]
         if unknown:
             raise TokenError(400, "bad_request", f"no scope {unknown[0]!r}; the scopes are "
-                                                 f"{', '.join(SCOPES[:-2])}")
+                                                 f"{', '.join(USER_SCOPES)}")
         service = [s for s in out if s in SERVICE_SCOPES]
         if service:
             raise TokenError(403, "permission_denied", f"{service[0]} belongs to service "
@@ -538,6 +609,7 @@ class TokenStore:
         if not rows:
             return
         now = self.now_ms()
+        done: list[str] = []
         with self.cfg._lock:
             for row in rows:
                 cur = self._c.execute("UPDATE api_tokens SET revoked_at = ?, revoked_by = ?, "
@@ -552,8 +624,66 @@ class TokenStore:
                                     (row["legacy_user_id"], row["hash"]))
                 self.cfg._audit(actor, "revoke", "api_token", row["id"],
                                 detail={"label": row["label"], "why": why[:120]})
+                done.append(row["id"])
             self._c.commit()
             self.ensure_guard()
+        if done and self.on_revoked is not None:
+            self.on_revoked(done)
+
+    def live(self, tid: str) -> bool:
+        """SRV-869: may the token `tid` still be used (its open stream stays)? Not revoked, not
+        expired, and its owner, when it has one, enabled."""
+        with self.cfg._lock:
+            r = self._c.execute("SELECT t.revoked_at, t.expires_at, t.owner_id, a.enabled FROM "
+                                "api_tokens t LEFT JOIN accounts a ON a.id = t.owner_id WHERE "
+                                "t.id = ?", (tid,)).fetchone()
+        if r is None or r[0] is not None:
+            return False
+        if r[1] is not None and self.now_ms() >= r[1]:
+            return False
+        return r[2] is None or bool(r[3])
+
+    # ------------------------------------------------------------------ service identities
+    def mint_service(self, label: str, scopes, *, memory_user: str | None = None,
+                     actor: str = "controller") -> str:
+        """SRV-869: a fresh secret for the service identity `label` (kind service, no owner):
+        its live row keeps its id and gets the new hash in place, so the secret before stops at
+        once; none yet: a new row. The secret is returned once and never stored."""
+        if not label.startswith(SERVICE_PREFIX) or not scopes:
+            raise ValueError("a service identity is svc:<name> with scopes")
+        now = self.now_ms()
+        with self.cfg._lock:
+            r = self._c.execute("SELECT id FROM api_tokens WHERE kind = 'service' AND label = ? "
+                                "AND owner_id IS NULL AND revoked_at IS NULL ORDER BY created_at "
+                                "LIMIT 1", (label,)).fetchone()
+        if r is not None:
+            tid = r[0]
+            token = f"{PREFIX}{tid}-{secrets.token_urlsafe(32)}"
+            with self.cfg._lock:
+                self._c.execute("UPDATE api_tokens SET hash = ?, last4 = ?, scopes = ?, "
+                                "prev_hash = NULL, prev_until = NULL, expires_at = NULL, "
+                                "needs_review = 0 WHERE id = ?",
+                                (key_hash(token), token[-4:], json.dumps(list(scopes)), tid))
+                self.cfg._audit(actor, "rotate", "api_token", tid, detail={"label": label})
+                self._c.commit()
+            return token
+        tid, token = self._new_secret()
+        name = memory_user or label[len(SERVICE_PREFIX):]
+        with self.cfg._lock:
+            self._c.execute(
+                f"INSERT INTO api_tokens({', '.join(COLS)}) VALUES "
+                f"({', '.join('?' * len(COLS))})",
+                (tid, "service", None, label, key_hash(token), token[-4:],
+                 json.dumps(list(scopes)), "[]", "{}", name, "service", None, 0, now, actor,
+                 None, None, None, None, None, None, None))
+            self.cfg._audit(actor, "create", "api_token", tid,
+                            detail={"label": label, "kind": "service"})
+            self._c.commit()
+            self.ensure_guard()
+        return token
+
+    def services(self) -> list[dict]:
+        return self.rows("WHERE kind = 'service'")
 
     # ------------------------------------------------------------------ the way back
     def ensure_guard(self) -> bool:
@@ -611,7 +741,8 @@ class TokenStore:
         kind = "service" if row["kind"] == "service" else "token"
         return Principal(kind=kind, id=row["id"], name=row["memory_user"], role=role,
                          via="token", scopes=frozenset(row["scopes"]),
-                         perms=effective(row["scopes"], role, row["kind"], self.policy),
+                         perms=effective(row["scopes"], role, row["kind"], self.policy,
+                                         owned=row["owner_id"] is not None),
                          models=tuple(row["models"]), client="k:" + h[:12],
                          expires_at=row["expires_at"])
 
@@ -716,6 +847,19 @@ class TokenStore:
                                       source="users_from", enabled=bool(enabled))
                 did["users_from"] = n
                 done["users_from"] = self.now_ms()
+        # SRV-869: the metrics token and the shared collect token as service identities under
+        # Review; a minted one per backend (svc:collect:<id>) replaces the shared one over time
+        for src, label, scopes, value in (
+                ("metrics_token", METRICS_SERVICE, METRICS_SCOPES,
+                 (env.get("QSE_METRICS_TOKEN") or "").strip()),
+                ("collect_token", COLLECT_SERVICE, COLLECT_SCOPES, self._collect_token(env))):
+            if src in done:
+                continue
+            if len(value) >= 16:
+                did[src] = self._import(kind="service", owner_id=None, label=label,
+                                        h=key_hash(value), last4=value[-4:], scopes=scopes,
+                                        source=src, memory_user=label[len(SERVICE_PREFIX):])
+            done[src] = self.now_ms()
         token = (env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN") or "").strip()
         if len(token) >= 32 and first_owner is not None and "admin_token" not in done:
             did["admin_token"] = self._import(
@@ -729,6 +873,18 @@ class TokenStore:
             self.store.set_state("had_legacy_keys", True)       # SRV-871: the first exposure
         self.ensure_guard()
         return did
+
+    def _collect_token(self, env) -> str:
+        """The shared collect token of the release before: TANDEM_COLLECT_TOKEN, else the one
+        proxy/collect_api.py kept in the settings."""
+        t = (env.get("TANDEM_COLLECT_TOKEN") or "").strip()
+        if t:
+            return t
+        try:
+            got = self.cfg.setting("collect_token")
+        except Exception:                                          # noqa: BLE001
+            got = None
+        return got.strip() if isinstance(got, str) else ""
 
     def _import_users(self) -> int:
         with self.cfg._lock:
