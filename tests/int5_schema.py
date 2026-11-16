@@ -2,6 +2,11 @@
 DDL, its in-place columns and its schema number, frozen here for SEC-22's rollback test
 (tests/test_auth_int5_db.py). Copied from that release's proxy/config.py; never edit it to follow
 a later schema. `migrate_like_int5` runs what that release's ConfigDB.migrate runs at a start.
+
+SEC-28 adds that release's sign-in, frozen the same way (its tandemapp/auth.py Auth, which the
+flip removed from the tree): `state_like_int5` writes a state folder as it writes one,
+`sign_in_like_int5` is its sign-in (the admin token, then admin.json), `cookie_like_int5` its
+`qse_dash` cookie, and `key_rule_like_int5` its rule on the OpenAI routes.
 """
 
 SCHEMA_VERSION = 2
@@ -144,3 +149,72 @@ def key_rule_like_int5(c, bearer, env_users=None,
     if trusted_local:
         return 200, None
     return 401, None
+
+
+def user_like_int5(c, label: str, key: str, enabled: bool = True) -> None:
+    """A row of `users` as that release's ConfigDB.create_user writes it (the key's sha256)."""
+    import hashlib
+    import time
+    c.execute("INSERT INTO users(label, key_hash, key_hint, role, enabled, created_at) "
+              "VALUES (?, ?, ?, 'user', ?, ?)",
+              (label, hashlib.sha256(key.encode()).hexdigest(), key[-4:], int(enabled),
+               int(time.time() * 1000)))
+
+
+def state_like_int5(folder: str, *, password: str | None = None, keys: dict | None = None,
+                    chatd_key: str | None = None) -> str:
+    """A state folder as that release leaves it: config.sqlite3 (its schema, its `users` rows:
+    {label: key}, and its own chatd's row `chatd` with the key in chat/engine.key), admin.json
+    when it had a password. Returns the config database's path."""
+    import os
+    import sqlite3
+    path = os.path.join(folder, "config.sqlite3")
+    c = sqlite3.connect(path)
+    migrate_like_int5(c)
+    for label, key in (keys or {}).items():
+        user_like_int5(c, label, key)
+    if chatd_key:
+        user_like_int5(c, "chatd", chatd_key)
+        os.makedirs(os.path.join(folder, "chat"), mode=0o700, exist_ok=True)
+        with open(os.path.join(folder, "chat", "engine.key"), "w") as f:
+            f.write(chatd_key + "\n")
+    c.commit()
+    c.close()
+    if password:
+        from proxy import adminpw          # its proxy/adminpw.py Password, unchanged since
+        adminpw.Password(os.path.join(folder, "admin.json")).set(password)
+    return path
+
+
+def sign_in_like_int5(folder: str, value, admin_token: str | None = None) -> bool:
+    """That release's sign-in (Auth.sign_in): the admin token in constant time, then the
+    password in admin.json."""
+    import hmac
+    import os
+    from proxy import adminpw
+    if isinstance(value, str) and admin_token and \
+            hmac.compare_digest(value.encode(), admin_token.encode()):
+        return True
+    pw = adminpw.Password(os.path.join(folder, "admin.json"))
+    return bool(pw.is_set and pw.verify(value))
+
+
+def cookie_like_int5(folder: str, admin_token: str | None = None, ttl_s: int = 3600) -> str:
+    """A `qse_dash` cookie value as that release made it after a sign-in (Auth.make_cookie): the
+    key from the admin token and admin.json's hash material."""
+    import hashlib
+    import hmac
+    import os
+    import secrets
+    import time
+    from proxy import adminpw
+    tok = (hmac.new(admin_token.encode(), b"qse-dash-session-v1", hashlib.sha256).digest()
+           if admin_token else None)
+    m = adminpw.Password(os.path.join(folder, "admin.json")).material()
+    key = tok if m is None else hmac.new(m, b"qse-dash-session-v2" + (tok or b""),
+                                         hashlib.sha256).digest()
+    assert key is not None, "that release had no session without a secret"
+    exp = int(time.time() + ttl_s)
+    nonce = secrets.token_hex(8)
+    return f"{exp}.{nonce}." + hmac.new(key, f"{exp}.{nonce}".encode(), hashlib.sha256).hexdigest()
+

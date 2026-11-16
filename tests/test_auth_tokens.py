@@ -57,6 +57,7 @@ from __future__ import annotations
 import io
 import contextlib
 import hashlib
+import functools
 import json
 import os
 import shutil
@@ -74,7 +75,11 @@ import int5_schema  # noqa: E402
 from proxy import adminpw, authlegacy  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import tokens as tokens_mod  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, fake, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 PW = {n: f"the password of {n} here" for n in ("own", "adm", "ops", "view")}
@@ -155,16 +160,26 @@ def shift(days: float) -> None:
     accounts().store.clock = lambda: base + days * 86400
 
 
-def legacy_state(port, **env) -> Proxy:
-    """A controller of the release before's kind (the switch off) with a key in `users` and one
-    in TANDEM_API_KEYS; its state is copied into the new build's."""
-    px = Proxy(env=env_for(port, TANDEM_API_KEYS=f"laptop:{KEY_ENV}", **env))
-    px.__enter__()
-    c = px.svc.cfg._conn
-    c.execute("INSERT INTO users(label, key_hash, key_hint, role, enabled, created_at) VALUES "
-              "('phone', ?, ?, 'user', 1, 1)", (tokens_mod.key_hash(KEY_DB), KEY_DB[-4:]))
-    c.commit()
-    return px
+class Legacy:
+    """SEC-28: the state of the release before, as that release writes it (tests/int5_schema.py
+    state_like_int5): a key `phone` in `users`; its TANDEM_API_KEYS (`laptop`) is the new
+    build's env. `svc.cfg._conn` writes more rows as it did; copy_state takes `dir`."""
+
+    def __init__(self):
+        import types
+        self.dir = tempfile.mkdtemp(prefix="int5-state-")
+        int5_schema.state_like_int5(self.dir, keys={"phone": KEY_DB})
+        conn = sqlite3.connect(os.path.join(self.dir, "config.sqlite3"))
+        self.svc = types.SimpleNamespace(cfg=types.SimpleNamespace(_conn=conn))
+
+    def __exit__(self, *exc):
+        self.svc.cfg._conn.close()
+
+
+def legacy_state(port, **env) -> Legacy:
+    """The release before's state, its keys in `users` and TANDEM_API_KEYS (the switch-off
+    controller that stood for it is gone with the switch)."""
+    return Legacy()
 
 
 # ---------------------------------------------------------------------------- Gherkin 1 + AC b
@@ -291,13 +306,13 @@ def test_an_imported_key():
     try:
         old = legacy_state(port)
         try:
-            old.sync()
-            before = {}
-            for key in (KEY_DB, KEY_ENV):
-                assert old.post("/v1/chat/completions", {"model": "small-1", **CHAT},
-                                {**bearer(key), "X-Real-IP": "192.0.2.7"})[0] == 200
-                before[key] = (old.rows()[-1]["user"], upstream(srv)["x-tandem-user"])
-            assert before == {KEY_DB: ("phone", "phone"), KEY_ENV: ("laptop", "laptop")}, before
+            # the release before's key rule: both keys answer, each as its label (the ledger's
+            # user and the user it sent upstream)
+            c = old.svc.cfg._conn
+            env_users = {tokens_mod.key_hash(KEY_ENV): "laptop"}
+            got = {k: int5_schema.key_rule_like_int5(c, k, env_users) for k in (KEY_DB, KEY_ENV)}
+            assert got == {KEY_DB: (200, "phone"), KEY_ENV: (200, "laptop")}, got
+            before = {k: (v[1], v[1]) for k, v in got.items()}
             new = Proxy(env={**ON, **env_for(port, TANDEM_API_KEYS=f"laptop:{KEY_ENV}")})
             copy_state(old, new)
         finally:

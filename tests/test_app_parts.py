@@ -262,20 +262,23 @@ def test_conductor_switch_and_rights():
     c = Ctl("parts-cond", lines=["TANDEM_CHAT=off", f"TANDEM_ADMIN_TOKEN={ADMIN_A}"])
     try:
         c.start()
-        assert c.get("/v1/conductor/profiles", ADMIN_A)[0] == 404
-        # another machine: the view is a read, a switch needs the admin
-        assert c.send("GET", "/v1/fleet/app/parts", headers=FAR)[0] == 200
+        # SEC-28: the admin token of before makes the first owner, once (the setup code)
+        who = c.owner(ADMIN_A)
+        assert c.get("/v1/conductor/profiles", who)[0] == 404
+        # another machine: the view is a read for someone signed in, a switch needs the admin
+        assert c.send("GET", "/v1/fleet/app/parts", headers=FAR)[0] == 401
+        assert c.send("GET", "/v1/fleet/app/parts", token=who, headers=FAR)[0] == 200
         st, body = c.send("POST", "/v1/fleet/app/parts/conductor", {"on": True}, headers=FAR)
         assert st == 401, (st, body)
-        st, out = _switch(c, "conductor", True, token=ADMIN_A, headers=FAR)
+        st, out = _switch(c, "conductor", True, token=who, headers=FAR)
         assert st == 200 and out["conductor"]["on"], out
         assert out["conductor"]["dir"] == os.path.join(c.state, "conductor"), out
-        st, prof = c.get("/v1/conductor/profiles", ADMIN_A)
+        st, prof = c.get("/v1/conductor/profiles", who)
         assert st == 200, (st, prof, c.tail())
         assert os.path.isdir(os.path.join(c.state, "conductor"))
-        st, out = _switch(c, "conductor", False, token=ADMIN_A, headers=FAR)
+        st, out = _switch(c, "conductor", False, token=who, headers=FAR)
         assert st == 200 and not out["conductor"]["on"], out
-        assert c.get("/v1/conductor/profiles", ADMIN_A)[0] == 404
+        assert c.get("/v1/conductor/profiles", who)[0] == 404
         assert os.path.isdir(os.path.join(c.state, "conductor")), "the documents stay"
         assert "Traceback" not in c.tail(2000), c.tail()
     finally:

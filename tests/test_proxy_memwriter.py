@@ -43,7 +43,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy, api_key, fake, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
@@ -81,8 +81,7 @@ def _setup(px, mode="on", memory="on", prefill=""):
         "max_tokens": 200, "after_compaction": "idle", "prefill": prefill}}
     cond.store.put("settings", None, st, note="m3", author="test", base=v)
     px.svc.harness.writer.auto = False
-    _, _, body = px.request("POST", "/v1/config/users", {"label": "laptop"})
-    key = json.loads(body)["key"]
+    key = api_key(px, "laptop")             # SEC-28: a client's key is an API token
     return cond, dict(UA, Authorization=f"Bearer {key}", **{"x-session-id": "ses1"})
 
 

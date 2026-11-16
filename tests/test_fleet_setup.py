@@ -38,9 +38,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import test_fleet as tf  # noqa: E402
 import test_node_agent as tna  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 
-ADMIN = tf.ADMIN
 JSON = {"Content-Type": "application/json"}
 
 
@@ -280,10 +279,10 @@ def test_writes():
 
 def test_rights():
     lan = {"X-Real-IP": "192.0.2.77"}
-    bearer = {"Authorization": f"Bearer {ADMIN}"}
-    fx = Fleet({"Gold": Node("SET-G-0004", "g")}, env={"TANDEM_ADMIN_TOKEN": ADMIN}, login="on")
+    fx = Fleet({"Gold": Node("SET-G-0004", "g")})
     try:
         g = fx.ids["Gold"]
+        bearer = owner(fx.px)                   # SEC-28: an owner's session, not a token
         for path in (f"/v1/fleet/nodes/{g}/setup/device",
                      f"/v1/fleet/nodes/{g}/setup-confirm/apply?model=m&profile=p"):
             st, _, raw = fx.req("GET", path, headers=lan)

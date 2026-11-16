@@ -48,6 +48,7 @@ or the route's answer, with the token in Authorization or in x-api-key.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sys
@@ -62,7 +63,11 @@ from proxy import adminpw, enginecodes, fleethealth  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import exposure as exposure_mod  # noqa: E402
 from proxy import tokens as tokens_mod  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, fake, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = tt.ON
 PW = tt.PW

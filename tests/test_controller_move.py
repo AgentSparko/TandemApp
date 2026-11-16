@@ -343,7 +343,7 @@ def test_plan_and_refusals():
                          "/v1/fleet/controller/take", "/v1/fleet/update"):
                 st, err = tf.send(px, "POST", path, {}, headers=far)
                 assert st == 401, (path, st, err)
-            assert tf.get(px, "/v1/fleet/controller", headers=far)[0] == 200
+            assert tf.get(px, "/v1/fleet/controller", headers=far)[0] == 401   # SEC-28
             assert tf.get(px, f"/v1/fleet/controller/move?to={gold}&port=80")[0] == 400
             for src in [s for _, s in f.agents.values()]:
                 src.close()
@@ -366,7 +366,7 @@ def test_move_and_back():
     state = os.path.join(home, "gold-ctl")
     ids = [n.agent.node_id() for n in nodes]
     try:
-        with Proxy(env={"TANDEM_ADMIN_TOKEN": ADMIN}) as px:
+        with Proxy() as px:
             f = tf.fleet_on(px, tf.local_node(tf.fake_root(), h=tf.host(gpu=False)))
             px.svc.cfg.create_backend({"id": "ds", "kind": "deepseek", "label": "DeepSeek",
                                        "key": KEY})
@@ -384,7 +384,8 @@ def test_move_and_back():
             p = tf.get(px, f"/v1/fleet/controller/move?to={ids[2]}&port={port}")[1]
             st, job = tf.send(px, "POST", "/v1/fleet/controller/move",
                               {"to": ids[2], "port": port, "confirm": p["confirm"],
-                               "name": "tandemapp-mvtest", "state_dir": state})
+                               "password": ADMIN, "name": "tandemapp-mvtest",
+                               "state_dir": state})
             assert st == 200
             assert _until(ended, 60)
             j = ended()["job"]
@@ -398,10 +399,12 @@ def test_move_and_back():
             sysd.broken = False
             p = tf.ok(tf.get(px, f"/v1/fleet/controller/move?to={ids[2]}&port={port}")[1],
                       "move-plan")
-            assert p["allowed"] and p["needs_password"] is False, p
+            # SEC-28: always a password: the new controller's account `owner` signs in with it
+            assert p["allowed"] and p["needs_password"] is True, p
             st, job = tf.send(px, "POST", "/v1/fleet/controller/move",
                               {"to": ids[2], "port": port, "confirm": p["confirm"],
-                               "name": "tandemapp-mvtest", "state_dir": state})
+                               "password": ADMIN, "name": "tandemapp-mvtest",
+                               "state_dir": state})
             assert st == 200 and tf.ok(job, "move-job")["state"] == "running", job
             assert _until(lambda: ended() and ended()["job"]["id"] == job["id"], 90), tf.get(px, "/v1/fleet/controller")[1]["job"]
             v = tf.ok(ended(), "controller")
@@ -419,12 +422,15 @@ def test_move_and_back():
             texts = [e["text"] for e in tf.get(px, "/v1/fleet/events?type=controller")[1]["events"]]
             assert "The controller moved to TandemApp on Gold" in texts[0] or \
                 texts[0].startswith("The controller moved to"), texts
-            # the new controller: the fleet imported, every node up through its certificate
-            st, got = ctlmove.call(url, "GET", "/v1/fleet/nodes", token=ADMIN)
+            # the new controller: the fleet imported, every node up through its certificate;
+            # its account `owner` signs in with the move's password
+            new = ctlmove.sign_in(url, ADMIN)
+            assert isinstance(new, dict) and new["csrf"], new
+            st, got = ctlmove.call(url, "GET", "/v1/fleet/nodes", cookie=new)
             assert st == 200 and sorted(n["id"] for n in tf.ok(got, "nodes")["nodes"]) == \
                 sorted(ids), got
             assert all(n["status"] == "up" for n in got["nodes"]), got
-            st, b = ctlmove.call(url, "GET", "/v1/fleet/controller", token=ADMIN)
+            st, b = ctlmove.call(url, "GET", "/v1/fleet/controller", cookie=new)
             assert st == 200 and tf.ok(b, "controller")["host"]["node"] is None
             new_fp = nodetrust.pem_fingerprint(
                 open(os.path.join(state, "controller", "controller.crt")).read())
@@ -436,7 +442,7 @@ def test_move_and_back():
                 ctx = nodetrust.client_context(old.cert, old.key, n.agent.store.own_pem())
                 assert tnt.tls_refused(n.port, ctx), "the old controller is still accepted"
             # the API moved: the new controller has the backends and the stored key
-            st, bk = ctlmove.call(url, "GET", "/v1/config/backends/ds", token=ADMIN)
+            st, bk = ctlmove.call(url, "GET", "/v1/config/backends/ds", cookie=new)
             assert st == 200 and bk["key"]["key_set"] is True, bk
             for src in [s for _, s in f.agents.values()]:
                 src.close()
@@ -457,9 +463,9 @@ def test_move_and_back():
             assert sorted(n["id"] for n in nodes2) == sorted(ids)
             assert all(n["status"] == "up" for n in nodes2), nodes2
             assert px2.svc.cfg.key_for("ds") == KEY
-            st, b = ctlmove.call(url, "GET", "/v1/fleet/controller", token=ADMIN)
+            st, b = ctlmove.call(url, "GET", "/v1/fleet/controller", cookie=new)
             assert b["moved_to"]["api_url"] == f"http://127.0.0.1:{px2.port}", b
-            st, gone = ctlmove.call(url, "GET", "/v1/fleet/nodes", token=ADMIN)
+            st, gone = ctlmove.call(url, "GET", "/v1/fleet/nodes", cookie=new)
             assert gone["nodes"] == [], gone
             mine = f2.trust().fingerprint()
             assert all(n.agent.store.owner()["fingerprint"] == mine for n in nodes)

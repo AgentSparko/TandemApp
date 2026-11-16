@@ -19,7 +19,7 @@ import random
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import FIXTURE_KEYS, Proxy, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy, api_key, run  # noqa: E402
 
 import fake_anthropic  # noqa: E402
 from proxy import adapters as A  # noqa: E402
@@ -235,9 +235,10 @@ def test_relay_streams_a_chat_completion_with_a_tool():
         extra = {"TANDEM_BACKEND_ANTH_ANTHROPIC_AUTH": auth} if auth == "bearer" else {}
         with Proxy(_env(port, extra, tail)) as px:
             px.sync()
+            client = api_key(px)                # SEC-28: the client's key is an API token
             st, hdrs, data = px.post("/v1/chat/completions", {
                 "model": "model-a", "stream": True, "messages": _user("weather?"),
-                "tools": [TOOL]}, headers={"Authorization": f"Bearer {CLIENT_KEY}"})
+                "tools": [TOOL]}, headers={"Authorization": f"Bearer {client}"})
             assert st == 200 and hdrs.get("X-Tandem-Backend") == "anth", (st, data)
             req = srv.fake.last
             assert req["path"] == "/v1/messages" and req["body"]["stream"] is True
@@ -247,7 +248,7 @@ def test_relay_streams_a_chat_completion_with_a_tool():
             else:
                 assert req["headers"].get("x-api-key") == KEY and \
                     "Authorization" not in req["headers"]
-            assert CLIENT_KEY not in json.dumps(srv.fake.requests), "the client's key upstream"
+            assert client not in json.dumps(srv.fake.requests), "the client's key upstream"
             assert req["body"]["tools"][0]["name"] == "get_weather" and \
                 req["body"]["max_tokens"] == 32000, "64000 capped by the model's limit"
             fr = _frames(data)

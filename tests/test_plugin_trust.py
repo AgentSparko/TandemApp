@@ -510,7 +510,7 @@ def test_policy_require_signature():
 
 # ---------------------------------------------------------------------------- 9
 def test_trust_over_http():
-    from proxy_util import Proxy
+    from proxy_util import Proxy, owner
     from tools import contract_check
     pv = os.path.join(ROOT, "contracts", "plugin-v1")
     api = json.load(open(os.path.join(pv, "api.json")))
@@ -538,6 +538,8 @@ def test_trust_over_http():
 
     try:
         with Proxy({}) as px:
+            # SEC-28: another device signs in; an operator has the writes, not pairing's rights
+            away = dict(away, **owner(px, "ops", "operator"))
             got = j(px, "GET", "/v1/fleet/plugin-trust", schema="plugin-trust")
             assert got == {"contract_version": "1.0", "keys": [],
                            "policy": {"require_signature_sandboxed": False}}

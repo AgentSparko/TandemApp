@@ -46,6 +46,7 @@ import json
 import os
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -212,6 +213,11 @@ def test_upgrade():
 
 
 def test_rollback():
+    """SEC-28: the release before on the upgraded state (tests/int5_schema.py, its frozen start
+    and sign-in): `helm rollback` brings back its template, which reads the kept Secret into
+    TANDEM_ADMIN_TOKEN: the admin token signs in there, so does the new owner's password
+    (admin.json follows it), and a request without a key is refused (never open)."""
+    import int5_schema
     tcd = _chart()
     env, _ = rendered(tcd=tcd)
     d = tempfile.mkdtemp(prefix="o1-back-")
@@ -222,18 +228,15 @@ def test_rollback():
                                                      "password": PW})[0] == 201
     finally:
         stop(proc)
-    # the template before: no TANDEM_AUTH, the kept Secret's value in TANDEM_ADMIN_TOKEN
-    proc, port, _ = serve(state, {"TANDEM_AUTH": "legacy", "TANDEM_ADMIN_TOKEN": OLD_TOKEN,
-                                  "TANDEM_DASHBOARD_LOGIN": "on"})
+    c = sqlite3.connect(os.path.join(state, "config.sqlite3"))
     try:
-        assert ask(port, "GET", "/health")[0] == 200
-        st, h, _ = ask(port, "POST", "/v1/dashboard/session", {"token": OLD_TOKEN})
-        assert st == 204 and "Set-Cookie" in h, st
-        assert ask(port, "GET", "/v1/settings", headers={
-            "Authorization": f"Bearer {OLD_TOKEN}"})[0] == 200
+        assert int5_schema.migrate_like_int5(c) == int5_schema.SCHEMA_VERSION
+        assert int5_schema.key_rule_like_int5(c, None) == (401, None)
     finally:
-        stop(proc)
-    return "the legacy mode on the upgraded state starts, and the admin token signs in"
+        c.close()
+    assert int5_schema.sign_in_like_int5(state, OLD_TOKEN, admin_token=OLD_TOKEN)
+    assert int5_schema.sign_in_like_int5(state, PW)
+    return "the release before on the upgraded state starts, and the admin token signs in"
 
 
 def test_leftover_variable():
@@ -429,10 +432,11 @@ def test_docs():
     assert "`auth.bootstrap.existingSecret`, `.secretKey`, `.create`" in readme
     assert "`ingress.api.openai`, `.anthropic`" in readme
     env = _read("packaging", "app.env.example")
-    for words in ("#TANDEM_AUTH=accounts", "#TANDEM_TRUSTED_PROXY=", "tandem-app users",
-                  "tandem-app tokens"):
+    for words in ("#TANDEM_LOCAL_MODE=off", "#TANDEM_TRUSTED_PROXY=", "tandem-app users",
+                  "tandem-app tokens", "TANDEM_AUTH"):
         assert words in env, words
-    assert "TANDEM_AUTH=accounts" in _read("packaging", "Dockerfile.app")
+    assert "#TANDEM_AUTH=" not in env, "SEC-28: nothing to switch on"
+    assert "setup code" in _read("packaging", "Dockerfile.app")
     # no host of this project's own network in the public text
     for text in (k8s, linux, readme, env):
         assert not re.search(r"\b(192\.168|10\.\d+\.\d+\.\d+)\b", text)

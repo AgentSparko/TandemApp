@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plugin_host_util import folder, kitchen, wait  # noqa: E402
 from proxy_util import Proxy, fake  # noqa: E402
 
+from proxy import app as proxy_app  # noqa: E402
 from proxy import pluginhost, pluginrt  # noqa: E402
 from tools import hooks_gate  # noqa: E402
 
@@ -50,8 +51,8 @@ def _env(*backs):
     return env
 
 
-def _j(px, method, path, body=None, want=200):
-    st, hdrs, out = px.request(method, path, body)
+def _j(px, method, path, body=None, want=200, headers=None):
+    st, hdrs, out = px.request(method, path, body, headers)
     doc = json.loads(out or b"{}")
     assert st == want, (method, path, st, doc)
     return doc
@@ -136,24 +137,33 @@ def test_examples_over_http():
             assert st["state"] == "running" and st["tools"] == ["greet"], st
             assert _j(px, "GET", f"{BASE}/{audit}/status")["status"]["hooks"] == \
                 ["audit-hook/finished"]
-            # the tool, as chatd reaches it
-            got = _j(px, "GET", "/chat-engine/v1/plugins/tools")["plugins"]
+            # the tool, as chatd reaches it: with its service identity (SEC-28: this machine
+            # alone opens nothing under /chat-engine)
+            from proxy import tokens as tokens_mod
+            assert _j(px, "GET", "/chat-engine/v1/plugins/tools", want=403)
+            chatd = proxy_app.STATE["accounts"].tokens.mint_service(
+                tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                memory_user=tokens_mod.CHATD_LABEL)
+            as_chatd = {"Authorization": f"Bearer {chatd}"}
+            got = _j(px, "GET", "/chat-engine/v1/plugins/tools", headers=as_chatd)["plugins"]
             assert [(p["id"], [t["name"] for t in p["tools"]]) for p in got] == \
                 [("hello-tool", ["greet"])], got
             out = _j(px, "POST", "/chat-engine/v1/plugins/tools/call",
-                     {"plugin": "hello-tool", "tool": "greet", "arguments": {"name": "Ada"}})
+                     {"plugin": "hello-tool", "tool": "greet", "arguments": {"name": "Ada"}},
+                     headers=as_chatd)
             assert out["result"]["content"][0]["text"] == "Hello, Ada.", out
             err = _j(px, "POST", "/chat-engine/v1/plugins/tools/call",
-                     {"plugin": "hello-tool", "tool": "greet", "arguments": {"who": "x"}}, 400)
+                     {"plugin": "hello-tool", "tool": "greet", "arguments": {"who": "x"}}, 400,
+                     as_chatd)
             assert err["error"]["type"] == "bad_arguments"
             _j(px, "POST", "/chat-engine/v1/plugins/tools/call",
-               {"plugin": "audit-hook", "tool": "greet", "arguments": {}}, 404)
+               {"plugin": "audit-hook", "tool": "greet", "arguments": {}}, 404, as_chatd)
             from chatd.engine import Engine
             from chatd.mcp import Mcp
 
             class Svc:
                 store = None
-                engine = Engine(f"http://127.0.0.1:{px.port}/chat-engine")
+                engine = Engine(f"http://127.0.0.1:{px.port}/chat-engine", key=chatd)
 
                 def log(self, m):
                     pass

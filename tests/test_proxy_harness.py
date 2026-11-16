@@ -18,7 +18,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy, api_key, fake, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
 from proxy import harness  # noqa: E402
@@ -529,8 +529,7 @@ def test_memory_blocks_stay_on_the_proxy_and_the_notes_go_in():
         v, prof = cond.store.get("profiles", "coding")
         cond.store.put("profiles", "coding", dict(prof, memory="on"), note="memory",
                        author="test", base=v)
-        st, _, body = px.request("POST", "/v1/config/users", {"label": "laptop"})
-        key = json.loads(body)["key"]
+        key = api_key(px, "laptop")         # SEC-28: a client's key is an API token
         hdr = dict(UA, Authorization=f"Bearer {key}")
         u1 = {"role": "user", "content": "Keep answers short from now on. FAKE_MEMORY"}
         st, _, out = px.post("/v1/chat/completions", {"model": "m1", "messages": [SYSTEM, u1],

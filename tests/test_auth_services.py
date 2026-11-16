@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import functools
 import json
 import os
 import re
@@ -67,7 +68,11 @@ from proxy import adminpw  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import authlocal, cli, collect_api  # noqa: E402
 from proxy import tokens as tokens_mod  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, fake, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = tt.ON
 PW = tt.PW
@@ -263,12 +268,12 @@ def test_the_cli():
             # the installer's health check reads the same file (packaging/tandemapp_install.py)
             sys.path.insert(0, os.path.join(ROOT, "packaging"))
             import tandemapp_install as inst
-            ok, said_ = inst.health("127.0.0.1", px.port, None, proxy_app.STATE["version"],
-                                    None, 5.0, accounts=True, state=px.dir)
+            ok, said_ = inst.health("127.0.0.1", px.port, proxy_app.STATE["version"],
+                                    None, 5.0, state=px.dir)
             assert ok, said_
             # it read the version with the token (the fallback without one takes any `ok`)
-            ok, said_ = inst.health("127.0.0.1", px.port, None, "0.0.0-not-this", None, 1.0,
-                                    accounts=True, state=px.dir)
+            ok, said_ = inst.health("127.0.0.1", px.port, "0.0.0-not-this", None, 1.0,
+                                    state=px.dir)
             assert not ok and str(proxy_app.STATE["version"]) in said_, said_
             assert inst._cli_token(px.dir) == tokens_mod.read_cli_token(px.dir)
     finally:
@@ -304,8 +309,8 @@ def test_a_collect_plugin():
             t1b = collect_api.token_for(px.svc.cfg, env, "b1")
             assert tpc._collect(px, "b1", tpc._batch(), token=t1)[0] == 401
             assert tpc._collect(px, "b1", tpc._batch(seq0=5), token=t1b)[0] == 200
-            # the switch off: the shared token as before
-            assert collect_api.token_for(px.svc.cfg, {}, "b1") == collect_api.token_of(
+            # SEC-28: no switch: whatever the environment, a launch gets its backend's own
+            assert collect_api.token_for(px.svc.cfg, {}, "b1") != collect_api.token_of(
                 px.svc.cfg, {})
     finally:
         s1.shutdown()
@@ -405,34 +410,33 @@ def _count(ctl, table: str) -> int:
 # ---------------------------------------------------------------------------- AC a
 
 def test_two_callers_of_this_machine():
-    # the source: this_machine has exactly two callers, and nothing else of the accounts' side
-    # asks the old trusted-local test
+    # the source (SEC-28: `grep trusted_local`): the one this-machine test has exactly two
+    # callers, local mode and the exposure rule; no guard anywhere else asks it
     calls = []
-    for name in sorted(os.listdir(os.path.join(ROOT, "proxy"))):
-        if not name.endswith(".py"):
-            continue
-        src = open(os.path.join(ROOT, "proxy", name)).read()
-        for m in re.finditer(r"\bthis_machine\(", src):
-            line = src[:m.start()].rsplit("\n", 1)[-1]
-            if not line.lstrip().startswith("def "):
-                calls.append(name)
+    for pkg in ("proxy", "tandemapp", "chatd"):
+        for d, _, files in os.walk(os.path.join(ROOT, pkg)):
+            for name in sorted(files):
+                if not name.endswith(".py"):
+                    continue
+                src = open(os.path.join(d, name)).read()
+                for m in re.finditer(r"\btrusted_local\(", src):
+                    line = src[:m.start()].rsplit("\n", 1)[-1]
+                    if not line.lstrip().startswith("def "):
+                        calls.append(name)
     assert sorted(calls) == ["authlocal.py", "exposure.py"], calls
-    for name in ("accounts.py", "authlocal.py", "exposure.py", "tokens.py", "authz.py"):
-        src = open(os.path.join(ROOT, "proxy", name)).read()
-        assert ".trusted_local(" not in src, name
-    # the behaviour: every old guard asks auth.trusted_local, which is False with accounts on,
-    # for the cleanest loopback request there is
+    # the behaviour: the sign-in has no loopback exemption of its own
     with Proxy(env=ON) as px:
         a = accounts()
-        assert a.trusted_local("127.0.0.1", {"Host": f"127.0.0.1:{px.port}"}) is False
+        assert not hasattr(a, "trusted_local")
+        assert px.get("/v1/fleet/nodes")[0] == 401
         # local mode (no owner yet) lets this machine in; with an owner nothing does
         a.local.bind = "127.0.0.1"
         a.local.exists = lambda p: False
         assert a.local.on() and px.get("/v1/fleet/nodes")[0] == 200
-        assert authlocal.this_machine("127.0.0.1", {"Host": "localhost"})
-        assert not authlocal.this_machine("127.0.0.1", {"Host": "localhost",
-                                                        "X-Forwarded-For": "192.0.2.4"})
-        assert not authlocal.this_machine("192.0.2.4", {})
+        assert authlocal.trusted_local("127.0.0.1", {"Host": "localhost"})
+        assert not authlocal.trusted_local("127.0.0.1", {"Host": "localhost",
+                                                         "X-Forwarded-For": "192.0.2.4"})
+        assert not authlocal.trusted_local("192.0.2.4", {})
         make("own", "owner")
         assert not a.local.on() and px.get("/v1/fleet/nodes")[0] == 401
         # the exposure rule only narrows a valid token: it never admits one

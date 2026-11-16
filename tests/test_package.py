@@ -499,7 +499,8 @@ def test_check_secrets_and_backends_commands():
         assert not os.path.exists(db), "check writes nothing"
         code, out = _run(["check", "--env-file", envf, "--config-db", db, "--host", "0.0.0.0"],
                          base)
-        assert code == 0 and "WARN    bound beyond loopback" in out, out
+        # SEC-28: beyond loopback with no owner: nobody signs in until the setup code makes one
+        assert code == 0 and "WARN    no owner yet" in out and "setup-code" in out, out
         with open(envf, "a") as f:
             f.write("TANDEM_BACKEND_V1_HOST_DCGM=x\n")
         code, out = _run(["check", "--env-file", envf, "--config-db", db], base)

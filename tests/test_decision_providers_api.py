@@ -36,7 +36,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from provider_util import KEYS, PROMPTS, example, last_option  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy, fake, owner, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
 from proxy import ctlmove  # noqa: E402
@@ -104,17 +104,16 @@ def _routes(cond, n=50):
 # ---------------------------------------------------------------------------------- 1
 def test_api_routes_and_rights():
     ex, eport = example(key=KEYS[0])
-    token = "adm-" + "y" * 40
     try:
-        with Proxy({"TANDEM_ADMIN_TOKEN": token}) as px:
+        with Proxy({}) as px:
+            h = dict(AWAY, **owner(px))     # SEC-28: an owner's session, from another device
             for method, path, body in (("GET", BASE, None), ("POST", BASE, {"name": "x"}),
                                        ("GET", BASE + "/report", None)):
                 st, _, _ = px.request(method, path, body, AWAY)
                 assert st == 401, (method, path, st)
             st, _, _ = px.request("POST", BASE, {"name": "x"},
-                                  {"Origin": "http://evil.example", "Host": "127.0.0.1"})
+                                  {**h, "Origin": "http://evil.example", "Host": "127.0.0.1"})
             assert st == 403                                       # another origin
-            h = dict(AWAY, Authorization=f"Bearer {token}")
             doc = _j(px, "GET", BASE, headers=h)
             _ok(doc, "decision-providers")
             assert doc["providers"] == [] and "classify" in doc["questions"]

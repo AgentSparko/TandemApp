@@ -44,13 +44,11 @@ import fake_backend  # noqa: E402
 import fake_tandem_remote as ftr  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import enginectl  # noqa: E402
-from proxy_util import Proxy  # noqa: E402
+from proxy_util import Proxy, owner  # noqa: E402
 from tools import contract_check  # noqa: E402
 
 CON = os.path.join(ROOT, "contracts", "settings-v1")
-ADMIN = "settings-admin-token-0123456789abcdef0123"
 LAN = {"X-Real-IP": "192.0.2.77"}
-BEARER = {"Authorization": f"Bearer {ADMIN}"}
 SECRET = "sk-" + "Hh5" * 12
 
 
@@ -93,18 +91,20 @@ def apply(px, changes, headers=None, **kw):
 
 def test_routes_rights_and_the_key():
     srv, port = fake_backend.start(models=["fake-a"])
-    env = {"TANDEM_ADMIN_TOKEN": ADMIN, "TANDEM_BACKENDS": "eng",
+    env = {"TANDEM_BACKENDS": "eng",
            "TANDEM_BACKEND_ENG_KIND": "generic",
            "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{port}/v1"}
     try:
-        with Proxy(env=env, login="on") as px:
+        with Proxy(env=env) as px:
+            BEARER = owner(px)              # SEC-28: an owner's session, not a token
             px.svc.cfg.create_backend({"id": "cloud", "kind": "openai",
                                        "url": f"http://127.0.0.1:{port}/v1"})
             # reads: the dashboard's rule
             st, err = call(px, "GET", "/v1/settings", headers=LAN)
             assert st == 401, (st, err)
             st, ov = call(px, "GET", "/v1/settings", headers={**LAN, **BEARER})
-            assert st == 200 and ok(ov, "overview")["order"] == ["app", "backends", "conductor",
+            assert st == 200 and ok(ov, "overview")["order"] == ["app", "auth", "api",
+                                                                  "backends", "conductor",
                                                                   "engine", "hooks",
                                                                   "plugins"], ov
             assert next(s for s in ov["scopes"] if s["scope"] == "engine")["targets"] == []
@@ -120,7 +120,7 @@ def test_routes_rights_and_the_key():
             assert st == 415, (st, err)
             p, res = apply(px, ch, {**LAN, **BEARER})
             assert res["state"] == "applied" and px.svc.cfg.key_for("cloud") == SECRET
-            # reads with the login on take the admin on this machine too (the dashboard's rule)
+            # reads take a sign-in on this machine too, once an owner has a password
             assert call(px, "GET", "/v1/settings/backends")[0] == 401
             st, vals = call(px, "GET", "/v1/settings/backends", headers=BEARER)
             assert st == 200 and ok(vals, "values")
@@ -253,11 +253,14 @@ def test_app_and_conductor_live():
 # ---------------------------------------------------------------------------- 4 the hooks scope
 
 def test_hooks_scope_and_pairing_rights():
-    away = {"X-Forwarded-For": "203.0.113.50"}                    # not this machine
-    with Proxy({}) as px:                                          # no admin password
+    """SEC-28: an operator from another device changes a hook's switches; its full payload
+    needs pairing's rights (an admin's)."""
+    with Proxy({}) as px:
+        away = {"X-Forwarded-For": "203.0.113.50", **owner(px, "ops", "operator")}
+        adm = {"X-Forwarded-For": "203.0.113.50", **owner(px, "adm", "admin")}
         st, out = call(px, "POST", "/v1/fleet/hooks", {
             "name": "Near", "id": "near", "endpoint": "http://192.168.1.20:9300/",
-            "role": "observer", "stages": ["request.finished"]})
+            "role": "observer", "stages": ["request.finished"]}, adm)
         assert st == 201, (st, out)
         st, sch = call(px, "GET", "/v1/settings/hooks/schema", headers=away)
         assert st == 200 and "hooks.near.payload" in {k["key"] for k in ok(sch, "schema")["keys"]}
@@ -267,15 +270,15 @@ def test_hooks_scope_and_pairing_rights():
         full = [{"scope": "hooks", "set": {"hooks.near.payload": "full"}}]
         st, err = call(px, "POST", "/v1/settings/plan", {"changes": full}, away)
         assert st == 403 and ok(err, "error")["error"]["type"] == "trust_required", (st, err)
-        p, res = apply(px, full)                                   # from this machine
+        p, res = apply(px, full, adm)                              # an admin
         assert any("full payload" in w for w in p["parts"][0]["warnings"]), p
         g = px.svc.hooks.store.get("near")["grant"]
         assert res["state"] == "applied" and g and g["lan"], (res, g)
         st, out = call(px, "POST", "/v1/fleet/decision-providers", {
             "name": "Classes", "id": "s1", "endpoint": "http://192.168.1.30:8720",
-            "questions": {"classify": {}}})
+            "questions": {"classify": {}}}, adm)
         assert st == 201, (st, out)
-        st, vals = call(px, "GET", "/v1/settings/hooks")
+        st, vals = call(px, "GET", "/v1/settings/hooks", headers=away)
         assert {v["key"]: v["value"] for v in ok(vals, "values")["values"]}[
             "providers.s1.mode"] == "shadow", vals
         _, res = apply(px, [{"scope": "hooks", "set": {"providers.s1.mode": "on"}}], away)

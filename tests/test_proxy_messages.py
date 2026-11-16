@@ -29,7 +29,21 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import FIXTURE_KEYS, Proxy, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy as _Proxy, run  # noqa: E402
+
+
+class Proxy(_Proxy):
+    """SEC-28: the keys of TANDEM_API_KEYS come in as API tokens of the OpenAI API (the import);
+    these tests use them on the Messages API too, as if an admin had given them that scope."""
+
+    def __enter__(self):
+        px = super().__enter__()
+        cfg = self.svc.cfg
+        with cfg._lock:
+            cfg._conn.execute("UPDATE api_tokens SET scopes = ? WHERE source = 'env'",
+                              (json.dumps(["inference:openai", "inference:anthropic"]),))
+            cfg._conn.commit()
+        return px
 
 import fake_anthropic  # noqa: E402
 import fake_backend  # noqa: E402
@@ -659,7 +673,7 @@ def test_a_client_that_leaves_closes_the_upstream():
         px.sync()
         s = socket.create_connection(("127.0.0.1", px.port))
         body = json.dumps(_msg("go FAKE_LONG 400", stream=True)).encode()
-        s.sendall(b"POST /v1/messages HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+        s.sendall(b"POST /v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
                   b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
         s.recv(4096)
         time.sleep(0.3)

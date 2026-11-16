@@ -5,18 +5,15 @@ permissions per platform.
   1  the password file: scrypt (or PBKDF2) with a salt, mode 0600, a wrong one refused, a broken
      file a password nobody knows, a removal keeps a fresh salt, the cap over every address
                                                                            test_password_file
-  2  set, change, remove through the API: the first one from this machine only, then `current`
-     always (403 wrong, 429 too many); every session before a change ends, this browser gets a
-     new cookie (HttpOnly, SameSite=Strict, Secure behind https); writes from the LAN need the
-     session; reads keep their rule; the password never in an answer or a log
+  2  SEC-28: /v1/fleet/app/password stays one release: GET says a sign-in is needed and
+     whether an owner has a password; a change is the account's (PUT /v1/auth/password: 404
+     here); the old sign-in signs in as the first owner; the App view carries the same state
                                                                            test_password_api
-  3  the admin token beside it: its bearer and sign-in keep working, its sessions keep working
-     while no password is set, end when one is, and do not come back when it is removed
+  3  SEC-28: the admin token is no bearer and no sign-in; with no owner it is the setup code
                                                                            test_token_compatibility
-  4  sign-in brute force: five a minute per address, thirty a minute from anywhere for the
-     password (a forged X-Real-IP spreads nothing), the token never held by the latter
-                                                                           test_rate_limits
-  5  the guard of every write: another site or origin 403 (trusted-local included), a Host that
+  4  sign-in brute force: five a minute per address, then the name tried waits longer (a
+     forged X-Real-IP spreads nothing)                                    test_rate_limits
+  5  the guard of every write: another site or origin 403 (local mode included), a Host that
      is not loopback is not this machine (DNS rebinding), a body over 4 MiB 413 unread
                                                                            test_write_guard
   6  the export: nodes, deployments, rules, layouts, settings; no trust, key, route or secret;
@@ -50,10 +47,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import test_fleet as tf  # noqa: E402
 from proxy import adminpw, appsettings, ctlmove  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 from tandemapp import auth as auth_mod  # noqa: E402
 
 TOKEN = "app-admin-token-0123456789abcdef01234"
+COOKIE = "tandem_session"
 PW = "correct horse battery"
 PW2 = "another long passphrase"
 LAN = {"X-Real-IP": "192.0.2.77"}
@@ -63,11 +61,7 @@ ok = tf.ok
 def _cookie(headers: dict) -> str | None:
     c = headers.get("Set-Cookie") or ""
     k, _, v = c.split(";", 1)[0].partition("=")
-    return v if k == auth_mod.COOKIE else None
-
-
-def _with(cookie: str | None, h: dict | None = None) -> dict:
-    return {**(h or {}), **({"Cookie": f"{auth_mod.COOKIE}={cookie}"} if cookie else {})}
+    return v if k == COOKIE else None
 
 
 def _req(px, method, path, body=None, headers=None):
@@ -131,66 +125,36 @@ def test_password_file():
 def test_password_api():
     with Proxy() as px:
         _fleet(px)
-        nid = tf.get(px, "/v1/fleet/nodes")[1]["nodes"][0]["id"]
+        # local mode (no owner yet): this machine reads it; a sign-in is needed, no password yet
         st, _, v = _req(px, "GET", "/v1/fleet/app/password")
-        assert st == 200 and not ok(v, "app-password")["set"] and v["this_machine"]
-        # the first one: never from the LAN (no password: pairing's rule, this machine only)
-        st, _, err = _req(px, "PUT", "/v1/fleet/app/password", {"password": PW}, LAN)
-        assert st == 401 and "this machine" in ok(err, "error")["error"]["message"]
-        st, _, err = _req(px, "PUT", "/v1/fleet/app/password", {"password": "short"})
-        assert st == 400 and "12 to 1024" in err["error"]["message"]
-        st, _, err = _req(px, "PUT", "/v1/fleet/app/password", {"password": PW, "x": 1})
-        assert st == 400
-        st, h, v = _req(px, "PUT", "/v1/fleet/app/password", {"password": PW})
-        assert st == 200 and ok(v, "app-password")["set"] and v["password"] and not v["token"]
-        c1 = _cookie(h)
-        sc = h["Set-Cookie"]
-        assert c1 and "HttpOnly" in sc and "SameSite=Strict" in sc and "Path=/" in sc
-        # the session: LAN writes need it, reads keep the rule (login off: open)
-        assert tf.get(px, "/v1/fleet/nodes", LAN)[0] == 200
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}, LAN)[0] == 401
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"},
-                    _with(c1, LAN))[0] == 200
-        s = tf.get(px, "/v1/fleet/session", _with(c1, LAN))[1]
-        assert ok(s, "session")["password_set"] and s["authenticated"]
-        # sign in from another browser with it
-        st, h, _ = _req(px, "POST", "/v1/fleet/session", {"token": PW}, LAN)
-        assert st == 204
-        c2 = _cookie(h)
+        assert st == 200 and ok(v, "app-password")["set"] and not v["password"]
+        assert not v["token"] and not v["this_machine"]
+        # a change is an account's, at /v1/auth/password
+        for method, body in (("PUT", {"password": PW}), ("DELETE", {"current": PW})):
+            st, _, err = _req(px, method, "/v1/fleet/app/password", body)
+            assert st == 404 and "/v1/auth/password" in err["error"]["message"], (method, err)
+        # the first owner (the release before's admin.json password)
+        a = proxy_app.STATE["accounts"]
+        row = a.store.create("own", "owner", PW, actor="test")
+        a.store.set_state("first_owner", row["id"])
+        assert _req(px, "GET", "/v1/fleet/app/password")[0] == 401           # no local mode
+        assert _req(px, "GET", "/v1/fleet/app/password", None, LAN)[0] == 401
+        # the old sign-in form signs in as that owner: the accounts' cookie
         assert _req(px, "POST", "/v1/fleet/session", {"token": PW2}, LAN)[0] == 401
-        # a change needs `current`, even from this machine
-        st, _, err = _req(px, "PUT", "/v1/fleet/app/password", {"password": PW2})
-        assert st == 403 and ok(err, "error")["error"]["type"] == "wrong_password"
-        st, _, err = _req(px, "PUT", "/v1/fleet/app/password",
-                          {"current": "not it at all", "password": PW2}, _with(c1, LAN))
-        assert st == 403
-        # the second browser changes it behind https: its new cookie is Secure; every other ends
-        st, h, v = _req(px, "PUT", "/v1/fleet/app/password", {"current": PW, "password": PW2},
-                        _with(c2, {**LAN, "X-Forwarded-Proto": "https"}))
-        assert st == 200 and "Secure" in h["Set-Cookie"]
-        c3 = _cookie(h)
-        for c in (c1, c2):
-            assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk 2"},
-                        _with(c, LAN))[0] == 401
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk 2"},
-                    _with(c3, LAN))[0] == 200
-        # a LAN page without a session cannot change it
-        assert _req(px, "PUT", "/v1/fleet/app/password", {"current": PW2, "password": PW},
-                    LAN)[0] == 401
-        # the page's view carries the password's state
-        app = tf.get(px, "/v1/fleet/app", LAN)[1]
-        assert ok(app, "app")["password"]["set"] and app["password"]["set_at"]
-        # remove: with no token, the controller is open again and the cookie is cleared
-        st, _, err = _req(px, "DELETE", "/v1/fleet/app/password", {"current": PW}, _with(c3, LAN))
-        assert st == 403
-        st, h, v = _req(px, "DELETE", "/v1/fleet/app/password", {"current": PW2}, _with(c3, LAN))
-        assert st == 200 and not ok(v, "app-password")["set"] and "Max-Age=0" in h["Set-Cookie"]
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}, LAN)[0] == 200
-        assert _req(px, "DELETE", "/v1/fleet/app/password", {"current": PW2})[0] == 409
+        st, h, _ = _req(px, "POST", "/v1/fleet/session", {"token": PW}, LAN)
+        c = _cookie(h)
+        sc = h["Set-Cookie"]
+        assert st == 204 and c and "HttpOnly" in sc and "SameSite=Strict" in sc, h
+        signed = {**LAN, "Cookie": f"{COOKIE}={c}"}
+        st, _, v = _req(px, "GET", "/v1/fleet/app/password", None, signed)
+        assert st == 200 and v["set"] and v["password"] and v["set_at"] is None, v
+        app = tf.get(px, "/v1/fleet/app", signed)[1]
+        assert ok(app, "app")["password"]["set"] and app["password"]["password"]
+        s = tf.get(px, "/v1/fleet/session", signed)[1]
+        assert ok(s, "session")["password_set"] and s["authenticated"]
         # never in an answer, a log or the audit
         text = "\n".join(px.logs) + json.dumps(px.svc.cfg.audit(200))
         assert PW not in text and PW2 not in text
-        assert any("admin password set" in x for x in px.logs)
 
 
 # ---------------------------------------------------------------------------- 3
@@ -198,67 +162,37 @@ def test_password_api():
 def test_token_compatibility():
     with Proxy(env={"TANDEM_ADMIN_TOKEN": TOKEN}) as px:
         _fleet(px)
-        nid = tf.get(px, "/v1/fleet/nodes")[1]["nodes"][0]["id"]
         bearer = {"Authorization": f"Bearer {TOKEN}"}
-        st, h, _ = _req(px, "POST", "/v1/fleet/session", {"token": TOKEN}, LAN)
-        assert st == 204
-        old = _cookie(h)
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "A"}, _with(old, LAN))[0] == 200
-        v = tf.get(px, "/v1/fleet/app/password", LAN)[1]
-        assert v["set"] and v["token"] and not v["password"]
-        # set a password with the token as `current` (from the LAN, signed in)
-        st, h, v = _req(px, "PUT", "/v1/fleet/app/password", {"current": TOKEN, "password": PW},
-                        _with(old, LAN))
-        assert st == 200 and v["token"] and v["password"]
-        new = _cookie(h)
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "B"}, _with(old, LAN))[0] == 401
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "B"}, _with(new, LAN))[0] == 200
-        # the token: still a bearer, still a password at sign-in; the password never a bearer
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "C"}, {**LAN, **bearer})[0] == 200
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "C"},
-                    {**LAN, "Authorization": f"Bearer {PW}"})[0] == 401
-        assert _req(px, "POST", "/v1/fleet/session", {"token": TOKEN}, LAN)[0] == 204
-        assert _req(px, "POST", "/v1/dashboard/session", {"token": PW}, LAN)[0] in (204, 404)
-        # removed: the token stays; neither the sessions of before nor those with it come back
-        st, h, v = _req(px, "DELETE", "/v1/fleet/app/password", {"current": PW}, _with(new, LAN))
-        assert st == 200 and v["set"] and v["token"] and not v["password"]
-        latest = _cookie(h)
-        for c in (old, new):
-            assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "D"}, _with(c, LAN))[0] == 401
-        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "D"}, _with(latest, LAN))[0] == 200
-        assert _req(px, "DELETE", "/v1/fleet/app/password", {"current": TOKEN},
-                    _with(latest, LAN))[0] == 409
+        # no bearer, no sign-in, no local mode (an install it guarded is never opened)
+        assert tf.get(px, "/v1/fleet/nodes", {**LAN, **bearer})[0] == 401
+        assert tf.get(px, "/v1/fleet/nodes")[0] == 401
+        assert _req(px, "POST", "/v1/fleet/session", {"token": TOKEN}, LAN)[0] == 404
+        # it makes the first owner, once, as the setup code
+        st, _, out = _req(px, "POST", "/v1/auth/setup", {"code": TOKEN, "username": "own",
+                                                         "password": PW}, LAN)
+        assert st == 201, out
+        assert _req(px, "POST", "/v1/auth/setup", {"code": TOKEN, "username": "two",
+                                                   "password": PW}, LAN)[0] == 404
         assert TOKEN not in "\n".join(px.logs)
-    # a controller that never had a password: its token sessions are the same as before
-    a = auth_mod.Auth(TOKEN, password=adminpw.Password(os.path.join(tempfile.mkdtemp(), "a.json")))
-    b = auth_mod.Auth(TOKEN)
-    value, _ = b.make_cookie()
-    assert a.session({"Cookie": f"{auth_mod.COOKIE}={value}"}) is not None
 
 
 # ---------------------------------------------------------------------------- 4
 
 def test_rate_limits():
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": TOKEN}) as px:
+    with Proxy() as px:
         _fleet(px)
-        assert _req(px, "PUT", "/v1/fleet/app/password", {"current": TOKEN, "password": PW})[0] == 200
+        adminpw.Password(os.path.join(px.dir, "admin.json")).set(PW)
+        from proxy import authlegacy
+        authlegacy.migrate(proxy_app.STATE["accounts"], px.dir)
         one = {"X-Real-IP": "192.0.2.10"}
         for _ in range(auth_mod.LOGIN_FAILS):
             assert _req(px, "POST", "/v1/fleet/session", {"token": "wrong guess xx"}, one)[0] == 401
         st, h, _ = _req(px, "POST", "/v1/fleet/session", {"token": PW}, one)
         assert st == 429 and h.get("Retry-After") == "60"
-        # a forged address per guess: the cap over every address holds the password
-        a = proxy_app.STATE["auth"]
-        n = 0
-        while not a.password.held():
-            ip = {"X-Real-IP": f"198.51.100.{n % 250}", "X-Forwarded-For": f"203.0.113.{n // 250}"}
-            st = _req(px, "POST", "/v1/fleet/session", {"token": f"guess {n:06d} xx"}, ip)[0]
-            assert st == 401, st
-            n += 1
-        assert n <= adminpw.GLOBAL_FAILS
-        assert _req(px, "POST", "/v1/fleet/session", {"token": PW}, {"X-Real-IP": "192.0.2.99"})[0] == 429
-        # the token still signs in
-        assert _req(px, "POST", "/v1/fleet/session", {"token": TOKEN}, {"X-Real-IP": "192.0.2.98"})[0] == 204
+        # a forged address per guess: the name tried waits, whatever the address
+        st, h, _ = _req(px, "POST", "/v1/fleet/session", {"token": "another guess"},
+                        {"X-Real-IP": "198.51.100.1"})
+        assert st == 429 and int(h.get("Retry-After") or 0) >= 1, (st, h)
 
 
 # ---------------------------------------------------------------------------- 5
@@ -272,7 +206,7 @@ def test_write_guard():
                   {"Origin": "null"}):
             st, _, err = _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "X"}, h)
             assert st == 403 and ok(err, "error")["error"]["type"] in ("cross_origin", "cross_site"), h
-            assert _req(px, "PUT", "/v1/fleet/app/password", {"password": PW}, h)[0] == 403
+            assert _req(px, "PUT", "/v1/auth/password", {"password": PW}, h)[0] == 403
         # the configuration's and the conductor's writes: the same guard (an open controller on
         # this machine answers a page from anywhere otherwise)
         st, _, err = _req(px, "POST", "/v1/config/backends", {"id": "evil", "kind": "openai",
@@ -291,9 +225,9 @@ def test_write_guard():
         assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Y"},
                     {"Origin": f"http://{host}", "Sec-Fetch-Site": "same-origin"})[0] == 200
         # DNS rebinding: loopback peer, a name that is not this machine's loopback
-        assert _req(px, "PUT", "/v1/fleet/app/password", {"password": PW},
+        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Z"},
                     {"Host": "rebind.example:80"})[0] == 401
-        assert _req(px, "PUT", "/v1/fleet/app/password", {"password": PW},
+        assert _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Z"},
                     {"Host": f"localhost:{px.port}"})[0] == 200
         assert auth_mod.loopback_host("127.0.0.1:8080") and auth_mod.loopback_host("[::1]:80")
         assert not auth_mod.loopback_host("127.0.0.1.evil.example")
@@ -356,11 +290,14 @@ def test_export():
         assert next(r for r in doc["rules"] if r["id"] == "gpu-temp")["threshold"] == 80.0
         assert doc["layouts"][0]["page"] == "overview" and doc["settings"] == {"app.theme": "dark"}
         assert doc["from"]["fingerprint"] and doc["from"]["node"] == lid
-        # write rights: the LAN needs the session once a password is set
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": TOKEN}) as px:
+        # SEC-28: another device needs a sign-in for both
+    with Proxy() as px:
         _fleet(px)
+        h = owner(px)
         assert _req(px, "GET", "/v1/fleet/app/export", None, LAN)[0] == 401
-        assert tf.get(px, "/v1/fleet/app", LAN)[0] == 200
+        assert tf.get(px, "/v1/fleet/app", LAN)[0] == 401
+        assert _req(px, "GET", "/v1/fleet/app/export", None, {**LAN, **h})[0] == 200
+        assert tf.get(px, "/v1/fleet/app", {**LAN, **h})[0] == 200
 
 
 def test_import():

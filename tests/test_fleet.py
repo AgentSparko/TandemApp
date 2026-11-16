@@ -51,7 +51,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fake_backend  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 from ports import free_port  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
@@ -664,34 +664,36 @@ def test_layouts_round_trip():
 
 
 def test_auth_guard():
+    """SEC-28: another device needs a sign-in for every fleet route; a viewer reads and keeps a
+    page's window layout (where windows sit, no fleet state: the reads' rule, SEC-4), an admin
+    changes a node; once an owner has a password this machine needs one too. A bare install on
+    loopback with no password is local mode: this machine is the owner, another device nothing."""
     lan = {"X-Real-IP": "192.0.2.77"}
-    bearer = {"Authorization": f"Bearer {ADMIN}"}
     layout = dict(fleet_mod.default_layout("overview", "desk"), saved_at=None)
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": ADMIN}, login="on") as px:
+    with Proxy() as px:
         fleet_on(px, local_node(fake_root()))
-        nid = get(px, "/v1/fleet/nodes", bearer)[1]["nodes"][0]["id"]
+        adm, view = owner(px), owner(px, "view", "viewer")
+        nid = get(px, "/v1/fleet/nodes", adm)[1]["nodes"][0]["id"]
         for path in ("/v1/fleet/nodes", "/v1/fleet/metrics?metric=tps",
                      "/v1/fleet/layouts/overview"):
             st, err = get(px, path, lan)
             assert st == 401 and ok(err, "error")["error"]["type"] == "unauthorized", path
-            assert get(px, path, {**lan, **bearer})[0] == 200
+            assert get(px, path, {**lan, **adm})[0] == 200
+            assert get(px, path, view)[0] == 200
         for method, path, body in (("PUT", "/v1/fleet/layouts/overview", layout),
                                    ("PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}),
                                    ("POST", "/v1/fleet/alerts/a/ack", None)):
             st, err = send(px, method, path, body, lan)
             assert st == 401 and ok(err, "error"), (method, path)
-        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, {**lan, **bearer})[0] == 200
-        # a tool on this machine writes as it writes the configuration
-        assert send(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"})[0] == 200
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": ADMIN}, login="off") as px:
+            assert send(px, method, path, body)[0] == 401, (method, path)
+        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, {**lan, **adm})[0] == 200
+        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, view)[0] == 200
+        assert send(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}, view)[0] == 403
+        assert send(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}, adm)[0] == 200
+    with Proxy() as px:                                    # local mode: this machine only
         fleet_on(px, local_node(fake_root()))
-        assert get(px, "/v1/fleet/nodes", lan)[0] == 200          # the login off: reads open
-        # a page's window layout follows the reads (SEC-4): where windows sit, no fleet state
-        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, lan)[0] == 200
-        assert send(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "Desk"}, lan)[0] == 401
-    with Proxy() as px:                                             # no password: all open
-        fleet_on(px, local_node(fake_root()))
-        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, lan)[0] == 200
+        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout)[0] == 200
+        assert send(px, "PUT", "/v1/fleet/layouts/overview", layout, lan)[0] == 401
 
 
 def _chat(px, text, stream=True, model="fake-a", out=None):

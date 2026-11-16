@@ -35,6 +35,7 @@ TANDEM_AUTH=accounts.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -49,7 +50,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import int5_schema  # noqa: E402
 from proxy import adminpw, authlegacy  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 OLD_PW = "the old controller password"
@@ -148,7 +153,7 @@ def test_going_back():
     int5_schema.migrate_like_int5(c)
     c.close()
     with_admin_json(new)
-    back = Proxy(env={}, login="on")
+    back = Proxy(env={})                # only its dir: the release before's state folder
     with new:
         h = signed(new.post("/v1/auth/session", {"username": "owner", "password": OLD_PW}))
         st, out = j(new.request("PUT", "/v1/auth/password", {"current": OLD_PW,
@@ -160,13 +165,12 @@ def test_going_back():
     assert int5_schema.migrate_like_int5(c) == int5_schema.SCHEMA_VERSION
     assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     c.close()
+    # its sign-in (tests/int5_schema.py, frozen) reads admin.json: the new password signs in,
+    # the old one does not
+    assert not int5_schema.sign_in_like_int5(back.dir, OLD_PW)
+    assert int5_schema.sign_in_like_int5(back.dir, NEW_PW)
     again = Proxy(env=ON)
-    with back:
-        # the old sign-in reads admin.json: the new password signs in, the old one does not
-        assert back.post("/v1/dashboard/session", {"token": OLD_PW})[0] == 401
-        st, h, _ = back.post("/v1/dashboard/session", {"token": NEW_PW})
-        assert st == 204 and h["Set-Cookie"].startswith("qse_dash="), (st, h)
-        copy_state(back, again)
+    copy_state(back, again)
     # and forward again: the same owner, the new password
     with again:
         assert len(accounts().store.all()) == 1
@@ -379,7 +383,7 @@ def test_old_flags_ignored():
     with with_admin_json(Proxy(env=ON, login="on")) as px:
         # the accounts decide; the old login flag opens nothing and closes nothing more
         assert px.get("/v1/dashboard/summary")[0] == 401
-        assert accounts().trust_loopback is False
+        assert not hasattr(accounts(), "trust_loopback")
 
 
 if __name__ == "__main__":

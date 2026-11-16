@@ -184,53 +184,61 @@ def _remote(cfg, host_id="eh-chat"):
 def test_the_chat_engine_routes(monkeypatch):
     from chatd.engine import Engine
     from chatd.service import engine_lanes
-    from proxy_util import Proxy
+    from proxy import app as proxy_app
+    from proxy import tokens as tokens_mod
+    from proxy_util import Proxy, api_key, owner
     eng = Engine19()
     monkeypatch.setattr(config_mod, "is_loopback_host", lambda h: False)
-    admin = "admin-token-for-the-chat-engine-0123456789"
     try:
         with Proxy(env={"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
-                        "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{eng.port}/v1",
-                        "TANDEM_ADMIN_TOKEN": admin}, login="on") as px:
+                        "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{eng.port}/v1"}) as px:
             _remote(px.svc.cfg)
             px.sync()
+            # SEC-28: /chat-engine is chatd's: its service identity, never this machine alone
+            adm = owner(px)
+            chatd = proxy_app.STATE["accounts"].tokens.mint_service(
+                tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                memory_user=tokens_mod.CHATD_LABEL)
+            C = {"Authorization": f"Bearer {chatd}"}
             P = "/chat-engine"
-            st, h = _req(px.port, "GET", P + "/health")
+            assert _req(px.port, "GET", P + "/v1/models")[0] == 401
+            st, h = _req(px.port, "GET", P + "/health", headers=C)
             assert st == 200 and h["max_len"] == 32768 and h["parallel"] == {"n": 3}, h
-            facts = Engine(f"http://127.0.0.1:{px.port}{P}").facts()
+            facts = Engine(f"http://127.0.0.1:{px.port}{P}", chatd).facts()
             assert engine_lanes(facts) == 3, facts           # chatd's run slots follow the lanes
-            st, sysd = _req(px.port, "GET", P + "/v1/dashboard/system")
+            st, sysd = _req(px.port, "GET", P + "/v1/dashboard/system", headers=C)
             assert st == 200 and sysd["engine"]["weights"] == {"name": "w"}, sysd
-            st, snap = _req(px.port, "GET", P + "/v1/dashboard/live?follow=0")
+            st, snap = _req(px.port, "GET", P + "/v1/dashboard/live?follow=0", headers=C)
             assert st == 200 and snap["requests"][0]["conversation_id"] == "c1", snap
-            st, raw = _req(px.port, "GET", P + "/v1/dashboard/live", raw=True)
+            st, raw = _req(px.port, "GET", P + "/v1/dashboard/live", headers=C, raw=True)
             frames = [json.loads(x[6:]) for x in raw.decode().split("\n\n") if
                       x.startswith("data: ")]
             assert st == 200 and [f["n"] for f in frames] == [0, 1, 2], raw[:300]
-            st, models = _req(px.port, "GET", P + "/v1/models")
+            st, models = _req(px.port, "GET", P + "/v1/models", headers=C)
             assert st == 200 and "fake-a" in [m["id"] for m in models["data"]], models
             st, peek = _req(px.port, "POST", P + "/v1/cache/peek", {"model": "fake-a",
-                                                                    "messages": []})
+                                                                    "messages": []}, headers=C)
             assert st == 200 and peek["tier"] == "gpu" and peek["model"] == "fake-a", peek
-            st, peek = _req(px.port, "POST", P + "/v1/cache/peek", {"messages": []})
+            st, peek = _req(px.port, "POST", P + "/v1/cache/peek", {"messages": []}, headers=C)
             assert st == 200 and peek["tier"] == "gpu", peek          # no model: the chat engine
             n = len([s for s in eng.seen if s[1] == "/v1/cache/release"])
-            st, rel = _req(px.port, "POST", P + "/v1/cache/release", {"bytes": 1 << 30})
+            st, rel = _req(px.port, "POST", P + "/v1/cache/release", {"bytes": 1 << 30}, headers=C)
             assert st == 200 and rel == {"released_bytes": 0, "levels": {},
                                          "skipped": "no_engine_here"}, rel
             assert len([s for s in eng.seen if s[1] == "/v1/cache/release"]) == n
             st, tok = _req(px.port, "POST", P + "/v1/tokenize", {"model": "fake-a",
-                                                                 "messages": []})
+                                                                 "messages": []}, headers=C)
             assert st == 200 and tok["tokens"] == 7, tok
-            assert _req(px.port, "GET", P + "/v1/bogus")[0] == 404
-            assert _req(px.port, "POST", P + "/v1/bogus", {})[0] == 404
+            assert _req(px.port, "GET", P + "/v1/bogus", headers=C)[0] == 404
+            assert _req(px.port, "POST", P + "/v1/bogus", {}, headers=C)[0] == 404
             # a body a refusal never read ends the connection: a request sent after it on the
             # same connection is never read as the rest of that body
             import socket
             sk = socket.create_connection(("127.0.0.1", px.port), timeout=10)
+            auth = f"Authorization: Bearer {chatd}\r\n".encode()
             sk.sendall(b"POST /chat-engine/v1/bogus HTTP/1.1\r\nHost: x\r\nContent-Length: 5"
-                       b"\r\nContent-Type: application/json\r\n\r\nabcde"
-                       b"GET /chat-engine/v1/models HTTP/1.1\r\nHost: x\r\n\r\n")
+                       b"\r\nContent-Type: application/json\r\n" + auth + b"\r\nabcde"
+                       b"GET /chat-engine/v1/models HTTP/1.1\r\nHost: x\r\n" + auth + b"\r\n")
             got = b""
             while True:
                 chunk = sk.recv(65536)
@@ -242,18 +250,19 @@ def test_the_chat_engine_routes(monkeypatch):
             # every call that reached the engine carried its token (the open /health aside)
             assert eng.seen and all(a == f"Bearer {TOKEN}" for m, p, a in eng.seen
                                     if not p.startswith("/health")), eng.seen
-            # a caller from another machine: the facts need the dashboard's rule or a user's key
+            # a caller from another machine: the facts need a sign-in (the dashboard's reads);
+            # the rest is chatd's: a person's session or an inference token is refused
             far = {"X-Real-IP": "192.0.2.5"}
             assert _req(px.port, "GET", P + "/v1/dashboard/system", headers=far)[0] == 401
             assert _req(px.port, "GET", P + "/health", headers=far)[1] == {"status": "ok"}
-            st, _ = _req(px.port, "GET", P + "/v1/dashboard/system",
-                         headers={**far, "Authorization": f"Bearer {admin}"})
-            assert st == 200
-            _u, key = px.svc.cfg.create_user({"label": "laptop"})
+            assert _req(px.port, "GET", P + "/v1/dashboard/system", headers={**far, **adm})[0] \
+                == 200
+            key = api_key(px, "laptop", network=True)
             for path in (P + "/v1/models", P + "/v1/dashboard/system"):
                 assert _req(px.port, "GET", path, headers=far)[0] == 401, path
                 assert _req(px.port, "GET", path, headers={
-                    **far, "Authorization": f"Bearer {key}"})[0] == 200, path
+                    **far, "Authorization": f"Bearer {key}"})[0] == 403, path
+            assert _req(px.port, "GET", P + "/v1/models", headers={**far, **adm})[0] == 403
             assert _req(px.port, "POST", P + "/v1/cache/release", {"bytes": 1},
                         headers=far)[0] == 401
             # an engine on this host: a sandbox here shares its memory, so the release goes on
@@ -262,7 +271,7 @@ def test_the_chat_engine_routes(monkeypatch):
                                        "url": f"http://127.0.0.1:{eng.port}/v1",
                                        "key": TOKEN})
             monkeypatch.setenv("TANDEM_CHAT_ENGINE_BACKEND", "eng-here")
-            st, rel = _req(px.port, "POST", P + "/v1/cache/release", {"bytes": 4096})
+            st, rel = _req(px.port, "POST", P + "/v1/cache/release", {"bytes": 4096}, headers=C)
             assert st == 200 and rel["released_bytes"] == 4096, rel
             logs = "\n".join(px.logs)
             rows = json.dumps(px.rows(), default=str)
@@ -293,6 +302,7 @@ def _multipart(name: str, data: bytes) -> tuple[str, bytes]:
 
 
 def test_a_skill_goes_to_the_controllers_conductor():
+    from proxy import app as proxy_app
     from proxy_util import Proxy
     fk = fake_backend.start(models=["fake-a"])
     try:
@@ -300,7 +310,12 @@ def test_a_skill_goes_to_the_controllers_conductor():
                         "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{fk[1]}/v1"},
                    conductor=True) as px:
             px.sync()
-            c = Chat(engine_url=f"http://127.0.0.1:{px.port}/chat-engine")
+            from proxy import tokens as tokens_mod
+            chatd = proxy_app.STATE["accounts"].tokens.mint_service(       # SEC-28: chatd's own
+                tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                memory_user=tokens_mod.CHATD_LABEL)
+            C = {"Authorization": f"Bearer {chatd}"}
+            c = Chat(engine_url=f"http://127.0.0.1:{px.port}/chat-engine", engine_key=chatd)
             try:
                 ct, body = _multipart("tea.zip", _zip({"tea-timer/SKILL.md": SKILL,
                                                        "tea-timer/notes.md": "x"}))
@@ -313,10 +328,10 @@ def test_a_skill_goes_to_the_controllers_conductor():
                 assert p["body"].strip() == "Green: 2 minutes at 80 C.", p["body"]
                 assert c.svc.skills_dir not in (doc["doc"].get("skill_dirs") or [])
                 assert not any(c.data in d for d in doc["doc"].get("skill_dirs") or [])
-                st, lib = _req(px.port, "GET", "/chat-engine/v1/library")
+                st, lib = _req(px.port, "GET", "/chat-engine/v1/library", headers=C)
                 names = [s.get("name") for s in (lib.get("skills") or lib.get("packages") or [])]
                 assert st == 200 and "tea-timer" in names, lib
-                st, one = _req(px.port, "GET", "/chat-engine/v1/library/tea-timer")
+                st, one = _req(px.port, "GET", "/chat-engine/v1/library/tea-timer", headers=C)
                 assert st == 200 and "2 minutes at 80 C" in one["body"], one
                 assert c.call("DELETE", "/packages/tea-timer")[0] == 204
                 st, doc = _req(px.port, "GET", "/v1/conductor/packages")

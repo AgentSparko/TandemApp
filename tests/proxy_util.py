@@ -4,8 +4,9 @@
                                           # agent unless env names the test's own (SRV-745)
                                           # SEC-28: bound to loopback, a bare process: local mode
                                           # (this machine's requests act as the owner `local`)
-                                          # until an owner has a password; local=False: as a
-                                          # network-bound install, every route needs a sign-in
+                                          # until an owner has a password; local=False: not
+                                          # listening yet (as the accounts' own tests run it),
+                                          # every route needs a sign-in
         px.post("/v1/chat/completions", {...}) -> (status, headers, body bytes)
         px.rows()                         the ledger's rows, flushed
 
@@ -94,7 +95,7 @@ class Proxy:
         # and a bare process; the box's test scope must not count as a container)
         acc = proxy_app.STATE["accounts"]
         acc.local.exists = lambda _p: False
-        acc.local.bind = "127.0.0.1" if self.local else "0.0.0.0"
+        acc.local.bind = "127.0.0.1" if self.local else None
         threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.05},
                          daemon=True).start()
         return self
@@ -161,6 +162,38 @@ class Proxy:
         for d, _, fs in os.walk(self.dir):
             out += [os.path.join(d, f) for f in fs]
         return out
+
+
+OWNER_PW = "the password of a test account"
+
+
+def owner(px: "Proxy", name: str = "admin", role: str = "owner") -> dict:
+    """SEC-28: what the old admin token was to a test: an account of `role` (made once), signed
+    in; its session's headers (the cookie and the CSRF token a write needs). Once an owner has a
+    password this machine is no longer trusted without one (local mode ends)."""
+    acc = proxy_app.STATE["accounts"]
+    if acc.store.by_username(name) is None:
+        acc.store.create(name, role, OWNER_PW, actor="test")
+    st, h, out = px.post("/v1/auth/session", {"username": name, "password": OWNER_PW})
+    assert st == 200, (st, out[:200])
+    return {"Cookie": h["Set-Cookie"].split(";", 1)[0], "X-Tandem-CSRF": json.loads(out)["csrf"]}
+
+
+def api_key(px: "Proxy", label: str = "laptop", *, network: bool = False,
+            scopes=("inference:openai", "inference:anthropic")) -> str:
+    """SEC-28: a client's key: an API token of the account `label` (an operator, made once), so
+    the ledger's user is `label` as a key's label was. An operator is no owner: local mode
+    stays. `network`: the APIs are open to other devices (a request with X-Real-IP is one)."""
+    import secrets as _secrets
+    acc = proxy_app.STATE["accounts"]
+    row = acc.store.by_username(label) or acc.store.create(label, "operator", OWNER_PW,
+                                                           actor="test")
+    if network:
+        for proto in ("openai", "anthropic"):
+            px.svc.cfg.set_setting(f"api.{proto}.exposure", "network", who="test")
+    _view, token = acc.tokens.create(row, label=f"{label}-{_secrets.token_hex(3)}",
+                                     scopes=list(scopes), actor="test")
+    return token
 
 
 def fake(**kw):

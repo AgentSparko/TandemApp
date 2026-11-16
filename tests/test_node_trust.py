@@ -60,9 +60,9 @@ from ports import free_port  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
 from proxy import fleet as fleet_mod  # noqa: E402
 from proxy import nodeagent, nodeclient, nodesource, nodetrust, pairing, sshonce  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy import app as proxy_app  # noqa: E402
+from proxy_util import OWNER_PW, Proxy, run  # noqa: E402
 
-ADMIN = "trust-admin-token-0123456789abcdef0123"
 PASSWORD = "Tr0ub4dor-fixture-pw-8812"
 KEY = ("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAAFIXTUREfixturekeymaterial0001\n"
        "AAAAC3NzaC1lZDI1NTE5AAAAIFIXTUREfixturekeymaterial0002\n-----END OPENSSH PRIVATE KEY-----")
@@ -697,41 +697,52 @@ def test_ssh_once():
 
 
 def test_guard_and_session():
+    """SEC-28: pairing, release and a node's removal need a sign-in from another device; local
+    mode lets this machine pass the guard. /v1/fleet/session stays one release: GET says a
+    sign-in is needed, POST {token} signs in with the first owner's password (the accounts'
+    session cookie), DELETE ends it."""
     lan = {"X-Real-IP": "192.0.2.77"}
     body = {"address": "x"}
-    with Proxy() as px:                                   # no password: this machine only
+    with Proxy() as px:                                   # no password: local mode
         tf.fleet_on(px, tf.local_node(tf.fake_root()))
         st, err = tf.send(px, "POST", "/v1/fleet/pair", body, lan)
-        assert st == 401 and "TANDEM_ADMIN_TOKEN" in tf.ok(err, "error")["error"]["message"]
+        assert st == 401 and tf.ok(err, "error")["error"]["code"] == "sign_in_required"
         for method, path in (("POST", "/v1/fleet/pair/ssh"), ("POST", "/v1/fleet/pair/ssh/hostkey"),
                              ("DELETE", "/v1/fleet/nodes/n-x")):
             assert tf.send(px, method, path, {}, lan)[0] == 401, path
         assert tf.send(px, "POST", "/v1/fleet/pair", body)[0] == 400       # passes the guard
         st, s = tf.get(px, "/v1/fleet/session", lan)
         assert st == 200 and tf.ok(s, "session") == {
-            "contract_version": "1.0", "password_set": False, "authenticated": True,
+            "contract_version": "1.0", "password_set": True, "authenticated": False,
             "expires_at": None}
         assert tf.send(px, "POST", "/v1/fleet/session", {"token": "x"}, lan)[0] == 404
-        assert tf.get(px, "/v1/fleet/trust", lan)[0] == 200
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": ADMIN}, login="off") as px:
+        assert tf.get(px, "/v1/fleet/trust", lan)[0] == 401
+        assert tf.get(px, "/v1/fleet/trust")[0] == 200
+    with Proxy() as px:
         tf.fleet_on(px, tf.local_node(tf.fake_root()))
-        assert tf.get(px, "/v1/fleet/nodes", lan)[0] == 200                 # reads stay open
+        a = proxy_app.STATE["accounts"]
+        row = a.store.create("own", "owner", OWNER_PW, actor="test")
+        a.store.set_state("first_owner", row["id"])
+        assert tf.get(px, "/v1/fleet/nodes", lan)[0] == 401                 # reads too
         assert tf.send(px, "POST", "/v1/fleet/pair", body, lan)[0] == 401
-        assert tf.send(px, "POST", "/v1/fleet/pair", body,
-                       {**lan, "Authorization": f"Bearer {ADMIN}"})[0] == 400
+        assert tf.send(px, "POST", "/v1/fleet/pair", body)[0] == 401        # this machine too
         st, s = tf.get(px, "/v1/fleet/session", lan)
         assert s["password_set"] is True and s["authenticated"] is False
         assert tf.send(px, "POST", "/v1/fleet/session", {"token": "wrong"}, lan)[0] == 401
-        st, hdrs, _ = px.request("POST", "/v1/fleet/session", {"token": ADMIN}, headers=lan)
+        st, hdrs, _ = px.request("POST", "/v1/fleet/session", {"token": OWNER_PW}, headers=lan)
         assert st == 204
         cookie = dict(hdrs)["Set-Cookie"].split(";")[0]
+        assert cookie.startswith("tandem_session=")
         signed = {**lan, "Cookie": cookie}
         st, s = tf.get(px, "/v1/fleet/session", signed)
         assert tf.ok(s, "session")["authenticated"] is True and s["expires_at"]
+        csrf = json.loads(px.get("/v1/auth/session", signed)[2])["csrf"]
+        assert tf.send(px, "POST", "/v1/fleet/pair", body, signed)[0] == 403   # no CSRF header
+        signed["X-Tandem-CSRF"] = csrf
         assert tf.send(px, "POST", "/v1/fleet/pair", body, signed)[0] == 400
         st, _, _ = px.request("DELETE", "/v1/fleet/session", None, headers=signed)
         assert st == 204 and tf.send(px, "POST", "/v1/fleet/pair", body, signed)[0] == 401
-        assert ADMIN not in "\n".join(px.logs)
+        assert OWNER_PW not in "\n".join(px.logs)
 
 
 def test_lan_bind():

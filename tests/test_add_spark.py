@@ -76,7 +76,7 @@ import test_fleet as tf  # noqa: E402
 import test_node_trust as tnt  # noqa: E402
 from proxy import _version, addspark, discovery, fleetwatch, nodeagent, nodeinstall  # noqa: E402
 from proxy import preflight, sshonce, sshtunnel  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 
 VERSION = _version.release()
 PASSWORD = "Gx10-fixture-pw-5521"
@@ -780,11 +780,11 @@ def test_link_needs_two():
 
 def test_guard():
     lan = {"X-Real-IP": "192.0.2.77"}
-    with Proxy(env={"TANDEM_ADMIN_TOKEN": tf.ADMIN}, login="on") as px:
+    with Proxy() as px:
         f, w = wizard_on(px)
+        auth = dict(lan, **owner(px))           # SEC-28: an owner's session
         st, _ = tf.get(px, "/v1/fleet/add", headers=lan)
         assert st == 401
-        auth = dict(lan, Authorization=f"Bearer {tf.ADMIN}")
         st, s = tf.send(px, "POST", "/v1/fleet/add", {}, headers=auth)
         assert st == 200
         for path in ("check", "install"):

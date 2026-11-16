@@ -1,31 +1,37 @@
-"""SEC-22/SEC-24: with the accounts switch off (TANDEM_AUTH unset, or anything but `accounts`) every
-route answers exactly as before the accounts existed.
+"""SEC-28: the matrix of SEC-22's switch-off golden, after the flip. Until the flip that golden
+(tests/auth_legacy_golden.json, recorded on the tree before the accounts) held every answer of
+the old sign-in with the switch off. The switch is gone, so its guarantee changes on purpose:
+the same routes x credentials x setups now answer by one rule, and the golden stays as the
+record of what each one answered before.
 
-  1  a matrix of routes x credentials x controller setups (open; the admin token; the token with
-     the dashboard login on; a password in admin.json) answers the status codes recorded on the
-     tree before the accounts (tests/auth_legacy_golden.json), for TANDEM_AUTH unset, `legacy`
-     and a value nobody knows; the full /health body keeps its keys        test_matrix_unchanged
-  2  switched off, nothing of the accounts exists: the policy object is the old one, no new table
-     is in the config database, /v1/auth/* is 404                          test_nothing_new_exists
+  1  the rule: a route with no permission is 403 unmapped_route; an open route (health, the
+     page, the sign-in, the setup) answers for itself; every other route is the gate's 401 for
+     every credential of before (this machine with no credential, another device, the admin
+     token as a bearer, a bad bearer, the `qse_dash` cookie), in every setup (open, an admin
+     token, the token with the dashboard login on, a password in admin.json); only the open
+     setup on loopback is local mode, its own machine acting as the owner `local`; /health's
+     full body only for that one                                test_matrix_by_rule
+  2  against the golden: every entry that answered 2xx before to a credential of before, on a
+     route that is not open, answers 401 now (local mode excepted); nothing that was 401 before
+     opens; the golden's keys are the matrix's                   test_nothing_opens_that_was_closed
 
-    python tests/test_auth_switch_off.py [--write]     (--write records the golden file)
+    python tests/test_auth_flip_matrix.py
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import int5_schema  # noqa: E402
 from proxy import adminpw  # noqa: E402
-from proxy import app as proxy_app  # noqa: E402
+from proxy import authz  # noqa: E402
 from proxy_util import Proxy, run  # noqa: E402
-from tandemapp import auth as auth_mod  # noqa: E402
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_legacy_golden.json")
 TOKEN = "legacy-admin-token-0123456789abcdef0123"
@@ -33,10 +39,10 @@ PW = "a legacy controller password"
 LAN = {"X-Real-IP": "192.0.2.77"}
 
 SETUPS = {
-    "open": ({}, "off", False),
-    "token": ({"TANDEM_ADMIN_TOKEN": TOKEN}, "off", False),
-    "token-login": ({"TANDEM_ADMIN_TOKEN": TOKEN}, "on", False),
-    "password": ({}, "off", True),
+    "open": ({}, False),
+    "token": ({"TANDEM_ADMIN_TOKEN": TOKEN}, False),
+    "token-login": ({"TANDEM_ADMIN_TOKEN": TOKEN, "TANDEM_DASHBOARD_LOGIN": "on"}, False),
+    "password": ({}, True),
 }
 ROUTES = (
     ("GET", "/health", None), ("GET", "/metrics", None),
@@ -61,16 +67,6 @@ ROUTES = (
 CREDS = ("local", "lan", "lan-bearer", "lan-bad-bearer", "lan-cookie")
 
 
-def _cookie_of(px, setup: str) -> str | None:
-    if setup == "open":
-        return None
-    secret = PW if setup == "password" else TOKEN
-    st, h, _ = px.request("POST", "/v1/fleet/session", {"token": secret}, headers=LAN)
-    c = (h.get("Set-Cookie") or "").split(";", 1)[0]
-    k, _, v = c.partition("=")
-    return v if st == 204 and k == auth_mod.COOKIE else None
-
-
 def _headers(cred: str, cookie: str | None) -> dict:
     if cred == "local":
         return {}
@@ -80,52 +76,87 @@ def _headers(cred: str, cookie: str | None) -> dict:
     elif cred == "lan-bad-bearer":
         h["Authorization"] = "Bearer not-the-token-0123456789abcdef0123456"
     elif cred == "lan-cookie" and cookie:
-        h["Cookie"] = f"{auth_mod.COOKIE}={cookie}"
+        h["Cookie"] = f"qse_dash={cookie}"
     return h
 
 
-def _matrix(extra_env: dict) -> dict:
+def _matrix() -> dict:
+    """{"setup cred METHOD path": (status, error code or None)} plus /health's keys."""
     out = {}
-    for name, (env, login, password) in SETUPS.items():
-        with Proxy(env={**env, **extra_env}, login=login) as px:
-            if password:
-                adminpw.Password(os.path.join(px.dir, "admin.json")).set(PW)
-            cookie = _cookie_of(px, name)
+    for name, (env, password) in SETUPS.items():
+        px = Proxy(env=env)
+        if password:
+            adminpw.Password(os.path.join(px.dir, "admin.json")).set(PW)
+        with px:
+            # the cookie the release before made for this setup's secret (none while open)
+            cookie = None
+            if name != "open":
+                cookie = int5_schema.cookie_like_int5(
+                    px.dir, None if password else TOKEN)
             for cred in CREDS:
                 for method, path, body in ROUTES:
                     st, _, raw = px.request(method, path, body, headers=_headers(cred, cookie))
+                    try:
+                        code = (json.loads(raw).get("error") or {}).get("code")
+                    except (ValueError, AttributeError):
+                        code = None
                     key = f"{name} {cred} {method} {path}"
-                    out[key] = st
+                    out[key] = (st, code)
                     if path == "/health":
                         out[key + " keys"] = sorted(json.loads(raw))
     return out
 
 
-def test_matrix_unchanged():
+def _kind(method: str, path: str) -> str:
+    perm = authz.permission_for(method, path)
+    return "unmapped" if perm is None else "open" if perm == authz.OPEN else "guarded"
+
+
+def test_matrix_by_rule():
+    got = _matrix()
+    for key, val in got.items():
+        if key.endswith(" keys"):
+            local = key.startswith("open local ")
+            assert (val != ["status"]) == local, (key, val)
+            continue
+        name, cred, method, path = key.split(" ", 3)
+        st, code = val
+        kind = _kind(method, path)
+        if kind == "unmapped":
+            assert (st, code) == (403, "unmapped_route"), (key, val)
+        elif kind == "open":
+            assert code != "sign_in_required", (key, val)
+        elif name == "open" and cred == "local":
+            # local mode: this machine is the owner `local`, nothing asks for a sign-in
+            assert st != 401 and code != "sign_in_required", (key, val)
+        else:
+            assert st == 401, (key, val)
+
+
+def test_nothing_opens_that_was_closed():
     with open(GOLDEN) as f:
-        want = json.load(f)
-    for extra in ({}, {"TANDEM_AUTH": "legacy"}, {"TANDEM_AUTH": "no-such-mode"}):
-        got = _matrix(extra)
-        diff = {k: (want.get(k), v) for k, v in got.items() if want.get(k) != v}
-        assert not diff and set(got) == set(want), (extra, sorted(diff.items())[:20])
-
-
-def test_nothing_new_exists():
-    with Proxy() as px:
-        assert type(proxy_app.STATE["auth"]) is auth_mod.Auth
-        con = sqlite3.connect(px.svc.cfg.path)
-        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        con.close()
-        assert not tables & {"accounts", "sessions", "group_roles", "api_tokens"}, tables
-        for path in ("/v1/auth/session", "/v1/auth/sessions", "/v1/auth/users"):
-            assert px.get(path)[0] == 404
+        before = json.load(f)
+    got = _matrix()
+    assert set(got) == set(before), sorted(set(got) ^ set(before))[:10]
+    opened, closed = [], 0
+    for key, was in before.items():
+        if key.endswith(" keys"):
+            continue
+        name, cred, method, path = key.split(" ", 3)
+        now = got[key][0]
+        local = name == "open" and cred == "local"
+        if _kind(method, path) == "guarded" and not local:
+            if 200 <= was < 300:
+                assert now == 401, (key, was, now)
+                closed += 1
+            if was == 401:
+                assert now == 401, (key, was, now)
+        if was in (401, 403) and not 200 <= was < 300 and 200 <= now < 300 and not local:
+            opened.append(key)
+    assert opened == [], opened
+    # the old answers this closes: every open-by-default entry of before, and more
+    assert closed > 100, closed
 
 
 if __name__ == "__main__":
-    if "--write" in sys.argv:
-        with open(GOLDEN, "w") as f:
-            json.dump(_matrix({}), f, indent=0, sort_keys=True)
-            f.write("\n")
-        print(f"wrote {GOLDEN}")
-    else:
-        run(globals())
+    run(globals())

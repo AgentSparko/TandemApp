@@ -258,7 +258,7 @@ def test_accounts_beyond_loopback(capsys=None):
     port = _free_port()
     envf = os.path.join(home, "app.env")
     with open(envf, "w") as f:
-        f.write("TANDEM_HOST=0.0.0.0\nTANDEM_AUTH=accounts\n")
+        f.write("TANDEM_HOST=0.0.0.0\n")
     state = os.path.join(home, "state")
     os.makedirs(state)
     db = os.path.join(state, "config.sqlite3")
@@ -291,23 +291,21 @@ def test_accounts_beyond_loopback(capsys=None):
         assert userscli.owner_ready(db)
         rc, out = run("--env-file", envf)
         assert rc == 0 and "setup code" not in out and "REFUSED" not in out, out
-        # the release before's rule without the accounts
-        with open(envf, "w") as f:
-            f.write("TANDEM_HOST=0.0.0.0\n")
+        # SEC-28: no env file, no switch: the same rule (an owner exists now)
         rc, out = run()
-        assert rc == 0 and "WARN listening beyond this machine" in out, out
+        assert rc == 0 and "REFUSED" not in out and "WARN listening" not in out, out
     finally:
         appservice.Service = orig
         sysf.loaded.clear()
     # `tandem-app check`: the sign-in line of the accounts
     env = {k: v for k, v in os.environ.items() if not k.startswith(("TANDEM_", "QSE_"))}
-    env.update(HOME=home, TANDEM_AUTH="accounts")
+    env.update(HOME=home)
     fresh = os.path.join(home, "fresh", "config.sqlite3")
     for host, extra, db_, words in (
-            ("0.0.0.0", {}, fresh, "sign-in accounts: no owner yet"),
+            ("0.0.0.0", {}, fresh, "sign-in: no owner yet"),
             ("127.0.0.1", {authlocal.DEPLOY_ENV: "bare"}, fresh, "local mode, this machine"),
-            ("127.0.0.1", {authlocal.LOCAL_ENV: "off"}, fresh, "sign-in accounts: no owner yet"),
-            ("0.0.0.0", {}, db, "sign-in accounts: an owner with a password")):
+            ("127.0.0.1", {authlocal.LOCAL_ENV: "off"}, fresh, "sign-in: no owner yet"),
+            ("0.0.0.0", {}, db, "sign-in: an owner with a password")):
         r = subprocess.run([sys.executable, "-m", "proxy", "check", "--host", host,
                             "--config-db", db_, "--no-keychain"], cwd=ROOT,
                            env={**env, **extra}, capture_output=True, text=True, timeout=60)

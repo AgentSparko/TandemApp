@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import functools
 import json
 import os
 import re
@@ -69,7 +70,11 @@ from proxy import accounts as acc_mod  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import authlocal, authz, userscli  # noqa: E402
 from proxy import tokens as tokens_mod  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 PW = "the owner's long password"
@@ -496,48 +501,48 @@ def _install_args(**kw):
 
 
 def test_installer_flags():
+    """SEC-28: no admin token is ever written; beyond loopback and behind a proxy local mode
+    is off; an older install's lines stay as they are (the release before reads them)."""
     import tandemapp_install as inst
-    old = os.environ.pop("TANDEM_AUTH", None)
-    try:
-        with contextlib.redirect_stdout(io.StringIO()):
-            # --listen beyond loopback, the old sign-in: the token as before, and local mode off
-            d = tempfile.mkdtemp(prefix="inst-")
-            st = inst.ensure_state(d, _install_args(listen="0.0.0.0"), False)
-            env = inst.read_env(os.path.join(d, "app.env"))
-            assert env["TANDEM_LOCAL_MODE"] == "off" and len(env["TANDEM_ADMIN_TOKEN"]) >= 32
-            assert st["lan"] and not st["accounts"]
-            # --behind-proxy on loopback: local mode off, no token
-            d = tempfile.mkdtemp(prefix="inst-")
-            inst.ensure_state(d, _install_args(behind_proxy=True), False)
-            env = inst.read_env(os.path.join(d, "app.env"))
-            assert env["TANDEM_LOCAL_MODE"] == "off" and "TANDEM_ADMIN_TOKEN" not in env
-            # plain loopback: neither
-            d = tempfile.mkdtemp(prefix="inst-")
-            inst.ensure_state(d, _install_args(), False)
-            env = inst.read_env(os.path.join(d, "app.env"))
-            assert "TANDEM_LOCAL_MODE" not in env and "TANDEM_ADMIN_TOKEN" not in env
-            # the accounts: no token, the switch kept in app.env, local mode off beyond loopback
-            os.environ["TANDEM_AUTH"] = "accounts"
-            d = tempfile.mkdtemp(prefix="inst-")
-            st = inst.ensure_state(d, _install_args(listen="0.0.0.0"), False)
-            env = inst.read_env(os.path.join(d, "app.env"))
-            assert "TANDEM_ADMIN_TOKEN" not in env and env["TANDEM_AUTH"] == "accounts"
-            assert env["TANDEM_LOCAL_MODE"] == "off" and st["accounts"]
-            # a dry run says so and writes nothing
-            d = tempfile.mkdtemp(prefix="inst-")
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                inst.ensure_state(d, _install_args(listen="0.0.0.0"), True)
-            assert "TANDEM_LOCAL_MODE=off" in out.getvalue() and \
-                "admin token" not in out.getvalue()
-            assert not os.path.exists(os.path.join(d, "app.env"))
-        assert "--behind-proxy" in inst.parser().format_help()
-        # a setup code from the release's own CLI (the summary prints it)
-        assert inst.accounts_on({"TANDEM_AUTH": "accounts"})
-    finally:
-        os.environ.pop("TANDEM_AUTH", None)
-        if old is not None:
-            os.environ["TANDEM_AUTH"] = old
+    with contextlib.redirect_stdout(io.StringIO()):
+        # --listen beyond loopback: no token, local mode off, a setup code wanted
+        d = tempfile.mkdtemp(prefix="inst-")
+        st = inst.ensure_state(d, _install_args(listen="0.0.0.0"), False)
+        env = inst.read_env(os.path.join(d, "app.env"))
+        assert env["TANDEM_LOCAL_MODE"] == "off" and "TANDEM_ADMIN_TOKEN" not in env
+        assert "TANDEM_AUTH" not in env and "TANDEM_DASHBOARD_LOGIN" not in env
+        assert st["lan"] and inst.wants_code(st, env)
+        # --behind-proxy on loopback: local mode off, no token
+        d = tempfile.mkdtemp(prefix="inst-")
+        st = inst.ensure_state(d, _install_args(behind_proxy=True), False)
+        env = inst.read_env(os.path.join(d, "app.env"))
+        assert env["TANDEM_LOCAL_MODE"] == "off" and "TANDEM_ADMIN_TOKEN" not in env
+        assert inst.wants_code(st, env)
+        # plain loopback: neither, and no code (local mode)
+        d = tempfile.mkdtemp(prefix="inst-")
+        st = inst.ensure_state(d, _install_args(), False)
+        env = inst.read_env(os.path.join(d, "app.env"))
+        assert "TANDEM_LOCAL_MODE" not in env and "TANDEM_ADMIN_TOKEN" not in env
+        assert not inst.wants_code(st, env)
+        # an older install beyond loopback: its admin token and login lines stay
+        d = tempfile.mkdtemp(prefix="inst-")
+        with open(os.path.join(d, "app.env"), "w") as f:
+            f.write("TANDEM_HOST=0.0.0.0\nTANDEM_ADMIN_TOKEN=" + "t" * 40 +
+                    "\nTANDEM_DASHBOARD_LOGIN=on\n")
+        inst.ensure_state(d, _install_args(), False)
+        env = inst.read_env(os.path.join(d, "app.env"))
+        assert env["TANDEM_ADMIN_TOKEN"] == "t" * 40 and env["TANDEM_DASHBOARD_LOGIN"] == "on"
+        assert env["TANDEM_LOCAL_MODE"] == "off"
+        # a dry run says so and writes nothing
+        d = tempfile.mkdtemp(prefix="inst-")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            inst.ensure_state(d, _install_args(listen="0.0.0.0"), True)
+        assert "TANDEM_LOCAL_MODE=off" in out.getvalue() and \
+            "admin token" not in out.getvalue()
+        assert not os.path.exists(os.path.join(d, "app.env"))
+    assert "--behind-proxy" in inst.parser().format_help()
+    assert not hasattr(inst, "accounts_on")
     # the image never gets local mode
     with open(os.path.join(ROOT, "packaging", "Dockerfile.app")) as f:
         assert "TANDEM_DEPLOY=container" in f.read()
@@ -605,14 +610,14 @@ def test_users_cli():
 # ---------------------------------------------------------------------------- the real start
 
 def _serve(state: str, extra: dict):
-    """`python -m proxy serve` on 127.0.0.1 with the accounts on: (process, port, its lines)."""
+    """`python -m proxy serve` on 127.0.0.1: (process, port, its lines)."""
     import subprocess
     import threading
     import time
     import ports
     port = ports.free_port()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("TANDEM_", "QSE_"))}
-    env.update({"TANDEM_AUTH": "accounts", "TANDEM_NODE_AGENT": "off", "TANDEM_LOCAL_NODE": "off",
+    env.update({"TANDEM_NODE_AGENT": "off", "TANDEM_LOCAL_NODE": "off",
                 "HOME": state, "PYTHONUNBUFFERED": "1", **extra})
     proc = subprocess.Popen(
         [sys.executable, "-m", "proxy", "serve", "--host", "127.0.0.1", "--port", str(port),
@@ -679,10 +684,8 @@ def test_real_start():
         other = inst.setup_code(rel, state)
         assert other and other != code and len(other) == 20
         # its health check: no version without a credential, the status counts
-        ok, said = inst.health("127.0.0.1", port, None, "any version", None, 10, accounts=True)
+        ok, said = inst.health("127.0.0.1", port, "any version", None, 10)
         assert ok, said
-        ok, _ = inst.health("127.0.0.1", port, None, "any version", None, 1, accounts=False)
-        assert not ok
         st, out = _ask(port, "POST", "/v1/auth/setup", {"code": code, "username": "kim",
                                                         "password": PW})
         assert st == 201, out[:200]

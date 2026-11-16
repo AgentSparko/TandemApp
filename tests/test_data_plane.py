@@ -51,7 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import test_deployments as td  # noqa: E402
 import test_fleet as tf  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy, api_key, fake, run  # noqa: E402
 
 KEY = "tdm-engine-key-0123456789"
 DECIDERS = [{"id": "laya-english", "object": "decision_model", "created": 1,
@@ -184,25 +184,29 @@ def test_headers_as_the_engine_sees():
     try:
         f.script = lambda body, headers: {"content": "ok", "headers": {
             "X-Tandem": "on", "X-Tandem-Wait": "memory", "X-Tandem-Backend": "inner"}}
-        sent = {"User-Agent": "opencode/1.18.32 ai-sdk/provider-utils/4.0.23",
-                "Referer": "https://box.example/app/", "X-QSE-Client": "dashboard",
-                "X-Tandem-Memory": "off", "X-Tandem-Profile": "coding",
-                "X-OpenWebUI-Chat-Id": "c-1", "X-Tandem-Cost": "1",
-                "Authorization": "Bearer sk-client-0001", **OUTSIDE,
-                # only a proxy may set these: a client's never reach the engine
-                "X-Tandem-User": "mallory", "X-Tandem-Relay-Id": "forged",
-                "X-Tandem-Pin": "nowhere", "Cookie": "qse_dash=1.2.3"}
         body = {"model": "TandemLLM", "messages": [{"role": "user", "content": "hi"}]}
         with Proxy(env=env_for(port)) as px:
             px.sync()
+            # SEC-28: from another device the client's key is an API token, checked and taken
+            # off by the gate: the engine never sees it
+            client = api_key(px, "laptop", network=True)
+            sent = {"User-Agent": "opencode/1.18.32 ai-sdk/provider-utils/4.0.23",
+                    "Referer": "https://box.example/app/", "X-QSE-Client": "dashboard",
+                    "X-Tandem-Memory": "off", "X-Tandem-Profile": "coding",
+                    "X-OpenWebUI-Chat-Id": "c-1", "X-Tandem-Cost": "1",
+                    "Authorization": f"Bearer {client}", **OUTSIDE,
+                    # only a proxy may set these: a client's never reach the engine
+                    "X-Tandem-User": "mallory", "X-Tandem-Relay-Id": "forged",
+                    "X-Tandem-Pin": "nowhere", "Cookie": "qse_dash=1.2.3"}
             st, h, _ = px.post("/v1/chat/completions", body, headers=sent)
             got = {k.lower(): v for k, v in f.last["headers"].items()}
             assert st == 200, h
             for k in ("User-Agent", "Referer", "X-QSE-Client", "X-Tandem-Memory",
                       "X-Tandem-Profile", "X-OpenWebUI-Chat-Id", "X-Tandem-Cost",
-                      "Authorization", "X-Real-IP", "X-Forwarded-For"):
+                      "X-Real-IP", "X-Forwarded-For"):
                 assert got.get(k.lower()) == sent[k], (k, got)
-            assert got["x-tandem-user"] == "owner" and got["x-tandem-relay-id"] != "forged", got
+            assert "authorization" not in got and client not in json.dumps(got), got
+            assert got["x-tandem-user"] == "laptop" and got["x-tandem-relay-id"] != "forged", got
             assert "cookie" not in got and "x-tandem-pin" not in got, got
             # the answer's own headers come back; the controller's facts are its own
             assert h.get("X-Tandem") == "on" and h.get("X-Tandem-Wait") == "memory", h
@@ -227,55 +231,41 @@ def test_headers_as_the_engine_sees():
 # ---------------------------------------------------------------------------- 3. the keys
 
 def test_the_engines_keys():
+    """SEC-28: TANDEM_API_USERS_FROM is read once, at the first start: the engine's users of
+    then are API tokens here with the same keys (under review); the file is not read again. A
+    key made there later opens nothing here, one turned off there is revoked here, not there."""
     srv, port = engine()
     d = tempfile.mkdtemp(prefix="engine-cfg-")
     path = os.path.join(d, "config.sqlite3")
     eng = config_mod.ConfigDB(path, env={}, use_keychain=False).open()
     body = {"model": "TandemLLM", "messages": [{"role": "user", "content": "hi"}]}
+    user, key = eng.create_user({"label": "laptop"})
     try:
         with Proxy(env=env_for(port, TANDEM_API_USERS_FROM=path)) as px:
             px.sync()
-            # the engine has no user: open, as the engine is (a wrong key passes there too)
-            assert px.post("/v1/chat/completions", body, headers=OUTSIDE)[0] == 200
-            assert px.post("/v1/chat/completions", body,
-                           headers={"Authorization": "Bearer nope", **OUTSIDE})[0] == 200
-            user, key = eng.create_user({"label": "laptop"})
-            # from now on, live: the engine's key opens, a wrong or no key is the engine's 401
+            # the engine's key of before: a token here (its users existed: the API is open to
+            # other devices); no key or a wrong one from another device is the gate's 401
             st, _, _ = px.post("/v1/chat/completions", body,
                                headers={"Authorization": f"Bearer {key}", **OUTSIDE})
             assert st == 200
             for hdr in ({}, {"Authorization": "Bearer tdm-wrong-wrong-wrong"}):
                 st, h, raw = px.post("/v1/chat/completions", body, headers={**hdr, **OUTSIDE})
-                assert st == 401 and raw == (
-                    b'{"error": {"message": "a proxy API key is needed (Authorization: Bearer '
-                    b'<key>); the admin makes one under Backends, Users", "type": '
-                    b'"invalid_request_error", "code": "invalid_api_key"}}'), raw
-                assert h.get("WWW-Authenticate") == 'Bearer realm="TandemLLM"', h
+                assert st == 401 and h.get("WWW-Authenticate") == 'Bearer realm="TandemLLM"', raw
             st, h, _ = px.get("/v1/models", headers=OUTSIDE)
-            assert st == 401 and h.get("X-Tandem-Gateway") == "tandem-app", h
-            # the box's own tools stay open (trusted-local), as on the engine
+            assert st == 401
+            # this machine with no password: local mode
             assert px.post("/v1/chat/completions", body)[0] == 200
             rows = px.rows()
-            assert [r["user"] for r in rows if r["status"] == 200][-2:] == ["laptop", None], rows
+            assert [r["user"] for r in rows if r["status"] == 200][0] == "laptop", rows
             assert key not in json.dumps(rows)
-            # a user turned off on the engine (another one still on): refused here at once; with
-            # none left on, open again, as the engine is
-            other, _ = eng.create_user({"label": "ci"})
+            # the file is not read again: a key made there later is none here, one turned off
+            # there still answers here (revoked under Access, the page's token list)
+            _, later = eng.create_user({"label": "ci"})
+            assert px.post("/v1/chat/completions", body,
+                           headers={"Authorization": f"Bearer {later}", **OUTSIDE})[0] == 401
             eng.update_user(user["id"], {"enabled": False})
             assert px.post("/v1/chat/completions", body,
-                           headers={"Authorization": f"Bearer {key}", **OUTSIDE})[0] == 401
-            eng.update_user(other["id"], {"enabled": False})
-            assert px.post("/v1/chat/completions", body, headers=OUTSIDE)[0] == 200
-            eng.update_user(user["id"], {"enabled": True})
-            assert px.post("/v1/chat/completions", body, headers=OUTSIDE)[0] == 401
-            # a file that cannot be read: the last answer stands (keys needed)
-            px.svc.cfg.users_from = os.path.join(d, "gone", "config.sqlite3")
-            assert px.post("/v1/chat/completions", body, headers=OUTSIDE)[0] == 401
-        # ... and closed before any answer
-        with Proxy(env=env_for(port, TANDEM_API_USERS_FROM=os.path.join(d, "none.sqlite3"))) \
-                as px:
-            px.sync()
-            assert px.post("/v1/chat/completions", body, headers=OUTSIDE)[0] == 401
+                           headers={"Authorization": f"Bearer {key}", **OUTSIDE})[0] == 200
             for f in px.files():
                 with open(f, "rb") as fh:
                     assert key.encode() not in fh.read(), f

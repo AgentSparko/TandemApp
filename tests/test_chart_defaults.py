@@ -18,28 +18,28 @@ sign-in of accounts (auth.mode) with the ingress's API paths.
      and no tests or ._ files                                   test_archive_reproducible
 
   OPS-298 (the server side of the same scenarios: tests/test_chart_accounts.py):
-  5  Given auth.mode accounts, When rendered, Then the controller gets TANDEM_AUTH=accounts,
-     TANDEM_DEPLOY=kubernetes and the setup code as a file (an optional Secret volume), and no
-     container of any mode has an auth secret in its environment; legacy mode keeps the admin
-     token as before; auth.bootstrap names another Secret; no Secret at all is allowed; wrong
-     values are refused                                         test_accounts_values
-  6  Given a release on the chart before accounts, When it is upgraded with auth.mode accounts,
-     Then the Secret keeps its name, key and value (a rollback finds it) and is the setup code
+  5  Given the defaults (SEC-28: auth.mode accounts, the only one), When rendered, Then the
+     controller gets TANDEM_DEPLOY=kubernetes and the setup code as a file (an optional Secret
+     volume), no TANDEM_AUTH, and no container of any mode has an auth secret in its
+     environment; auth.mode legacy is refused with a message; auth.bootstrap names another
+     Secret; no Secret at all is allowed; wrong values are refused  test_accounts_values
+  6  Given a release on the chart before accounts, When it is upgraded with the defaults, Then
+     the Secret keeps its name, key and value (a rollback finds it) and is the setup code
                                                                 test_upgrade_keeps_the_secret
   7  Given ingress.api.openai and .anthropic empty, When the chart renders a new install or an
-     upgrade (of a release before accounts, or of one in accounts mode that blocked them), in
-     either auth mode, Then the ingress routes the API paths and TANDEM_INGRESS_API says
+     upgrade (of a release before accounts, or of one that blocked them), Then the ingress
+     routes the API paths and TANDEM_INGRESS_API says
      openai,anthropic; only false blocks a protocol             test_upgrade_keeps_the_clients_path
   8  Given ingress.api.anthropic false, Then /v1/messages goes to the blocked Service (503) while
      /v1/models stays routed; Given it true, Then /v1/messages is routed; the paths are the
      server's own lists                                         test_api_paths
   9  Given values shaped like a single-node install (tests/fixtures/chart-single-node.yaml), When
-     rendered now, Then the objects are those of the chart before (the golden next to it) plus
-     only the new auth lines, in legacy mode and in accounts mode
+     rendered now, Then the objects are those of the chart before (the golden next to it): its
+     admin token leaves the environment and only the auth lines come in
                                                                 test_single_node_render
-  10 NOTES: legacy mode word for word as before; accounts mode says where the setup code is, the
-     kubectl exec lines for a new code and a lost password, the API paths, the trusted proxy and
-     an external chatd's key                                    test_notes
+  10 NOTES say where the setup code is, the kubectl exec lines for a new code and a lost
+     password, the API paths, the trusted proxy and an external chatd's key; nothing of the
+     admin token mode                                           test_notes
 
 helm 3.12 or newer on PATH for 1-3 and 5-10 (skipped without it). Run:
 python tests/test_chart_defaults.py
@@ -259,10 +259,11 @@ OPENAI_PATHS = ["/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v
 
 
 def test_accounts_values():
-    rc, out = render("auth.mode=accounts")
+    rc, out = render()
     assert rc == 0, out[-800:]
     e = controller_env(out)
-    assert e["TANDEM_AUTH"] == "accounts" and e["TANDEM_DEPLOY"] == "kubernetes", e
+    assert "TANDEM_AUTH" not in e and e["TANDEM_DEPLOY"] == "kubernetes", e
+    assert controller_env(render("auth.mode=accounts")[1]) == e, "accounts is the default"
     assert e["TANDEM_SETUP_CODE_FILE"] == FILE and e["TANDEM_ADMIN_TOKEN_FILE"] == FILE, e
     assert "TANDEM_INGRESS_API" not in e, "no ingress: not known"
     assert "TANDEM_TRUSTED_PROXY" not in e
@@ -286,12 +287,9 @@ def test_accounts_values():
         assert rc == 0, (sets, got[-600:])
         no_env_secret(got)
         assert controller_env(got)["TANDEM_DEPLOY"] == "kubernetes", sets
-    # legacy (the default until the switch): the admin token as before, beside TANDEM_DEPLOY
-    rc, out = render()
-    e = controller_env(out)
-    assert e["TANDEM_ADMIN_TOKEN"] is None and "secretKeyRef" in out and "TANDEM_AUTH" not in e
-    assert e["TANDEM_DEPLOY"] == "kubernetes" and "TANDEM_SETUP_CODE_FILE" not in e
-    assert len(secret_value(out)) == 48 and "name: auth\n" not in out
+    # SEC-28: the admin token mode is gone: refused with what to do, never rendered
+    rc, out = render("auth.mode=legacy")
+    assert rc != 0 and "auth.mode legacy" in out and "setup code" in out, out[-600:]
     # a Secret of its own for the setup code: mounted with its key, never read as an admin token
     rc, out = render("auth.mode=accounts", "auth.bootstrap.existingSecret=first-code",
                      "auth.bootstrap.secretKey=code")
@@ -320,11 +318,10 @@ def test_accounts_values():
     assert controller_env(out)["TANDEM_TRUSTED_PROXY"] == "192.0.2.0/24,2001:db8:42::/64"
     # refusals
     for sets, words in {
-        ("auth.mode=open",): "auth.mode is legacy or accounts",
-        ("auth.create=false",): "name an existingSecret or set create",
-        ("controller.env.TANDEM_AUTH=accounts",): "set auth.mode, not TANDEM_AUTH",
+        ("auth.mode=open",): "auth.mode is accounts",
+        ("controller.env.TANDEM_AUTH=accounts",): "TANDEM_AUTH is no longer read",
         ("controller.extraEnv[0].name=TANDEM_AUTH", "controller.extraEnv[0].value=accounts"):
-            "set auth.mode, not TANDEM_AUTH",
+            "TANDEM_AUTH is no longer read",
         ("ingress.api.openai=maybe",): "ingress.api.openai is true, false or empty",
     }.items():
         rc, out = render(*sets)
@@ -333,7 +330,7 @@ def test_accounts_values():
                         "--set", "auth.mode=accounts", "--set", "ingress.enabled=true",
                         "--set", "ingress.host=app.example.com"], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
-    return "accounts: the setup code a file, no auth secret in any env; legacy as before"
+    return "accounts: the setup code a file, no auth secret in any env; legacy refused"
 
 
 def _running(tmp: str, env: list, secret: str | None = None) -> str:
@@ -372,18 +369,14 @@ def test_upgrade_keeps_the_secret(tmp_path):
         old = f.read()
     assert ("- name: TANDEM_ADMIN_TOKEN\n              valueFrom:\n                secretKeyRef:\n"
             "                  name: t-tandemapp-admin\n                  key: admin-token") in old
-    # legacy mode on the same release: unchanged
+    # the defaults on the same release: the same (accounts is the default)
     rc, out = render(chart=chart, values=running)
-    assert secret_value(out) == OLD_TOKEN and controller_env(out)["TANDEM_ADMIN_TOKEN"] is None
-    # a setup code an accounts install made: kept in accounts mode; replaced by a 48-character
-    # token in legacy mode, which stops on a token under 32 characters
+    assert secret_value(out) == OLD_TOKEN and "TANDEM_ADMIN_TOKEN" not in controller_env(out)
+    # a setup code an accounts install made: kept
     code = "ABCDEFGHJKMNPQRSTVWX"
     made = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"}], secret=code)
-    rc, out = render("auth.mode=accounts", chart=chart, values=made)
-    assert secret_value(out) == code
     rc, out = render(chart=chart, values=made)
-    got = secret_value(out)
-    assert rc == 0 and len(got) == 48 and got != code, got
+    assert rc == 0 and secret_value(out) == code
     return "an upgrade keeps the Secret (name, key, value); the chart before reads it back"
 
 
@@ -392,18 +385,13 @@ def test_upgrade_keeps_the_clients_path(tmp_path):
     before = _running(str(tmp_path), BEFORE)
     blocked_o1 = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"},
                                           {"name": "TANDEM_INGRESS_API", "value": "none"}])
-    # empty routes both: a new install, an upgrade of either kind, in both auth modes
-    for mode in ("accounts", "legacy"):
-        for values in (None, before, blocked_o1):
-            rc, out = render(f"auth.mode={mode}", *ING, chart=chart, values=values)
-            assert rc == 0, out[-800:]
-            assert blocked(out) == ["/chat-engine", "/plugin-backends"], (mode, values,
-                                                                          blocked(out))
-            assert routed_root(out)
-            if mode == "accounts":
-                assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
-            else:
-                assert "TANDEM_INGRESS_API" not in controller_env(out)
+    # empty routes both: a new install, an upgrade of either kind
+    for values in (None, before, blocked_o1):
+        rc, out = render(*ING, chart=chart, values=values)
+        assert rc == 0, out[-800:]
+        assert blocked(out) == ["/chat-engine", "/plugin-backends"], (values, blocked(out))
+        assert routed_root(out)
+        assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
     # only false blocks, on an upgrade as on a new install
     for values in (None, before):
         rc, out = render("auth.mode=accounts", *ING, "ingress.api.openai=false", chart=chart,
@@ -432,13 +420,13 @@ def test_api_paths():
     assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
     # /v1/models is never blocked; the page's own routes neither
     for sets in ((), ("ingress.api.openai=false", "ingress.api.anthropic=false")):
-        for mode in ("legacy", "accounts"):
+        for mode in ("accounts",):
             rc, out = render(f"auth.mode={mode}", *ING, *sets)
             assert not any(p.startswith(("/v1/models", "/v1/library", "/v1/laya", "/v1/fleet",
                                          "/v1/auth", "/dashboard", "/health"))
                            for p in blocked(out)), blocked(out)
             assert routed_root(out)
-    # a value set in legacy mode is applied too
+    # a value set with the defaults is applied too
     rc, out = render(*ING, "ingress.api.anthropic=false")
     assert blocked(out)[2:] == ["/v1/messages"]
     # empty: both routed, no blocked Service without blocked paths
@@ -505,13 +493,13 @@ AUTH_BITS = re.compile(
 
 def test_single_node_render(tmp_path):
     old = golden_lines()
+    # SEC-28: the admin token leaves the env; only auth lines come in (the defaults and
+    # auth.mode accounts are the same)
     rc, out = render(values=SINGLE_NODE)
     assert rc == 0, out[-800:]
+    assert normalized(out) == normalized(render("auth.mode=accounts", values=SINGLE_NODE)[1])
     gone, added = changes(old, normalized(out))
-    assert gone == [] and added == DEPLOY_LINES, (gone, added)
-    # accounts mode: the admin token leaves the env; only auth lines come in
-    rc, out = render("auth.mode=accounts", values=SINGLE_NODE)
-    gone, added = changes(old, normalized(out))
+    assert set(DEPLOY_LINES) <= set(added), added
     assert gone == ENV_SECRET, gone
     assert added and all(AUTH_BITS.match(x) for x in added), \
         [x for x in added if not AUTH_BITS.match(x)]
@@ -520,8 +508,7 @@ def test_single_node_render(tmp_path):
     # the same values as an upgrade of the release before: the same objects
     chart = _chart_with_running(str(tmp_path))
     running = _running(str(tmp_path), BEFORE, secret=OLD_TOKEN)
-    argv = [_helm(), "template", "t", chart, "-n", "ns", "-f", SINGLE_NODE, "-f", running,
-            "--set", "auth.mode=accounts"]
+    argv = [_helm(), "template", "t", chart, "-n", "ns", "-f", SINGLE_NODE, "-f", running]
     r = subprocess.run(argv, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-600:]
     gone, added = changes(old, normalized(r.stdout))
@@ -566,9 +553,9 @@ def notes(*sets: str, name: str = "t", namespace: str = "ns") -> str:
 
 def test_notes():
     n = notes()
-    assert ("4. The admin password (TANDEM_ADMIN_TOKEN) is in Secret t-tandemapp-admin, key "
-            "admin-token.\n   Read it into your password manager, never into a log:\n") in n
-    assert "Sign-in: accounts" not in n and "\n\n4. The admin" in n
+    assert "4. Sign-in: accounts." in n and "The admin password" not in n, n
+    assert "TANDEM_ADMIN_TOKEN" not in n and "pbcopy" not in n
+    assert "legacy" not in n, "SEC-28: no admin token mode to roll back to by name"
     n = notes("auth.mode=accounts", *ING, "ingress.tls[0].secretName=tls", "chat.mode=external")
     cli = ("kubectl -n ns exec deploy/t-tandemapp -c controller -- env PYTHONPATH="
            "/var/lib/tandemapp/current /var/lib/tandemapp/current/venv/bin/python -m proxy")
@@ -596,7 +583,7 @@ def test_notes():
     assert "Playground" not in n
     n = notes("auth.mode=accounts", "auth.create=false")
     assert "the controller's log has a code" in n and "kubectl -n ns get secret" not in n
-    return "legacy NOTES as before; accounts: the code, kubectl exec lines, API paths, chatd key"
+    return "the code, kubectl exec lines, API paths, chatd key; no admin token mode"
 
 
 def _tree(tmp: str) -> str:

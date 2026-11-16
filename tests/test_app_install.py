@@ -47,7 +47,7 @@ stopped at the end.
      (file, enable, restart, the stop line) and its own unit is updated; a port held by another
      listener is refused, the install's own controller is not   test_unit_name_and_guards
 
-  OPS-298, with TANDEM_AUTH=accounts: no admin token is written; the summary prints a one-time
+  OPS-298, SEC-28: no admin token is written; the summary prints a one-time
   setup code only when local mode is off (an address beyond loopback, also with nothing started,
   or --behind-proxy), never for a plain loopback install; the code makes the owner; with an
   owner no code; the health check passes with the CLI token  test_accounts_setup_code
@@ -345,40 +345,38 @@ def test_rerun_update_rollback_listen(tmp_path):
                         box.json("/health")["version"] == v2, 30), "the old release runs again"
         assert len(releases(box)) == 3, "the failed release stays on disk, unused"
         box.stop()
-        # --listen beyond loopback: an admin token, never printed, and the sign-in
+        # --listen beyond loopback (SEC-28): no admin token; a setup code, and local mode off
         envf = os.path.join(box.state, "app.env")
         out = ok_run(box.install("--listen", "0.0.0.0", "--service", "none", tree=box.tree))
         env = inst.read_env(envf)
-        assert env["TANDEM_HOST"] == "0.0.0.0" and env["TANDEM_DASHBOARD_LOGIN"] == "on", env
-        tok = env["TANDEM_ADMIN_TOKEN"]
-        assert len(tok) >= 32 and tok not in out and "TANDEM_ADMIN_TOKEN" in out, out
-        assert "nothing was started" in out
+        assert env["TANDEM_HOST"] == "0.0.0.0" and env[inst.LOCAL_ENV] == "off", env
+        assert "TANDEM_ADMIN_TOKEN" not in env and "TANDEM_DASHBOARD_LOGIN" not in env, env
+        assert "Setup code: " in out and "nothing was started" in out, out
         out = ok_run(box.install("--listen", "127.0.0.1", "--service", "none"))
         env = inst.read_env(envf)
-        assert env["TANDEM_HOST"] == "127.0.0.1" and env["TANDEM_ADMIN_TOKEN"] == tok
+        assert env["TANDEM_HOST"] == "127.0.0.1" and "TANDEM_ADMIN_TOKEN" not in env
         assert os.stat(envf).st_mode & 0o777 == 0o600
     finally:
         box.stop()
-    return "idempotent rerun, update, rollback, --listen with a token"
+    return "idempotent rerun, update, rollback, --listen with a setup code"
 
 
 def test_accounts_setup_code(tmp_path):
     import re
-    for st, env, want in (({"accounts": True, "lan": True}, {}, True),
-                          ({"accounts": True, "lan": False}, {inst.LOCAL_ENV: "off"}, True),
-                          ({"accounts": True, "lan": False}, {}, False),
-                          ({"accounts": False, "lan": True}, {}, False)):
+    for st, env, want in (({"lan": True}, {}, True),
+                          ({"lan": False}, {inst.LOCAL_ENV: "off"}, True),
+                          ({"lan": False}, {}, False)):
         assert inst.wants_code(st, env) is want, (st, env)
     box = Box(str(tmp_path))
     envf = os.path.join(box.state, "app.env")
     code_re = re.compile(r"Setup code: ([A-Z0-9]{20}) +\(single use")
-    env = box.env(TANDEM_AUTH="accounts")
+    env = box.env()
     try:
         # loopback, no proxy: local mode, no code; the health check passed (cli.token)
         out = ok_run(box.install("--port", str(box.port), "--service", "process", env=env))
         got = inst.read_env(envf)
         assert not code_re.search(out) and "Setup code" not in out, out
-        assert got.get("TANDEM_AUTH") == "accounts" and "TANDEM_ADMIN_TOKEN" not in got, got
+        assert "TANDEM_AUTH" not in got and "TANDEM_ADMIN_TOKEN" not in got, got
         assert inst.LOCAL_ENV not in got, got
         box.stop()
         # beyond loopback (nothing started: no listener on all addresses in a test): a code

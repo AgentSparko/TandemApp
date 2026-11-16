@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import sys
@@ -29,7 +30,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from proxy import app as proxy_app  # noqa: E402
 from proxy import authapi, authz  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 PW = {n: f"the password of {n} here" for n in ("own", "own2", "adm", "ops", "view", "ann")}
@@ -264,13 +269,16 @@ def test_routes():
     assert authapi.private_audit({"object": "setting", "object_id": "api.listen"})
     assert not authapi.private_audit({"object": "setting", "object_id": "app.chat"})
     assert not authapi.private_audit({"object": "backend", "object_id": "engine"})
-    # the switch off: no such routes, and the configuration's audit as before
+    # SEC-28: no switch: the routes are always there and need a sign-in; local mode (this
+    # machine, no password) is the owner and reads every row
     with Proxy() as px:
-        assert px.get("/v1/auth/audit")[0] == 404
-        assert px.post("/v1/auth/users/x/reset", None)[0] == 404
+        assert px.get("/v1/auth/audit")[0] == 401
+        assert px.post("/v1/auth/users/x/reset", None)[0] == 401
+    with _Proxy() as px:
         px.svc.cfg.log_audit("someone", "sign_in", "session", "abc", detail={"address": "x"})
         st, out = j(px.get("/v1/config/audit"))
         assert st == 200 and any(r["object"] == "session" for r in out["audit"]), out
+        assert px.get("/v1/auth/audit")[0] == 200
 
 
 if __name__ == "__main__":

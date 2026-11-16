@@ -82,6 +82,20 @@ DASH = os.path.join(ROOT, "contracts", "dashboard-v1")
 
 
 def dash_ok(obj, name):
+    if name == "usage":
+        # SEC-28: the controller always has the accounts: its answer is the engine's schema
+        # (usage, a byte copy) plus the fields the accounts add (usage-tokens)
+        import copy
+        errs = contract_check.validate(obj, contract_check.load("usage-tokens", DASH), root=DASH)
+        assert not errs, ("usage-tokens", errs[:5])
+        base = copy.deepcopy(obj)
+        base.get("dimensions", {}).pop("tokens", None)
+        base.get("filters", {}).pop("token", None)
+        base.pop("group", None)
+        base.pop("groups", None)
+        errs = contract_check.validate(base, contract_check.load(name, DASH), root=DASH)
+        assert not errs, (name, errs[:5])
+        return obj
     errs = contract_check.validate(obj, contract_check.load(name, DASH), root=DASH)
     assert not errs, (name, errs[:5])
     return obj

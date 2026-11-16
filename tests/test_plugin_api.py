@@ -38,7 +38,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plugin_util import example, example_files, folder, repo, wheel  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
 from proxy import hookstages  # noqa: E402
@@ -206,49 +206,49 @@ def test_refusals_over_http():
 # ---------------------------------------------------------------------------- 3
 def test_rights():
     src = folder()
-    token = "adm-" + "p" * 40
     try:
         body = {"source": {"type": "folder", "path": src}}
-        with Proxy({"TANDEM_ADMIN_TOKEN": token}) as px:
+        with Proxy({}) as px:
+            h = dict(AWAY, **owner(px))     # SEC-28: an owner's session, from another device
             for method, path, b in (("GET", BASE, None), ("POST", BASE + "/inspect", body),
                                     ("POST", BASE, body), ("GET", BASE + "/hello-tool", None),
                                     ("POST", BASE + "/hello-tool/enable", {}),
                                     ("DELETE", BASE + "/hello-tool", None)):
                 st, _, _ = px.request(method, path, b, AWAY)
                 assert st == 401, (method, path, st)
-            h = dict(AWAY, Authorization=f"Bearer {token}")
             _j(px, "POST", BASE, body, 201, h)
             _j(px, "POST", BASE + "/hello-tool/enable", {}, 200, h)
             _j(px, "GET", BASE, headers=h)
             st, _, _ = px.request("POST", BASE + "/hello-tool/disable", {},
-                                  {"Origin": "http://evil.example", "Host": "127.0.0.1"})
+                                  {**h, "Origin": "http://evil.example", "Host": "127.0.0.1"})
             assert st == 403
             _j(px, "DELETE", BASE + "/hello-tool", headers=h)
-        with Proxy({}) as px:                                     # no admin password
-            # SEC-16: the configuration's writes but not pairing's rights: 403 trust_required,
-            # as the hooks and the settings interface answer (not 401: nothing to sign in to)
+        with Proxy({}) as px:
+            # SEC-16: an operator has the configuration's writes but not pairing's rights: 403
+            # trust_required, as the hooks and the settings interface answer
+            ops = dict(AWAY, **owner(px, "ops", "operator"))
             for method, path, b in (("POST", BASE, body),):
-                err = _j(px, method, path, b, 403, AWAY)
+                err = _j(px, method, path, b, 403, ops)
                 assert err["error"]["type"] == "trust_required", err
                 assert "pairing" in err["error"]["message"]
-            _j(px, "POST", BASE, body, 201)                       # from this machine
-            _j(px, "GET", BASE, headers=AWAY)                     # reads: the configuration's
+            _j(px, "POST", BASE, body, 201, dict(AWAY, **owner(px, "adm", "admin")))
+            _j(px, "GET", BASE, headers=ops)                      # reads: the configuration's
             for method, path, b in (("POST", BASE + "/hello-tool/enable", {}),
                                     ("POST", BASE + "/hello-tool/trust", {"level": "host"}),
                                     ("DELETE", BASE + "/hello-tool", None),
                                     ("POST", "/v1/fleet/plugin-trust/policy",
                                      {"require_signature_sandboxed": True})):
-                st, _, out = px.request(method, path, b, AWAY)
+                st, _, out = px.request(method, path, b, ops)
                 assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", \
                     (method, path, st, out)
-            _j(px, "POST", BASE + "/hello-tool/disable", {}, headers=AWAY)
+            _j(px, "POST", BASE + "/hello-tool/disable", {}, headers=ops)
             # the plugins scope: enabling and granting take pairing's rights there too
             st, _, out = px.request("POST", "/v1/settings/plugins/plan", {
-                "target": "hello-tool", "set": {"enabled": True}}, AWAY)
+                "target": "hello-tool", "set": {"enabled": True}}, ops)
             assert st == 403 and json.loads(out)["error"]["type"] == "trust_required"
     finally:
         shutil.rmtree(src)
-    return "401 away without the token; pairing's rights for install, enable, remove"
+    return "401 away without a sign-in; pairing's rights for install, enable, remove"
 
 
 # ---------------------------------------------------------------------------- 4

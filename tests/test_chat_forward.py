@@ -24,10 +24,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import fake_backend
 from chatd_util import KEY, Chat, run_all
 
-from tandemapp import auth as auth_mod
 from tandemapp import chat_forward
 
 ADMIN = "a" * 40
+SESSION = "s" * 43
+
+
+class Signed:
+    """SEC-28: the controller's sign-in as chat_forward asks it (proxy/accounts.py signed_in,
+    after the gate ran): here a request with the bearer ADMIN or the session cookie SESSION."""
+
+    def signed_in(self, headers) -> bool:
+        return (headers.get("Authorization") == f"Bearer {ADMIN}"
+                or f"tandem_session={SESSION}" in (headers.get("Cookie") or ""))
 
 
 def _engine(auth, chatd_port: int | None, idle_timeout: float | None = None):
@@ -95,8 +104,8 @@ PROXIED = {"X-Forwarded-For": "192.168.1.20", "X-Real-IP": "192.168.1.20"}
 def test_the_auth_matrix():
     c = Chat()
     try:
-        # no password set (AU1): every chat route answers
-        srv, _ = _engine(auth_mod.Auth(None), c.port)
+        # no sign-in at all (a test without a controller): every chat route answers
+        srv, _ = _engine(None, c.port)
         p = srv.server_address[1]
         st, obj = _req(p, "GET", "/v1/chat-app/capabilities", headers=PROXIED)
         assert st == 200 and obj["session"] == {"password_set": False, "signed_in": True,
@@ -107,8 +116,7 @@ def test_the_auth_matrix():
         assert st == 404                          # the OpenAI namespace is never forwarded
         srv.shutdown()
 
-        a = auth_mod.Auth(ADMIN, login=True)
-        srv, seen = _engine(a, c.port)
+        srv, seen = _engine(Signed(), c.port)
         p = srv.server_address[1]
         before = c.svc.store.one("SELECT COUNT(*) FROM conversations")[0]
         st, obj = _req(p, "POST", "/v1/chat-app/conversations", {}, headers=PROXIED)
@@ -125,14 +133,13 @@ def test_the_auth_matrix():
         st, obj = _req(p, "POST", "/v1/chat-app/conversations", {},
                        headers={**PROXIED, "Authorization": f"Bearer {ADMIN}"})
         assert st == 200 and obj["id"]
-        # the dashboard's session cookie
-        value, _ = a.make_cookie()
+        # the session cookie
         st, obj = _req(p, "GET", "/v1/chat-app/conversations",
-                       headers={**PROXIED, "Cookie": f"{auth_mod.COOKIE}={value}"})
+                       headers={**PROXIED, "Cookie": f"tandem_session={SESSION}"})
         assert st == 200 and len(obj["conversations"]) == 1
-        # trusted-local: loopback with no forwarding headers (the box's own scripts)
+        # SEC-28: loopback alone is nobody here (local mode is the gate's, before this)
         st, _ = _req(p, "GET", "/v1/chat-app/conversations")
-        assert st == 200
+        assert st == 401
         # a forged forward header is dropped; the engine adds its own
         st, _ = _req(p, "GET", "/v1/chat-app/conversations",
                      headers={**PROXIED, "X-Tandem-Forward": KEY, "X-Tandem-Signed-In": "1"})
@@ -157,7 +164,7 @@ def test_chatd_down_is_a_json_502():
     sock.bind(("127.0.0.1", 0))
     dead = sock.getsockname()[1]
     sock.close()
-    srv, _ = _engine(auth_mod.Auth(None), dead)
+    srv, _ = _engine(None, dead)
     try:
         st, obj = _req(srv.server_address[1], "GET", "/v1/chat-app/conversations")
         assert st == 502 and obj["error"]["type"] == "chat_unavailable"
@@ -168,7 +175,7 @@ def test_chatd_down_is_a_json_502():
 def test_sse_through_the_forward_is_unbuffered():
     """Each event reaches the client within 100 ms of chatd emitting it."""
     c = Chat()
-    srv, _ = _engine(auth_mod.Auth(None), c.port)
+    srv, _ = _engine(None, c.port)
     try:
         cid = c.new()
         conv = c.svc.conv(cid)
@@ -245,7 +252,7 @@ def _upgrade(port: int) -> tuple[socket.socket, bytes]:
 def test_a_websocket_is_spliced_both_ways_byte_for_byte():
     """chatd's 101 goes back, then 10 MB each way arrive unchanged (an echo upstream)."""
     up, got_head = _echo_upstream()
-    srv, _ = _engine(auth_mod.Auth(None), up.getsockname()[1])
+    srv, _ = _engine(None, up.getsockname()[1])
     try:
         cl, head = _upgrade(srv.server_address[1])
         assert b"X-Tandem-Forward: " + KEY.encode() in got_head["raw"]
@@ -274,7 +281,7 @@ def test_an_idle_websocket_outlives_the_handler_timeout():
     """An open terminal sends nothing while idle and chatd never pings: the splice lifts the
     front server's idle timeout, so the socket is still spliced long after it."""
     up, _ = _echo_upstream()
-    srv, _ = _engine(auth_mod.Auth(None), up.getsockname()[1], idle_timeout=0.3)
+    srv, _ = _engine(None, up.getsockname()[1], idle_timeout=0.3)
     try:
         cl, _ = _upgrade(srv.server_address[1])
         time.sleep(1.2)
@@ -306,7 +313,7 @@ def test_a_client_that_stalls_inside_its_body_gets_a_408_and_the_connection_clos
             pass
         s.close()
     threading.Thread(target=drain, daemon=True).start()
-    srv, _ = _engine(auth_mod.Auth(None), up.getsockname()[1], idle_timeout=0.3)
+    srv, _ = _engine(None, up.getsockname()[1], idle_timeout=0.3)
     errors = []
     srv.handle_error = lambda request, addr: errors.append(addr)
     try:
@@ -344,7 +351,7 @@ def _raw(port: int, head: bytes) -> bytes:
 def test_the_sign_in_body_is_bounded():
     """`POST /session` reads its body before any sign-in: a length past the cap is 413 and is
     never read, a length that is not a number is 400; the login is not called."""
-    srv, seen = _engine(auth_mod.Auth(ADMIN, login=True), 1)
+    srv, seen = _engine(Signed(), 1)
     p = srv.server_address[1]
     try:
         # the bodies are never sent: a refusal answers at once, without waiting for them
@@ -417,7 +424,7 @@ def test_a_browser_that_leaves_while_chatd_holds_the_answer_closes_the_forward()
         except OSError:
             seen[stream] = None
         s.close()
-    srv, _ = _engine(auth_mod.Auth(None), up.getsockname()[1])
+    srv, _ = _engine(None, up.getsockname()[1])
     try:
         for stream in (False, True):
             threading.Thread(target=upstream, args=(stream,), daemon=True).start()

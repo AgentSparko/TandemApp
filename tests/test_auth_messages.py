@@ -9,7 +9,7 @@ the token, and the thinking stash is the token's (a rotation keeps it).
   A model the token may not use             test_a_model_the_token_may_not_use,
                                             test_a_model_the_token_may_not_use_passing_through
   The model list's shape, on and off        test_the_model_list_shape_with_accounts_on,
-                                            test_the_model_list_shape_with_accounts_off
+                                            test_the_model_list_shape_with_keys_of_before
   The stash is the token's                  test_the_stash_is_the_tokens,
                                             test_the_stash_owner_of_a_principal
 
@@ -19,6 +19,7 @@ the token, and the thinking stash is the token's (a rotation keeps it).
 from __future__ import annotations
 
 import hashlib
+import functools
 import json
 import os
 import sys
@@ -32,7 +33,11 @@ import test_auth_exposure as te  # noqa: E402
 import test_auth_tokens as tt  # noqa: E402
 from proxy import stash as stash_mod  # noqa: E402
 from proxy.accounts import Principal  # noqa: E402
-from proxy_util import FIXTURE_KEYS, Proxy, fake, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy as _Proxy, fake, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = tt.ON
 j = tt.j
@@ -254,8 +259,9 @@ def test_the_model_list_shape_with_accounts_on():
     return "x-api-key alone: the Messages list; Bearer, both, the cookie: the OpenAI list"
 
 
-def test_the_model_list_shape_with_accounts_off():
-    """With the switch off nothing is stripped and the headers decide, as before."""
+def test_the_model_list_shape_with_keys_of_before():
+    """SEC-28: the keys of before (TANDEM_API_KEYS, imported as tokens): the header that
+    carried the key decides the shape, as before."""
     srv, port = engine()
     try:
         with Proxy(env={**tt.env_for(port), "TANDEM_API_KEYS": "laptop:key-of-the-laptop-01"}) \
@@ -274,7 +280,7 @@ def test_the_model_list_shape_with_accounts_off():
             is_messages_error(st, hd, out, 401, "authentication_error")
     finally:
         srv.shutdown()
-    return "the headers decide with the switch off"
+    return "the headers decide for the keys of before"
 
 
 # ---------------------------------------------------------------------------- the stash

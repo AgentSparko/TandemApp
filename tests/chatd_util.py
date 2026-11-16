@@ -8,10 +8,10 @@ test_chatd_via_gateway.py sets it) each Chat's engine is a controller in this pr
 engine is that controller's TandemLLM backend on another host: an engine host over SSH whose HTTP
 token the fake wants on every route but /health (engine API 1.9), the loopback rule patched so
 127.0.0.1 counts as that host. chatd never reaches the fake but through the gateway.
-With `GATEWAY.accounts` as well (tests/test_chatd_via_gateway_accounts.py, SRV-869) that controller
-runs with TANDEM_AUTH=accounts, an owner and local mode off, and chatd calls it with its service
-identity svc:chatd, minted as proxy/app.py own_chat mints it: nothing on the same machine is let in
-for being there.
+chatd calls it with its service identity svc:chatd, minted as proxy/app.py own_chat mints it
+(SEC-28: /chat-engine is chatd's alone, never this machine's). With `GATEWAY.accounts` as well
+(tests/test_chatd_via_gateway_accounts.py, SRV-869) that controller also has an owner with a
+password and local mode off: nothing on the same machine is let in for being there.
 
 CPU only, standard library only; nothing here touches a real engine.
 """
@@ -76,19 +76,18 @@ class Gateway:
         env = {"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
                "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{fake_port}/v1"}
         if GATEWAY.accounts:
-            env.update(TANDEM_AUTH="accounts", TANDEM_LOCAL_MODE="off")
+            env.update(TANDEM_LOCAL_MODE="off")
         self.px = Proxy(env=env)
         self.px.__enter__()
-        self.key = None
+        from proxy import app as proxy_app
+        from proxy import tokens as tokens_mod
+        acc = proxy_app.STATE["accounts"]
         if GATEWAY.accounts:
-            from proxy import app as proxy_app
-            from proxy import tokens as tokens_mod
-            acc = proxy_app.STATE["accounts"]
             acc.store.create("own", "owner", "the owner's password here", actor="test")
             acc.local.bind = "127.0.0.1"
             assert not acc.local.on()
-            self.key = acc.tokens.mint_service(tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
-                                               memory_user=tokens_mod.CHATD_LABEL)
+        self.key = acc.tokens.mint_service(tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                                           memory_user=tokens_mod.CHATD_LABEL)
         cfg = self.px.svc.cfg
         t = enginectl.ssh_trust(host="127.0.0.1", user="tandem", key_id="tandemapp-0123456789",
                                 host_key_type="ssh-ed25519", host_key="SHA256:" + "A" * 43)

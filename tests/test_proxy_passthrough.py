@@ -27,7 +27,21 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import FIXTURE_KEYS, Proxy, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy as _Proxy, run  # noqa: E402
+
+
+class Proxy(_Proxy):
+    """SEC-28: the keys of TANDEM_API_KEYS come in as API tokens of the OpenAI API (the import);
+    these tests use them on the Messages API too, as if an admin had given them that scope."""
+
+    def __enter__(self):
+        px = super().__enter__()
+        cfg = self.svc.cfg
+        with cfg._lock:
+            cfg._conn.execute("UPDATE api_tokens SET scopes = ? WHERE source = 'env'",
+                              (json.dumps(["inference:openai", "inference:anthropic"]),))
+            cfg._conn.commit()
+        return px
 
 import fake_anthropic  # noqa: E402
 import fake_backend  # noqa: E402

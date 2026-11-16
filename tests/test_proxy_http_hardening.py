@@ -38,10 +38,18 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 
+from proxy import adminpw  # noqa: E402
 from proxy_util import Proxy  # noqa: E402
 
-ADMIN = "adm-" + "a1b2c3d4" * 6
 CAP = 64 * 1024
+
+
+def _old_form() -> Proxy:
+    """SEC-28: a controller whose old sign-in route (/v1/dashboard/session, kept one release)
+    has a first owner to sign in as: admin.json's password of the release before."""
+    px = Proxy()
+    adminpw.Password(os.path.join(px.dir, "admin.json")).set("the first owner's password")
+    return px
 
 
 def _status_line(s: socket.socket) -> str:
@@ -70,14 +78,14 @@ def _raw_post(port: int, path: str, content_length: str, body: bytes = b"",
 
 
 def test_negative_content_length_is_a_400_not_a_hang():
-    with Proxy(env={"QSE_ADMIN_TOKEN": ADMIN}, login="on") as px:
+    with _old_form() as px:
         for bad in ("-1", "-3"):
             status = _raw_post(px.port, "/v1/dashboard/session", bad)
             assert status.startswith("HTTP/1.1 400"), f"Content-Length: {bad} -> {status}"
 
 
 def test_a_nonnumeric_content_length_is_a_400():
-    with Proxy(env={"QSE_ADMIN_TOKEN": ADMIN}, login="on") as px:
+    with _old_form() as px:
         status = _raw_post(px.port, "/v1/dashboard/session", "not-a-number")
         assert status.startswith("HTTP/1.1 400"), status
 
@@ -87,7 +95,7 @@ def test_an_oversized_content_length_is_a_413_before_the_body_arrives():
     saved = proxy_app.http_body.MAX_BODY_BYTES
     proxy_app.http_body.MAX_BODY_BYTES = CAP
     try:
-        with Proxy(env={"QSE_ADMIN_TOKEN": ADMIN}, login="on") as px:
+        with _old_form() as px:
             # the body promised but never sent: a 413 must not wait for it
             status = _raw_post(px.port, "/v1/dashboard/session", str(CAP + 1))
             assert status.startswith("HTTP/1.1 413"), status
@@ -103,7 +111,7 @@ def test_a_chunked_body_over_the_cap_is_a_413():
     saved = proxy_app.http_body.MAX_BODY_BYTES
     proxy_app.http_body.MAX_BODY_BYTES = CAP
     try:
-        with Proxy(env={"QSE_ADMIN_TOKEN": ADMIN}, login="on") as px:
+        with _old_form() as px:
             s = socket.create_connection(("127.0.0.1", px.port), timeout=5)
             try:
                 head = (b"POST /v1/dashboard/session HTTP/1.1\r\nHost: x\r\n"
@@ -123,7 +131,7 @@ def test_five_wrong_tokens_from_one_client_trip_the_throttle():
     from, so the 6th failure from ONE client is the 429. The old key — believing the
     header always — filed every failure in its own bucket and the 429 never fired; the
     matrix of WHO may send the header is pinned per-rule in the login-key test."""
-    with Proxy(env={"QSE_ADMIN_TOKEN": ADMIN}, login="on") as px:
+    with _old_form() as px:
         statuses = []
         for i in range(8):
             code, _, _ = px.post("/v1/dashboard/session", {"token": "wrong"})
@@ -137,7 +145,7 @@ def test_a_key_flood_does_not_wipe_an_active_ban():
     flood itself unbanned the peer the throttle had just caught."""
     from tandemapp import auth as auth_mod
     t0 = time.time()
-    a = auth_mod.Auth(admin_token=ADMIN, login=True, clock=lambda: t0)
+    a = auth_mod.LoginLimit(clock=lambda: t0)
     a.login_failed("victim")
     a.login_failed("victim")
     a.login_failed("victim")
@@ -156,13 +164,13 @@ def test_the_login_key_follows_the_proxy_trust():
     shares the 127.0.0.1 peer); TANDEM_TRUSTED_PROXY adds a LAN proxy; from any other
     peer X-Real-IP is noise."""
     from tandemapp import auth as auth_mod
-    plain = auth_mod.Auth(admin_token=ADMIN, login=True)
+    plain = auth_mod.LoginLimit()
     hdrs = {"X-Real-IP": "198.51.100.7"}
     assert plain.login_key("203.0.113.9", hdrs) == "203.0.113.9"
     assert plain.login_key("127.0.0.1", hdrs) == "198.51.100.7"     # loopback, no opt-in
     assert plain.login_key("::1", hdrs) == "198.51.100.7"
     assert plain.login_key("::ffff:127.0.0.1", hdrs) == "198.51.100.7"
-    trusted = auth_mod.Auth(admin_token=ADMIN, login=True, trusted_proxies=["192.0.2.2"])
+    trusted = auth_mod.LoginLimit(["192.0.2.2"])
     assert trusted.login_key("192.0.2.2", hdrs) == "198.51.100.7"
     assert trusted.login_key("203.0.113.9", hdrs) == "203.0.113.9"   # not the proxy: noise
     assert trusted.login_key("192.0.2.2", {}) == "192.0.2.2"        # proxy, no header
@@ -191,22 +199,21 @@ def test_trusted_proxy_ranges():
     # X-Real-IP counts from a peer in the range, never from one outside it
     hdrs = {"X-Real-IP": "203.0.113.50"}
     env = {"TANDEM_TRUSTED_PROXY": "192.0.2.0/24,2001:db8:42::/64,bad entry"}
-    for a in (auth_mod.Auth(admin_token=ADMIN, login=True, trusted_proxies="192.0.2.0/24,"
-                                                                            "2001:db8:42::/64"),
-              auth_mod.Auth.from_env(env)):
+    for a in (auth_mod.LoginLimit("192.0.2.0/24,2001:db8:42::/64"),
+              auth_mod.LoginLimit(auth_mod.TrustedProxies.from_env(env))):
         assert a.login_key("192.0.2.17", hdrs) == "203.0.113.50"
         assert a.login_key("2001:db8:42::9", hdrs) == "203.0.113.50"
         assert a.login_key("::ffff:192.0.2.17", hdrs) == "203.0.113.50"
         assert a.login_key("192.0.3.17", hdrs) == "192.0.3.17", "outside the range: the peer"
         assert a.login_key("192.0.2.17", {}) == "192.0.2.17"
-    assert auth_mod.Auth.from_env(env).trusted_proxies.bad == ["bad entry"]
+    assert auth_mod.TrustedProxies.from_env(env).bad == ["bad entry"]
 
 
 def test_the_overflow_sweep_lands_at_ninety_percent():
     """One sweep per 10 % of the table: after a flood the table sits at the low
     mark, not one under the cap, so the next thousand logins sweep nothing."""
     from tandemapp import auth as auth_mod
-    a = auth_mod.Auth(admin_token=ADMIN, login=True, clock=lambda: 0.0)
+    a = auth_mod.LoginLimit(clock=lambda: 0.0)
     for i in range(auth_mod.LOGIN_MAX_KEYS + 1):
         a.login_failed(f"203.0.113.{i}")
     mark = auth_mod.LOGIN_MAX_KEYS - auth_mod.LOGIN_MAX_KEYS // 10

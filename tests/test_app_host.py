@@ -96,7 +96,9 @@ def _http(url: str, method: str, path: str, body=None, token=None, timeout=30.0,
     host, port = u.split(":")
     c = http.client.HTTPConnection(host, int(port), timeout=timeout)
     h = {"Content-Type": "application/json", **(headers or {})}
-    if token:
+    if isinstance(token, dict):
+        h.update(token)                     # SEC-28: a signed-in session's headers
+    elif token:
         h["Authorization"] = f"Bearer {token}"
     c.request(method, path, None if body is None else json.dumps(body).encode(), h)
     r = c.getresponse()
@@ -165,6 +167,24 @@ class Ctl:
 
     def send(self, method, path, body=None, token=None, headers=None):
         return _http(self.url, method, path, body, token, headers=headers)
+
+    def owner(self, code: str, name: str = "own",
+              password: str = "the owner password of the test") -> dict:
+        """SEC-28: the first owner, made with the setup code `code` (an admin token of before
+        counts once as one), signed in: its session's headers (the cookie and the CSRF token a
+        write needs)."""
+        u = self.url.split("://", 1)[1]
+        host, port = u.split(":")
+        c = http.client.HTTPConnection(host, int(port), timeout=30)
+        c.request("POST", "/v1/auth/setup", json.dumps({"code": code, "username": name,
+                                                        "password": password}).encode(),
+                  {"Content-Type": "application/json"})
+        r = c.getresponse()
+        raw = r.read()
+        c.close()
+        assert r.status == 201, (r.status, raw[:300])
+        return {"Cookie": r.getheader("Set-Cookie").split(";", 1)[0],
+                "X-Tandem-CSRF": json.loads(raw)["csrf"]}
 
     def files(self) -> list[str]:
         out = []
@@ -423,10 +443,20 @@ def _job_done(ctl: Ctl, token: str, jid: str):
     return j if j and j["id"] == jid and j["state"] != "running" else None
 
 
+def _token(ctl: Ctl, who: dict, label: str, scopes: list) -> str:
+    st, doc = ctl.send("POST", "/v1/auth/tokens", {"label": label, "scopes": scopes}, token=who)
+    assert st == 201, (st, doc)
+    return doc["token"]
+
+
 def test_take_and_take_back():
+    """SEC-28: each controller's first owner comes from its admin token of before (the setup
+    code, once); a take carries a trust token made on the giver. The API tokens stay with the
+    controller that made them (a move carries no account or token): clients get new ones."""
     import test_node_trust as tnt
     srv, port = fake_backend.start(models=["fake-remote"], key=KEY)
-    # the engine's own users (TANDEM_API_USERS_FROM): a file on A's host only
+    # the engine's own users (TANDEM_API_USERS_FROM): a file on A's host only, imported at A's
+    # first start as tokens with the same keys
     ed = tempfile.mkdtemp(prefix="apphost-engine-db-")
     eng_db = _cfg(ed)
     _, eng_key = eng_db.create_user({"label": "phone"})
@@ -438,19 +468,18 @@ def test_take_and_take_back():
     try:
         a.start()
         b.start()
+        wa, wb = a.owner(ADMIN_A), b.owner(ADMIN_B)
         st, made = a.send("POST", "/v1/config/backends", {
             "id": "eng", "kind": "generic", "url": f"http://127.0.0.1:{port}/v1", "key": KEY},
-            token=ADMIN_A)
+            token=wa)
         assert st in (200, 201), made
-        st, user = a.send("POST", "/v1/config/users", {"label": "laptop"}, token=ADMIN_A)
-        assert st in (200, 201) and user.get("key"), user
-        own_key = user["key"]
+        own_key = _token(a, wa, "laptop", ["inference:openai"])
         w = node.window()
         st, n = a.send("POST", "/v1/fleet/pair", {"address": "127.0.0.1", "code": w["code"],
-                                                  "port": w["port"]}, token=ADMIN_A)
+                                                  "port": w["port"]}, token=wa)
         assert st == 200, n
         nid = n["id"]
-        assert _until(lambda: _node_up(a, ADMIN_A, [nid]), 30)
+        assert _until(lambda: _node_up(a, wa, [nid]), 30)
 
         def chat(ctl, key):
             return ctl.send("POST", "/v1/chat/completions", {
@@ -458,31 +487,38 @@ def test_take_and_take_back():
                 token=key, headers=FAR)
         assert _until(lambda: chat(a, own_key)[0] == 200, 30), chat(a, own_key)
         assert chat(a, eng_key)[0] == 200
-        # B takes the fleet from A
-        st, job = b.send("POST", "/v1/fleet/controller/take", {"url": a.url, "password": ADMIN_A},
-                         token=ADMIN_B)
+        # B takes the fleet from A, with a trust token made on A
+        st, job = b.send("POST", "/v1/fleet/controller/take",
+                         {"url": a.url, "token": _token(a, wa, "move-to-b", ["trust"])},
+                         token=wb)
         assert st == 200 and job["direction"] == "pull", job
-        j = _until(lambda: _job_done(b, ADMIN_B, job["id"]), 90)
+        j = _until(lambda: _job_done(b, wb, job["id"]), 90)
         assert j and j["state"] == "done", (j, b.tail())
-        assert _until(lambda: _node_up(b, ADMIN_B, [nid]), 30), b.get("/v1/fleet/nodes", ADMIN_B)
-        assert _until(lambda: chat(b, own_key)[0] == 200, 30), chat(b, own_key)
-        assert chat(b, eng_key)[0] == 200, "the engine's users came along"
-        assert chat(b, "tdm-not-a-key-0123456789abcdef")[0] == 401
-        st, bk = b.get("/v1/config/backends/eng", token=ADMIN_B)
+        assert _until(lambda: _node_up(b, wb, [nid]), 30), b.get("/v1/fleet/nodes", wb)
+        # the tokens stayed on A: a new one made on B answers there
+        assert chat(b, own_key)[0] == 401
+        b_key = _token(b, wb, "laptop", ["inference:openai"])
+        # B never had keys: its API is this machine's until an owner opens it
+        assert chat(b, b_key)[0] == 403
+        mine = {"model": "fake-remote", "messages": [{"role": "user", "content": "hi"}]}
+        assert _until(lambda: b.send("POST", "/v1/chat/completions", mine,
+                                     token=b_key)[0] == 200, 30)
+        st, bk = b.get("/v1/config/backends/eng", token=wb)
         assert st == 200 and bk["key"]["key_set"] and bk["url"].startswith("http://127.0.0.1:"), bk
-        st, va = a.get("/v1/fleet/controller", token=ADMIN_A)
+        st, va = a.get("/v1/fleet/controller", token=wa)
         assert va["moved_to"]["api_url"] == b.url, va
-        assert nid not in [x["id"] for x in a.get("/v1/fleet/nodes", token=ADMIN_A)[1]["nodes"]]
+        assert nid not in [x["id"] for x in a.get("/v1/fleet/nodes", token=wa)[1]["nodes"]]
         # A takes it back the same way: its old moved_to goes
-        st, job = a.send("POST", "/v1/fleet/controller/take", {"url": b.url, "password": ADMIN_B},
-                         token=ADMIN_A)
+        st, job = a.send("POST", "/v1/fleet/controller/take",
+                         {"url": b.url, "token": _token(b, wb, "move-to-a", ["trust"])},
+                         token=wa)
         assert st == 200, job
-        j = _until(lambda: _job_done(a, ADMIN_A, job["id"]), 90)
+        j = _until(lambda: _job_done(a, wa, job["id"]), 90)
         assert j and j["state"] == "done", (j, a.tail())
-        assert _until(lambda: _node_up(a, ADMIN_A, [nid]), 30)
-        st, va = a.get("/v1/fleet/controller", token=ADMIN_A)
+        assert _until(lambda: _node_up(a, wa, [nid]), 30)
+        st, va = a.get("/v1/fleet/controller", token=wa)
         assert va["moved_to"] is None, va
-        assert b.get("/v1/fleet/controller", token=ADMIN_B)[1]["moved_to"]["api_url"] == a.url
+        assert b.get("/v1/fleet/controller", token=wb)[1]["moved_to"]["api_url"] == a.url
         assert chat(a, own_key)[0] == 200 and chat(a, eng_key)[0] == 200
         a.stop()
         b.stop()
@@ -500,7 +536,7 @@ def test_take_and_take_back():
         b.stop()
         node.close()
         srv.shutdown()
-    return "B took A's fleet in another HOME, A took it back; keys sealed, users kept"
+    return "B took A's fleet with a trust token, A took it back; keys sealed, tokens stay"
 
 
 # ---------------------------------------------------------------------------- 5 own chatd
@@ -535,9 +571,10 @@ def test_controller_owned_chatd():
                 f"export QSE_CHAT_RETRY_S='30'\n")
     try:
         c.start()
+        who = c.owner(ADMIN_A)              # SEC-28: the admin token of before, once
         v = _until(lambda: (lambda d: d if d.get("state") == "running" and d.get("answers")
-                            else None)(c.get("/v1/fleet/chat", ADMIN_A)[1]), 40)
-        assert v, (c.get("/v1/fleet/chat", ADMIN_A), c.tail())
+                            else None)(c.get("/v1/fleet/chat", who)[1]), 40)
+        assert v, (c.get("/v1/fleet/chat", who), c.tail())
         # SRV-843: chatd's engine is the gateway as a whole engine API; no engine here
         assert v["owner"] == "controller" and v["engine"] == c.url + "/chat-engine", v
         assert v["host"] == "app", v
@@ -547,8 +584,8 @@ def test_controller_owned_chatd():
         # the forward reaches this chatd with its own key; chatd lists the remote engine's
         # models through this controller's gateway
         caps = _until(lambda: (lambda r: r[1] if r[0] == 200 and "fake-remote" in json.dumps(
-            r[1]) else None)(c.get("/v1/chat-app/capabilities", ADMIN_A)), 30)
-        assert caps, c.get("/v1/chat-app/capabilities", ADMIN_A)
+            r[1]) else None)(c.get("/v1/chat-app/capabilities", who)), 30)
+        assert caps, c.get("/v1/chat-app/capabilities", who)
         assert os.path.isfile(os.path.join(data, "forward.key"))
         env = _environ(pid)
         if env is not None:
@@ -559,28 +596,28 @@ def test_controller_owned_chatd():
                       "TANDEM_CHAT", "QSE_TEST"):
                 assert k not in env, k
         # stop: the chat answers 502; the watcher holds it; start again
-        st, job = c.send("POST", "/v1/fleet/chat/stop", token=ADMIN_A)
+        st, job = c.send("POST", "/v1/fleet/chat/stop", token=who)
         assert st == 200 and job["action"] == "stop", job
         v = _until(lambda: (lambda d: d if (d.get("job") or {}).get("state") == "done" else None)(
-            c.get("/v1/fleet/chat", ADMIN_A)[1]), 40)
+            c.get("/v1/fleet/chat", who)[1]), 40)
         assert v and v["state"] == "stopped" and v["watch"]["stopped_by_hand"], v
-        assert c.get("/v1/chat-app/capabilities", ADMIN_A)[0] == 502
-        st, job = c.send("POST", "/v1/fleet/chat/start", token=ADMIN_A)
+        assert c.get("/v1/chat-app/capabilities", who)[0] == 502
+        st, job = c.send("POST", "/v1/fleet/chat/start", token=who)
         assert st == 200, job
         v = _until(lambda: (lambda d: d if (d.get("job") or {}).get("state") == "done" else None)(
-            c.get("/v1/fleet/chat", ADMIN_A)[1]), 40)
+            c.get("/v1/fleet/chat", who)[1]), 40)
         assert v and v["state"] == "running" and not v["watch"]["stopped_by_hand"], v
         pid = v["pid"]
-        assert c.send("POST", "/v1/fleet/chat/jump", token=ADMIN_A)[0] == 404
+        assert c.send("POST", "/v1/fleet/chat/jump", token=who)[0] == 404
         # a controller restart leaves chatd running; the new one adopts it
         c.stop()
         assert appchat.is_chatd(pid), "the controller's stop ended chatd"
         c.start()
         v = _until(lambda: (lambda d: d if d.get("state") == "running" else None)(
-            c.get("/v1/fleet/chat", ADMIN_A)[1]), 30)
+            c.get("/v1/fleet/chat", who)[1]), 30)
         assert v and v["pid"] == pid, (v, pid)
-        assert c.get("/v1/chat-app/capabilities", ADMIN_A)[0] == 200
-        st, job = c.send("POST", "/v1/fleet/chat/stop", token=ADMIN_A)
+        assert c.get("/v1/chat-app/capabilities", who)[0] == 200
+        st, job = c.send("POST", "/v1/fleet/chat/stop", token=who)
         assert _until(lambda: not appchat.is_chatd(pid), 40)
         c.stop()
         assert "Traceback" not in c.tail(1000), c.tail()

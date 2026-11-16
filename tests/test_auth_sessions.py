@@ -48,6 +48,7 @@
 from __future__ import annotations
 
 import hashlib
+import functools
 import json
 import os
 import socket
@@ -62,7 +63,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from proxy import accounts as acc_mod  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 PW = {"own": "the first long password", "adm": "an admin's long password",

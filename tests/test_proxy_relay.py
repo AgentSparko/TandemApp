@@ -21,7 +21,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import FIXTURE_KEYS, Proxy, fake, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy, api_key, fake, run  # noqa: E402
 
 from tools import contract_check  # noqa: E402
 
@@ -137,7 +137,7 @@ def test_the_first_frame_is_not_held_and_64_clients_connect_at_once():
             try:
                 s = socket.create_connection(("127.0.0.1", px.port), timeout=10)
                 req = json.dumps(_chat("hi", stream=True)).encode()
-                s.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n"
+                s.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\n"
                           b"Content-Type: application/json\r\nConnection: close\r\n"
                           + f"Content-Length: {len(req)}\r\n\r\n".encode() + req)
                 data = b""
@@ -275,7 +275,7 @@ def test_client_leaves_and_upstream_closes_within_a_second():
         px.sync()
         s = socket.create_connection(("127.0.0.1", px.port))
         body = json.dumps(_chat("go FAKE_LONG 400", stream=True)).encode()
-        s.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: "
+        s.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: "
                   b"application/json\r\nContent-Length: " + str(len(body)).encode() +
                   b"\r\n\r\n" + body)
         s.recv(4096)
@@ -344,27 +344,26 @@ def test_models_real_ids_collision_rules_and_404():
 
 
 def test_users_keys_401_and_label_in_the_row():
+    """SEC-28: a client's key is an API token. This machine with no password is local mode and
+    needs none; through a reverse proxy (X-Forwarded-For) a request needs one, and the row
+    names its account."""
     srv, port = fake(models=["fake-a"])
     with Proxy(_env(("f1", port))) as px:
         px.sync()
-        st, _, body = px.request("POST", "/v1/config/users", {"label": "laptop"})
-        key = json.loads(body)["key"]
-        # the test client is on loopback without proxy headers: trusted-local, so it needs no key;
-        # through a reverse proxy (X-Forwarded-For) it does
+        key = api_key(px, "laptop", network=True)
+        assert px.post("/v1/chat/completions", _chat("x"))[0] == 200          # local mode
         fwd = {"X-Forwarded-For": "192.0.2.7"}
         st, _, _ = px.post("/v1/chat/completions", _chat("x"), headers=fwd)
         assert st == 401
         st, _, _ = px.post("/v1/chat/completions", _chat("x"),
                            headers=dict(fwd, Authorization=f"Bearer {key}"))
         assert st == 200
-        # by status, not by position: under the box suite's 4-way load the 401's row was written
-        # after the 200's (2026-10-05, L2)
         rows = px.rows()
-        r = [x for x in rows if x["status"] == 200][-1]
+        r = [x for x in rows if x["status"] == 200 and x["user"]][-1]
         assert r["user"] == "laptop" and r["client_id"].startswith("k:"), r
-        assert [x["status"] for x in rows].count(401) == 1, rows
-        users = json.loads(px.get("/v1/config/users")[2])["users"]
-        assert key not in json.dumps(users)
+        for f in px.files():
+            with open(f, "rb") as fh:
+                assert key.encode() not in fh.read(), f
     srv.shutdown()
 
 

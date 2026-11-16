@@ -58,7 +58,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import test_fleet as tf  # noqa: E402
 from proxy import discovery, mdns, nodetrust  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 
 ME = "192.0.2.10"
 LAN = [{"name": "lan0", "address": ME, "subnet": "192.0.2.0/24"}]
@@ -410,9 +410,11 @@ def test_scan_asks_first():
 
 def test_consent_is_a_write():
     lan_ip = {"X-Real-IP": "192.0.2.77"}
-    bearer = {"Authorization": f"Bearer {tf.ADMIN}"}
-    for login in ("on", "off"):
-        with Proxy(env={"TANDEM_ADMIN_TOKEN": tf.ADMIN}, login=login) as px:
+    for login in ("viewer", "owner"):
+        # SEC-28: a scan is a write: another device without a sign-in reads nothing, a viewer
+        # reads but never scans, an owner scans
+        with Proxy() as px:
+            bearer = owner(px, login, login)
             f = tf.fleet_on(px, tf.local_node(tf.fake_root()))
             mono = Mono()
             hosts = Hosts(mono, {"192.0.2.70": NAS})
@@ -424,6 +426,11 @@ def test_consent_is_a_write():
             assert st == 401 and hosts.calls == [], login
             st, snap = tf.get(px, "/v1/fleet/discovery", {**lan_ip, **bearer})
             assert st == 200 and ok(snap, "discovery")["scan"]["state"] == "ask"
+            if login == "viewer":
+                st, _ = tf.send(px, "POST", "/v1/fleet/discovery/scan",
+                                {"subnet": "192.0.2.0/24"}, {**lan_ip, **bearer})
+                assert st == 403 and hosts.calls == [], st
+                continue
             st, snap = tf.send(px, "POST", "/v1/fleet/discovery/scan",
                                {"subnet": "192.0.2.0/24"}, {**lan_ip, **bearer})
             assert st == 200 and len(hosts.calls) == 254, (st, snap)

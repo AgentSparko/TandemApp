@@ -66,9 +66,8 @@ import fake_tandem_remote as ftr  # noqa: E402
 import test_fleet as tf  # noqa: E402
 from onboard_rig import Rig, ok, pem_lines, rig  # noqa: E402
 from proxy import enginecodes, fleethealth, hostkeys  # noqa: E402
-from proxy_util import Proxy  # noqa: E402
+from proxy_util import Proxy, owner  # noqa: E402
 
-ADMIN = "health-admin-token-0123456789abcdef0123"
 LAN = {"X-Real-IP": "192.0.2.77"}
 
 
@@ -95,7 +94,9 @@ def req(r, method: str, path: str, body=None, headers=None) -> tuple[int, dict]:
     st, _, out = r.px.request(method, path, body, headers=headers)
     r.texts.append(out.decode("utf-8", "replace"))
     doc = json.loads(out)
-    if st != 200 and st != 401:
+    # the sign-in's refusals (401, and SEC-28's 403 permission_denied) are the gate's, not the
+    # engine routes' error body
+    if st != 200 and st != 401 and (doc.get("error") or {}).get("code") != "permission_denied":
         ok(doc, "engine-error.schema.json")
     return st, doc
 
@@ -831,41 +832,42 @@ def test_cache_and_limits(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------- 6 the rights
 
 def test_auth_rules(tmp_path, monkeypatch):
-    for admin in (None, ADMIN):
-        env = {"TANDEM_ADMIN_TOKEN": admin} if admin else {}
-        with Proxy(env=env) as px:
+    """SEC-28: another device needs a sign-in; a viewer reads and retries (a read); Start (the
+    Setup Guide's) and Rotate (pairing's) need an owner; local mode is this machine's owner."""
+    for who in ("viewer", "owner", None):
+        with Proxy() as px:
             f = tf.fleet_on(px, tf.local_node(tf.fake_root()))
-            r = Rig(px, f, str(tmp_path / ("a" if admin else "n")), monkeypatch)
+            r = Rig(px, f, str(tmp_path / (who or "local")), monkeypatch)
             try:
                 hid, clk = _setup(r)
-                bearer = {"Authorization": f"Bearer {admin}"} if admin else {}
-                st, _ = req(r, "GET", f"/v1/fleet/health/{hid}", headers=LAN)
-                assert st == 200, "a read follows the reads' rule (the login is off)"
+                h = owner(px, who, who) if who else {}
+                if who:
+                    assert req(r, "GET", f"/v1/fleet/health/{hid}", headers=LAN)[0] == 401
+                st, _ = req(r, "GET", f"/v1/fleet/health/{hid}", headers=h)
+                assert st == 200, "a read follows the reads' rule"
                 st, _ = req(r, "POST", f"/v1/fleet/health/{hid}/fix", {"action": "retry"},
-                            headers=LAN)
+                            headers=h)
                 assert st == 200, "retry is a read"
                 ftr.set_state(r.engine_dir, engine="down")
                 clk.tick()
                 st, d = req(r, "POST", f"/v1/fleet/health/{hid}/fix", {"action": "start"},
-                            headers=LAN)
-                if admin:
-                    assert st == 401, d
-                    st, d = req(r, "POST", f"/v1/fleet/health/{hid}/fix", {"action": "start"},
-                                headers={**LAN, **bearer})
+                            headers=h)
+                if who == "viewer":
+                    assert st == 403, d
+                    st, d = req(r, "POST", f"/v1/fleet/health/{hid}/fix",
+                                {"action": "rotate_token"}, headers=h)
+                    assert st == 403, ("Rotate is pairing's", d)
+                    continue
                 assert st == 200 and d["cleared"], d
                 r.engine.tokens.clear()
                 r.engine.tokens.add(ftr.state(r.engine_dir)["token"])
                 clk.tick()
                 st, d = req(r, "POST", f"/v1/fleet/health/{hid}/fix", {"action": "rotate_token"},
-                            headers=LAN)
-                assert st == 401, ("Rotate is pairing's: from this machine or with the password",
-                                   d)
-                st, d = req(r, "POST", f"/v1/fleet/health/{hid}/fix", {"action": "rotate_token"},
-                            headers={**LAN, **bearer} if admin else None)
+                            headers=h)
                 assert st == 200 and d["cleared"], d
             finally:
                 r.close()
-    return "reads and retry open as reads; Start the Setup Guide's; Rotate pairing's"
+    return "reads and retry open to a viewer; Start the Setup Guide's; Rotate pairing's"
 
 
 # ---------------------------------------------------------------------------- 7 no secret

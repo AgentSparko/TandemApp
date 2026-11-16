@@ -40,11 +40,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy, owner, run  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import fleet as fleet_mod  # noqa: E402
 from proxy import fleetstore, fleetwatch, nodetrust  # noqa: E402
-from test_fleet import (ADMIN, Clock, Engine, FakeBuf, HOSTNAME, T0, engine_env,  # noqa: E402
+from test_fleet import (Clock, Engine, FakeBuf, HOSTNAME, T0, engine_env,  # noqa: E402
                         fake_root, fleet_on, get, host, local_node, ok, send)
 
 DAY = 86400
@@ -591,18 +591,18 @@ def test_rule_edits_and_auth():
                  store=store_at(d, clock))
         again = {r["id"]: r for r in get(px, "/v1/fleet/rules")[1]["rules"]}
         assert again["gpu-temp"] == r and again["disk-free"]["enabled"] is False
+    # SEC-28: another device needs a sign-in to read or change them; an admin changes them
     lan = {"X-Real-IP": "192.0.2.77"}
-    bearer = {"Authorization": f"Bearer {ADMIN}"}
-    for login in ("on", "off"):
-        with Proxy(env={"TANDEM_ADMIN_TOKEN": ADMIN}, login=login) as px:
-            fleet_on(px, local_node(fake_root()))
-            body = {"enabled": False}
-            st, err = send(px, "PATCH", "/v1/fleet/rules/throttle", body, lan)
-            assert st == 401 and ok(err, "error"), login
-            assert send(px, "PATCH", "/v1/fleet/rules/throttle", body, {**lan, **bearer})[0] \
-                == 200
-            assert get(px, "/v1/fleet/rules", lan)[0] == (401 if login == "on" else 200)
-            assert send(px, "POST", "/v1/fleet/alerts/x/ack", None, lan)[0] == 401
+    with Proxy() as px:
+        fleet_on(px, local_node(fake_root()))
+        adm = owner(px)
+        body = {"enabled": False}
+        st, err = send(px, "PATCH", "/v1/fleet/rules/throttle", body, lan)
+        assert st == 401 and ok(err, "error")
+        assert send(px, "PATCH", "/v1/fleet/rules/throttle", body, {**lan, **adm})[0] == 200
+        assert get(px, "/v1/fleet/rules", lan)[0] == 401
+        assert get(px, "/v1/fleet/rules", adm)[0] == 200
+        assert send(px, "POST", "/v1/fleet/alerts/x/ack", None, lan)[0] == 401
     with Proxy() as px:                                    # no password: open, as /v1/config
         fleet_on(px, local_node(fake_root()))
         assert send(px, "PATCH", "/v1/fleet/rules/throttle", {"enabled": False}, lan)[0] == 200

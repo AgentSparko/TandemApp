@@ -34,6 +34,7 @@ from __future__ import annotations
 import ast
 import glob
 import hashlib
+import functools
 import json
 import os
 import sqlite3
@@ -48,7 +49,11 @@ from proxy import accounts as acc_mod  # noqa: E402
 from proxy import adminpw, authz  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import identity as identity_mod  # noqa: E402
-from proxy_util import Proxy, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, run  # noqa: E402
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 ON = {"TANDEM_AUTH": "accounts"}
 PW = {"own": "the first long password", "adm": "an admin's long password",
@@ -517,10 +522,9 @@ def test_provider_and_legacy():
         assert px.post("/v1/fleet/session", {"token": token})[0] == 404
         assert px.post("/v1/dashboard/session", {"token": "a legacy password here"})[0] == 404
         assert px.request("PUT", "/v1/fleet/app/password", {"password": "x" * 20})[0] == 401
-        from tandemapp import auth as auth_mod
-        legacy = auth_mod.Auth(token)
-        value, _ = legacy.make_cookie()
-        assert px.get("/v1/settings", {"Cookie": f"{auth_mod.COOKIE}={value}"})[0] == 401
+        import int5_schema
+        value = int5_schema.cookie_like_int5(px.dir, token)       # the release before's cookie
+        assert px.get("/v1/settings", {"Cookie": f"qse_dash={value}"})[0] == 401
         assert j(px.get("/v1/fleet/session"))[1]["authenticated"] is False
         assert px.get("/v1/dashboard/session")[0] == 401
         assert "auth: accounts" in accounts().describe()

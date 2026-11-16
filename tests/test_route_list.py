@@ -147,6 +147,10 @@ def test_the_controller_answers_what_the_list_says():
         for r in rows:
             if r.get("needs") == "conductor":
                 st, text = ask_on(px, r["probe"])
+                # SEC-28: a session address the controller never gave is no credential: the
+                # sign-in gate's 401 comes before the conductor's 404
+                if r["prefix"] == "/s" and st == 401 and "sign_in_required" in text:
+                    continue
                 assert st == 404, (r["prefix"], "answered with the conductor off", st, text[:200])
     with Proxy({}, conductor=True) as px:
         def ask(probe: str) -> tuple[int, str]:
