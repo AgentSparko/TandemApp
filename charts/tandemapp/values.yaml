@@ -201,9 +201,10 @@ ingress:
   # TLS secrets for the host (empty: plain HTTP, e.g. behind a front that ends TLS)
   tls: []
   # paths routed to a Service with no endpoints (503): chatd's engine gateway is for chatd inside
-  # the pod only
+  # the pod only, a plugin's backend for the controller's own relay
   blockedPaths:
     - /chat-engine
+    - /plugin-backends
 
 # -- who may reach the controller's port. Off: anyone in the cluster.
 networkPolicy:

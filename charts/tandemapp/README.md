@@ -65,7 +65,7 @@ you name with `auth.existingSecret`. Values files never hold a token.
 | `mcpBridge.enabled`, `.name`, `.port`, `.path`, `.command`, `.env`, `.resources` | off, `tools`, 8031, `/mcp` | a stdio MCP server as HTTP on the pod's loopback (below) |
 | `trust.extraCA`, `.existingConfigMap`, `.configMapKey` | empty | more CA certificates for every container |
 | `service.*` | ClusterIP, 80 | the Service |
-| `ingress.enabled`, `.className`, `.host`, `.annotations`, `.tls`, `.blockedPaths` | off; streaming annotations; `/chat-engine` blocked | the Ingress |
+| `ingress.enabled`, `.className`, `.host`, `.annotations`, `.tls`, `.blockedPaths` | off; streaming annotations; `/chat-engine` and `/plugin-backends` blocked | the Ingress |
 | `networkPolicy.enabled`, `.ingressNamespaces`, `.extraFrom` | off | who may reach the controller's port |
 | `serviceAccount.*`, `podSecurityContext`, `securityContext` | uid 10001, read-only root, no capabilities | the pod's identity and lockdown |
 | `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity`, `terminationGracePeriodSeconds` | | scheduling |
@@ -157,5 +157,6 @@ and this does not: a bridge that hangs while its port stays open. Check it with 
 ## Network
 
 The Ingress routes everything to the controller except `ingress.blockedPaths` (`/chat-engine`,
-chatd's engine gateway), which go to a Service with no endpoints. `networkPolicy.enabled` limits
+chatd's engine gateway, and `/plugin-backends`, a plugin's backend for the controller's own relay),
+which go to a Service with no endpoints. `networkPolicy.enabled` limits
 the controller's port to the ingress controller's namespace and this release's pods.
