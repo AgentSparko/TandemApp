@@ -10,8 +10,11 @@ Backends in this release:
 | `generic` | vLLM, SGLang, llama.cpp, LM Studio, Ollama, any OpenAI-compatible server | chat, completions, embeddings, Responses |
 | `openai` | OpenAI's API with your key | chat, completions, embeddings, Responses |
 | `deepseek` | DeepSeek's API with your key | chat, completions |
+| `anthropic` | any Anthropic-compatible (Messages API) server, by base URL, with your key | chat, translated |
 
 The proxy only observes in this release. It never changes a request's meaning: it sets the model id the backend knows, and it asks a stream for its usage frame when the client did not (then it drops that frame before the client). The conductor's features (task class, effort, packages, the loop and tool checks) come to foreign backends in a later release. Their switches are already stored per model.
+
+A backend of kind `anthropic` (SRV-877) is the one kind whose bytes are not copied: an OpenAI chat completion is translated to a Messages request (`<base>/v1/messages`, the base URL with or without `/v1`) and the answer, its stream and its errors back to OpenAI's shape, before the ledger, the hooks and the client read them. The key goes as `x-api-key` (or a bearer, `anthropic.auth`) with `anthropic-version` (`anthropic.api_version`, 2023-06-01 by default); none of the client's headers goes on. What has no equal is refused with a 400 that names the field (`n` above 1, `response_format` `json_object`, audio and file parts, tools other than functions, tool arguments that are not JSON). `temperature`, `top_p` and `top_k` are dropped unless `anthropic.sampling` is `pass`; `presence_penalty`, `frequency_penalty`, `logit_bias`, `seed`, `logprobs`, `top_logprobs` and `user` are dropped too, and the answer's `X-Tandem-Dropped` header names each one the client sent. `max_tokens` is the client's, else `anthropic.default_max_tokens` (16,000; 64,000 for a stream; capped by the model's limit). `reasoning_effort` asks for thinking (`anthropic.thinking_shape`: `adaptive` with `output_config.effort`, `budget`, or `off`); thinking text comes back as `reasoning_content`, without its signature. With `anthropic.auto_cache` on (the default) a request carries one top-level cache breakpoint. A 529 is tried again like a 429 or 503, and reaches an OpenAI client as 503. Not passed on: redacted thinking, server-tool blocks, citations, the stop string that matched, and stream events the translation does not know. The model list is read page by page (`after_id`). Variables: `TANDEM_BACKEND_<ID>_ANTHROPIC_AUTH`, `_ANTHROPIC_API_VERSION`, `_ANTHROPIC_SAMPLING`, `_ANTHROPIC_DEFAULT_MAX_TOKENS`, `_ANTHROPIC_AUTO_CACHE`, `_ANTHROPIC_THINKING_DISPLAY`, `_ANTHROPIC_THINKING_SHAPE`.
 
 ## Running it
 
@@ -581,7 +584,8 @@ Measured or null, never estimated:
 | figure | from |
 |-|-|
 | prompt, completion tokens | the backend's `usage`; null when it sends none |
-| cached prompt tokens | `prompt_tokens_details.cached_tokens` (OpenAI; vLLM with `--enable-prompt-tokens-details`; SGLang with `--enable-cache-report`), `prompt_cache_hit_tokens` (DeepSeek), `input_tokens_details.cached_tokens` (Responses) |
+| cached prompt tokens | `prompt_tokens_details.cached_tokens` (OpenAI; vLLM with `--enable-prompt-tokens-details`; SGLang with `--enable-cache-report`), `prompt_cache_hit_tokens` (DeepSeek), `input_tokens_details.cached_tokens` (Responses), `cache_read_input_tokens` (Anthropic-compatible) |
+| cache write tokens | `cache_creation_input_tokens` (Anthropic-compatible); counted in the prompt tokens and paid once, at the model's cache write price (its input price without one) |
 | reasoning tokens | `completion_tokens_details.reasoning_tokens` (vLLM with `--reasoning-parser`), SGLang's `reasoning_tokens`; a reported 0 beside streamed reasoning is null |
 | TTFT | arrival at the proxy to the first frame with a token; the network and the backend's queue are inside it |
 | decode tok/s | (completion tokens - 1) / (last token frame - first token frame); null without `usage`, because a frame is not a token |
