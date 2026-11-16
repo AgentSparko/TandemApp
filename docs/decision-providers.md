@@ -31,6 +31,9 @@ Two conductors exist, and a provider serves one of them:
 | `builtin` | the conductor's own decider (its `decider` role's endpoint; `tester` for the judge) at a model per question | models per question |
 | `systemone-http` | any service that speaks the systemone wire below | endpoint, API key, model and timeout, each also per question |
 | `hook` | a `decision.ask` hook of [hooks](hooks.md): an adapter you write for any other API shape | the hook's id |
+| `plugin` | a running plugin's provider ([plugins](plugins.md#decision-providers)): `decision/ask` over its stdio | `target`: `<plugin>/<provider>` |
+
+A running plugin's providers are also there on their own, in `shadow`, as `<plugin>/<provider>`: asked off the request's path and journaled, never used. A provider of kind `plugin` naming the same target takes its place, with your mode.
 
 ## The systemone wire
 

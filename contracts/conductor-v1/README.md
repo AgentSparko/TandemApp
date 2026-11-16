@@ -55,7 +55,7 @@ TandemApp's controller lets another decision model answer its conductor's questi
 | `decision-provider-report.schema.json` | `GET .../report?hours=&provider=`: per provider, question and bucket (on, shadow, ab_a, ab_b) |
 | `decision-provider-calls.schema.json` | `GET .../{id}/calls?limit=` |
 
-The wire a `systemone-http` provider answers is `systemone.schema.json` (`POST /v1/systemone`), with `GET /readyz` and `GET /v1/models` (`limits`) beside it; a `hook` provider is a `decision.ask` hook (`../hooks-v1/events/decision.ask.schema.json`).
+The wire a `systemone-http` provider answers is `systemone.schema.json` (`POST /v1/systemone`), with `GET /readyz` and `GET /v1/models` (`limits`) beside it; a `hook` provider is a `decision.ask` hook (`../hooks-v1/events/decision.ask.schema.json`); a `plugin` provider (`target`: `<plugin>/<provider>`) is a running plugin's `decision/ask` (`../plugin-v1`, docs/plugins.md).
 
 ## The engine-only screens
 

@@ -14,7 +14,7 @@
 | [packages.md](packages.md) | the packages the conductor attaches by class: their shape, the first packages, how each is measured |
 | [memory.md](memory.md) | memory notes: what the model keeps about the user and the work |
 | [hooks.md](hooks.md) | hooks: your code at each stage of a request (before routing, before the engine, on the answer, on an error), their order and limits, payload levels, signed webhooks in Python and Node, shadow mode |
-| [plugins.md](plugins.md) | plugins: write one (a folder with plugin.json and an MCP server), the manifest, the checks an install makes, capabilities, install from a folder, a wheel or a git commit, enable, upgrade, remove |
+| [plugins.md](plugins.md) | plugins: write one (a folder with plugin.json and an MCP server), the manifest, the checks an install makes, capabilities, install from a folder, a wheel or a git commit, enable, upgrade, remove; running them: trust levels, the protocol (MCP plus hooks/call, decision/ask, backend/request), each contribution's wiring, sandboxed plugins, debugging |
 | [decision-providers.md](decision-providers.md) | decision providers: your own model in place of the conductor's decider, per question; the systemone wire with an example server, keys, shadow and A/B, health and fallbacks, the agreement report, replay, hooks as adapters |
 | [threat-model.md](threat-model.md) | where untrusted input enters TandemApp, the parts that matter most for security |
 

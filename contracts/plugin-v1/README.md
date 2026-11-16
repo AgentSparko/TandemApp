@@ -9,6 +9,7 @@ These files are the truth for a TandemApp plugin's manifest (`plugin.json`), the
 | `api.json` | the routes with their bodies, answers and rights; every error type with its HTTP status; every check code an install refusal can name |
 | `common.schema.json` | the shapes the answers share: a source, a signature, a check's refusal, a plugin as listed and as one |
 | `plugins.schema.json`, `plugin-one.schema.json`, `install.schema.json`, `inspect.schema.json`, `verify.schema.json`, `removed.schema.json`, `install-body.schema.json`, `error.schema.json` | the answers and bodies of `api.json`'s routes |
+| `status.schema.json`, `logs.schema.json`, `panels.schema.json`, `bridge-body.schema.json`, `bridge.schema.json` | the plugin host's routes (SRV-859): a plugin's status, its log, its panels with the bridge's methods, one bridge call |
 | `form.schema.json` | a JSON schema as a form: the fields, their controls, and the notes where the generator fell back to the raw editor |
 | `forms/` | a schema and the form it gives, each: the Python and the TypeScript generator both give exactly that form |
 | `examples/` | `hello-tool` (one MCP tool), `audit-hook` (an observer hook), `classify-provider` (a decision provider with a secret and a network host). The engine-stats manifests are `plugins/vllm/plugin.json` and `plugins/sglang/plugin.json` |
@@ -24,6 +25,7 @@ These files are the truth for a TandemApp plugin's manifest (`plugin.json`), the
 - Capabilities are deny by default. A grant takes pairing's rights; `prompts:full`, `engine:control` and `network:` outside the LAN also take the settings interface's second confirm (`confirm_grant`). Granted is always within requested.
 - A plugin's settings, secrets and grants are the settings interface's `plugins` scope (settings-v1 1.1), one target a plugin. Secrets are write-only.
 - Removal is refused while a hook names the plugin (kind `plugin` or `mcp`, target `<id>` or `<id>/<hook>`): 409 `referenced`.
+- The plugin host (SRV-859) runs an enabled plugin as one process speaking MCP over stdio plus `hooks/call`, `decision/ask` and `backend/request`, at its trust level (`capabilities.json` `trust`): `sandboxed` by default, `host` only once granted, `engine` refused. Its contributions are registered while it runs and gone when it stops; each capability is checked at its use, and a refusal is journaled. docs/plugins.md describes the protocol.
 
 ## Versioning and compatibility
 

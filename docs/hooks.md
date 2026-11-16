@@ -12,7 +12,7 @@ The contract is [`contracts/hooks-v1`](../contracts/hooks-v1/README.md): the sta
   - a **guard** may refuse the request;
   - a **decider** chooses (a backend, a fallback, one retry);
   - an **observer** only watches.
-- **Kind.** How it is called: `http` (a webhook TandemApp POSTs to, signed) or `builtin` (code shipped in TandemApp: `set`, `deny`, `route`, `fallback`, `noop`). `plugin`, `mcp` and `inproc` are reserved for the plugin host and the in-process chain; until those exist a hook of those kinds is refused.
+- **Kind.** How it is called: `http` (a webhook TandemApp POSTs to, signed), `builtin` (code shipped in TandemApp: `set`, `deny`, `route`, `fallback`, `noop`) or `plugin` (a running plugin's hook, `target` `<plugin>/<hook>`: [plugins](plugins.md#hooks)). `mcp` and `inproc` are reserved; until they exist a hook of those kinds is refused.
 - **Priority.** An integer; low runs first, ties go by id.
 - **Mode.** `off`, `shadow` (it runs and its answer is journaled, nothing is applied) or `on`.
 - **Scope.** Which requests it sees: model globs, backends, profiles, users, sessions, client kinds. Empty means all.

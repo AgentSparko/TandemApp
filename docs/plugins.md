@@ -4,7 +4,7 @@ A plugin is a folder with a manifest, `plugin.json`, and a program that speaks M
 
 The contract is [`contracts/plugin-v1`](../contracts/plugin-v1/README.md).
 
-**In this version** a plugin is installed, checked, configured and granted capabilities, and nothing more: no plugin process is started, and a hook of kind `plugin` is still refused by the hooks' API. The plugin host that runs plugins comes next, and reads what is described here.
+Once enabled, the plugin host runs it as one process and wires in what it contributes while it runs ([running plugins](#running-plugins)).
 
 ## Write one
 
@@ -112,6 +112,16 @@ A plugin gets nothing by default. It asks in `capabilities`; the admin grants ea
 
 A contributed hook's `payload` needs a `prompts:` capability at that level or above; a decision provider needs one. Whatever it asks for, a plugin never reads the config database, another plugin's secrets, pairing keys or backend keys.
 
+The plugin host checks each capability where it is used, and a refusal is journaled: in the plugin's status (`refusals`) and in the audit table (`refused`, by `plugin:<id>`, the capability's name, never a value).
+
+| capability | checked where |
+|-|-|
+| `prompts:<level>` | a hook's payload when it is registered and at each call; a decision provider's input |
+| `network:<host>[:<port>]` | the sandbox's egress filter: only these hosts |
+| `settings:read` | `tandem/settings` and the panel bridge's `settings.read` |
+| `secrets:<NAME>` | the process's environment and `tandem/secret` |
+| `engine:control` | refused, whatever is granted, until engine control for plugins exists |
+
 ## Install
 
 ```
@@ -156,6 +166,114 @@ A plugin may carry `plugin.sig.json` at its root: `{algorithm: "ed25519", public
 
 An install cut short leaves nothing: the files move into place before the registry row is written, and the next start removes a staging folder or a version folder no row names.
 
+## Running plugins
+
+The plugin host in the controller starts one process for each enabled plugin of kind `plugin`, from `entry.command` (argv, never a shell) in the manifest's folder. It reads the registry every 2 seconds and at each change: a disabled or removed plugin stops, a plugin whose settings, secrets, grants or version changed starts again with them.
+
+### Trust levels
+
+| `trust` | where it runs | how |
+|-|-|-|
+| `sandboxed` (default) | a container (Docker or Podman) or a Kubernetes pod of the chat sandbox's class | always; it waits when there is no sandbox runtime here |
+| `host` | a process of the app's user, outside any sandbox | only once the admin set its `trust` key to `host` (pairing's rights and the second confirm); until then it does not start |
+| `engine` | a wheel inside the engine | refused: not available yet |
+
+**The sandbox.** The sandbox image (`QSE_SANDBOX_IMAGE`, `tandem-sandbox:1`), uid 1000, every capability dropped, no-new-privileges, a read-only root, a small in-memory /tmp, no devices, 512 MiB (`TANDEM_PLUGIN_MEM_MB`), one CPU and 128 processes, and no network but its loopback. Mounted: the plugin's installed tree at `/plugin`, read-only; its own folder at `/workspace` (`TANDEM_PLUGIN_DATA`) and a home at `/home/agent`. Nothing else of the controller's: not the config database, not another plugin's folder or secrets. Its way out is the chat sandbox's egress proxy (`HTTP_PROXY` and `HTTPS_PROXY` are set) with a host list: only the hosts of its granted `network:` capabilities, a granted LAN address included; any other address is refused, and this box (loopback), link-local addresses and the Kubernetes API are refused even when granted.
+
+**Which runtime.** The one chatd uses on this install: `QSE_SANDBOX_BACKEND`, `QSE_SANDBOX_SOCKET` and `QSE_SANDBOX_IMAGE` from the controller's environment or chatd's env file (`<state dir>/chatd.env`). `TANDEM_PLUGIN_SANDBOX` (auto, docker, kubernetes, off) overrides it. In a cluster a plugin's pod is made like a chat's sandbox pod, its tree a read-only subPath of the release's volume, and reaches only the plugin host's egress port (`sandbox.kubernetes.pluginEgressPort`, 3129, `TANDEM_PLUGIN_EGRESS_PORT`). With no runtime a sandboxed plugin does not start: its state is `unavailable` and the health page says why (`plugin_no_sandbox`).
+
+**The environment** holds only what the grants allow, never the controller's:
+
+| variable | what |
+|-|-|
+| `TANDEM_PLUGIN`, `TANDEM_PLUGIN_VERSION` | its id and version |
+| `TANDEM_PLUGIN_SETTINGS` | its own settings as JSON, each schema default filled in |
+| `TANDEM_PLUGIN_DATA` | its own data folder |
+| `TANDEM_PLUGIN_CAPABILITIES` | the capabilities granted, a JSON list |
+| `<NAME>` | each secret granted by `secrets:<NAME>` (a name the process itself uses, such as `PATH` or `HOME`, is not passed) |
+| `entry.env`, `LANG`, `PYTHONUNBUFFERED` | the manifest's own values and two defaults |
+
+A host plugin also gets this process's `PATH`, and its data folder as `HOME`.
+
+### Supervision
+
+A plugin that exits, or does not answer `initialize` within 20 seconds, is started again after 1, 2, 4, 8, 16, 32, then 60 seconds. At the fifth failure within an hour the host gives up: it disables the plugin (audited, by `plugin-host`) and the health page names it (`plugin_failed`) until it is enabled again. A stop by hand holds it until a start by hand. Removing a running plugin ends its process before its folder goes.
+
+## The protocol
+
+MCP over stdio, one JSON-RPC 2.0 message a line, protocol revision 2025-06-18: `initialize`, then `tools/list` when the manifest declares tools, `tools/call`, `ping`. Three more methods carry what MCP has no words for, and the plugin answers those it contributes:
+
+| method | params | answer |
+|-|-|-|
+| `hooks/call` | the hooks-v1 envelope (`hooks`, `id`, `stage`, `ts`, `payload`, `mode`, `request`, `event`) with `hook` set to the contributed hook's name and `hook_id` to the runner's id | a hooks-v1 result: `{action: continue\|modify\|deny\|decide, patch?, decision?, reason?, labels?}` |
+| `decision/ask` | `{provider, question, instructions, options, model, deadline_ms, payload, input}`; `input` is `{chars}` at meta, `{text}` at redacted (after the conductor's redaction) and full | `{label, confidence?, probabilities?}`: `label` one of `options` |
+| `backend/request` | `{backend, method, path, body}` | `{status, body}`, or `{status, events: [...]}` for a stream (each event one SSE `data:` line) |
+
+The plugin may ask the host, with requests of its own on the same stream:
+
+| method | params | needs |
+|-|-|-|
+| `tandem/settings` | none | `settings:read`: its own settings |
+| `tandem/secret` | `{name}` | `secrets:<name>`; another plugin's secret never |
+| `tandem/engine` | any | refused until engine control for plugins exists |
+
+A refusal is the JSON-RPC error `-32001` with `data.capability`. The calls are local, so they carry no signature; the payload levels still apply.
+
+## Contributions
+
+Each contribution is registered while the plugin runs and is gone when it stops. A plugin's status says what was registered and what was not, and why (`notes`).
+
+### Tools
+
+Offered to the Chat tab: chatd lists them with its MCP servers (`plugin:<id>`, transport `plugin`, read-only there) as `mcp__plugin_<id>__<tool>`, and calls them through the controller (`/chat-engine/v1/plugins/tools`, `/chat-engine/v1/plugins/tools/call`), so Chat must be on to use them. Only a tool the manifest declares and the server lists is offered, with the manifest's checked schema and annotations; arguments outside the schema are refused before the plugin sees them.
+
+### Hooks
+
+Each hook joins the runner as `<plugin>/<hook>`: priority 100, mode on, no scope, the manifest's stages, role and payload. A hook whose payload is above the plugin's granted `prompts:` level is not registered. To set its priority, scope, mode or policy, add a hook of kind `plugin` on the hooks' API with `target` `<plugin>/<hook>` (at the declared stages, role and payload or below): it takes the contributed hook's place. The runner's timeouts, breaker and policies apply as for any hook.
+
+### Decision providers
+
+Each provider is registered as `<plugin>/<provider>` in `shadow`: asked off the request's path and journaled, never used. To have it answer, add a decision provider of kind `plugin` with `target` `<plugin>/<provider>` and the mode you want (`on`, `ab`): it takes the contributed one's place.
+
+### Backends
+
+Each backend becomes a row of the backends store, `plugin-<id>-<name>` (kind generic, the manifest's models, labelled "(plugin <id>)"), whose URL is this controller's `/plugin-backends/<id>/<name>`: requests that the gateway routes there go to the plugin as `backend/request`, `GET /v1/models` answers the manifest's models. That route answers this machine only. The row is removed when the plugin stops.
+
+### Skills
+
+Each skill folder of a running plugin is one more skill folder of the controller's conductor, after the packages document's own `skill_dirs`, read from the installed tree (never written).
+
+### Panels
+
+A panel is served at `/plugin-panels/<id>/<panel>/` (its HTML; the files beside it under the same path) with `Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; ...; connect-src 'none'`: in the page's iframe or on its own it has an opaque origin, so it reads no cookie, storage or route of the controller's. It talks to the page with `postMessage({type: 'tandem-bridge', id, method, params})`; the page relays the call to `POST /v1/fleet/plugins/<id>/bridge` and posts back `{type: 'tandem-bridge-result', id, result | error}`.
+
+| bridge method | needs |
+|-|-|
+| `plugin.info`, `plugin.status` | nothing |
+| `tools.call` `{tool, arguments}` | the tool is the plugin's own and read-only (`readOnlyHint`) |
+| `settings.read` | `settings:read` |
+| `engine.control` | refused: not available yet |
+
+`GET /v1/fleet/plugins/<id>/panels` lists them with the bridge's methods this plugin may use.
+
+## Write a sandboxed plugin
+
+- Use the standard library, or vendor what you need into the plugin: the sandbox has the image's Python 3.12 and Node, its root is read-only, and its network reaches only the hosts you ask for.
+- Read your settings from `TANDEM_PLUGIN_SETTINGS`; keep files in `TANDEM_PLUGIN_DATA`.
+- Ask for `network:<host>[:<port>]` for each host you call; HTTP clients that honour `HTTPS_PROXY` (urllib, requests, curl) go through the proxy as they are.
+- Write logs to stderr; stdout is the protocol.
+- `examples/hello-tool`, `audit-hook` and `classify-provider` are complete plugins; the tests run each of them.
+
+## Debugging
+
+| what | where |
+|-|-|
+| running or why not, restarts, the last error, what was registered, the refusals | `GET /v1/fleet/plugins/<id>/status` |
+| its stderr and the host's lines about it, every secret value replaced by `[secret NAME]` | `GET /v1/fleet/plugins/<id>/logs?tail=200`; `<state dir>/logs/plugins/<id>.log` (1 MiB, then one older file) |
+| start again, stop (held), start | `POST /v1/fleet/plugins/<id>/restart`, `/stop`, `/start` |
+| a hook's calls and breaker | `GET /v1/fleet/hooks/<id>/calls` for a hook of kind plugin; the runner's metrics for `<plugin>/<hook>` |
+| a plugin that gave up or has no sandbox | the health page's controller findings |
+
 ## The API
 
 | route | rights |
@@ -167,12 +285,14 @@ An install cut short leaves nothing: the files move into place before the regist
 | `POST /v1/fleet/plugins/{id}/enable` | pairing's |
 | `POST /v1/fleet/plugins/{id}/disable`, `/verify` | the configuration's |
 | `DELETE /v1/fleet/plugins/{id}` | pairing's |
+| `GET /v1/fleet/plugins/{id}/status`, `/logs`, `/panels` | the configuration's |
+| `POST /v1/fleet/plugins/{id}/start`, `/stop`, `/restart`, `/bridge` | the configuration's |
 
-Pairing's rights are the admin's, or this machine's while no admin password is set. No answer holds a secret.
+Pairing's rights are the admin's, or this machine's while no admin password is set. No answer holds a secret. Starting a plugin takes it enabled first, which takes pairing's rights.
 
 ## Settings, secrets and capabilities
 
-They are the settings interface's `plugins` scope, one target a plugin: `GET /v1/settings/plugins/schema?target=<id>`, then plan and apply as for any scope ([settings](settings.md#plugins)). Its keys are `enabled`, `settings.<property>`, `secrets.<NAME>` (write-only) and `capabilities.<capability>`. Each plugin keeps its own versions.
+They are the settings interface's `plugins` scope, one target a plugin: `GET /v1/settings/plugins/schema?target=<id>`, then plan and apply as for any scope ([settings](settings.md#plugins)). Its keys are `enabled`, `settings.<property>`, `secrets.<NAME>` (write-only), `capabilities.<capability>` and, for a manifest that asks `trust: host`, `trust`. Each plugin keeps its own versions.
 
 ## The engine-stats plugins
 
