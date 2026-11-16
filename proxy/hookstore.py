@@ -28,7 +28,6 @@ import hmac
 import json
 import re
 import secrets as _rand
-import threading
 import time
 
 from proxy import hookcall
@@ -90,23 +89,22 @@ class HookStore:
         self.gen = 0
         self._ready = False
         self._secret = _rand.token_bytes(32)          # the confirm tokens' key, this process's
-        self._init = threading.Lock()
 
     # ------------------------------------------------------------------ lifecycle
     def ready(self) -> bool:
         """The tables exist (made on first use). False when the config database is not open."""
         if self._ready:
             return True
-        with self._init:
-            if self._ready:
-                return True
-            conn = getattr(self.cfg, "_conn", None)
-            if conn is None:
-                return False
-            with self.cfg._lock:
+        conn = getattr(self.cfg, "_conn", None)
+        if conn is None:
+            return False
+        # the config database's own lock, and only it: a second lock taken in the other order by
+        # a reader under the config lock deadlocked the first requests
+        with self.cfg._lock:
+            if not self._ready:
                 conn.executescript(DDL)
                 conn.commit()
-            self._ready = True
+                self._ready = True
         return True
 
     def _c(self):

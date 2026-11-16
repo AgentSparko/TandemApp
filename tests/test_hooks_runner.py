@@ -20,6 +20,8 @@
  15  the registry refuses plugin, mcp and inproc for now, and
      roles a stage does not take                                    test_registry_refusals
  16  every stage's event and a decision.ask seam                    test_unwired_stages_callable
+ 17  the first requests at once on a fresh runner never deadlock
+     with the config database's lock                                test_first_use_concurrent
 
 Run: python tests/test_hooks_runner.py
 """
@@ -389,6 +391,33 @@ def test_unwired_stages_callable():
         out = r.run("tool.before_exec", ctx(), {"cmd": "ls"},
                     lambda v: {"tool": "sh", "call_id": "c1", "args_bytes": 12})
         assert out.deny["message"] == "no shell" and "content" not in g[0]["event"]
+
+
+def test_first_use_concurrent():
+    for _ in range(30):
+        st = Store()
+        cfg, r = st.__enter__()
+        if True:
+            start = threading.Barrier(24)
+
+            def first(i):
+                start.wait()
+                if i % 3 == 0:
+                    r.store.data_version()
+                elif i % 3 == 1:
+                    r.hooks()
+                else:
+                    cfg.key_for("none")                            # the relay's own read
+                r.idle()
+            ts = [threading.Thread(target=first, args=(i,), daemon=True) for i in range(24)]
+            for t in ts:
+                t.start()
+            end = time.monotonic() + 10
+            for t in ts:
+                t.join(max(0.0, end - time.monotonic()))
+            # a hung thread holds the config lock: fail without closing the database
+            assert not any(t.is_alive() for t in ts), "a first request hung (a lock cycle)"
+        st.__exit__(None, None, None)
 
 
 if __name__ == "__main__":
