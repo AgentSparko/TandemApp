@@ -8,6 +8,10 @@ test_chatd_via_gateway.py sets it) each Chat's engine is a controller in this pr
 engine is that controller's TandemLLM backend on another host: an engine host over SSH whose HTTP
 token the fake wants on every route but /health (engine API 1.9), the loopback rule patched so
 127.0.0.1 counts as that host. chatd never reaches the fake but through the gateway.
+With `GATEWAY.accounts` as well (tests/test_chatd_via_gateway_accounts.py, SRV-869) that controller
+runs with TANDEM_AUTH=accounts, an owner and local mode off, and chatd calls it with its service
+identity svc:chatd, minted as proxy/app.py own_chat mints it: nothing on the same machine is let in
+for being there.
 
 CPU only, standard library only; nothing here touches a real engine.
 """
@@ -52,6 +56,7 @@ KEY = "k" * 64
 class GATEWAY:
     """The gateway mode's switch and its fixed values (THE GATEWAY MODE above)."""
     on = False
+    accounts = False                    # SRV-869: the controller with TANDEM_AUTH=accounts
     token = "engine-http-token-" + "0123456789abcdef" * 3
     host_id = "eh-chat-gw"
 
@@ -68,9 +73,22 @@ class Gateway:
         self.fake_srv = fake_srv
         self._key = fake_srv.fake.key
         fake_srv.fake.key = GATEWAY.token              # the engine wants its HTTP token
-        self.px = Proxy(env={"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
-                             "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{fake_port}/v1"})
+        env = {"TANDEM_BACKENDS": "eng", "TANDEM_BACKEND_ENG_KIND": "tandemllm",
+               "TANDEM_BACKEND_ENG_URL": f"http://127.0.0.1:{fake_port}/v1"}
+        if GATEWAY.accounts:
+            env.update(TANDEM_AUTH="accounts", TANDEM_LOCAL_MODE="off")
+        self.px = Proxy(env=env)
         self.px.__enter__()
+        self.key = None
+        if GATEWAY.accounts:
+            from proxy import app as proxy_app
+            from proxy import tokens as tokens_mod
+            acc = proxy_app.STATE["accounts"]
+            acc.store.create("own", "owner", "the owner's password here", actor="test")
+            acc.local.bind = "127.0.0.1"
+            assert not acc.local.on()
+            self.key = acc.tokens.mint_service(tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                                               memory_user=tokens_mod.CHATD_LABEL)
         cfg = self.px.svc.cfg
         t = enginectl.ssh_trust(host="127.0.0.1", user="tandem", key_id="tandemapp-0123456789",
                                 host_key_type="ssh-ed25519", host_key="SHA256:" + "A" * 43)
@@ -94,7 +112,8 @@ class Chat:
     """A chatd (service + HTTP) on 127.0.0.1:<free port>, the fake engine behind it."""
 
     def __init__(self, tps: float = 400.0, engine_url: str | None = None, data: str | None = None,
-                 retry_s: float = 20.0, max_runs: int = 2, titles: bool = False, fake=None):
+                 retry_s: float = 20.0, max_runs: int = 2, titles: bool = False, fake=None,
+                 engine_key: str | None = None):
         self.owned_fake = fake is None and engine_url is None
         if fake is not None:
             self.fake_srv, self.fake_port = fake
@@ -110,8 +129,10 @@ class Chat:
         self.owned_data = data is None
         self.data = data or tempfile.mkdtemp(prefix="chatd-test-")
         self.lines: list[str] = []
-        self.svc = Service(self.data, self.engine_url, max_runs=max_runs, retry_window_s=retry_s,
-                           titles=titles, log=self.lines.append)
+        if self.gateway is not None and self.gateway.key:
+            engine_key = self.gateway.key
+        self.svc = Service(self.data, self.engine_url, engine_key=engine_key, max_runs=max_runs,
+                           retry_window_s=retry_s, titles=titles, log=self.lines.append)
         self.srv = make_server(self.svc, "127.0.0.1", 0, KEY)
         self.port = self.srv.server_address[1]
         self.svc.start()
