@@ -114,6 +114,23 @@ export const CONDUCTOR_SCREENS = [
 ] as const;
 export type ConductorScreen = (typeof CONDUCTOR_SCREENS)[number]['id'];
 
+/** The pages of the settings area (VIS-280): App, a page a scope of the settings interface, and
+ *  History. Its own tab strip and the panel's sub-pages; `scope`: the scope the page edits. */
+export const SETTINGS_TABS = [
+  { id: 'app', label: 'App', scope: 'app' },
+  { id: 'backends', label: 'Backends', scope: 'backends' },
+  { id: 'conductor', label: 'Conductor', scope: 'conductor' },
+  { id: 'engines', label: 'Engines', scope: 'engine' },
+  { id: 'hooks', label: 'Hooks', scope: 'hooks' },
+  { id: 'history', label: 'History', scope: null },
+] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
+
+/** A settings page's link; `target`: an engine host's own page. */
+export function settingsHref(tab: SettingsTab, target?: string): string {
+  return tab === 'app' ? '#/app' : `#/app/${tab}${target ? `/${encodeURIComponent(target)}` : ''}`;
+}
+
 export interface SubPage {
   label: string;
   href: string;
@@ -156,6 +173,10 @@ export function subPages(r: Route, nodes: { id: string; alias: string }[] = []):
         { label: 'Endpoint and keys', href: '#/api', on: r.view === 'api' },
         { label: 'Backends', href: '#/api/backends', on: r.view === 'backends' },
       ];
+    case 'app': {
+      const on = SETTINGS_TABS.find((t) => t.id === p0)?.id ?? 'app';
+      return SETTINGS_TABS.map((t) => ({ label: t.label, href: settingsHref(t.id), on: t.id === on }));
+    }
     case 'conductor': {
       const screen = r.params.get('screen') ?? 'overview';
       return CONDUCTOR_SCREENS.map((s) => ({ label: s.label, href: s.id === 'overview' ? '#/conductor' : `#/conductor?screen=${s.id}`, on: s.id === screen }));
