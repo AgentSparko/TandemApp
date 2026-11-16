@@ -251,7 +251,12 @@ def test_a_late_client_sees_the_current_token_then_every_next_one():
         sse = c.events(cid, after=snap["seq"])
         frames = sse.until(is_done)
         sse.close()
-        assert frames[0][1] == "current"
+        # Events emitted between the snapshot and the attach come first as replay (a loaded box
+        # lets a token or more through that gap); then one `current`, then live. Every frame
+        # before `current` is a stored event with an id.
+        kinds = [f[1] for f in frames]
+        assert kinds.count("current") == 1, kinds
+        assert all(f[0] is not None for f in frames[:kinds.index("current")]), frames
         ids = [int(f[0]) for f in frames if f[0] is not None]
         assert ids == list(range(int(snap["seq"]) + 1, int(snap["seq"]) + 1 + len(ids))), ids
         state = snap
