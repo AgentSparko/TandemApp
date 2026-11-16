@@ -1,0 +1,882 @@
+/* The health page (SRV-835, views/health/). The verdict is the page's head: one sentence, with a
+   mark beside it. Under it one card a target. A card's own drawing is its trace: the checks in the
+   order they ran, as stops on a line; the line is solid up to a check that ran and dashed to one
+   that could not, so the place where it breaks is the place to look. A passed stop is quiet (a
+   small dot in ink), a failed one carries its severity in colour and in shape (a ringed dot, a
+   diamond, a ring), so no state is said by colour alone. Findings are rows with a rail in
+   their severity's colour, never boxes in a box. Signal orange is what runs right now (a fix's
+   call, a job that has not ended), as everywhere in TandemApp; no colour of its own. The page
+   column is the `mon` container, so a phone and a column between two sidebars get the same narrow
+   layout. */
+
+qse-health {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  max-width: 1080px;
+}
+.hl-wrap {
+  overflow-wrap: anywhere;
+}
+
+/* ---- the head: the verdict, then Check again ----------------------------------------------------- */
+.page-head.hl-head {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px 28px;
+}
+.hl-head-t {
+  display: flex;
+  flex: 1 1 440px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.page-head h1.hl-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 2px;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.hl-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.hl-mark .icon {
+  width: 20px;
+  height: 20px;
+}
+.hl-verdict.is-ok .hl-mark {
+  color: var(--ok);
+  background: var(--ok-wash);
+}
+.hl-verdict.is-warning .hl-mark {
+  color: var(--warn-ink);
+  background: var(--warn-wash);
+}
+.hl-verdict.is-error .hl-mark {
+  color: var(--err);
+  background: var(--err-wash);
+}
+.hl-head .page-sub {
+  max-width: 68ch;
+  line-height: 1.55;
+}
+.hl-head-a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
+}
+.hl-checked {
+  flex-basis: 100%;
+  min-height: 1.5em;
+  text-align: right;
+}
+
+/* ---- the roll call: every target, one tap to its card ---------------------------------------------- */
+.hl-roll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 3px 11px 3px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--dur-1), border-color var(--dur-1), background var(--dur-1);
+}
+.hl-chip:hover {
+  color: var(--ink);
+  border-color: var(--cobalt-hi);
+  background: var(--bg-3);
+}
+.hl-chip > span:first-child {
+  display: flex;
+}
+.hl-chip .icon {
+  width: 14px;
+  height: 14px;
+}
+.hl-chip b {
+  color: var(--ink);
+  font-weight: 600;
+}
+:is(.hl-chip, .hl-state).is-ok .icon {
+  color: var(--ok);
+}
+:is(.hl-chip, .hl-state).is-warning .icon {
+  color: var(--warn-ink);
+}
+:is(.hl-chip, .hl-state).is-error .icon {
+  color: var(--err);
+}
+:is(.hl-chip, .hl-state).is-info .icon {
+  color: var(--cobalt-hi);
+}
+
+/* ---- a card ---------------------------------------------------------------------------------------- */
+.hl-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.panel.hl-card {
+  padding: 0;
+  overflow: hidden;
+  scroll-margin-top: calc(var(--topbar-h) + 14px);
+}
+.hl-card > .skeleton {
+  padding: 18px;
+}
+/* the card the route named */
+.hl-card[data-focus] {
+  border-color: var(--cobalt);
+  box-shadow: inset 0 0 0 1px var(--cobalt-wash);
+}
+.hl-card-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px 28px;
+  padding: 16px 18px 0;
+}
+.hl-card-t {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.hl-card .panel-title {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.hl-card .panel-title:focus-visible {
+  box-shadow: none;
+  text-decoration: underline;
+  text-decoration-color: var(--cobalt-hi);
+  text-underline-offset: 4px;
+}
+.hl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 0;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.hl-meta > span + span {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--rule-strong);
+}
+
+/* the trace: the checks in the order they ran */
+.hl-trace {
+  display: flex;
+  flex: 0 1 auto;
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.hl-trace > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 70px;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+  text-align: center;
+}
+/* the line that leads to a stop: solid to a check that ran, dashed to one that did not */
+.hl-trace > li + li::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: calc(50% + 9px);
+  width: calc(100% - 18px);
+  border-top: 1.5px solid var(--rule-strong);
+}
+.hl-trace > li.is-skip::before {
+  border-top-style: dashed;
+}
+.hl-trace i {
+  box-sizing: border-box;
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition: background var(--dur-2), box-shadow var(--dur-2);
+}
+.hl-trace .is-error > i {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  background: var(--err);
+  box-shadow: 0 0 0 3px var(--err-wash);
+}
+.hl-trace .is-warning > i {
+  width: 10px;
+  height: 10px;
+  margin: 1.5px;
+  border-radius: 2px;
+  background: var(--warn-ink);
+  box-shadow: 0 0 0 3px var(--warn-wash);
+  transform: rotate(45deg);
+}
+/* a check that will pass by itself (an engine that loads) */
+.hl-trace .is-info > i {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border: 2.5px solid var(--cobalt-hi);
+  background: transparent;
+}
+.hl-trace .is-skip > i {
+  border: 1.5px dashed var(--ink-3);
+  background: transparent;
+}
+.hl-trace-l {
+  max-width: 100%;
+}
+.hl-trace :is(.is-error, .is-warning, .is-info) > .hl-trace-l {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hl-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 10px 12px 12px 18px;
+}
+.hl-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.hl-state > span {
+  display: flex;
+}
+.hl-state .icon {
+  width: 16px;
+  height: 16px;
+}
+.hl-recheck {
+  margin-left: auto;
+  min-height: 30px;
+}
+.hl-recheck .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- a finding: a row with its severity's rail ------------------------------------------------------- */
+.hl-rows,
+.hl-fixed,
+.hl-checks,
+.hl-warnings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 0 12px;
+  padding: 14px 18px 15px;
+  border-top: 1px solid var(--rule);
+}
+.hl-row::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--sev);
+}
+.hl-row.is-error {
+  --sev: var(--err);
+  --sev-ink: var(--err);
+}
+.hl-row.is-warning {
+  --sev: var(--warn);
+  --sev-ink: var(--warn-ink);
+}
+.hl-row.is-info {
+  --sev: var(--cobalt);
+  --sev-ink: var(--cobalt-hi);
+}
+.hl-row-g {
+  display: flex;
+  padding-top: 1px;
+  color: var(--sev-ink);
+}
+.hl-row-b {
+  min-width: 0;
+}
+.hl-say {
+  color: var(--ink);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.hl-fix {
+  max-width: 74ch;
+  margin-top: 3px;
+  color: var(--ink);
+  line-height: 1.55;
+  opacity: 0.88;
+  overflow-wrap: anywhere;
+}
+:is(.hl-row, .hl-refusal, .hl-guide, .hl-note, .hl-dlg) code {
+  background: var(--bg-inset);
+  overflow-wrap: anywhere;
+}
+.hl-row-a {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+.hl-act {
+  min-height: 36px;
+  padding: 7px 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hl-row-x,
+.hl-row > .hl-live {
+  grid-column: 2 / -1;
+  min-width: 0;
+}
+.hl-facts {
+  display: grid;
+  gap: 4px;
+  margin: 9px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.hl-facts > div {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: 10px;
+}
+.hl-facts dt,
+.hl-fps dt,
+.hl-plan dt {
+  color: var(--ink-2);
+}
+.hl-facts dd,
+.hl-fps dd,
+.hl-plan dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+/* both fingerprints of a host key, one under the other in the fixed-width face: the same
+   character stands above the same character */
+.hl-fps {
+  max-width: 640px;
+  margin: 10px 0 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+}
+.hl-fps > div {
+  display: grid;
+  grid-template-columns: 10.5em minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: var(--fs-sm);
+}
+.hl-fps > div + div {
+  border-top: 1px dashed var(--rule-strong);
+}
+.hl-fps dd {
+  font-size: var(--fs-base);
+  line-height: 1.5;
+}
+.hl-fps > div:last-child dd {
+  color: var(--err);
+}
+.hl-stop {
+  margin-top: 7px;
+  color: var(--ink-2);
+}
+
+/* a call under way: the signal hairline runs */
+.hl-live {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 11px;
+  padding-top: 9px;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.hl-live-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+.hl-live-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 34%;
+  background: var(--signal);
+  animation: hl-run 1.3s var(--ease) infinite;
+}
+@keyframes hl-run {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(310%);
+  }
+}
+
+/* what a fix left */
+.hl-note {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  margin-top: 11px;
+  padding: 8px 8px 8px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.hl-note-g {
+  display: flex;
+  padding-top: 1px;
+  color: var(--ink-2);
+}
+.hl-note-g .icon {
+  width: 16px;
+  height: 16px;
+}
+.hl-note-b {
+  min-width: 0;
+  padding: 1px 0;
+  overflow-wrap: anywhere;
+}
+.hl-note-m {
+  color: var(--ink-2);
+}
+.hl-note-x {
+  width: 26px;
+  height: 26px;
+  border-color: transparent;
+}
+.hl-note-x .icon {
+  width: 14px;
+  height: 14px;
+}
+.hl-note.is-cleared {
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: var(--ok-wash);
+}
+.hl-note.is-cleared .hl-note-g {
+  color: var(--ok);
+}
+.hl-note.is-working {
+  border-color: color-mix(in srgb, var(--orange) 50%, transparent);
+  background: var(--orange-wash);
+}
+.hl-note:is(.is-refused, .is-wait, .is-sign_in) {
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  background: var(--warn-wash);
+}
+.hl-note:is(.is-refused, .is-wait, .is-sign_in) .hl-note-g {
+  color: var(--warn-ink);
+}
+.hl-pulse {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 5px 4px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.hl-fixed {
+  display: grid;
+  gap: 8px;
+  padding: 0 18px 14px;
+}
+.hl-fixed .hl-note {
+  margin-top: 0;
+}
+.hl-was {
+  margin: 4px 0 0 39px;
+  overflow-wrap: anywhere;
+}
+
+/* the steps of an action that changes nothing */
+.hl-guide {
+  margin-top: 11px;
+  padding: 12px 14px 13px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+}
+.hl-steps {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding-left: 22px;
+  line-height: 1.55;
+}
+.hl-steps > li {
+  padding-left: 3px;
+  overflow-wrap: anywhere;
+}
+.hl-steps > li::marker {
+  color: var(--cobalt-hi);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* ---- the checks that passed, folded ------------------------------------------------------------------ */
+.hl-fold {
+  border-top: 1px solid var(--rule);
+}
+.hl-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 18px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  list-style: none;
+  cursor: pointer;
+}
+.hl-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.hl-fold > summary::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 3px 0 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-1) var(--ease);
+}
+.hl-fold[open] > summary::before {
+  transform: rotate(45deg);
+}
+.hl-fold > summary:hover {
+  color: var(--ink);
+}
+.hl-fold > summary:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cobalt-hi);
+  border-radius: 0;
+}
+.hl-checks {
+  display: grid;
+  gap: 6px;
+  padding: 2px 18px 14px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.hl-checks > li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+}
+.hl-checks > li > span:first-child {
+  display: flex;
+  padding-top: 2px;
+}
+.hl-checks .icon {
+  width: 14px;
+  height: 14px;
+}
+.hl-checks .is-ok .icon {
+  color: var(--ok);
+}
+.hl-checks .is-skip {
+  color: var(--ink-3);
+}
+.hl-reach {
+  margin: 0 18px;
+  padding: 12px 0 14px;
+  border-top: 1px dashed var(--rule-strong);
+}
+.hl-reach .hl-facts {
+  margin-top: 0;
+}
+
+/* ---- a refusal of a call, the dialog ----------------------------------------------------------------- */
+.hl-refusal {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  border-radius: var(--radius);
+  background: var(--warn-wash);
+}
+.hl-refusal-g {
+  display: flex;
+  padding-top: 2px;
+  color: var(--warn-ink);
+}
+.hl-refusal-b {
+  min-width: 0;
+}
+.hl-dlg,
+.hl-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.hl-ask input[data-in='ref'] {
+  width: 100%;
+  min-height: 38px;
+  font-size: 16px;
+}
+.hl-dlg .hl-live,
+.hl-dlg .hl-note {
+  margin-top: 0;
+}
+.hl-dlg .hl-say {
+  font-size: var(--fs-base);
+}
+.hl-noref {
+  display: grid;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+.hl-plan {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  line-height: 1.5;
+}
+.hl-plan > div {
+  display: grid;
+  grid-template-columns: 10em minmax(0, 1fr);
+  gap: 10px;
+}
+.hl-dlg .hl-steps {
+  margin-bottom: 0;
+}
+.hl-warnings {
+  display: grid;
+  gap: 4px;
+  color: var(--warn-ink);
+  font-size: var(--fs-sm);
+}
+.hl-warnings > li {
+  display: flex;
+  gap: 7px;
+}
+.hl-warnings .icon {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+}
+.hl-when {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+.hl-when > legend {
+  padding: 0 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.hl-when > label {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.hl-when .muted {
+  margin-left: 6px;
+  font-size: var(--fs-sm);
+}
+/* the context sidebar's legend */
+.hl-legend {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: var(--fs-sm);
+}
+.hl-legend dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+.hl-legend dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* ---- a narrow column: the trace takes the row, then a finding's button does ---------------------------- */
+@container mon (max-width: 820px) {
+  .hl-card-h {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .hl-card-t {
+    flex: none;
+    width: 100%;
+  }
+  .hl-trace {
+    width: 100%;
+  }
+  .hl-trace > li {
+    flex: 1 1 0;
+    width: auto;
+  }
+}
+/* a phone: a stop's word in the room of its stop, two words on two lines */
+@container mon (max-width: 420px) {
+  .hl-trace > li {
+    font-size: 10px;
+  }
+}
+@container mon (max-width: 620px) {
+  .page-head.hl-head {
+    align-items: stretch;
+  }
+  .hl-head-a {
+    justify-content: flex-start;
+  }
+  .hl-checked {
+    text-align: left;
+  }
+  .hl-chip {
+    min-height: 36px;
+  }
+  .hl-card-h,
+  .hl-status {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .hl-row {
+    grid-template-columns: 20px minmax(0, 1fr);
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .hl-row-a {
+    grid-column: 2;
+    margin-top: 11px;
+  }
+  .hl-row-a:empty {
+    display: none;
+  }
+  .hl-act {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 42px;
+    white-space: normal;
+  }
+  .hl-row-x,
+  .hl-row > .hl-live {
+    grid-column: 1 / -1;
+  }
+  .hl-fold > summary,
+  .hl-checks,
+  .hl-fixed {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .hl-reach {
+    margin: 0 14px;
+  }
+  .hl-facts > div,
+  .hl-fps > div,
+  .hl-plan > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .hl-was {
+    margin-left: 0;
+  }
+  .hl-refusal {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+  .hl-refusal > .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+/* the dialog is a modal over the window: the window's width decides for it */
+@media (max-width: 520px) {
+  .hl-dlg .act-foot {
+    flex-direction: column-reverse;
+  }
+  .hl-dlg .act-foot .btn {
+    justify-content: center;
+    min-height: 42px;
+  }
+  .hl-plan > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl-live-bar::after {
+    width: 100%;
+    animation: none;
+  }
+  .hl-pulse {
+    animation: none;
+  }
+}

@@ -524,7 +524,7 @@ export class QseSettings extends LightElement {
     const t = SETTINGS_TABS.find((x) => x.id === tab)!;
     const s = this.flow.state;
     const gone = this.overviewErr?.status === 404;
-    return html`<header class="page-head" data-page="app" data-settings-tab=${tab}><div class="eyebrow">Settings</div><h1>${t.label}</h1><p class="page-sub">${HEAD[tab]}</p></header>
+    return html`<header class="page-head" data-page="app" data-settings-tab=${tab}><div class="eyebrow">Settings</div><h1>${t.label}</h1><p class="page-sub">${HEAD[tab]}</p><p class="small muted" data-health-link>Something does not work? <a href="#/health">Health</a> says what is wrong and how to fix it.</p></header>
       <nav class="st-tabs" aria-label="Settings pages">
         ${SETTINGS_TABS.map((x) => {
           const n = x.scope ? draft.count(x.scope) : 0;

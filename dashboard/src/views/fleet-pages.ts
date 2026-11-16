@@ -4,7 +4,7 @@
 // views/fleet/wizard.ts, a chunk of its own that loads when it opens), the setup wizard (VIS-278: Add
 // engine, views/fleet/engine-wizard.ts, its own chunk too) and App (VIS-280, the settings area:
 // views/settings/area.ts, a chunk of its own too, with OPS-234's controller host and its move in
-// views/fleet/app-settings.ts) and Models (VIS-252: the
+// views/fleet/app-settings.ts), Health (SRV-835, views/health/area.ts, its own chunk) and Models (VIS-252: the
 // deployments, Serve a model with its placement step, the weights matrix: views/fleet/models.ts,
 // serve.ts, weights.ts); API still shows its head, what it will hold and the step that builds it.
 
@@ -58,6 +58,10 @@ const loadStart = () => (startChunk ??= import('./fleet/start'));
  *  History, with the run sheet and the restart card; its own chunk */
 let appChunk: Promise<unknown> | null = null;
 const loadApp = () => (appChunk ??= import('./settings/area'));
+/** The health page (SRV-835): what is wrong, in words, and the fixes TandemApp runs itself; its own
+ *  chunk, loaded when Monitor → Health opens */
+let healthChunk: Promise<unknown> | null = null;
+const loadHealth = () => (healthChunk ??= import('./health/area'));
 
 @customElement('qse-fleet-page')
 export class QseFleetPage extends LightElement {
@@ -69,6 +73,10 @@ export class QseFleetPage extends LightElement {
     if (this.view === 'overview') return html`<qse-overview .summary=${this.summary}></qse-overview>`;
     if (this.view === 'hardware') return html`<qse-hardware></qse-hardware>`;
     if (this.view === 'events') return html`<qse-events></qse-events>`;
+    if (this.view === 'health') {
+      void loadHealth();
+      return html`<qse-health .path=${this.path}></qse-health>`;
+    }
     if (this.view === 'add-engine') {
       void loadEngineWizard();
       return html`<qse-engine-wizard .path=${this.path}></qse-engine-wizard>`;

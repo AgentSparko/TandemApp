@@ -7,6 +7,7 @@
 // password brings the controller's sign-in to the top of the page. The other ways into a fleet
 // (a server by its URL, a Spark with TandemNode) stay one link away. With Chat off (OPS-288: a new
 // TandemApp's default) the last step offers the Playground and the switch instead of the Chat tab.
+// Every step links to the health page (SRV-835), which says what is wrong when a step does not work.
 
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -206,7 +207,8 @@ export class QseEngineWizard extends LightElement {
       )}</ol>
       ${needsSignIn() ? signInCard('Pairing and the model step') : this.askedSignIn ? html`<p class="note" role="status" data-no-password>No admin password is set on this TandemApp, so pairing works only from the machine it runs on. Open this page there, or set a password in <a href="#/app">App settings</a> on that machine.</p>` : nothing}
       <div class="eh-body" data-at=${s}>${this.step()}</div>
-      ${s === 'find' ? html`<p class="small muted eh-else" data-else>Not a TandemLLM engine? <a href="#/start">Connect a server by its URL</a>, or <a href="#/add-spark">add a Spark that runs TandemNode</a>.</p>` : nothing}`;
+      ${s === 'find' ? html`<p class="small muted eh-else" data-else>Not a TandemLLM engine? <a href="#/start">Connect a server by its URL</a>, or <a href="#/add-spark">add a Spark that runs TandemNode</a>.</p>` : nothing}
+      <p class="small muted eh-else" data-health-link>Something does not work? <a href=${this.path[0] ? `#/health/${encodeURIComponent(this.path[0])}` : '#/health'}>Health</a> says what is wrong and how to fix it.</p>`;
   }
 }
 

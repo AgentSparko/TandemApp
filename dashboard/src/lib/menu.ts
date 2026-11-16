@@ -6,7 +6,7 @@
 import type { Route, View } from './router';
 import { currentScope, scopeParams } from './scope';
 
-export type Section = 'chat' | 'overview' | 'performance' | 'usage' | 'hardware' | 'events' | 'sparks' | 'models' | 'api' | 'conductor' | 'playground' | 'dev' | 'add-engine' | 'add-spark' | 'start' | 'app';
+export type Section = 'chat' | 'overview' | 'performance' | 'usage' | 'hardware' | 'events' | 'health' | 'sparks' | 'models' | 'api' | 'conductor' | 'playground' | 'dev' | 'add-engine' | 'add-spark' | 'start' | 'app';
 
 export interface MenuItem {
   id: Section;
@@ -29,6 +29,8 @@ export const MENU: MenuGroup[] = [
       { id: 'usage', label: 'Usage' },
       { id: 'hardware', label: 'Hardware' },
       { id: 'events', label: 'Events & Alerts' },
+      // SRV-835: what is wrong, in words, and the fixes TandemApp runs itself
+      { id: 'health', label: 'Health' },
     ],
   },
   {

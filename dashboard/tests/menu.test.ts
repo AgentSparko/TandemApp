@@ -22,11 +22,12 @@ describe('the menu', () => {
   it('Chat, then Monitor, Fleet, Tune and Settings, in the concept’s order', () => {
     expect(MENU.map((g) => [g.label, g.items.map((i) => i.label)])).toEqual([
       [null, ['Chat']],
-      ['Monitor', ['Overview', 'Performance', 'Usage', 'Hardware', 'Events & Alerts']],
+      ['Monitor', ['Overview', 'Performance', 'Usage', 'Hardware', 'Events & Alerts', 'Health']],
       ['Fleet', ['Sparks', 'Models', 'API']],
       ['Tune', ['Conductor', 'Playground', 'Dev']],
       ['Settings', ['Get started', 'Add engine', 'Add Spark', 'App']],
     ]);
+    // SRV-835: Health is a Monitor page without the scope bar: it checks every target
     expect(MONITOR).toEqual(['overview', 'performance', 'usage', 'hardware', 'events']);
     expect(PHONE_BAR).toEqual(['chat', 'overview', 'performance']);
   });
@@ -42,6 +43,7 @@ describe('the menu', () => {
     expect(crumb('setup')).toEqual({ group: 'Fleet', label: 'Models' });
     expect(crumb('chat')).toEqual({ group: null, label: 'Chat' });
     expect(crumb('add-spark')).toEqual({ group: 'Settings', label: 'Add Spark' });
+    expect(crumb('health')).toEqual({ group: 'Monitor', label: 'Health' });
   });
 });
 
@@ -75,7 +77,7 @@ describe('sub-pages', () => {
     expect(c.filter((x) => x.startsWith('*'))).toEqual(['*Memory #/conductor?screen=memory']);
   });
   it('a section without sub-pages has none', () => {
-    for (const h of ['#/chat/abc', '#/usage', '#/overview', '#/events', '#/dev', '#/playground', '#/add-engine', '#/add-spark']) expect(subs(h), h).toEqual([]);
+    for (const h of ['#/chat/abc', '#/usage', '#/overview', '#/events', '#/health/spark-desk', '#/dev', '#/playground', '#/add-engine', '#/add-spark']) expect(subs(h), h).toEqual([]);
     // VIS-280: App is the settings area, a page a settings scope beside it
     expect(subs('#/app/backends')).toEqual(['App #/app', '*Backends #/app/backends', 'Conductor #/app/conductor', 'Engines #/app/engines', 'Hooks #/app/hooks', 'History #/app/history']);
   });
