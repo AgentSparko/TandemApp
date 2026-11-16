@@ -2,7 +2,7 @@
 
 | page | what it covers |
 |-|-|
-| [install.md](install.md) | installing TandemApp: which way for whom, what a new install runs (the gateway only; Chat and the conductor switched on from the page), the first page, where state lives, upgrades, backups, uninstall |
+| [install.md](install.md) | installing TandemApp: which way for whom, what a new install runs (the gateway only; Chat and the conductor switched on from the page), the first page, the prefixes a reverse proxy sends to TandemApp ([controller-routes.json](controller-routes.json)), where state lives, upgrades, backups, uninstall |
 | [install-linux.md](install-linux.md) | the one command on Linux (a Raspberry Pi too) and macOS, its options, chat's sandboxes, and the container |
 | [install-kubernetes.md](install-kubernetes.md) | Helm on Kubernetes: the release archive built reproducibly, the install, ingress and TLS, the values, Chat with sandbox pods, the MCP bridge sidecar, upgrades and rollback, troubleshooting |
 | [proxy.md](proxy.md) | TandemApp: backends, configuration, keys, the fleet, TandemNode, Add Spark, the data plane, install |

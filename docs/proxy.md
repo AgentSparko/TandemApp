@@ -347,6 +347,8 @@ with `snippets/tandemapp-data-plane.conf` (`<controller>` is the Spark's address
     proxy_send_timeout 3600s;
     proxy_read_timeout 3600s;          # the engine's --request-timeout: a quiet hour is the most
 
+These six send the data plane only. When TandemApp's page is behind the same proxy, send it the controller's own prefixes too (`/dashboard/`, `/v1/fleet/`, `/v1/settings`, `/v1/config/`, `/v1/chat-app`, ...): the full list, with what both sides serve, is in [install.md](install.md#behind-a-reverse-proxy).
+
 `proxy_read_timeout` is the time between two reads, so a stream that sends a byte now and then (the engine's prefill comments, reasoning) is never cut by it; a whole answer of an hour's thinking is. `/v1/chat/completions/` with a slash and other spellings stay on the engine. Before the switch, check the controller directly on its port with a small request of each kind (both paths answer in the meantime), then `nginx -t` and `systemctl reload nginx`, and check the same through the public address.
 
 ### Rollback

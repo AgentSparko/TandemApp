@@ -55,7 +55,8 @@ Keep the controller on loopback and let the proxy end TLS. Forward everything to
 nginx `proxy_buffering off`, `proxy_read_timeout 3600s`, `proxy_set_header X-Real-IP $remote_addr`,
 `client_max_body_size 200m`. Do not route `/chat-engine`: that is chatd's way to the gateway on
 the same host. Set an admin password before the page is reachable from another machine.
-[proxy.md](proxy.md#through-a-reverse-proxy) has the rest.
+A proxy that forwards only some paths must still send TandemApp every prefix in
+[install.md](install.md#behind-a-reverse-proxy); [proxy.md](proxy.md#through-a-reverse-proxy) has the rest.
 
 ### Chat's sandboxes
 

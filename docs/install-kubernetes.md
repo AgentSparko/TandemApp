@@ -129,6 +129,8 @@ and open `https://tandemapp.example.com/`: the setup wizard (pairing an engine h
 - The Ingress sends everything to the controller except `ingress.blockedPaths` (`/chat-engine`,
   chatd's way to the gateway inside the pod), which go to a Service with no endpoints (503). Check
   it after the install: `/chat-engine/health` must answer 503 from outside.
+- A reverse proxy in front that forwards only some paths must still send the controller every
+  prefix it owns: the list is in [install.md](install.md#behind-a-reverse-proxy).
 - TLS at the ingress: `ingress.tls` with a Secret for the host. TLS at a reverse proxy in front:
   leave `ingress.tls` empty, have the proxy forward plain HTTP to the ingress with the original
   `Host`, `X-Forwarded-Proto` and `X-Forwarded-For`, and let the ingress controller trust them

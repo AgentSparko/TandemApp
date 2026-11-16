@@ -1,0 +1,255 @@
+{
+  "about": "Who answers each URL prefix: the controller (TandemApp), both the controller and an engine (each for its own state; `when` says when TandemApp answers it), an engine only, or nobody from outside. A reverse proxy in front of TandemApp sends it every controller prefix and every both prefix whose condition holds, and blocks the internal ones. docs/install.md#behind-a-reverse-proxy is this list in words; tests/test_route_list.py holds the two, the page's calls (dashboard/src) and the controller to it.",
+  "version": 1,
+  "owners": {
+    "controller": "only TandemApp answers it; an engine answers 404",
+    "both": "TandemApp and an engine each answer it for their own state; `when`, if set, is the condition under which TandemApp answers it",
+    "engine": "only an engine answers it; TandemApp answers 404",
+    "internal": "for the controller's own host only; never route it from outside"
+  },
+  "match": {
+    "exact": "the path itself",
+    "prefix": "the path itself and every path under it (prefix + '/')"
+  },
+  "routes": [
+    {
+      "prefix": "/",
+      "owner": "controller",
+      "match": "exact",
+      "what": "redirects to the page",
+      "probe": "GET /"
+    },
+    {
+      "prefix": "/dashboard",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the page and its files",
+      "probe": "GET /dashboard/"
+    },
+    {
+      "prefix": "/v1/fleet",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the fleet: nodes, engine hosts, deployments, health, hooks, decision providers, plugins, the App page, the gateway for a page whose /v1 is an engine's",
+      "probe": "GET /v1/fleet/health?view=state"
+    },
+    {
+      "prefix": "/v1/settings",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the settings interface: every scope, change sets, versions, the audit",
+      "probe": "GET /v1/settings"
+    },
+    {
+      "prefix": "/v1/config",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the Backends and Setup screens: backends, rules, prices, users",
+      "probe": "GET /v1/config"
+    },
+    {
+      "prefix": "/v1/chat-app",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the Chat tab: chatd behind the controller (off, own or external)",
+      "probe": "GET /v1/chat-app/capabilities"
+    },
+    {
+      "prefix": "/v1/collect",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "a plugin's or a host collector's batches, with its own token",
+      "probe": "POST /v1/collect/batch"
+    },
+    {
+      "prefix": "/plugin-panels",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "a running plugin's panels, in the page's frame",
+      "probe": "GET /plugin-panels/none/none/"
+    },
+    {
+      "prefix": "/v1/chat/completions",
+      "owner": "both",
+      "match": "exact",
+      "what": "the data plane: TandemApp's gateway (proxy.md says when a proxy sends it to TandemApp or to an engine)",
+      "probe": "POST /v1/chat/completions"
+    },
+    {
+      "prefix": "/v1/completions",
+      "owner": "both",
+      "match": "exact",
+      "what": "the data plane",
+      "probe": "POST /v1/completions"
+    },
+    {
+      "prefix": "/v1/embeddings",
+      "owner": "both",
+      "match": "exact",
+      "what": "the data plane",
+      "probe": "POST /v1/embeddings"
+    },
+    {
+      "prefix": "/v1/responses",
+      "owner": "both",
+      "match": "exact",
+      "what": "the data plane",
+      "probe": "POST /v1/responses"
+    },
+    {
+      "prefix": "/v1/models",
+      "owner": "both",
+      "match": "prefix",
+      "what": "the data plane: the model list and one model's card",
+      "probe": "GET /v1/models"
+    },
+    {
+      "prefix": "/v1/cache/peek",
+      "owner": "both",
+      "match": "exact",
+      "what": "routed to the member of a Replicas deployment that holds the conversation",
+      "when": "a deployment routes the cache"
+    },
+    {
+      "prefix": "/v1/cache/prewarm",
+      "owner": "both",
+      "match": "exact",
+      "what": "as peek",
+      "when": "a deployment routes the cache"
+    },
+    {
+      "prefix": "/v1/cache/release",
+      "owner": "both",
+      "match": "exact",
+      "what": "as peek",
+      "when": "a deployment routes the cache"
+    },
+    {
+      "prefix": "/v1/cache",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "an engine's cache routes; clear is the engine's only"
+    },
+    {
+      "prefix": "/v1/dashboard",
+      "owner": "both",
+      "match": "prefix",
+      "what": "summary, usage, requests, live, logs, metrics, the page's sign-in: TandemApp's own ledger (a page whose /v1/dashboard reaches an engine reads TandemApp's under /v1/fleet/ledger, proxy.md)",
+      "probe": "GET /v1/dashboard/summary"
+    },
+    {
+      "prefix": "/v1/conductor",
+      "owner": "both",
+      "match": "prefix",
+      "what": "the conductor's documents, journal, sessions and memory notes; an engine answers it only through the extension that runs the conductor in its process, and the engine-only screens are /v1/engine",
+      "probe": "GET /v1/conductor/config",
+      "when": "its conductor is on",
+      "needs": "conductor"
+    },
+    {
+      "prefix": "/v1/library",
+      "owner": "both",
+      "match": "prefix",
+      "what": "the package library",
+      "probe": "GET /v1/library",
+      "when": "its conductor is on",
+      "needs": "conductor"
+    },
+    {
+      "prefix": "/v1/laya",
+      "owner": "both",
+      "match": "prefix",
+      "what": "Laya for scripts",
+      "when": "its conductor is on and the decider role names a Laya endpoint"
+    },
+    {
+      "prefix": "/s",
+      "owner": "both",
+      "match": "prefix",
+      "what": "a session's address: /v1/library and /v1/laya under its token; /v1/memory under it is the engine's only",
+      "probe": "GET /s/aaaaaaaaaaaa/v1/library",
+      "when": "its conductor is on",
+      "needs": "conductor"
+    },
+    {
+      "prefix": "/health",
+      "owner": "both",
+      "match": "exact",
+      "what": "liveness: each answers its own",
+      "probe": "GET /health"
+    },
+    {
+      "prefix": "/metrics",
+      "owner": "both",
+      "match": "exact",
+      "what": "Prometheus: each answers its own",
+      "probe": "GET /metrics"
+    },
+    {
+      "prefix": "/v1/engine",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "the engine-only screens: deciders, narrator, shadow, disk tier, residency, pairing"
+    },
+    {
+      "prefix": "/v1/setup",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "an engine's Setup Guide; through TandemApp: /v1/fleet/nodes/<id>/setup"
+    },
+    {
+      "prefix": "/v1/memory",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "the model's own memory under a session's address"
+    },
+    {
+      "prefix": "/v1/tokenize",
+      "owner": "engine",
+      "match": "exact",
+      "what": "the engine's tokenizer"
+    },
+    {
+      "prefix": "/v1/systemone",
+      "owner": "engine",
+      "match": "exact",
+      "what": "the engine's decision wire"
+    },
+    {
+      "prefix": "/v1/replica",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "a replica's identity"
+    },
+    {
+      "prefix": "/readyz",
+      "owner": "engine",
+      "match": "exact",
+      "what": "the engine's readiness"
+    },
+    {
+      "prefix": "/metrics/up",
+      "owner": "engine",
+      "match": "exact",
+      "what": "the engine's up gauge"
+    },
+    {
+      "prefix": "/_tandem",
+      "owner": "engine",
+      "match": "prefix",
+      "what": "the engine's status responder while it restarts"
+    },
+    {
+      "prefix": "/chat-engine",
+      "owner": "internal",
+      "match": "prefix",
+      "what": "chatd's way to the gateway on the controller's own host: block it at the proxy"
+    },
+    {
+      "prefix": "/plugin-backends",
+      "owner": "internal",
+      "match": "prefix",
+      "what": "a plugin's backend, for the controller's own gateway: it is taken from loopback only, and a proxy on the same host connects from loopback, so block it"
+    }
+  ]
+}
