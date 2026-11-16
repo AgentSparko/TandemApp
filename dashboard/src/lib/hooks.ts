@@ -516,33 +516,15 @@ export function bodyOf(f: HookForm): NewHook {
 
 // ---- the playground -------------------------------------------------------------------------------
 
-/** Each stage's sample event as a hook with payload `meta` gets it (contracts/hooks-v1/examples;
- *  the test holds these to those files). Made-up values only. */
-const SIZES = { body_bytes: 332, messages: 2, tools: 1, chars: { system: 15, user: 30, assistant: 0, tool: 0 } };
-const PARAMS = { temperature: 0.2, max_tokens: 256 };
-export const SAMPLE_EVENTS: Record<string, Record<string, unknown>> = {
-  'request.received': { sizes: SIZES, params: PARAMS, params_set: [], tool_names: ['search'] },
-  'route.select': { route: { backend: 'local', model: 'example-model', fallbacks: [] }, backends: ['local', 'cloud'] },
-  'request.before_engine': { sizes: SIZES, params: PARAMS, params_set: [], tool_names: ['search'], route: { backend: 'local', model: 'example-model', attempt: 0 } },
-  'decision.ask': { question: { id: 'classify', type: 'choice', instructions: 'Which kind of task is this message?', options: { code_edit: 'change code in the project', chat: 'a question or a conversation' }, model: 'auto', deadline_ms: 400, state_chars: 63 } },
-  'stream.chunk': { index: 3, kind: 'content', bytes: 120 },
-  'tool_call.detected': { calls: [{ index: 0, id: 'call_1', name: 'search', args_bytes: 26 }], streamed: false },
-  'tool.before_exec': { tool: 'search', call_id: 'call_1', args_bytes: 26 },
-  'tool.after_exec': { tool: 'search', call_id: 'call_1', ok: true, result_bytes: 5, duration_ms: 12.5 },
-  'response.after_engine': { status: 200, finish_reason: 'stop', streamed: false, usage: { prompt_tokens: 21, completion_tokens: 2, total_tokens: 23 }, sizes: { body_bytes: 230, content_chars: 6, reasoning_chars: 0, tool_calls: 0 }, tool_names: [] },
-  'request.error': { error: { status: 503, code: '503' }, route: { backend: 'local', model: 'example-model' }, attempt: 0, candidates_left: [{ backend: 'cloud', model: 'example-model' }] },
-  'request.finished': { row: { status: 200, finish_reason: 'stop', error_type: null, backend: 'local', backend_model: 'example-model', tokens: { prompt: 21, completion: 2, cached: null, reasoning: null }, cost_micros: null, ttft_ms: null, retries: 0, fallback_from: null }, labels: {} },
-  'memory.write': { note: { kind: 'fact', bytes: 24 } },
-  'session.start': { session: 's-1', messages: 0, profile: null },
-  'session.compact': { session: 's-1', messages: 42, bytes: 81234 },
-  'engine.lifecycle': { event: 'start', host: 'engine-1', detail: { mode: 'engine' } },
-};
+/** A stage's sample event as a hook with payload `meta` gets it: the controller serves them with the
+ *  stage table (GET /v1/fleet/hooks/stages `samples`, contracts/hooks-v1/examples). */
+const sampleOf = (stage: string, table: StageTable | null | undefined): Record<string, unknown> => table?.samples?.[stage]?.event ?? {};
 
-export const sampleText = (stage: string): string => JSON.stringify(SAMPLE_EVENTS[stage] ?? {}, null, 2);
+export const sampleText = (stage: string, table: StageTable | null | undefined): string => JSON.stringify(sampleOf(stage, table), null, 2);
 
 /** The event typed in the playground: nothing to send when it is the sample itself, the object
  *  when it differs, the error when it is no JSON object. */
-export function parseEvent(stage: string, raw: string): { ok: true; event?: Record<string, unknown> } | { ok: false; error: string } {
+export function parseEvent(stage: string, raw: string, table: StageTable | null | undefined): { ok: true; event?: Record<string, unknown> } | { ok: false; error: string } {
   if (!raw.trim()) return { ok: true };
   let v: unknown;
   try {
@@ -551,7 +533,7 @@ export function parseEvent(stage: string, raw: string): { ok: true; event?: Reco
     return { ok: false, error: `Not valid JSON yet: ${(e as Error).message}` };
   }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: 'An event is an object: { … }.' };
-  return same(v, SAMPLE_EVENTS[stage] ?? {}) ? { ok: true } : { ok: true, event: v as Record<string, unknown> };
+  return same(v, sampleOf(stage, table)) ? { ok: true } : { ok: true, event: v as Record<string, unknown> };
 }
 
 export interface Explained {

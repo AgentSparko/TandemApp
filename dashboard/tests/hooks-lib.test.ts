@@ -8,9 +8,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Bucket, Hook, HookCall, HookTest, Provider, ProviderCall, Report } from '../src/api/hooks.ts';
-import { BUILTINS, PRIORITY_MAX, PRIORITY_MIN, SAMPLE_EVENTS, VERIFY, bodyOf, breakerWords, builtinsFor, callWords, capUse, checkForm, decisionWords, defaultPolicy, diffRows, explainTest, hookErrorWords, hookKey, kindWords, mayWords, movePriorities, newForm, parseEvent, parsePatterns, pipeline, recentRequests, replayNote, rolesAt, runOrder, scopeError, scopeOf, scopeWords, secretWords, stageSwitch, stageTitle, timeoutAt, traceOf, withStaged } from '../src/lib/hooks.ts';
+import { BUILTINS, PRIORITY_MAX, PRIORITY_MIN, VERIFY, bodyOf, breakerWords, builtinsFor, callWords, capUse, checkForm, decisionWords, defaultPolicy, diffRows, explainTest, hookErrorWords, hookKey, kindWords, mayWords, movePriorities, newForm, parseEvent, parsePatterns, sampleText, pipeline, recentRequests, replayNote, rolesAt, runOrder, scopeError, scopeOf, scopeWords, secretWords, stageSwitch, stageTitle, timeoutAt, traceOf, withStaged } from '../src/lib/hooks.ts';
 import { adapterHooks, apiKeyKey, cellWords, checkProvider, conflicts, explainProviderTest, fallbackReasons, fallbackWords, healthWords, keyWords, mappingOf, modeWords, newProviderForm, probeWords, providerBody, providerCallWords, reportRows, reportWords, stageKey, stageProvider, takenBy, whoAnswers, withStagedProviders } from '../src/lib/providers.ts';
 import { Draft } from '../src/lib/settings-draft.ts';
+import { STAGES } from '../mock/hooks.ts';
 import { EXAMPLES, STAGE_TABLE as T } from './hooks-rig.ts';
 
 const metrics = (o: Partial<Hook['metrics']> = {}): Hook['metrics'] => ({ calls: 0, failures: 0, timeouts: 0, skipped: 0, outcomes: {}, p50_ms: null, p95_ms: null, breaker: { state: 'closed', consecutive_failures: 0, open_for_s: 0, opened: 0 }, ...o });
@@ -30,12 +31,15 @@ describe('the stages', () => {
     expect(mayWords({ may: ['later'] })).toEqual(['later']);
   });
 
-  it('the playground’s sample events are the contract’s own examples, stage by stage', () => {
+  it('the playground’s sample events are the ones the stage table serves: the contract’s own examples, stage by stage (SRV-849)', () => {
     for (const id of Object.keys(T.stages)) {
       const example = JSON.parse(readFileSync(join(EXAMPLES, `${id}.meta.json`), 'utf8'));
-      expect(SAMPLE_EVENTS[id], id).toEqual(example.event);
+      expect(STAGES.samples![id].event, id).toEqual(example.event);
+      expect(JSON.parse(sampleText(id, STAGES)), id).toEqual(example.event);
     }
-    expect(Object.keys(SAMPLE_EVENTS).sort()).toEqual(Object.keys(T.stages).sort());
+    expect(Object.keys(STAGES.samples!).sort()).toEqual(Object.keys(T.stages).sort());
+    // the table without samples (stages.json itself) gives an empty event to start from
+    expect(sampleText('stream.chunk', T)).toBe('{}');
   });
 
   it('a hook’s default failure policy: guards refuse, the rest follow the stage, async stages drop', () => {
@@ -203,15 +207,15 @@ describe('a new hook’s form', () => {
 
 describe('the playground', () => {
   it('the event typed: the sample itself sends nothing, a change is sent, a non-object is refused', () => {
-    expect(parseEvent('stream.chunk', JSON.stringify(SAMPLE_EVENTS['stream.chunk'], null, 2))).toEqual({ ok: true });
-    expect(parseEvent('stream.chunk', '  ')).toEqual({ ok: true });
-    expect(parseEvent('stream.chunk', '{"index": 9}')).toEqual({ ok: true, event: { index: 9 } });
-    expect(parseEvent('stream.chunk', '[1]')).toEqual({ ok: false, error: 'An event is an object: { … }.' });
-    expect((parseEvent('stream.chunk', '{') as { error: string }).error).toMatch(/^Not valid JSON yet/);
+    expect(parseEvent('stream.chunk', JSON.stringify(STAGES.samples!['stream.chunk'].event, null, 2), STAGES)).toEqual({ ok: true });
+    expect(parseEvent('stream.chunk', '  ', STAGES)).toEqual({ ok: true });
+    expect(parseEvent('stream.chunk', '{"index": 9}', STAGES)).toEqual({ ok: true, event: { index: 9 } });
+    expect(parseEvent('stream.chunk', '[1]', STAGES)).toEqual({ ok: false, error: 'An event is an object: { … }.' });
+    expect((parseEvent('stream.chunk', '{', STAGES) as { error: string }).error).toMatch(/^Not valid JSON yet/);
   });
 
   it('a test call’s answer, explained for every way it can end', () => {
-    const t = (o: Partial<HookTest>): HookTest => ({ hook: 'cap', stage: 'request.before_engine', outcome: 'ok', duration_ms: 12.4, result: { action: 'continue' }, error: null, ...o });
+    const t = (o: Partial<HookTest>): HookTest => ({ hook: 'cap', stage: 'request.before_engine', outcome: 'ok', duration_ms: 12.4, result: { action: 'continue' }, error: null, event: {}, ...o });
     expect(explainTest(t({}))).toMatchObject({ tone: 'ok', title: 'It answered in 12 ms and would change nothing.' });
     expect(explainTest(t({ result: null }))).toMatchObject({ title: 'It answered in 12 ms and would change nothing.' });
     const mod = explainTest(t({ result: { action: 'modify', patch: { temperature: 0.3, stop: null } }, diff: { temperature: { op: 'replace', bytes: 3 }, stop: { op: 'remove' } } }));

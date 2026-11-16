@@ -4,12 +4,14 @@
 // scope as the same registry seen another way. And the stand-ins the pages' states need: a request
 // walked through the stages, a breaker that opens and probes, the providers' journal and report.
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MockFleet } from '../mock/fleet.ts';
 import { HOOK_ERRORS, QUESTIONS, hostIsLan } from '../mock/hooks.ts';
 import { HookError, type Hook, type HookCalls, type HookList, type Provider, type ProviderList } from '../src/api/hooks.ts';
 import type { Plan, SchemaView, ValuesView } from '../src/api/settings.ts';
-import { STAGE_TABLE, T0, rig } from './hooks-rig.ts';
+import { EXAMPLES, STAGE_TABLE, T0, rig } from './hooks-rig.ts';
 
 const refusal = async (p: Promise<unknown>): Promise<[number, string, HookError['facts']]> => {
   try {
@@ -37,7 +39,14 @@ describe('the hooks’ API in the mock', () => {
     expect([by.guard.policy_effective, by.audit.policy_effective, by.export.policy_effective]).toEqual([{ 'request.received': 'closed' }, { 'request.finished': 'drop' }, { 'response.after_engine': 'open', 'request.finished': 'open' }]);
     // a secret shows as its hint only; a built-in has none
     expect([by.audit.secret, by.guard.secret]).toEqual([{ set: true, last4: '0001', sha256_6: expect.stringMatching(/^[0-9a-f]{6}$/), rotated_at: null, previous_until: null }, null]);
-    expect(await r.hooks.stages()).toEqual(STAGE_TABLE);
+    // the stage table as the contract has it, and each stage's sample event as its examples hold it (SRV-849)
+    const { samples, ...table } = await r.hooks.stages();
+    expect(table).toEqual(STAGE_TABLE);
+    for (const st of Object.keys(STAGE_TABLE.stages)) {
+      expect(samples![st].event, st).toEqual(JSON.parse(readFileSync(join(EXAMPLES, `${st}.meta.json`), 'utf8')).event);
+      const full = join(EXAMPLES, `${st}.full.json`);
+      expect(samples![st].content, st).toEqual(existsSync(full) ? JSON.parse(readFileSync(full, 'utf8')).event.content : null);
+    }
     expect(r.seen.join('')).not.toContain('hks_mock');
   });
 
@@ -55,10 +64,13 @@ describe('the hooks’ API in the mock', () => {
     expect((await r.hooks.patch('temperature-cap', { name: 'Cap' })).version).toBe(2);
     r.reg.hooks['temperature-cap'].answer = { action: 'modify', patch: { temperature: 0.3, seed: 7 } };
     const test = await r.hooks.test('temperature-cap', 'request.before_engine');
+    // the answer holds the event the hook was sent: the stage's sample, at its payload (meta: no text)
+    expect(test.event).toEqual((await r.hooks.stages()).samples!['request.before_engine'].event);
     expect([test.outcome, test.result, test.error, test.diff]).toEqual(['ok', { action: 'modify', patch: { temperature: 0.3, seed: 7 } }, null, { temperature: { op: 'replace', bytes: 3 }, seed: { op: 'add', bytes: 1 } }]);
     // a test is journaled as a test and counts for nothing
     const calls = await r.hooks.calls('temperature-cap');
     expect([calls.calls.map((c) => [c.mode, c.outcome, c.action, c.fields]), calls.metrics.calls]).toEqual([[['test', 'ok', 'modify', ['seed', 'temperature']]], 0]);
+    expect((await r.hooks.test('temperature-cap', 'request.before_engine', { params: { temperature: 1.5 } })).event).toMatchObject({ params: { temperature: 1.5 } });
     // no later answer holds the secret
     expect(r.seen.join('')).not.toContain(made.secret!);
     await r.hooks.remove('temperature-cap');

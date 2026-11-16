@@ -127,6 +127,14 @@ export interface StageTable {
   roles: Record<Role, string[]>;
   /** in the order a request passes them */
   stages: Record<string, StageSpec>;
+  /** GET /v1/fleet/hooks/stages: each stage's sample event, the playground's default (stages.json has none) */
+  samples?: Record<string, StageSample>;
+}
+
+/** a stage's sample: the event a hook at payload meta gets, and the text a redacted or full one gets with it */
+export interface StageSample {
+  event: Record<string, unknown>;
+  content: unknown;
 }
 
 export interface HookList {
@@ -185,6 +193,8 @@ export interface HookTest {
   duration_ms: number;
   result: Record<string, unknown> | null;
   error: string | null;
+  /** the event the hook was sent, at its payload level; null when none was */
+  event: Record<string, unknown> | null;
   diff?: Record<string, DiffEntry>;
 }
 

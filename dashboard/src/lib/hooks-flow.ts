@@ -286,7 +286,7 @@ export class HooksFlow {
   private blank(id: string): OneHook {
     const h = this.list?.find((x) => x.id === id);
     const stage = h?.stages[0] ?? '';
-    return { id, missing: false, refused: null, calls: null, callsRefused: null, edit: null, play: { stage, raw: sampleText(stage), busy: false, result: null, refused: null, invalid: null }, secret: { step: 'idle', grace: 3600, value: null, refused: null }, remove: { step: 'idle', refused: null }, notice: null, text: {}, invalid: {} };
+    return { id, missing: false, refused: null, calls: null, callsRefused: null, edit: null, play: { stage, raw: sampleText(stage, this.table), busy: false, result: null, refused: null, invalid: null }, secret: { step: 'idle', grace: 3600, value: null, refused: null }, remove: { step: 'idle', refused: null }, notice: null, text: {}, invalid: {} };
   }
 
   /** A hook's page opens: the hook as it is now, and its journal. */
@@ -300,7 +300,7 @@ export class HooksFlow {
       o.missing = false;
       o.refused = null;
       const at = stage && h.stages.includes(stage) ? stage : h.stages.includes(o.play.stage) ? o.play.stage : h.stages[0];
-      if (at !== o.play.stage) o.play = { ...o.play, stage: at, raw: sampleText(at), result: null, invalid: null };
+      if (at !== o.play.stage) o.play = { ...o.play, stage: at, raw: sampleText(at, this.table), result: null, invalid: null };
     } catch (e) {
       const err = asHookError(e);
       if (err.type === 'not_found') o.missing = true;
@@ -423,15 +423,15 @@ export class HooksFlow {
   play(p: Partial<Pick<PlayState, 'stage' | 'raw'>>): void {
     const o = this.one;
     if (!o) return;
-    if (p.stage && p.stage !== o.play.stage) o.play = { ...o.play, stage: p.stage, raw: sampleText(p.stage), result: null, refused: null, invalid: null };
+    if (p.stage && p.stage !== o.play.stage) o.play = { ...o.play, stage: p.stage, raw: sampleText(p.stage, this.table), result: null, refused: null, invalid: null };
     if (p.raw !== undefined) {
-      const parsed = parseEvent(o.play.stage, p.raw);
+      const parsed = parseEvent(o.play.stage, p.raw, this.table);
       o.play = { ...o.play, raw: p.raw, invalid: parsed.ok ? null : parsed.error };
     }
     this.changed();
   }
   resetEvent(): void {
-    if (this.one) this.one.play = { ...this.one.play, raw: sampleText(this.one.play.stage), invalid: null };
+    if (this.one) this.one.play = { ...this.one.play, raw: sampleText(this.one.play.stage, this.table), invalid: null };
     this.changed();
   }
 
@@ -440,7 +440,7 @@ export class HooksFlow {
   async test(): Promise<void> {
     const o = this.one;
     if (!o || o.play.busy) return;
-    const parsed = parseEvent(o.play.stage, o.play.raw);
+    const parsed = parseEvent(o.play.stage, o.play.raw, this.table);
     if (!parsed.ok) {
       o.play.invalid = parsed.error;
       this.changed();

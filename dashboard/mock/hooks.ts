@@ -32,13 +32,22 @@
 //   {replay: true | false}                 recorded answers replace every provider
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Answer, Arm, Breaker, Bucket, Grant, Health, Hook, HookCall, HookMetrics, HookScope, Outcome, Probe, Provider, ProviderCall, ProviderKind, Role, StageTable } from '../src/api/hooks.ts';
 
 export type Reply = { status: number; body: unknown };
 
-export const STAGES: StageTable = JSON.parse(readFileSync(fileURLToPath(new URL('../../contracts/hooks-v1/stages.json', import.meta.url)), 'utf8'));
+const HOOKS_V1 = (f: string): string => fileURLToPath(new URL(`../../contracts/hooks-v1/${f}`, import.meta.url));
+/** the stage table as GET /v1/fleet/hooks/stages answers it: stages.json and each stage's sample event (SRV-849) */
+export const STAGES: StageTable = JSON.parse(readFileSync(HOOKS_V1('stages.json'), 'utf8'));
+STAGES.samples = Object.fromEntries(
+  Object.keys(STAGES.stages).map((st) => {
+    const full = HOOKS_V1(`examples/${st}.full.json`);
+    const event = JSON.parse(readFileSync(HOOKS_V1(`examples/${st}.meta.json`), 'utf8')).event as Record<string, unknown>;
+    return [st, { event, content: existsSync(full) ? JSON.parse(readFileSync(full, 'utf8')).event.content : null }];
+  }),
+);
 export const QUESTIONS: Record<string, string> = {
   classify: 'the router: which class a new user message is',
   packages: 'the router and the library: which package fits the turn',
@@ -655,7 +664,11 @@ export class MockHooks {
         if (!h.stages.includes(stage)) bad(`the hook does not run at ${stage}`, 'stage');
         const c = this.call(h, stage, 'test', now, `test-${sha(`test-${++this.seq}`).slice(0, 12)}`);
         const result = c.outcome === 'ok' ? this.answerOf(h) : null;
-        return [200, { hook: id, stage, outcome: c.outcome, duration_ms: c.duration_ms, result, error: c.error ?? null, ...(result?.action === 'modify' ? { diff: diffOf(result.patch as Record<string, unknown>) } : {}) }];
+        // the event it was sent: the stage's sample with the typed one over it, its content only above meta
+        const { content: typed, ...over } = (b.event ?? {}) as Record<string, unknown>;
+        const content = typed !== undefined ? typed : STAGES.samples![stage].content;
+        const event = { ...copy(STAGES.samples![stage].event), ...copy(over), ...(h.vals.payload !== 'meta' && content != null ? { content: copy(content) } : {}) };
+        return [200, { hook: id, stage, outcome: c.outcome, duration_ms: c.duration_ms, result, error: c.error ?? null, event, ...(result?.action === 'modify' ? { diff: diffOf(result.patch as Record<string, unknown>) } : {}) }];
       }
       if (act === 'calls' && method === 'GET') {
         this.forced('calls');
