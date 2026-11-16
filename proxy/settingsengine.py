@@ -9,6 +9,18 @@ read at the start), whether it feeds the disk cache's fingerprint, whether the o
 secret (enginectl.SECRET_KEY) or that the engine says may hold one as secret: its value is never
 read into an answer.
 
+THE MODE. Two keys of their own stand for the engine's mode: `mode` (engine: the bare engine;
+chat: TandemApp's conductor and Chat inside it) and `mode.ext` (the extension chat mode runs,
+tandemapp.engine_ext unless one is named). They show what QSE_MODE and QSE_EXT resolve to; those
+two are not changed directly. A part that only sets them goes through `tandem remote mode set`
+(restart class engine, the same restart as any other change); with other keys of the same engine
+they go into its overlay change as QSE_MODE and QSE_EXT, which is what `mode set` writes, so the
+engine restarts once. When the result is chat mode and the engine host has no extension of that
+module that loads (`ext list`), the plan names the install of this controller's own wheel
+(`ext_wheel()`: TANDEM_NODE_WHEEL, else built from its own copy, proxy/nodeinstall.py), bound by
+its sha256; the apply sends it (`ext install`) before the switch. A module that is not TandemApp's,
+or no wheel here, is refused in the plan with the fix (`extension_missing`).
+
 An engine reached over HTTP only (a TandemLLM backend whose host is not paired over SSH) is a target
 too, `http:<backend id>`, read-only: its hot keys as GET /v1/engine/settings (engine API 1.9)
 answers them, and why nothing is writable from here.
@@ -44,7 +56,9 @@ drains live in this process: a controller restart ends them (the engine's job go
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
+import os
 import secrets
 import threading
 import time
@@ -65,6 +79,14 @@ HTTP_TIMEOUT_S = 5.0
 TYPES = {"string": "string", "integer": "integer", "number": "number", "path": "path",
          "enum": "enum", "module": "module", "cidrs": "cidrs"}
 FINAL = ("done", "failed", "timeout", "cancelled")
+#: the engine's mode as two keys of their own, and the overlay keys `mode set` writes for them
+MODE_VARS = {"mode": "QSE_MODE", "mode.ext": "QSE_EXT"}
+MODE_KEYS = tuple(MODE_VARS)
+MODES = ("engine", "chat")
+#: the extension chat mode runs unless one is named (docs/chat-mode.md)
+DEFAULT_EXT = "tandemapp.engine_ext"
+#: the modules this controller's own wheel carries
+OWN_EXT = "tandemapp."
 
 
 def is_secret(row: dict) -> bool:
@@ -109,16 +131,38 @@ def _value(key: str, v) -> str:
     return str(v)
 
 
+def shown_key(key: str) -> str:
+    """An overlay key as the scope shows it: QSE_MODE and QSE_EXT are the mode's."""
+    return {v: k for k, v in MODE_VARS.items()}.get(key, key)
+
+
+def _shown(key: str, v):
+    return (v or None) if key == "QSE_EXT" else v
+
+
+def _sha_of(path: str) -> tuple[str, int]:
+    h = hashlib.sha256()
+    n = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+            n += len(chunk)
+    return h.hexdigest(), n
+
+
 # ======================================================================================== the scope
 class EngineScope(Scope):
     """`rows()`: the fleet's engine hosts over SSH; `ctl_for(row)`: an EngineHostControl;
     `http_only()`: [{id, label, backend}] of engines reached over HTTP only; `http_read(item)`:
     GET /v1/engine/settings of one; `hot_patch(row, body)`: (status, answer) of PATCH
-    /v1/engine/settings on a paired host; `restarts`: the scheduler."""
+    /v1/engine/settings on a paired host; `restarts`: the scheduler; `ext_wheel()`: the path of
+    this controller's own wheel (the chat extension), or an exception that says why there is
+    none."""
 
     def __init__(self, *, rows, ctl_for, restarts, http_only=None, http_read=None,
-                 hot_patch=None):
+                 hot_patch=None, ext_wheel=None):
         self.rows = rows
+        self.ext_wheel = ext_wheel
         self.ctl_for = ctl_for
         self.restarts = restarts
         self.http_only = http_only or (lambda: [])
@@ -178,8 +222,22 @@ class EngineScope(Scope):
             return {"writable": False, "why": why, "keys": keys}
         with self._ctl(target) as ctl:
             doc = ctl.settings_get()
+        rows = {r["key"]: r for r in doc["keys"]}
         keys = []
+        if "QSE_MODE" in rows:
+            m = rows["QSE_MODE"]
+            keys.append(key_spec("mode", "enum", values=MODES, restart="engine",
+                                 default=m.get("default") or "engine",
+                                 writable=bool(m["managed"]), why=m.get("why"),
+                                 text="how the engine runs: engine, the bare engine; chat, with "
+                                      "TandemApp's conductor and Chat inside it"))
+            keys.append(key_spec("mode.ext", "module", restart="engine", default=DEFAULT_EXT,
+                                 nullable=True, writable=bool(m["managed"]), why=m.get("why"),
+                                 text="the extension chat mode runs; TandemApp installs its own "
+                                      "when the engine host lacks it"))
         for r in doc["keys"]:
+            if r["key"] in MODE_VARS.values():
+                continue
             secret = is_secret(r)
             keys.append(key_spec(r["key"], TYPES.get(r["type"], "string"),
                                  restart=r["restart"], fingerprint=bool(r["fingerprint"]),
@@ -202,7 +260,17 @@ class EngineScope(Scope):
         with self._ctl(target) as ctl:
             doc = ctl.settings_get()
         rows = []
+        by = {r["key"]: r for r in doc["keys"]}
+        if "QSE_MODE" in by:
+            m, e = by["QSE_MODE"], by.get("QSE_EXT") or {}
+            rows.append({"key": "mode", "value": m.get("value") or None, "set": bool(m["set"]),
+                         "source": m["source"]})
+            rows.append({"key": "mode.ext", "value": e.get("value") or None,
+                         "set": bool(e.get("set") and e.get("value")),
+                         "source": e.get("source") or "default"})
         for r in doc["keys"]:
+            if r["key"] in MODE_VARS.values():
+                continue
             secret = is_secret(r)
             rows.append({"key": r["key"], "value": None if secret else r.get("value"),
                          "set": bool(r["set"]), "source": r["source"]})
@@ -220,23 +288,156 @@ class EngineScope(Scope):
             doc = ctl.settings_versions()
         out = []
         for v in sorted(doc["versions"], key=lambda x: -x["n"]):
-            vals = {k: x for k, x in (v.get("set") or {}).items()
+            # the mode's overlay keys as the scope shows them
+            vals = {shown_key(k): _shown(k, x) for k, x in (v.get("set") or {}).items()
                     if not enginectl.SECRET_KEY.search(k)}
             out.append({"id": str(v["n"]), "at": v.get("at"), "who": None,
                         "note": v.get("note") or "", "change_set": None,
-                        "keys": sorted((v.get("set") or {}).keys()),
+                        "keys": sorted(shown_key(k) for k in (v.get("set") or {})),
                         "current": v["n"] == doc["current"], "good": v["n"] == doc.get("good"),
                         "values": vals})
         return {"current": str(doc["current"]), "versions": out}
 
     # ------------------------------------------------------------------ plans
+    def _overlay(self, target: str, sets: dict, unsets: list, rows: dict) -> tuple[dict, list]:
+        """A part's keys as the overlay's: the mode as QSE_MODE and QSE_EXT, as `mode set` writes
+        them. Refusals name the key the page shows."""
+        for k in list(sets) + list(unsets):
+            if k in MODE_VARS.values():
+                raise SettingsError(422, "locked", f"{k} changes through the key "
+                                                   f"{shown_key(k)}: the mode installs the "
+                                                   f"extension chat mode needs", key=k)
+        changes = {k: _value(k, v) for k, v in sets.items() if k not in MODE_KEYS}
+        unset = [k for k in unsets if k not in MODE_KEYS]
+        touched = [k for k in list(sets) + list(unsets) if k in MODE_KEYS]
+        if not touched:
+            return changes, unset
+        if "QSE_MODE" not in rows:
+            raise SettingsError(422, "unknown_key", "this engine has no mode to switch: update it "
+                                                    "on its host", key=touched[0],
+                                keys=touched)
+        cur = rows["QSE_MODE"].get("value") or "engine"
+        cur_ext = (rows.get("QSE_EXT") or {}).get("value") or None
+        mode, ext = self._mode_args(sets, cur)
+        if "mode" in sets:
+            changes["QSE_MODE"] = mode
+            if "QSE_EXT" in rows:
+                changes["QSE_EXT"] = (ext or (cur_ext if cur == "chat" and cur_ext else
+                                              DEFAULT_EXT)) if mode == "chat" else ""
+        elif "mode.ext" in sets:
+            changes["QSE_EXT"] = ext or DEFAULT_EXT
+        if "mode" in unsets:
+            unset += [k for k in ("QSE_MODE", "QSE_EXT") if k in rows]
+        elif "mode.ext" in unsets:
+            unset.append("QSE_EXT")
+        return changes, unset
+
+    @staticmethod
+    def _mode_args(sets: dict, cur: str | None) -> tuple[str | None, str | None]:
+        """(the mode asked, the extension asked) of a part's mode keys, checked."""
+        mode = sets.get("mode")
+        if "mode" in sets and mode not in MODES:
+            raise SettingsError(422, "bad_value", "mode is engine or chat", key="mode")
+        ext = sets.get("mode.ext")
+        if ext is not None and (not isinstance(ext, str) or not enginectl.MODULE_RE.match(ext)):
+            raise SettingsError(422, "bad_value", "mode.ext is a dotted module name, like "
+                                                  f"{DEFAULT_EXT}", key="mode.ext")
+        if "mode.ext" in sets and (mode or cur) != "chat":
+            raise SettingsError(422, "bad_value", "mode.ext goes with chat mode: choose chat as "
+                                                  "well", key="mode.ext")
+        return mode, ext
+
+    def _ext_need(self, ctl, ext: str) -> dict | None:
+        """None when the engine host has `ext` and it loads; else this controller's wheel to
+        install first ({path, name, sha256, bytes, module}), or the refusal with its fix."""
+        doc = ctl.ext_list()
+        for e in doc.get("extensions") or []:
+            if e.get("module") == ext and e.get("imports") and e.get("accepted"):
+                return None
+        if not ext.startswith(OWN_EXT):
+            raise SettingsError(409, "extension_missing",
+                                f"the engine host has no extension {ext} that loads, and "
+                                f"TandemApp installs only its own ({OWN_EXT}*): install {ext} "
+                                f"there first (tandem remote ext install), or choose "
+                                f"{DEFAULT_EXT}", key="mode.ext")
+        why = "this controller has no wheel to send"
+        path = None
+        if self.ext_wheel is not None:
+            try:
+                path = self.ext_wheel()
+            except Exception as exc:                                 # noqa: BLE001
+                why = str(getattr(exc, "message", None) or exc or type(exc).__name__)[:300]
+        if not path or not os.path.isfile(path):
+            raise SettingsError(409, "extension_missing",
+                                f"the engine host has no {ext} that loads, and {why}: set "
+                                f"TANDEM_NODE_WHEEL to the tandemapp wheel of this release and "
+                                f"plan again, or install the extension on the engine host "
+                                f"(tandem remote ext install)", key="mode.ext")
+        sha, size = _sha_of(path)
+        return {"path": path, "name": os.path.basename(path), "sha256": sha, "bytes": size,
+                "module": ext}
+
+    @staticmethod
+    def _install_note(inst: dict) -> str:
+        return (f"the engine host has no {inst['module']} that loads: TandemApp installs its own "
+                f"wheel first ({inst['name']}, {max(1, round(inst['bytes'] / 1e6))} MB)")
+
+    def _plan_mode(self, target: str, sets: dict) -> dict:
+        """A part that only sets the mode: `mode set`, after the extension's install."""
+        with self._ctl(target) as ctl:
+            cur = ctl.mode_get()
+            cur_mode, cur_ext = cur.get("mode"), cur.get("ext") or None
+            inferred = bool(cur.get("inferred"))
+            mode, ext = self._mode_args(sets, cur_mode)
+            new_mode = mode or cur_mode
+            new_ext = None
+            if new_mode == "chat":
+                new_ext = ext or (cur_ext if cur_mode == "chat" and cur_ext else DEFAULT_EXT)
+            prev = {k: cur.get(k) for k in ("mode", "ext", "source", "inferred")}
+            if new_mode == cur_mode and not inferred and new_ext == (cur_ext if new_mode == "chat"
+                                                                     else None):
+                return part_plan([], state=digest(["no_change", target, prev]),
+                                 native={"kind": "mode", "previous": prev})
+            install = self._ext_need(ctl, new_ext) if new_mode == "chat" else None
+            st = self._status(ctl)
+        base = ((st or {}).get("overlay") or {}).get("current")
+        out = []
+        if new_mode != cur_mode or inferred:
+            out.append(change("mode", cur_mode, new_mode, was_set=not inferred, is_set=True,
+                              restart="engine"))
+        if new_ext != cur_ext:
+            out.append(change("mode.ext", cur_ext, new_ext, was_set=cur_ext is not None,
+                              is_set=new_ext is not None, restart="engine"))
+        warnings = [self._install_note(install)] if install else []
+        native = {"kind": "mode", "mode": new_mode, "ext": new_ext, "base": base,
+                  "install": install, "hot_only": False, "previous": prev}
+        return part_plan(out, state=digest([prev, base, (install or {}).get("sha256")]),
+                         warnings=warnings, native=native, restart="engine", fingerprint_keys=[])
+
+    @staticmethod
+    def _status(ctl) -> dict | None:
+        try:
+            return ctl.status()
+        except enginectl.CtlError:
+            return None
+
     def _plan(self, target: str, sets: dict, unsets: list, *, restore: int | None = None) -> dict:
         if not self.target_info(target)["writable"]:
             self._row(target)
-        changes = {k: _value(k, v) for k, v in sets.items()}
+        if restore is None and sets and not unsets and all(k in MODE_KEYS for k in sets):
+            return self._plan_mode(target, sets)
+        install = None
         with self._ctl(target) as ctl:
+            if restore is None:
+                rows = {r["key"]: r for r in ctl.settings_get()["keys"]}
+                changes, unset = self._overlay(target, sets, unsets, rows)
+                new_mode = changes.get("QSE_MODE", (rows.get("QSE_MODE") or {}).get("value"))
+                if "QSE_EXT" in changes and new_mode == "chat":
+                    install = self._ext_need(ctl, changes["QSE_EXT"] or DEFAULT_EXT)
+            else:
+                changes, unset = {k: _value(k, v) for k, v in sets.items()}, list(unsets)
             try:
-                doc = ctl.settings_plan(changes, unset=list(unsets))
+                doc = ctl.settings_plan(changes, unset=unset)
             except enginectl.CtlRefused as exc:
                 if exc.code == "no_change":
                     return part_plan([], state=digest(["no_change", target, restore]))
@@ -246,27 +447,33 @@ class EngineScope(Scope):
         out = []
         for e in p["effect"]:
             secret = bool(enginectl.SECRET_KEY.search(e["key"]))
-            out.append(change(e["key"], e["from"], e["to"], was_set=e["was_set"],
+            out.append(change(shown_key(e["key"]), _shown(e["key"], e["from"]),
+                              _shown(e["key"], e["to"]), was_set=e["was_set"],
                               is_set=e["is_set"], restart=e["restart"],
                               fingerprint=bool(e["fingerprint"]), secret=secret))
         for o in p["overlay"]:
             if o["key"] in shadowed:
-                out.append(change(o["key"], o["from"], o["to"], was_set=o["from"] is not None,
-                                  is_set=o["to"] is not None, restart="engine",
+                out.append(change(shown_key(o["key"]), o["from"], o["to"],
+                                  was_set=o["from"] is not None, is_set=o["to"] is not None,
+                                  restart="engine",
                                   secret=bool(enginectl.SECRET_KEY.search(o["key"]))))
         hot_only = (bool(p["effect"]) and not shadowed and not p["restart_needed"]
-                    and all(e["restart"] == "hot" for e in p["effect"]) and restore is None)
+                    and all(e["restart"] == "hot" for e in p["effect"]) and restore is None
+                    and install is None)
         warnings = list(p.get("warnings") or [])
+        if install:
+            warnings.insert(0, self._install_note(install))
         if not hot_only and not p["restart_needed"]:
             warnings.append("applied over SSH, this change restarts the engine all the same")
         native = {"base": p["base"], "confirm": p["confirm"],
                   "confirm_fingerprint": p.get("confirm_fingerprint"), "hot_only": hot_only,
-                  "changes": changes, "unset": list(unsets), "restore": restore}
+                  "changes": changes, "unset": list(unset), "restore": restore,
+                  "install": install}
         return part_plan(out, state=digest([p["confirm"], p.get("confirm_fingerprint"),
-                                            p["base"]]),
+                                            p["base"], (install or {}).get("sha256")]),
                          warnings=warnings, native=native,
                          restart="hot" if hot_only else "engine",
-                         fingerprint_keys=p.get("fingerprint_keys") or [])
+                         fingerprint_keys=[shown_key(k) for k in p.get("fingerprint_keys") or []])
 
     def plan(self, target, sets, unsets):
         return self._plan(target, sets, unsets)
@@ -306,11 +513,31 @@ class EngineScope(Scope):
             deadline = DEFAULT_DEADLINE_S
         return when, deadline
 
+    def _install(self, ctl, inst: dict | None) -> None:
+        """The extension's wheel the plan named, sent before the switch (no restart of its own)."""
+        if not inst:
+            return
+        path = self.ext_wheel() if self.ext_wheel is not None else None
+        if not path or not os.path.isfile(path) or _sha_of(path)[0] != inst["sha256"]:
+            raise SettingsError(409, "stale_plan", "this controller's wheel changed since the "
+                                                   "plan: plan again")
+        ctl.ext_install(path, name=inst["name"], sha256=inst["sha256"], module=inst["module"])
+
     def apply(self, target, plan, ctx):
         nat = plan["native"]
         row = self._row(target)
-        base = str(nat["base"])
-        restore = [{"scope": "engine", "target": target, "version": base}]
+        base = None if nat.get("base") is None else str(nat["base"])
+        restore = [] if base is None else [{"scope": "engine", "target": target, "version": base}]
+        if nat.get("kind") == "mode":
+            when, deadline = self._when(ctx)
+            with self._ctl(target) as ctl:
+                self._install(ctl, nat.get("install"))
+                doc = ctl.mode_set(nat["mode"], ext=nat.get("ext"), when=when, deadline=deadline)
+            view = self.restarts.schedule(row, doc["job"], change_set=ctx["change_set"],
+                                          who=ctx["who"], when=when, deadline_s=deadline,
+                                          kind="mode")
+            return {"version_before": base, "version_after": None, "restore": restore,
+                    "restart": view}
         if nat["hot_only"]:
             if self.hot_patch is None:
                 raise SettingsError(409, "no_http", "a hot change goes through the engine's HTTP "
@@ -337,6 +564,7 @@ class EngineScope(Scope):
         when, deadline = self._when(ctx)
         fp = nat.get("confirm_fingerprint") if ctx.get("fingerprint_ok") else None
         with self._ctl(target) as ctl:
+            self._install(ctl, nat.get("install"))
             if nat.get("restore") is not None:
                 doc = ctl.settings_restore(nat["restore"], confirm=nat["confirm"],
                                            confirm_fingerprint=fp, when=when, deadline=deadline)
@@ -359,8 +587,8 @@ class EngineScope(Scope):
 def _brief(job: dict | None) -> dict | None:
     if not isinstance(job, dict):
         return None
-    return {k: job.get(k) for k in ("id", "kind", "state", "phase", "message", "waiting_for",
-                                    "created_at", "ended_at")}
+    return {k: job.get(k) for k in ("id", "kind", "state", "phase", "when", "message",
+                                    "waiting_for", "created_at", "ended_at")}
 
 
 class Restarts:

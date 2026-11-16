@@ -270,6 +270,8 @@ export function errorWords(e: Pick<SettingsError, 'type' | 'message' | 'facts'>)
     case 'read_only':
     case 'no_http':
       return { title: m, fix: null, detail: null };
+    case 'extension_missing':
+      return { title: 'The engine host lacks the chat extension, and TandemApp cannot install it from here.', fix: 'Do what the sentence below says, then review again. Nothing was changed.', detail: m || null };
     case 'engine_unreachable':
       return own('TandemApp could not reach the engine host.', 'Check that the machine is on and answers over SSH, then try again. Nothing was changed there.');
     case 'engine_timeout':

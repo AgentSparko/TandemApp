@@ -159,7 +159,8 @@ export interface Restart {
   host: string;
   alias: string;
   change_set: string;
-  kind: 'settings' | 'restore';
+  /** mode: the engine's mode switched (`tandem remote mode set`) */
+  kind: 'settings' | 'restore' | 'mode';
   who: string;
   state: RestartState;
   message: string | null;

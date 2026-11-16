@@ -10,10 +10,12 @@
 //              `cloud` (a key stored); two routing rules, the last one the environment's; two users
 //   conductor  settings, router, roles, packages, monitor, residency, deciders, profiles.default and
 //              profiles.safe (locked). A router without `rules` is an invalid document
-//   engine     `eh-desk` (spark-desk, over SSH: MAX_QUEUE, QSE_ALLOW_FROM hot, QWEN38_PREFIX_CHUNK
-//              feeds the fingerprint, QSE_MODE, HF_TOKEN and PORT not managed) and `http:bench`
-//              (HTTP only: read-only, its hot keys); plus every engine host paired in this mock.
-//              The `empty` fleet starts with no engine target.
+//   engine     `eh-desk` (spark-desk, over SSH: its mode as `mode` and `mode.ext` (QSE_MODE and
+//              QSE_EXT underneath, the chat extension not installed yet), MAX_QUEUE, QSE_ALLOW_FROM
+//              hot, QWEN38_PREFIX_CHUNK feeds the fingerprint, HF_TOKEN and PORT not managed) and
+//              `http:bench` (HTTP only: read-only, its hot keys); plus every engine host paired in
+//              this mock. The `empty` fleet starts with no engine target. Chat mode installs this
+//              controller's wheel first when the host lacks the extension (a warning in the plan)
 //   hooks      no key until `control({hooks: true})` plugs a sample registry in
 //
 // A restart follows the clock: scheduled (an `at=` time ahead), draining (the engine is busy for
@@ -29,6 +31,8 @@
 //   {move: true}                           the settings move under every plan read so far (409 stale_plan)
 //   {hooks: true | false}                  the hook registry is plugged in
 //   {unreachable: "<engine target>" | null} that engine host does not answer over SSH
+//   {wheel: false | true}                  this controller has no wheel of its own to install the
+//                                          chat extension from (409 extension_missing)
 
 import { createHash } from 'node:crypto';
 import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
@@ -46,7 +50,7 @@ const WARM_MS = 3000;
 export const SETTINGS_ERRORS: Record<string, number> = {
   bad_request: 400, target_required: 400, unknown_field: 400, not_found: 404, no_scope: 404, no_target: 404, no_version: 404, no_restart: 404,
   confirm_required: 428, fingerprint_confirm_required: 428, stale_plan: 409, busy: 409, read_only: 409, too_late: 409, ended: 409, engine_busy: 409,
-  engine_refused: 409, host_key_changed: 409, no_http: 409, unknown_key: 422, locked: 422, bad_value: 422, invalid_document: 422, restore_invalid: 422,
+  engine_refused: 409, host_key_changed: 409, no_http: 409, extension_missing: 409, unknown_key: 422, locked: 422, bad_value: 422, invalid_document: 422, restore_invalid: 422,
   store_refused: 422, engine_unreachable: 502, engine_failed: 502, engine_too_old: 502, engine_timeout: 504, unauthorized: 401, cross_site: 403,
   cross_origin: 403, json_only: 415,
 };
@@ -606,10 +610,17 @@ const ENGINE_KEYS: Record<string, EngineKey> = {
   MAX_QUEUE: { default: '16', type: 'integer', restart: 'engine', managed: true },
   QSE_ALLOW_FROM: { default: '', type: 'cidrs', restart: 'hot', managed: true },
   QSE_MODE: { default: 'engine', type: 'enum', restart: 'engine', managed: true, values: ['engine', 'chat'] },
+  QSE_EXT: { default: '', type: 'module', restart: 'engine', managed: true },
   QWEN38_PREFIX_CHUNK: { default: '2048', type: 'integer', restart: 'engine', fingerprint: true, managed: true },
   HF_TOKEN: { default: null, type: 'string', restart: 'engine', managed: false, why: 'may hold a secret' },
   PORT: { default: '8000', type: 'integer', restart: 'engine', managed: false, why: 'the install’s' },
 };
+/** the engine's mode as the settings interface shows it, over the two overlay keys `mode set` writes */
+const MODE_VARS: Record<string, string> = { mode: 'QSE_MODE', 'mode.ext': 'QSE_EXT' };
+const SHOWN: Record<string, string> = { QSE_MODE: 'mode', QSE_EXT: 'mode.ext' };
+const DEFAULT_EXT = 'tandemapp.engine_ext';
+const WHEEL = 'tandemapp-0.15.0-py3-none-any.whl';
+const MODULE_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}(\.[A-Za-z_][A-Za-z0-9_]{0,63}){0,7}$/;
 const HTTP_WHY = 'reached over HTTP only: change its settings on its own host (tandem remote settings), or pair it over SSH';
 const secretKey = (k: string): boolean => /TOKEN|SECRET|PASSWORD|API_KEY/.test(k) || ENGINE_KEYS[k]?.why === 'may hold a secret';
 
@@ -620,12 +631,14 @@ interface EngineHost {
   versions: { n: number; set: Record<string, string>; at: number; note: string }[];
   current: number;
   good: number;
+  /** the chat extension is installed on the host */
+  ext: boolean;
 }
 interface RestartItem {
   id: string;
   host: EngineHost;
   change_set: string;
-  kind: 'settings' | 'restore';
+  kind: 'settings' | 'restore' | 'mode';
   who: string;
   when: string;
   deadline_s: number | null;
@@ -647,6 +660,8 @@ class EngineScope implements ScopeImpl {
   outcome: 'ok' | 'fail' | 'timeout' = 'ok';
   busyS = 6;
   unreachable: string | null = null;
+  /** this controller has a wheel of its own to install the chat extension from */
+  wheel = true;
   private seq = 0;
   now = 0;
   onEnd: (r: RestartItem, state: Restart['state']) => void = () => undefined;
@@ -655,10 +670,10 @@ class EngineScope implements ScopeImpl {
     private seeded: boolean,
     t0: number,
   ) {
-    if (seeded) this.hosts.push({ id: 'eh-desk', alias: 'spark-desk', backends: ['engine'], versions: [{ n: 0, set: {}, at: t0 - 7 * 86_400_000, note: 'the install' }, { n: 1, set: { MAX_QUEUE: '16' }, at: t0 - 86_400_000, note: 'settings apply' }], current: 1, good: 1 });
+    if (seeded) this.hosts.push({ id: 'eh-desk', alias: 'spark-desk', backends: ['engine'], versions: [{ n: 0, set: {}, at: t0 - 7 * 86_400_000, note: 'the install' }, { n: 1, set: { MAX_QUEUE: '16' }, at: t0 - 86_400_000, note: 'settings apply' }], current: 1, good: 1, ext: false });
   }
   private sync(): void {
-    for (const p of this.paired()) if (!this.hosts.some((h) => h.id === p.id)) this.hosts.push({ id: p.id, alias: p.alias, backends: [`engine.${p.id}`], versions: [{ n: 0, set: {}, at: this.now, note: 'the install' }], current: 0, good: 0 });
+    for (const p of this.paired()) if (!this.hosts.some((h) => h.id === p.id)) this.hosts.push({ id: p.id, alias: p.alias, backends: [`engine.${p.id}`], versions: [{ n: 0, set: {}, at: this.now, note: 'the install' }], current: 0, good: 0, ext: false });
   }
   targets(): Target[] {
     this.sync();
@@ -681,7 +696,13 @@ class EngineScope implements ScopeImpl {
     return {
       writable: true,
       why: null,
-      keys: Object.entries(ENGINE_KEYS).map(([k, d]) => spec(k, d.type, { restart: d.restart, fingerprint: d.fingerprint, default: d.default, values: d.values, secret: secretKey(k), writable: d.managed && !secretKey(k), why: d.why })),
+      keys: [
+        spec('mode', 'enum', { values: ['engine', 'chat'], restart: 'engine', default: 'engine', text: 'how the engine runs: engine, the bare engine; chat, with TandemApp’s conductor and Chat inside it' }),
+        spec('mode.ext', 'module', { restart: 'engine', default: DEFAULT_EXT, nullable: true, text: 'the extension chat mode runs; TandemApp installs its own when the engine host lacks it' }),
+        ...Object.entries(ENGINE_KEYS)
+          .filter(([k]) => !SHOWN[k])
+          .map(([k, d]) => spec(k, d.type, { restart: d.restart, fingerprint: d.fingerprint, default: d.default, values: d.values, secret: secretKey(k), writable: d.managed && !secretKey(k), why: d.why })),
+      ],
     };
   }
   get(t: string) {
@@ -692,13 +713,32 @@ class EngineScope implements ScopeImpl {
       writable: true,
       why: null,
       version: String(h.current),
-      values: Object.entries(ENGINE_KEYS).map(([k, d]) => ({ key: k, value: secretKey(k) ? null : (over[k] ?? d.default), set: k in over || k === 'HF_TOKEN' || k === 'PORT', source: k in over ? 'managed' : k === 'HF_TOKEN' ? 'local' : k === 'PORT' ? 'install' : 'default' })),
+      values: [
+        { key: 'mode', value: over.QSE_MODE ?? 'engine', set: true, source: 'QSE_MODE' in over ? 'managed' : 'default' },
+        { key: 'mode.ext', value: over.QSE_EXT || null, set: !!over.QSE_EXT, source: 'QSE_EXT' in over ? 'managed' : 'default' },
+        ...Object.entries(ENGINE_KEYS).filter(([k]) => !SHOWN[k]).map(([k, d]) => ({ key: k, value: secretKey(k) ? null : (over[k] ?? d.default), set: k in over || k === 'HF_TOKEN' || k === 'PORT', source: k in over ? 'managed' : k === 'HF_TOKEN' ? 'local' : k === 'PORT' ? 'install' : 'default' })),
+      ],
     };
   }
   versions(t: string) {
     if (t.startsWith('http:')) no('read_only', 'this engine is reached over HTTP only: its versions are read on its own host');
     const h = this.host(t);
-    return { current: String(h.current), versions: [...h.versions].reverse().map((v) => ({ id: String(v.n), at: iso(v.at), who: null, note: v.note, change_set: null, keys: Object.keys(v.set).sort(), current: v.n === h.current, good: v.n === h.good, values: { ...v.set } })) };
+    return { current: String(h.current), versions: [...h.versions].reverse().map((v) => ({ id: String(v.n), at: iso(v.at), who: null, note: v.note, change_set: null, keys: Object.keys(v.set).map((k) => SHOWN[k] ?? k).sort(), current: v.n === h.current, good: v.n === h.good, values: Object.fromEntries(Object.entries(v.set).map(([k, x]) => [SHOWN[k] ?? k, k === 'QSE_EXT' ? x || null : x])) })) };
+  }
+  /** the wheel to install first when chat mode needs an extension the host lacks; the refusal with its fix */
+  private extNeed(h: EngineHost, ext: string): { name: string; bytes: number; module: string } | null {
+    if (h.ext && ext === DEFAULT_EXT) return null;
+    if (!ext.startsWith('tandemapp.')) no('extension_missing', `the engine host has no extension ${ext} that loads, and TandemApp installs only its own (tandemapp.*): install ${ext} there first (tandem remote ext install), or choose ${DEFAULT_EXT}`, { key: 'mode.ext' });
+    if (!this.wheel) no('extension_missing', `the engine host has no ${ext} that loads, and this controller cannot build its wheel (no checkout): set TANDEM_NODE_WHEEL to the tandemapp wheel of this release and plan again, or install the extension on the engine host (tandem remote ext install)`, { key: 'mode.ext' });
+    return { name: WHEEL, bytes: 4_200_000, module: ext };
+  }
+  private modeArgs(sets: Record<string, unknown>, cur: string): { mode: string | null; ext: string | null } {
+    const mode = 'mode' in sets ? sets.mode : null;
+    if ('mode' in sets && mode !== 'engine' && mode !== 'chat') no('bad_value', 'mode is engine or chat', { key: 'mode' });
+    const ext = (sets['mode.ext'] ?? null) as string | null;
+    if (ext !== null && (typeof ext !== 'string' || !MODULE_RE.test(ext))) no('bad_value', `mode.ext is a dotted module name, like ${DEFAULT_EXT}`, { key: 'mode.ext' });
+    if ('mode.ext' in sets && (mode ?? cur) !== 'chat') no('bad_value', 'mode.ext goes with chat mode: choose chat as well', { key: 'mode.ext' });
+    return { mode: mode as string | null, ext };
   }
   private planFor(t: string, sets: Record<string, unknown>, unsets: string[], restore: number | null): ScopePlan {
     const h = this.host(t);
@@ -706,11 +746,35 @@ class EngineScope implements ScopeImpl {
     const next = { ...over };
     const changes: Change[] = [];
     for (const k of [...Object.keys(sets), ...unsets]) {
+      if (SHOWN[k]) no('locked', `${k} changes through the key ${SHOWN[k]}: the mode installs the extension chat mode needs`, { key: k });
+      if (MODE_VARS[k]) continue;
       const d = ENGINE_KEYS[k];
       if (!d) no('unknown_key', `unknown key ${k}`, { code: 'unknown_key' });
       if (!d.managed) no('bad_value', `${k} is not managed: ${d.why}`, { code: 'key_not_managed' });
     }
+    const curMode = over.QSE_MODE ?? 'engine';
+    const curExt = over.QSE_EXT || null;
+    const { mode, ext } = this.modeArgs(sets, curMode);
+    const touched = 'mode' in sets || 'mode.ext' in sets;
+    // the mode alone: `mode set`, as the engine has it
+    if (restore === null && touched && !unsets.length && Object.keys(sets).every((k) => MODE_VARS[k])) {
+      const newMode = mode ?? curMode;
+      const newExt = newMode === 'chat' ? (ext ?? (curMode === 'chat' && curExt ? curExt : DEFAULT_EXT)) : null;
+      if (newMode === curMode && newExt === (newMode === 'chat' ? curExt : null)) return planOf([], ['no_change', t, over]);
+      const install = newMode === 'chat' ? this.extNeed(h, newExt!) : null;
+      if (newMode !== curMode) changes.push(change('mode', curMode, newMode, { was_set: 'QSE_MODE' in over, is_set: true, restart: 'engine' }));
+      if (newExt !== curExt) changes.push(change('mode.ext', curExt, newExt, { was_set: curExt !== null, is_set: newExt !== null, restart: 'engine' }));
+      const target = { ...over, QSE_MODE: newMode, QSE_EXT: newExt ?? '' };
+      return planOf(changes, [h.current, target, install], { restart: 'engine', fingerprint_keys: [], warnings: install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : [], native: { next: target, hot: false, restore: null, base: h.current, install, kind: 'mode' } });
+    }
+    if ('mode' in sets) {
+      next.QSE_MODE = mode!;
+      next.QSE_EXT = mode === 'chat' ? (ext ?? (curMode === 'chat' && curExt ? curExt : DEFAULT_EXT)) : '';
+    } else if ('mode.ext' in sets) next.QSE_EXT = ext ?? DEFAULT_EXT;
+    if (unsets.includes('mode')) for (const k of ['QSE_MODE', 'QSE_EXT']) if (k in over) delete next[k];
+    if (unsets.includes('mode.ext') && 'QSE_EXT' in over) delete next.QSE_EXT;
     for (const [k, raw] of Object.entries(sets)) {
+      if (MODE_VARS[k]) continue;
       const d = ENGINE_KEYS[k];
       if (typeof raw === 'boolean' || (typeof raw !== 'string' && typeof raw !== 'number')) no('bad_value', `${k}: an engine setting is a string or a number`, { key: k });
       const v = String(raw);
@@ -720,18 +784,22 @@ class EngineScope implements ScopeImpl {
       next[k] = v;
     }
     for (const k of unsets) {
+      if (MODE_VARS[k]) continue;
       if (!(k in over)) no('bad_value', `${k} is not in the overlay`, { code: 'not_in_overlay' });
       delete next[k];
     }
+    const install = touched && next.QSE_MODE === 'chat' ? this.extNeed(h, next.QSE_EXT || DEFAULT_EXT) : null;
     for (const k of Object.keys(ENGINE_KEYS)) {
       const d = ENGINE_KEYS[k];
       const from = over[k] ?? d.default;
       const to = next[k] ?? d.default;
-      if (from !== to || k in over !== k in next) changes.push(change(k, from, to, { was_set: k in over, is_set: k in next, restart: d.restart, fingerprint: d.fingerprint }));
+      const show = (v: string | null) => (k === 'QSE_EXT' ? v || null : v);
+      if (from !== to || k in over !== k in next) changes.push(change(SHOWN[k] ?? k, show(from), show(to), { was_set: k in over, is_set: k in next, restart: d.restart, fingerprint: d.fingerprint }));
     }
     const hot = changes.length > 0 && restore === null && changes.every((c) => c.restart === 'hot');
     const fp = changes.filter((c) => c.fingerprint).map((c) => c.key);
-    return planOf(changes, [h.current, next, restore], { restart: hot ? 'hot' : 'engine', fingerprint_keys: fp, warnings: fp.length ? [`${fp.join(', ')} feed the disk cache’s fingerprint`] : [], native: { next, hot, restore, base: h.current } });
+    const warnings = [...(install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : []), ...(fp.length ? [`${fp.join(', ')} feed the disk cache’s fingerprint`] : [])];
+    return planOf(changes, [h.current, next, restore, install], { restart: hot ? 'hot' : 'engine', fingerprint_keys: fp, warnings, native: { next, hot, restore, base: h.current, install } });
   }
   plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
     return this.planFor(t, sets, unsets, null);
@@ -748,9 +816,9 @@ class EngineScope implements ScopeImpl {
   }
   apply(t: string, p: ScopePlan, ctx: Ctx): Applied {
     const h = this.host(t);
-    const nat = p.native as { next: Record<string, string>; hot: boolean; restore: number | null; base: number };
+    const nat = p.native as { next: Record<string, string>; hot: boolean; restore: number | null; base: number; install: unknown; kind?: 'mode' };
     const restore: RestoreRef[] = [{ scope: 'engine', target: t, version: String(nat.base) }];
-    const note = nat.restore != null ? `restore of version ${nat.restore}` : 'settings apply';
+    const note = nat.restore != null ? `restore of version ${nat.restore}` : nat.kind === 'mode' ? `mode ${nat.next.QSE_MODE}` : 'settings apply';
     if (nat.hot) {
       const n = h.versions[h.versions.length - 1].n + 1;
       h.versions.push({ n, set: nat.next, at: ctx.now, note });
@@ -759,12 +827,14 @@ class EngineScope implements ScopeImpl {
     }
     // one job at a time on an engine host, as the engine itself has it
     if (this.restarts.some((x) => x.host === h && !x.end)) no('engine_busy', SENTENCE.engine_busy, { code: 'busy' });
+    // the extension first (`ext install`: no restart of its own), then the switch
+    if (nat.install) h.ext = true;
     const when = ctx.when ?? 'idle';
     const deadline = when === 'now' ? null : (ctx.deadline_s ?? 600);
     const at = when.startsWith('at=') ? Date.parse(when.slice(3)) : null;
     const stamp = new Date(ctx.now).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
     const item: RestartItem = {
-      id: `rs-${digest([ctx.change_set, t, ++this.seq]).slice(0, 12)}`, host: h, change_set: ctx.change_set, kind: nat.restore != null ? 'restore' : 'settings', who: ctx.who, when, deadline_s: deadline, at, created: ctx.now,
+      id: `rs-${digest([ctx.change_set, t, ++this.seq]).slice(0, 12)}`, host: h, change_set: ctx.change_set, kind: nat.restore != null ? 'restore' : nat.kind === 'mode' ? 'mode' : 'settings', who: ctx.who, when, deadline_s: deadline, at, created: ctx.now,
       drain: null, outcome: this.outcome, busy: when === 'now' ? 0 : this.busyS * 1000, next: nat.next, base: nat.base, note, job: `${stamp}-${digest([ctx.now, this.seq]).slice(0, 6)}`, end: null,
     };
     this.outcome = 'ok';
@@ -880,7 +950,7 @@ export class MockSettings {
   }
 
   /** What no click produces (POST /__mock/settings); see the head of this file. */
-  control(b: { restart?: string; busy_s?: number; fail?: string | null; busy?: boolean; move?: boolean; hooks?: boolean; unreachable?: string | null }): Record<string, unknown> {
+  control(b: { restart?: string; busy_s?: number; fail?: string | null; busy?: boolean; move?: boolean; hooks?: boolean; unreachable?: string | null; wheel?: boolean }): Record<string, unknown> {
     if (b.restart === 'ok' || b.restart === 'fail' || b.restart === 'timeout') this.engine.outcome = b.restart;
     if (typeof b.busy_s === 'number') this.engine.busyS = b.busy_s;
     if (b.fail === null) this.fails.clear();
@@ -893,7 +963,8 @@ export class MockSettings {
     if (b.move) this.epoch++;
     if (typeof b.hooks === 'boolean') this.hooks.plugged = b.hooks;
     if ('unreachable' in b) this.engine.unreachable = b.unreachable ?? null;
-    return { fails: Object.fromEntries(this.fails), busy: this.busy, hooks: this.hooks.plugged };
+    if (typeof b.wheel === 'boolean') this.engine.wheel = b.wheel;
+    return { fails: Object.fromEntries(this.fails), busy: this.busy, hooks: this.hooks.plugged, wheel: this.engine.wheel };
   }
 
   /** The gateway's answer for a backend while its engine host drains: 503 with Retry-After; null

@@ -18,7 +18,7 @@ import { settingsApi, type Overview, type PartChange, type Scope } from '../src/
 import { stagedWords } from '../src/lib/app-parts.ts';
 import { Draft } from '../src/lib/settings-draft.ts';
 import { ChangeSetFlow, RestartWatch, restartsEngine, restoreOf } from '../src/lib/settings-flow.ts';
-import { MODE_KEY, fieldsOf, groupsOf, type Field } from '../src/lib/settings-form.ts';
+import { EXT_KEY, MODE_KEY, fieldsOf, groupsOf, type Field } from '../src/lib/settings-form.ts';
 import { fieldRow, groupPanel, type FormHandlers, type FormView } from '../src/views/settings/form.ts';
 import { auditList, versionsPanel, type VersionsState } from '../src/views/settings/history.ts';
 import { restartCard, restartLine, runSheet, type SheetHandlers } from '../src/views/settings/sheet.ts';
@@ -74,8 +74,10 @@ describe('the Gherkin scenarios of VIS-280', () => {
     await p.flow.review(p.draft.changes());
     // Then the page shows the plan with one restart and its time
     const plan = sheet(p);
-    for (const s of ['Review 1 change', 'One engine restart: spark-desk.', 'Engine: spark-desk', 'Restarts the engine on spark-desk, once.', 'When spark-desk restarts', 'Wait at most', 'It waits for the running requests to end, at most 10 minutes. Still busy then: nothing changes.', 'Apply 1 change']) expect(plan).toContain(s);
-    expect(plan).toMatch(/QSE_MODE<\/span>\s*<span class="rs-val"><span class="rs-from">engine<\/span>.*<span class="rs-to">chat<\/span>/s);
+    // the mode and the extension chat mode runs; the engine host lacks it: TandemApp's own wheel first
+    for (const s of ['Review 2 changes', 'One engine restart: spark-desk.', 'Engine: spark-desk', 'Restarts the engine on spark-desk, once.', 'When spark-desk restarts', 'Wait at most', 'It waits for the running requests to end, at most 10 minutes. Still busy then: nothing changes.', 'Apply 2 changes', 'TandemApp installs its own wheel first (tandemapp-0.15.0-py3-none-any.whl']) expect(plan).toContain(s);
+    expect(plan).toMatch(/>mode<\/span>\s*<span class="rs-val"><span class="rs-from">engine<\/span>.*<span class="rs-to">chat<\/span>/s);
+    expect(plan).toMatch(/>mode\.ext<\/span>\s*<span class="rs-val"><span class="rs-from">not set<\/span>.*<span class="rs-to">tandemapp\.engine_ext<\/span>/s);
     expect([restartsEngine(p.flow.state.plan), p.flow.state.plan!.parts[0].restart_needed, p.flow.blocked()]).toEqual([true, true, null]);
     // a plan writes nothing
     expect((await held(p, MODE_KEY)).value).toBe('engine');
@@ -100,7 +102,11 @@ describe('the Gherkin scenarios of VIS-280', () => {
     expect([now.value, now.source]).toEqual(['chat', 'managed']);
     // exactly one restart, and the mode is written as a key of its own
     expect((await p.r.api.restarts()).restarts.map((x) => x.state)).toEqual(['done']);
-    expect(part.keys).toEqual([MODE_KEY]);
+    expect(part.keys).toEqual([MODE_KEY, EXT_KEY]);
+    expect(part.restart!.kind).toBe('mode');
+    // in chat mode the extension stands beside the mode
+    const f = fieldsOf((await p.r.api.schema('engine', 'eh-desk')), await p.r.api.values('engine', 'eh-desk'), undefined);
+    expect(groupsOf('engine', f)[0].fields.map((x) => [x.key, x.value, x.label])).toEqual([[MODE_KEY, 'chat', 'Mode'], [EXT_KEY, 'tandemapp.engine_ext', 'Chat extension']]);
   });
 
   it('the controller’s own conductor switch: staged, a plan without a restart, on from the next request', async () => {
@@ -181,8 +187,9 @@ describe('the Gherkin scenarios of VIS-280', () => {
     p.draft.set('engine', 'eh-desk', MODE_KEY, 'engine', on.held);
     await p.flow.review(p.draft.changes());
     const plan = sheet(p);
-    for (const s of ['Review 1 change', 'Restarts the engine on spark-desk, once.']) expect(plan).toContain(s);
+    for (const s of ['Review 2 changes', 'Restarts the engine on spark-desk, once.']) expect(plan).toContain(s);
     expect(plan).toMatch(/<span class="rs-from">chat<\/span>.*<span class="rs-to">engine<\/span>/s);
+    expect(plan).not.toContain('installs its own wheel');
     await p.flow.apply();
     const res = p.flow.state.result!;
     p.watch.add(res.parts[0].restart!);

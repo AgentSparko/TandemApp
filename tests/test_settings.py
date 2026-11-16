@@ -38,6 +38,17 @@ contracts/settings-v1 (tools/contract_check.py).
      every error type the code raises is listed with its status, the constants agree
                                                         test_contract_files
 
+  Gherkin (SRV-845 D1b, the engine's mode as a key):
+ 11  Given an engine host in engine mode without the chat extension, When chat mode is planned,
+     Then the plan names this controller's wheel and its install, the change set's id and the
+     restart class engine; When it is applied, Then the wheel is installed (its sha256 checked)
+     before `mode set chat --ext tandemapp.engine_ext`, the restart drains, warms up and ends, and
+     the audit has the change set's rows. Planned again it holds; with the extension there no
+     install is planned; with no wheel here or a foreign module the plan refuses with the fix;
+     with other keys of the same engine the mode goes into one overlay change; QSE_MODE itself and
+     mode.ext with the bare engine are refused on their key
+                                                        test_engine_mode
+
 CPU only. Run: python tests/test_settings.py
 """
 
@@ -150,8 +161,13 @@ class FakeHooks(settingscopes.HooksAdapter):
 class Rig:
     """A controller's stores in a temporary folder, one engine host `h1` faked."""
 
-    def __init__(self, label: str, sim: dict | None = None, hooks=None, warm=None):
+    def __init__(self, label: str, sim: dict | None = None, hooks=None, warm=None, wheel=True):
         self.dir = tempfile.mkdtemp(prefix=f"settings-{label}-")
+        self.wheel = os.path.join(self.dir, "pkg", "tandemapp-0.15.0-py3-none-any.whl")
+        os.makedirs(os.path.dirname(self.wheel))
+        with open(self.wheel, "wb") as fh:
+            fh.write(b"PK\x03\x04 a wheel of this controller's own copy")
+        self.wheel_ok = wheel
         self.cfg = config_mod.ConfigDB(os.path.join(self.dir, "config.sqlite3"), env={},
                                        use_keychain=False).open()
         self.cfg.create_backend({"id": "eng", "kind": "tandemllm",
@@ -179,12 +195,19 @@ class Rig:
             "backends": settingscopes.BackendsScope(self.cfg),
             "conductor": settingscopes.ConductorScope(lambda: (self.store, True)),
             "engine": settingsengine.EngineScope(rows=lambda: [self.row], ctl_for=self.ctl_for,
-                                                 restarts=self.restarts),
+                                                 restarts=self.restarts,
+                                                 ext_wheel=self.own_wheel),
             "hooks": settingscopes.HooksScope(self.cfg, hooks),
         }
         self.s = settings_mod.Settings(self.cfg, self.scopes, restarts=self.restarts,
                                        log=self.logs.append)
         self.restarts.audit = self.s._audit
+
+    def own_wheel(self) -> str:
+        if not self.wheel_ok:
+            raise RuntimeError("this controller cannot build its wheel (no checkout); set "
+                               "TANDEM_NODE_WHEEL to a tandemapp wheel")
+        return self.wheel
 
     def call(self, method: str, path: str, body=None, q=None, who: str = "admin"):
         parts = [p for p in path.strip("/").split("/") if p]
@@ -837,6 +860,112 @@ def test_contract_files():
     for name in docs:
         assert f"`{name}`" in readme or name in readme, name
     return f"{len(docs)} files: refs resolve, routes name files, errors listed, constants agree"
+
+
+# ---------------------------------------------------------------------------- 11 the engine's mode
+
+def test_engine_mode():
+    r = Rig("mode")
+    try:
+        st, sch = r.call("GET", "engine/schema", q={"target": "h1"})
+        keys = {k["key"]: k for k in ok(sch, "schema")["keys"]}
+        assert "QSE_MODE" not in keys and "QSE_EXT" not in keys, sorted(keys)
+        assert keys["mode"]["type"] == "enum" and keys["mode"]["values"] == ["engine", "chat"]
+        assert keys["mode"]["restart"] == "engine" and keys["mode.ext"]["type"] == "module"
+        assert keys["mode.ext"]["default"] == "tandemapp.engine_ext" and keys["mode.ext"]["nullable"]
+        st, vals = r.call("GET", "engine", q={"target": "h1"})
+        got = {v["key"]: v for v in ok(vals, "values")["values"]}
+        assert got["mode"] == {"key": "mode", "value": "engine", "set": True, "source": "default"}
+        assert got["mode.ext"]["value"] is None and not got["mode.ext"]["set"]
+        # chat mode: the extension is missing, this controller's wheel is installed first
+        ch = [{"scope": "engine", "target": "h1", "set": {"mode": "chat"}}]
+        p = r.plan(ch)
+        part = p["parts"][0]
+        assert part["restart"] == "engine" and part["restart_needed"], part
+        assert [(c["key"], c["from"], c["to"]) for c in part["changes"]] == [
+            ("mode", "engine", "chat"), ("mode.ext", None, "tandemapp.engine_ext")], part
+        assert any("tandemapp-0.15.0-py3-none-any.whl" in w for w in part["warnings"]), part
+        n = len(ftr.calls(r.eng))
+        res = r.apply(ch, p)
+        assert res["state"] == "applied" and res["parts"][0]["state"] == "scheduled", res
+        rs = res["parts"][0]["restart"]
+        assert rs["kind"] == "mode" and rs["change_set"] == p["change_set"]
+        assert rs["job"]["kind"] == "mode" and rs["job"]["when"]["mode"] == "idle", rs
+        assert rs["backends"] == ["eng"] and r.restarts.drained("eng"), "drained while it waits"
+        assert r.wait_restart(rs["id"])["state"] == "done"
+        assert r.warms and r.warms[-1][0] == "eng", "one warm-up token"
+        toks = [c["tokens"] for c in ftr.calls(r.eng)[n:]]
+        inst = [t for t in toks if t[:2] == ["ext", "install"]]
+        mset = [t for t in toks if t[:2] == ["mode", "set"]]
+        assert len(inst) == 1 and len(mset) == 1 and toks.index(inst[0]) < toks.index(mset[0]), toks
+        with open(r.wheel, "rb") as fh:
+            import hashlib
+            sha = hashlib.sha256(fh.read()).hexdigest()
+        assert inst[0][inst[0].index("--sha256") + 1] == sha
+        assert mset[0] == ["mode", "set", "chat", "--ext", "tandemapp.engine_ext", "--when", "idle",
+                           "--deadline", "600"], mset
+        assert ftr.stdin_seen(r.eng)[-1]["sha256"] == sha
+        st, vals = r.call("GET", "engine", q={"target": "h1"})
+        got = {v["key"]: v for v in vals["values"]}
+        assert got["mode"]["value"] == "chat" and got["mode"]["source"] == "managed"
+        assert got["mode.ext"]["value"] == "tandemapp.engine_ext"
+        rows = [x for x in r.audit_rows() if x["change_set"] == p["change_set"]]
+        assert {x["action"] for x in rows} >= {"settings.apply", "settings.change_set",
+                                               "settings.restart"}, rows
+        # planned again it holds: nothing to change, nothing installed
+        p2 = r.plan(ch)
+        assert not p2["changed"] and p2["confirm"] is None, p2
+        # back to the bare engine: no install, mode set engine
+        n = len(ftr.calls(r.eng))
+        res = r.apply([{"scope": "engine", "target": "h1", "set": {"mode": "engine"}}])
+        r.wait_restart(res["parts"][0]["restart"]["id"])
+        toks = [c["tokens"] for c in ftr.calls(r.eng)[n:]]
+        assert ["mode", "set", "engine", "--when", "idle", "--deadline", "600"] in toks, toks
+        assert not [t for t in toks if t[:2] == ["ext", "install"]]
+        # the extension is there now (installed above): chat again plans no install
+        p = r.plan(ch)
+        assert p["changed"] and not any(".whl" in w for w in p["parts"][0]["warnings"]), p
+        # no wheel here and the extension missing: refused with the fix, on its key
+        ftr.set_state(r.eng, ext={})
+        r.wheel_ok = False
+        st, err = r.call("POST", "plan", {"changes": ch})
+        assert st == 409 and err["error"]["type"] == "extension_missing", err
+        assert err["error"]["key"] == "mode.ext" and "TANDEM_NODE_WHEEL" in err["error"]["message"]
+        ok(err, "error")
+        r.wheel_ok = True
+        # a module that is not TandemApp's: refused, install it on the engine host
+        st, err = r.call("POST", "plan", {"changes": [{"scope": "engine", "target": "h1",
+                                                       "set": {"mode": "chat",
+                                                               "mode.ext": "acme.ext"}}]})
+        assert st == 409 and err["error"]["type"] == "extension_missing", err
+        assert "tandem remote ext install" in err["error"]["message"]
+        # with another key of the same engine: one overlay change, one restart
+        n = len(ftr.calls(r.eng))
+        ch2 = [{"scope": "engine", "target": "h1", "set": {"mode": "chat", "MAX_QUEUE": 24}}]
+        p = r.plan(ch2)
+        keys2 = {c["key"]: c for c in p["parts"][0]["changes"]}
+        assert set(keys2) == {"mode", "mode.ext", "MAX_QUEUE"}, keys2
+        assert keys2["mode"]["to"] == "chat" and keys2["mode.ext"]["to"] == "tandemapp.engine_ext"
+        res = r.apply(ch2, p)
+        rs = res["parts"][0]["restart"]
+        assert rs["kind"] == "settings" and r.wait_restart(rs["id"])["state"] == "done"
+        toks = [c["tokens"] for c in ftr.calls(r.eng)[n:]]
+        assert len([t for t in toks if t[:2] == ["settings", "apply"]]) == 1, toks
+        assert not [t for t in toks if t[:2] == ["mode", "set"]]
+        sim = ftr._sim(ftr.state(r.eng))
+        assert ftr._set_of(sim, sim["current"])["QSE_MODE"] == "chat"
+        assert ftr._set_of(sim, sim["current"])["QSE_EXT"] == "tandemapp.engine_ext"
+        # QSE_MODE itself, the extension with the bare engine, a mode that is none: refused
+        for sets, key, kind in (({"QSE_MODE": "chat"}, "QSE_MODE", "locked"),
+                                ({"mode": "engine", "mode.ext": "x.y"}, "mode.ext", "bad_value"),
+                                ({"mode": "setup"}, "mode", "bad_value")):
+            st, err = r.call("POST", "plan", {"changes": [{"scope": "engine", "target": "h1",
+                                                           "set": sets}]})
+            assert st == 422 and err["error"]["type"] == kind, (sets, err)
+            assert err["error"]["key"] == key, (sets, err)
+    finally:
+        r.close()
+    return "chat with the wheel installed first, engine back, refusals on their key, one restart"
 
 
 if __name__ == "__main__":

@@ -25,9 +25,9 @@
 // code until {"engineFail": "<route>:"} clears it, and {"engineJob": "fail"} stops the next model
 // install in its download.
 // The settings interface (/v1/settings/*, mock/settings.ts, VIS-280) lives with the fleet's scenario:
-// POST /__mock/settings {restart, busy_s, fail, busy, move, hooks, unreachable} sets what no click
-// produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
-// registry plugged in); while one of its restarts drains the engine host, the gateway answers 503
+// POST /__mock/settings {restart, busy_s, fail, busy, move, hooks, unreachable, wheel} sets what no
+// click produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
+// registry plugged in, no wheel for the chat extension); while one of its restarts drains the engine host, the gateway answers 503
 // with Retry-After.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.

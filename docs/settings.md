@@ -126,6 +126,24 @@ The engine's own job stops the engine, makes the new overlay version current and
 
 The drains live in the controller's process. A controller restart ends them; the engine's job goes on by itself.
 
+## The engine's mode
+
+Two keys of the engine scope stand for the engine's mode:
+
+| key | values | what it is |
+|-|-|-|
+| `mode` | `engine` or `chat` | `engine`: the bare engine. `chat`: TandemApp's conductor and Chat run inside it. |
+| `mode.ext` | a module, `tandemapp.engine_ext` by default | the extension chat mode runs |
+
+They show what the engine's `QSE_MODE` and `QSE_EXT` resolve to. Those two are not changed directly: a part that names them is refused (422 `locked`).
+
+- **The mode alone.** A part that only sets `mode` and `mode.ext` goes through the engine's own `tandem remote mode set`. It plans, applies and restarts like any other engine change: the change set's id, the audit rows, `when` and `deadline_s`, the drain, the countdown, Cancel and the warm-up token. The restart's `kind` is `mode`.
+- **With other keys.** Together with other keys of the same engine, the mode goes into the same overlay change as `QSE_MODE` and `QSE_EXT`, which is what `mode set` writes. The engine restarts once.
+- **The extension.** When the result is chat mode, the plan asks the engine host for its extensions (`tandem remote ext list`). If none of that module loads there, the plan says so in a warning and names the wheel TandemApp installs first: its own, for its own version (`TANDEM_NODE_WHEEL`, else built from this controller's copy, as Add Spark sends it). The apply sends it (`tandem remote ext install`, its sha256 checked) before the switch. The install itself restarts nothing.
+- **No wheel.** A module that is not TandemApp's, or no wheel on this controller, makes the plan refuse with 409 `extension_missing` on the key `mode.ext`. The sentence says what to do: set `TANDEM_NODE_WHEEL` to the tandemapp wheel of this release, or install the extension on the engine host.
+
+`POST /v1/fleet/engines/{id}/mode {mode?, when?, ext?}`, the route the Add engine wizard uses, is a change set of one part with these keys. It answers as before: whether anything changed, the mode before and the engine's job. Its audit row names the change set.
+
 ## Audit
 
 `GET /v1/settings/audit[?change_set=cs-...]` lists the settings' rows of the config database's audit table, which `/v1/config/audit` shows too:
@@ -167,7 +185,7 @@ The dashboard shows this interface under Settings, App: one page per scope.
 | App | the `app` scope: the Chat and conductor switches under What runs here, above the controller's own page |
 | Backends | the `backends` scope: a group for each backend, the routing rules, the users' keys |
 | Conductor | the `conductor` scope: each document, edited whole |
-| Engines | the `engine` scope: a page for each engine host. An HTTP-only one is read-only and says why. |
+| Engines | the `engine` scope: a page for each engine host, its mode first (the two choice cards, and the extension once chat is chosen). An HTTP-only one is read-only and says why. |
 | Hooks | the `hooks` scope: "No hooks yet" until a hook registers |
 | History | the audit rows and the restarts that ended. `#/app/history?change_set=cs-...` shows one change set. |
 

@@ -14,7 +14,10 @@ with its GB so far, then done).
      the engine's verbs over the key's forced command and its Setup Guide's routes ran)
                                                          test_bare_engine_then_a_model
   2  the mode: unchanged when it is configured already; set (idle-gated) when it is chat or was
-     only inferred from an empty QSE_MODE; chat with its extension; bad bodies 400; audited
+     only inferred from an empty QSE_MODE; chat with its extension, installed from this
+     controller's wheel when the engine host lacks it; bad bodies 400; audited. Each change is a
+     change set of one part through the settings interface (SRV-845): its id in the audit, the
+     restart the settings follow, the engine's job in the answer
                                                          test_mode
   3  what goes wrong, each with its code: an unknown model, a plan with errors, a job running, the
      Setup Guide's admin password, a token the engine refuses, no token here, the engine down, its
@@ -31,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -47,6 +51,18 @@ def _paired(r, **state) -> str:
     ftr.set_state(r.engine_dir, **state)
     doc = r.pair()
     return doc["engine"]["id"]
+
+
+def _settled(r) -> None:
+    """Until the restarts the settings follow have ended (the fake job ends at the first read):
+    the watch's own SSH calls are done before the next one."""
+    for _ in range(200):
+        st, doc = r.request("GET", "/v1/settings/restarts")
+        if st == 200 and all(x["state"] in ("done", "failed", "timeout", "cancelled")
+                             for x in doc["restarts"]):
+            return
+        time.sleep(0.05)
+    raise AssertionError(doc)
 
 
 def test_bare_engine_then_a_model(tmp_path, monkeypatch):
@@ -108,28 +124,52 @@ def test_mode(tmp_path, monkeypatch):
         n = len(r.calls())
         st, m = r.post(f"/v1/fleet/engines/{hid}/mode", {})
         assert st == 200 and m["changed"] and m["mode"] == "engine" and m["previous"]["mode"] == "chat", m
+        ok(m, "engine-mode.schema.json")
         assert m["job"]["kind"] == "mode" and m["job"]["when"]["mode"] == "idle"
-        assert [c["tokens"] for c in r.calls()[n:]] == [["mode", "get"], ["mode", "set", "engine",
-                                                                         "--when", "idle"]]
+        toks = [c["tokens"] for c in r.calls()[n:]]
+        assert toks[0] == ["mode", "get"] and toks[-1] == ["mode", "set", "engine", "--when", "idle",
+                                                           "--deadline", "600"], toks
+        assert {tuple(t[:2]) for t in toks} <= {("mode", "get"), ("mode", "set"), ("status",)}, toks
         assert ftr.state(r.engine_dir)["mode"] == "engine"
         a = [x for x in r.cfg.audit(50) if x["action"] == "mode" and x["object_id"] == hid]
         assert a and a[0]["detail"]["mode"] == "engine" and a[0]["detail"]["from"] == "chat"
+        cs = a[0]["detail"]["change_set"]
+        assert cs.startswith("cs-") and {x["action"] for x in r.cfg.audit(50, change_set=cs)} >= \
+            {"settings.apply", "settings.change_set"}, "a change set of its own"
+        _settled(r)
         # an engine mode only inferred from an empty QSE_MODE is written explicitly
         ftr.set_state(r.engine_dir, mode="engine", inferred=True)
         st, m = r.post(f"/v1/fleet/engines/{hid}/mode", {"mode": "engine", "when": "now"})
         assert st == 200 and m["changed"] and m["previous"]["inferred"] is True, m
         assert r.calls()[-1]["tokens"] == ["mode", "set", "engine", "--when", "now"]
-        # chat with its extension
+        _settled(r)
+        # chat with its extension, which the engine host has
+        ftr.set_state(r.engine_dir, ext={"tandemapp": {"module": "tandemapp.engine_ext",
+                                                       "version": "0.15.0", "sha256": "0" * 64,
+                                                       "wheel": "tandemapp-0.15.0-py3-none-any.whl"}})
         st, m = r.post(f"/v1/fleet/engines/{hid}/mode", {"mode": "chat", "ext": "tandemapp.engine_ext"})
         assert st == 200 and m["changed"], m
         assert r.calls()[-1]["tokens"] == ["mode", "set", "chat", "--ext", "tandemapp.engine_ext",
-                                           "--when", "idle"]
+                                           "--when", "idle", "--deadline", "600"]
+        _settled(r)
+        # chat without it: this controller's wheel goes first
+        wheel = os.path.join(str(tmp_path), "tandemapp-0.15.0-py3-none-any.whl")
+        with open(wheel, "wb") as fh:
+            fh.write(b"PK\x03\x04 the controller's own wheel")
+        monkeypatch.setenv("TANDEM_NODE_WHEEL", wheel)
+        ftr.set_state(r.engine_dir, mode="engine", ext={})
+        n = len(r.calls())
+        st, m = r.post(f"/v1/fleet/engines/{hid}/mode", {"mode": "chat"})
+        assert st == 200 and m["changed"], m
+        toks = [c["tokens"][:2] for c in r.calls()[n:]]
+        assert toks.index(["ext", "install"]) < toks.index(["mode", "set"]), toks
+        _settled(r)
         for body in ({"mode": "setup"}, {"mode": "engine", "when": "later"}, {"mode": "engine", "ext": "x"},
                      {"mode": "chat", "ext": "a b"}, {"x": 1}):
             st, e = r.post(f"/v1/fleet/engines/{hid}/mode", body)
             assert st == 400 and e["error"]["code"] == "bad_request", (body, e)
         # busy: a lifecycle job acts
-        ftr.set_state(r.engine_dir, busy=True)
+        ftr.set_state(r.engine_dir, mode="chat", busy=True)
         st, e = r.post(f"/v1/fleet/engines/{hid}/mode", {"mode": "engine"})
         assert st == 409 and e["error"]["code"] == "busy", e
     return "unchanged when configured, set when chat or inferred, chat with ext, refusals"

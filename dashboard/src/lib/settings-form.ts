@@ -88,10 +88,13 @@ export function humanize(name: string): string {
 /** a scope's own words for a key, as a sentence */
 export const sentence = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}${/[.!?]$/.test(s) ? '' : '.'}`;
 
-/** The engine's mode key: the one engine setting with a name of its own on the page. */
-export const MODE_KEY = 'QSE_MODE';
+/** The engine's mode (the settings interface's own key for QSE_MODE): the one engine setting with a
+ *  name of its own on the page, with the extension chat mode runs beside it. */
+export const MODE_KEY = 'mode';
+export const EXT_KEY = 'mode.ext';
 /** what a switch of the mode costs and keeps, under the choice */
-export const MODE_NOTE = 'A switch restarts the engine once, when it is idle. Back to the bare engine, the chat extension and its data stay on the engine host’s disk: chat mode finds them again';
+export const MODE_NOTE = 'A switch restarts the engine once, when it is idle. Chat mode installs TandemApp’s chat extension first when the engine host lacks it. Back to the bare engine, the chat extension and its data stay on the engine host’s disk: chat mode finds them again';
+export const EXT_NOTE = 'The module chat mode runs. TandemApp installs its own on the engine host when it is missing there';
 export const MODE_WORDS: Record<string, { label: string; text: string }> = {
   engine: { label: 'Bare engine', text: 'The engine serves its model and nothing else runs inside it.' },
   chat: { label: 'Chat mode', text: 'The engine runs its own conductor and chat extension in front of its model.' },
@@ -99,7 +102,7 @@ export const MODE_WORDS: Record<string, { label: string; text: string }> = {
 
 export function labelOf(scope: Scope, key: string, held: KeyValue | null = null): { label: string; mono: boolean } {
   if (scope === 'app') return { label: key === 'chat' ? 'Chat' : key === 'conductor' ? 'Conductor' : humanize(key), mono: false };
-  if (scope === 'engine') return key === MODE_KEY ? { label: 'Mode', mono: false } : { label: key, mono: true };
+  if (scope === 'engine') return key === MODE_KEY ? { label: 'Mode', mono: false } : key === EXT_KEY ? { label: 'Chat extension', mono: false } : { label: key, mono: true };
   if (scope === 'conductor') return { label: key.startsWith('profiles.') ? `Profile ${key.slice(9)}` : humanize(key), mono: false };
   if (scope === 'backends') {
     if (key === 'routes') return { label: 'Routing rules', mono: false };
@@ -175,6 +178,7 @@ function lockOf(schema: Pick<SchemaView, 'writable' | 'why'>, spec: KeySpec): { 
  *  of the conductor, a backend's key, a user's key); the engine's mode gets the page's. */
 function textOfKey(scope: Scope, spec: KeySpec): string | null {
   if (scope === 'engine' && spec.key === MODE_KEY) return MODE_NOTE;
+  if (scope === 'engine' && spec.key === EXT_KEY) return EXT_NOTE;
   if (scope === 'conductor' || (scope === 'backends' && (spec.key.startsWith('users.') || spec.key.endsWith('.key')))) return null;
   return spec.text ?? null;
 }
@@ -218,8 +222,8 @@ function backendRank(key: string): string {
 }
 
 /** The fields in the groups the page shows: a backend each, the routing rules and the users' keys
- *  for the backends; for an engine by what a change costs: its mode, what applies at once, what
- *  needs a restart, what is set on its own host. */
+ *  for the backends; for an engine by what a change costs: its mode (with the extension while
+ *  chat is chosen), what applies at once, what needs a restart, what is set on its own host. */
 export function groupsOf(scope: Scope, fields: Field[]): Group[] {
   if (scope === 'backends') {
     const out: Group[] = [];
@@ -236,8 +240,11 @@ export function groupsOf(scope: Scope, fields: Field[]): Group[] {
     return out;
   }
   if (scope === 'engine') {
-    const mode = fields.filter((f) => f.key === MODE_KEY && !f.locked);
-    const rest = fields.filter((f) => !mode.includes(f));
+    // the mode first; the extension beside it while chat is chosen (or staged)
+    const chat = fields.some((f) => f.key === MODE_KEY && f.value === 'chat');
+    const mode = fields.filter((f) => !f.locked && (f.key === MODE_KEY || (f.key === EXT_KEY && (chat || f.staged !== null))));
+    const off = fields.filter((f) => f.key === EXT_KEY && !mode.includes(f));
+    const rest = fields.filter((f) => !mode.includes(f) && !off.includes(f));
     const open = rest.filter((f) => !f.spec || f.spec.writable);
     return [
       { id: 'mode', title: 'How it runs', sub: null, fields: mode },

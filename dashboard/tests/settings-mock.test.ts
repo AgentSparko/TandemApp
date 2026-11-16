@@ -304,7 +304,7 @@ describe('an engine restart on the clock', () => {
     // while one job waits on an engine host, a second one is refused there
     const busy = rig();
     await change(busy, QUEUE);
-    const second = await change(busy, [{ scope: 'engine', target: 'eh-desk', set: { QSE_MODE: 'chat' } }]);
+    const second = await change(busy, [{ scope: 'engine', target: 'eh-desk', set: { mode: 'chat' } }]);
     expect([second.state, second.parts[0].error!.type]).toEqual(['failed', 'engine_busy']);
   });
 
@@ -365,6 +365,55 @@ describe('an engine restart on the clock', () => {
     await post(r, `/restarts/${rs.id}/cancel`, {});
     const now = (await change(r, QUEUE, { when: 'now' })).parts[0].restart!;
     expect([now.state, now.deadline_s, now.can_cancel, now.remaining_s]).toEqual(['restarting', null, false, null]);
+  });
+});
+
+describe('the engine’s mode', () => {
+  const MODE = [{ scope: 'engine', target: 'eh-desk', set: { mode: 'chat' } }];
+  const at = async (r: Rig, id: string) => ok<Restart>(await get(r, `/restarts/${id}`));
+  it('chat installs TandemApp’s wheel first and restarts once, as a restart of kind mode; then it holds', async () => {
+    const r = rig();
+    const sch = ok<SchemaView>(await get(r, '/engine/schema?target=eh-desk'));
+    expect(sch.keys.slice(0, 2).map((k) => [k.key, k.type, k.restart, k.default])).toEqual([['mode', 'enum', 'engine', 'engine'], ['mode.ext', 'module', 'engine', 'tandemapp.engine_ext']]);
+    expect(sch.keys.some((k) => k.key === 'QSE_MODE' || k.key === 'QSE_EXT')).toBe(false);
+    const plan = ok<Plan>(await post(r, '/plan', { changes: MODE }));
+    expect(plan.parts[0].changes.map((c) => [c.key, c.from, c.to])).toEqual([['mode', 'engine', 'chat'], ['mode.ext', null, 'tandemapp.engine_ext']]);
+    expect(plan.parts[0].warnings).toEqual(['the engine host has no tandemapp.engine_ext that loads: TandemApp installs its own wheel first (tandemapp-0.15.0-py3-none-any.whl, 4 MB)']);
+    const res = await change(r, MODE);
+    const rs = res.parts[0].restart!;
+    expect([res.state, res.parts[0].state, rs.kind, rs.state]).toEqual(['applied', 'scheduled', 'mode', 'draining']);
+    r.wait(20_000);
+    expect((await at(r, rs.id)).state).toBe('done');
+    expect([(await valueOf(r, 'engine', 'mode', 'eh-desk')).value, (await valueOf(r, 'engine', 'mode.ext', 'eh-desk')).value]).toEqual(['chat', 'tandemapp.engine_ext']);
+    const again = ok<Plan>(await post(r, '/plan', { changes: MODE }));
+    expect([again.changed, again.confirm]).toEqual([false, null]);
+    // back to the bare engine, then chat again: the extension is there, no install
+    await change(r, [{ scope: 'engine', target: 'eh-desk', set: { mode: 'engine' } }]);
+    r.wait(20_000);
+    expect(ok<Plan>(await post(r, '/plan', { changes: MODE })).parts[0].warnings).toEqual([]);
+    // the versions show the mode's keys as the page knows them
+    const v = ok<VersionsView>(await get(r, '/engine/versions?target=eh-desk')).versions[0];
+    expect([v.keys, v.values]).toEqual([['MAX_QUEUE', 'mode', 'mode.ext'], { MAX_QUEUE: '16', mode: 'engine', 'mode.ext': null }]);
+  });
+
+  it('no wheel here or a foreign module: refused on mode.ext with the fix; QSE_MODE itself is locked; with another key one overlay change', async () => {
+    const r = rig();
+    r.mock.control({ wheel: false });
+    const none = await post(r, '/plan', { changes: MODE });
+    expect(refused(none)).toEqual([409, 'extension_missing']);
+    expect((none.body as { error: { key: string; message: string } }).error.key).toBe('mode.ext');
+    expect((none.body as { error: { message: string } }).error.message).toContain('TANDEM_NODE_WHEEL');
+    r.mock.control({ wheel: true });
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { mode: 'chat', 'mode.ext': 'acme.ext' } }] }))).toEqual([409, 'extension_missing']);
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { QSE_MODE: 'chat' } }] }))).toEqual([422, 'locked']);
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { mode: 'engine', 'mode.ext': 'x.y' } }] }))).toEqual([422, 'bad_value']);
+    const both = [{ scope: 'engine', target: 'eh-desk', set: { mode: 'chat', MAX_QUEUE: '24' } }];
+    const plan = ok<Plan>(await post(r, '/plan', { changes: both }));
+    expect(plan.parts[0].changes.map((c) => c.key).sort()).toEqual(['MAX_QUEUE', 'mode', 'mode.ext']);
+    const res = await change(r, both);
+    expect(res.parts[0].restart!.kind).toBe('settings');
+    r.wait(20_000);
+    expect([(await valueOf(r, 'engine', 'mode', 'eh-desk')).value, (await valueOf(r, 'engine', 'MAX_QUEUE', 'eh-desk')).value]).toEqual(['chat', '24']);
   });
 });
 

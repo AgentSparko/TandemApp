@@ -28,7 +28,8 @@
                                                   a check that waits for the first login
     POST /v1/fleet/engines/{id}/mode {mode?, when?, ext?}
                                                   the engine's mode (SRV-833): bare engine
-                                                  (`mode set engine`) unless it is that already
+                                                  unless it is that already; a change set of one
+                                                  part through the settings interface (SRV-845)
     GET  /v1/fleet/engines/{id}/models            the Setup Guide's models (GET /v1/setup/models)
     POST /v1/fleet/engines/{id}/models/pull {model, profile?, dry_run?}
                                                   install a model: the Setup Guide's plan, then
@@ -91,12 +92,15 @@ fleet.
 AFTER PAIRING (SRV-833). The engine view's `wizard` says what the first run does next: bare
 engine is the preselected mode, and `needs_model` is true while `status` names no model. `mode`
 reads `mode get` and changes nothing when the configured mode is already the asked one (not
-inferred from an empty QSE_MODE); else `mode set` (an idle-gated restart by default) writes it
-into the engine's managed overlay. A model comes through the engine's own Setup Guide over HTTP
-with this controller's token: GET /v1/setup/models/{id}/current is the box's selection, `profile`
-replaces its weights, POST /v1/setup/plan checks it (download size, errors) and POST
-/v1/setup/apply starts the job whose steps download, check, write the config and restart;
-`progress` reads the job. No file is edited by anyone but the engine's own tools. An HTTP call that
+inferred from an empty QSE_MODE); else it is a change set of one part, the engine scope's `mode`
+(and `mode.ext`), planned and applied through the settings interface (proxy/settings.py): its id
+and audit rows, the extension's install when chat mode needs it, `mode set` (an idle-gated restart
+by default, 600 s to wait) and the restart the settings follow (drain, countdown, cancel, warm-up
+token). The answer is the same as before, the restart's job in `job`. A model comes through
+the engine's own Setup Guide over HTTP with this controller's token: GET
+/v1/setup/models/{id}/current is the box's selection, `profile` replaces its weights, POST
+/v1/setup/plan checks it (download size, errors) and POST /v1/setup/apply starts the job whose
+steps download, check, write the config and restart; `progress` reads the job. No file is edited by anyone but the engine's own tools. An HTTP call that
 fails is told apart over SSH: the engine down (`engine_down`), its port blocked from here
 (`http_blocked`), the token refused (`token_refused`), the Setup Guide locked by its admin
 password (`setup_locked`).
@@ -488,6 +492,34 @@ class Onboarding:
         finally:
             ctl.close()
 
+    def settings(self):
+        """The settings interface (proxy/settings.py) the mode goes through."""
+        got = getattr(self.fleet, "settings", None)
+        if got is None:
+            from proxy import app as app_mod
+            got = app_mod.STATE.get("settings")
+        if got is None:
+            raise ERR("ctl_failed", "this controller has no settings interface")
+        return got
+
+    @staticmethod
+    def _refusal(st: int, doc: dict, row: dict) -> enginecodes.OnboardError:
+        """A refusal of the settings interface in this route's codes."""
+        e = (doc or {}).get("error") or {}
+        kind, msg = e.get("type") or f"http_{st}", e.get("message") or ""
+        t = row["trust"] or {}
+        if kind == "engine_busy" or kind == "busy":
+            return ERR("busy", msg)
+        if kind == "host_key_changed":
+            return ERR("host_key_changed", None, pinned=e.get("pinned"), offered=e.get("offered"))
+        if kind in ("engine_unreachable", "engine_timeout"):
+            return ERR("ssh_unreachable", msg, host=t.get("host"), port=t.get("port"))
+        if kind == "engine_too_old":
+            return ERR("engine_too_old", msg, host=t.get("host"))
+        if kind in ("bad_value", "bad_request"):
+            return ERR("bad_request", msg)
+        return ERR("ctl_failed", f"{kind}: {msg}" if msg else kind)
+
     def set_mode(self, hid: str, body, who: str) -> dict:
         b = _fields(body if body is not None else {}, {"mode", "when", "ext"})
         mode = b.get("mode", "engine")
@@ -501,18 +533,34 @@ class Onboarding:
                                 or not enginectl.MODULE_RE.match(ext)):
             raise ERR("bad_request", "ext is the extension module chat mode runs (chat only)")
         row = self._row(hid)
+        settings = self.settings()
         before = self._ctl_call(row, lambda c: c.mode_get())
         prev = {k: before.get(k) for k in ("mode", "ext", "source", "inferred")}
-        if before.get("mode") == mode and not before.get("inferred") and ext in (None, before.get("ext")):
-            return {"contract_version": CONTRACT, "id": hid, "mode": mode, "changed": False,
-                    "previous": prev, "job": None}
-        doc = self._ctl_call(row, lambda c: c.mode_set(mode, ext=ext, when=when))
+        sets = {"mode": mode, **({"mode.ext": ext} if ext is not None else {})}
+        changes = [{"scope": "engine", "target": hid, "set": sets}]
+        st, plan = settings.handle("POST", ["plan"], {}, {"changes": changes}, who)
+        if st != 200:
+            raise self._refusal(st, plan, row)
+        out = {"contract_version": CONTRACT, "id": hid, "mode": mode, "changed": False,
+               "previous": prev, "job": None}
+        if not plan["changed"]:
+            return out
+        st, res = settings.handle("POST", ["apply"], {}, {"changes": changes,
+                                                          "confirm": plan["confirm"],
+                                                          "when": when}, who)
+        if st != 200:
+            raise self._refusal(st, res, row)
+        part = res["parts"][0]
+        if part["state"] == "failed":
+            raise self._refusal(409, {"error": part["error"]}, row)
+        if part["state"] == "unchanged":
+            return out
         self.cfg.log_audit(who, "mode", "node", hid, detail={
-            "mode": mode, "from": prev["mode"], "when": when,
+            "mode": mode, "from": prev["mode"], "when": when, "change_set": res["change_set"],
             "text": f"engine mode set to {mode} ({when})"})
-        self.log(f"[engines] {row['alias']} ({hid}): mode {prev['mode']} -> {mode} ({when})")
-        return {"contract_version": CONTRACT, "id": hid, "mode": mode, "changed": True,
-                "previous": prev, "job": doc.get("job")}
+        self.log(f"[engines] {row['alias']} ({hid}): mode {prev['mode']} -> {mode} ({when}), "
+                 f"change set {res['change_set']}")
+        return dict(out, changed=True, job=(part.get("restart") or {}).get("job"))
 
     # the engine's HTTP routes, with this controller's token
     def _raw(self, row: dict, method: str, path: str, body=None) -> tuple[int, dict]:

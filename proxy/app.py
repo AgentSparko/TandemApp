@@ -1241,10 +1241,10 @@ def build(args, env=None) -> Service:
 
 
 def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=None, warm=None,
-                hot_patch=None, rows=None, poll_s: float | None = None):
+                hot_patch=None, rows=None, poll_s: float | None = None, ext_wheel=None):
     """SRV-845: the settings interface over this controller's stores (proxy/settings.py). The
     keyword arguments replace a part for a test (an engine host's control, its backends, the
-    warm-up, the hot route); each default is the fleet's own."""
+    warm-up, the hot route, the chat extension's wheel); each default is the fleet's own."""
     from proxy import settings as settings_mod
     from proxy import settingscopes, settingsengine
 
@@ -1293,6 +1293,12 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
                                        parts.install_conductor, state_dir)
         return store_mod.Store(root), False
 
+    def own_wheel():
+        # the wheel Add Spark sends a new node (TANDEM_NODE_WHEEL, else built from this copy):
+        # it carries tandemapp.engine_ext, the extension chat mode runs
+        from proxy import nodeinstall
+        return nodeinstall.Package(os.path.join(os.path.dirname(cfg.path), "packages")).wheel()
+
     ctl_for = ctl_for or (lambda row: fleet().engines().ctl(row))
     restarts = settingsengine.Restarts(
         ctl_for=ctl_for, backends_of=backends_of or tandem_backends_on, warm=warm or warm_one,
@@ -1306,7 +1312,7 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
         "engine": settingsengine.EngineScope(
             rows=rows or (lambda: fleet().engines()._ssh_rows()), ctl_for=ctl_for,
             restarts=restarts, http_only=http_only, http_read=http_read,
-            hot_patch=hot_patch or patch_hot),
+            hot_patch=hot_patch or patch_hot, ext_wheel=ext_wheel or own_wheel),
         "hooks": settingscopes.HooksScope(cfg),
     }
     return settings_mod.Settings(cfg, scopes, restarts=restarts,

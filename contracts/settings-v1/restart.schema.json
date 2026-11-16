@@ -19,7 +19,8 @@
   "kind": {
    "enum": [
     "settings",
-    "restore"
+    "restore",
+    "mode"
    ]
   },
   "who": {

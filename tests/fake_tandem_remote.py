@@ -23,9 +23,10 @@ DIR/fake-state.json steers it (`state(dir)`, `set_state(dir, **kw)`):
     mode          the mode `mode get` and `status` say (engine); `mode set` writes it
     inferred      true: `mode get` says the mode was read from an empty QSE_MODE
     model         the model `status` says a healthy engine serves ("fake-model"; null: none yet)
-    sim           true: the settings verbs, status, start and restart run a small model of the
-                  managed overlay (SRV-845): SIM_SCHEMA's keys, versions with `current` and `good`,
-                  plan tokens bound to the base version as the engine's are, the second token for
+    sim           true: the settings verbs, `mode get` and `mode set`, status, start and restart
+                  run a small model of the managed overlay (SRV-845): SIM_SCHEMA's keys (`mode
+                  set` writes QSE_MODE and QSE_EXT into a new version, as the engine does),
+                  versions with `current` and `good`, plan tokens bound to the base version as the engine's are, the second token for
                   a key that feeds the fingerprint, and a lifecycle job that each `status` call
                   moves one step along `sim_steps` (default waiting, acting, done; a step
                   `failed_start` fails the start and puts the version back, `timeout` fails the
@@ -180,6 +181,8 @@ SIM_SCHEMA = {
                             "fingerprint": True, "managed": True},
     "QSE_MODE": {"default": "engine", "type": "enum", "restart": "engine", "fingerprint": False,
                  "managed": True, "values": ["engine", "chat"]},
+    "QSE_EXT": {"default": "", "type": "module", "restart": "engine", "fingerprint": False,
+                "managed": True},
     "HF_TOKEN": {"default": None, "type": "string", "restart": "engine", "fingerprint": False,
                  "managed": False, "why": "may hold a secret"},
     "PORT": {"default": "8000", "type": "integer", "restart": "engine", "fingerprint": False,
@@ -348,7 +351,8 @@ def sim_answer(d: str, st: dict, name: str, opts: dict, pos: list) -> tuple[dict
                            "engine_api": "1.9", "version": "0.15.4",
                            "model": st.get("model", "fake-model") if healthy else None,
                            "running_mode": "engine" if healthy else None, "stopped_on_purpose": False},
-                "mode": "engine", "profile": None, "engine_version": "0.15.4", "engine_api": "1.9",
+                "mode": _effective(m, _set_of(m, m["current"])).get("QSE_MODE"), "profile": None,
+                "engine_version": "0.15.4", "engine_api": "1.9",
                 "http": {"token": True, "allow_from": None}, "install": True,
                 "overlay": {"current": m["current"], "good": m["good"],
                             "versions": len(m["versions"]), "file": m["current"] > 0},
@@ -383,6 +387,24 @@ def sim_answer(d: str, st: dict, name: str, opts: dict, pos: list) -> tuple[dict
         return {"keys": rows, "overlay": {"current": m["current"], "good": m["good"],
                                           "versions": len(m["versions"]), "file": m["current"] > 0},
                 "hook": True}, 0
+    if name == "mode get":
+        over = _set_of(m, m["current"])
+        eff = _effective(m, over)
+        return {"mode": eff.get("QSE_MODE"), "ext": eff.get("QSE_EXT") or None,
+                "source": "managed" if "QSE_MODE" in over else "default",
+                "inferred": False}, 0
+    if name == "mode set":
+        mode = pos[0] if pos else "engine"
+        new = dict(_set_of(m, m["current"]), QSE_MODE=mode)
+        if mode == "engine":
+            if "--ext" in opts:
+                raise Refuse("bad_value", "--ext goes with mode set chat", 2)
+            new["QSE_EXT"] = ""
+        else:
+            new["QSE_EXT"] = opts.get("--ext") or "tandemapp.engine_ext"
+        j = _sim_job(d, st, m, "mode", opts.get("--when", "idle"), opts.get("--deadline"),
+                     overlay={"from": m["current"], "values": new, "note": f"mode {mode}"})
+        return {"job": j, "follow": "tandem remote status"}, 0
     if name == "settings plan":
         return {"plan": _sim_plan(m, _sim_target(m, pos, opts.get("--unset") or []))}, 0
     if name == "settings apply":
@@ -406,7 +428,7 @@ def sim_answer(d: str, st: dict, name: str, opts: dict, pos: list) -> tuple[dict
 
 
 SIM_VERBS = ("status", "start", "restart", "settings get", "settings plan", "settings apply",
-             "settings versions", "settings restore")
+             "settings versions", "settings restore", "mode get", "mode set")
 
 
 def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | None) -> tuple[dict, int]:

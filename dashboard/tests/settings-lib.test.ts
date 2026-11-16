@@ -9,7 +9,7 @@ import { RESTART_ENDED, SettingsError, type KeySpec, type KeyValue, type Plan, t
 import { SETTINGS_TABS, crumb, sectionOf, settingsHref, subPages } from '../src/lib/menu.ts';
 import { parseHash } from '../src/lib/router.ts';
 import { Draft, same } from '../src/lib/settings-draft.ts';
-import { MODE_KEY, asText, controlOf, fieldsOf, groupsOf, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
+import { EXT_KEY, MODE_KEY, asText, controlOf, fieldsOf, groupsOf, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
 import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
 import { ERRORS } from './settings-rig.ts';
 
@@ -110,6 +110,17 @@ describe('a form from a schema', () => {
       ['restart', ['MAX_QUEUE', 'QWEN38_PREFIX_CHUNK']],
       ['host', ['HF_TOKEN', 'PORT']],
     ]);
+    // the extension chat mode runs stands beside the mode while chat is chosen, and only then
+    const ext = schemaOf('engine', [key(MODE_KEY, 'enum', { restart: 'engine', values: ['engine', 'chat'], default: 'engine' }), key(EXT_KEY, 'module', { restart: 'engine', nullable: true, default: 'tandemapp.engine_ext' }), key('MAX_QUEUE', 'integer', { restart: 'engine', default: '16' })]);
+    const extVals = (mode: string) => ({ values: [val(MODE_KEY, mode, { source: 'managed' }), val(EXT_KEY, mode === 'chat' ? 'tandemapp.engine_ext' : null, { set: mode === 'chat', source: 'managed' }), val('MAX_QUEUE', '16', { source: 'managed' })] });
+    expect(groupsOf('engine', fieldsOf(ext, extVals('engine'), undefined)).map((x) => [x.id, x.fields.map((y) => y.key)])).toEqual([['mode', [MODE_KEY]], ['restart', ['MAX_QUEUE']]]);
+    const chat = fieldsOf(ext, extVals('chat'), undefined);
+    expect(groupsOf('engine', chat).map((x) => [x.id, x.fields.map((y) => y.key)])).toEqual([['mode', [MODE_KEY, EXT_KEY]], ['restart', ['MAX_QUEUE']]]);
+    const e = chat.find((x) => x.key === EXT_KEY)!;
+    expect([e.label, e.mono, e.control, e.text]).toEqual(['Chat extension', false, 'text', 'The module chat mode runs. TandemApp installs its own on the engine host when it is missing there']);
+    const staged = new Draft();
+    staged.set('engine', 'eh-desk', MODE_KEY, 'chat');
+    expect(groupsOf('engine', fieldsOf(ext, extVals('engine'), staged.part('engine', 'eh-desk')))[0].fields.map((y) => y.key)).toEqual([MODE_KEY, EXT_KEY]);
     // a staged unset shows what the key goes back to
     d.unset('engine', 'eh-desk', 'MAX_QUEUE', { set: true });
     const g = fieldsOf(s, values, d.part('engine', 'eh-desk')).find((x) => x.key === 'MAX_QUEUE')!;
@@ -293,6 +304,9 @@ describe('refusals and the audit', () => {
     expect(errorWords(new SettingsError('busy', 'x', 409, '')).title).toBe('Another change set is being applied right now.');
     expect(errorWords(new SettingsError('unauthorized', 'x', 401, '')).fix).toContain('Sign in');
     expect(errorWords(new SettingsError('weird', 'something else', 500, '')).title).toBe('something else');
+    // the chat extension: what to do is the controller's own sentence
+    const ext = errorWords(new SettingsError('extension_missing', 'the engine host has no tandemapp.engine_ext that loads, and this controller has no wheel to send: set TANDEM_NODE_WHEEL …', 409, '', { key: 'mode.ext' }));
+    expect([ext.title, ext.detail]).toEqual(['The engine host lacks the chat extension, and TandemApp cannot install it from here.', 'the engine host has no tandemapp.engine_ext that loads, and this controller has no wheel to send: set TANDEM_NODE_WHEEL …']);
   });
 
   it('an audit row: what, where, how it ended', () => {

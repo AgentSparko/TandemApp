@@ -31,7 +31,7 @@
   {
    "name": "engine",
    "order": 3,
-   "store": "each paired engine host's managed overlay through tandem remote settings (engine-ctl-v1), versioned; hot keys through PATCH /v1/engine/settings (engine API 1.9)",
+   "store": "each paired engine host's managed overlay through tandem remote settings (engine-ctl-v1), versioned; hot keys through PATCH /v1/engine/settings (engine API 1.9); its mode (the keys mode and mode.ext) through tandem remote mode set, after the chat extension is installed when it is missing",
    "targets": "an engine host's fleet id (ssh), or http:<backend id> read-only",
    "restart": [
     "hot",
@@ -182,6 +182,7 @@
   "engine_refused": 409,
   "host_key_changed": 409,
   "no_http": 409,
+  "extension_missing": 409,
   "unknown_key": 422,
   "locked": 422,
   "bad_value": 422,
