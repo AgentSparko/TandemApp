@@ -337,6 +337,8 @@ class AccountStore:
         """A new session: (its id for the cookie, its row). The id is never stored."""
         sid = secrets.token_urlsafe(32)
         now = self.now_ms()
+        if now - self._pruned > 3_600_000:
+            self.prune()
         p = self.policy
         row = {"id_hash": _sha(sid), "account_id": account_id, "csrf_hash": _sha(csrf_of(sid)),
                "created_at": now, "last_seen_at": now, "idle_until": now + p.idle_days * DAY_MS,
@@ -464,14 +466,22 @@ class AccountStore:
         return self.revoke([h for h in ids if h != keep], actor=actor, why=why)
 
     def prune(self) -> int:
-        """Rows of sessions that ended more than a day ago go."""
-        cut = self.now_ms() - DAY_MS
+        """Rows of sessions that ended more than a day ago go (a sign-in runs it, at most once
+        an hour)."""
+        now = self.now_ms()
+        cut = now - DAY_MS
+        p = self.policy
         with self.cfg._lock:
             n = self._c.execute("DELETE FROM sessions WHERE (revoked_at IS NOT NULL AND "
-                                "revoked_at < ?) OR expires_at < ? OR idle_until < ?",
-                                (cut, cut, cut)).rowcount
+                                "revoked_at < ?) OR expires_at < ? OR idle_until < ? OR "
+                                "created_at < ? OR last_seen_at < ?",
+                                (cut, cut, cut, cut - p.absolute_days * DAY_MS,
+                                 cut - p.idle_days * DAY_MS)).rowcount
             self._c.commit()
+        self._pruned = now
         return n
+
+    _pruned = 0
 
 
 # ======================================================================================== streams
@@ -519,6 +529,9 @@ class Streams:
             time.sleep(self.check_s)
             with self._lock:
                 keys = list(self._open)
+                if not keys:
+                    self._thread = None          # the next open stream starts another
+                    return
             dead = []
             for h in keys:
                 try:

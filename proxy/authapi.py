@@ -84,6 +84,12 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
     parts = [unquote(x) for x in path.rstrip("/").split("/")[3:]]
     q = {k: v[-1] for k, v in parse_qs(urlsplit(handler.path).query).items()}
     try:
+        if parts == ["session"] and method == "POST":
+            # the sign-in comes from this server's own page, as JSON (before its body is read)
+            bad = auth_mod.same_origin_json(handler.headers)
+            if bad is not None:
+                return _err(handler, bad[0], bad[1], "a sign-in comes from this server's own "
+                                                     "page, as JSON")
         body = _body(raw)
         if parts == ["session"]:
             return _session(handler, a, method, body)
@@ -107,10 +113,6 @@ def _session(handler, a, method: str, body) -> None:
         return _sign_out(handler, a, p)
     if method != "POST":
         return _err(handler, 405, "method_not_allowed", "the session takes GET, POST and DELETE")
-    bad = auth_mod.same_origin_json(handler.headers)
-    if bad is not None:
-        return _err(handler, bad[0], bad[1], "a sign-in comes from this server's own page, as "
-                                             "JSON")
     if not isinstance(body, dict) or set(body) - {"username", "password"}:
         return _err(handler, 400, "bad_request", "the body is {username, password}")
     peer = handler._peer()
