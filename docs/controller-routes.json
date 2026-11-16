@@ -52,7 +52,7 @@
       "owner": "controller",
       "match": "prefix",
       "what": "the sign-in, the first-run setup, sessions and accounts",
-      "when": "the accounts are on (TANDEM_AUTH=accounts)"
+      "probe": "GET /v1/auth/session"
     },
     {
       "prefix": "/v1/chat-app",

@@ -51,9 +51,9 @@ On Linux a user unit stops at logout unless the user lingers; the install prints
 
 ### Sign-in with accounts
 
-`TANDEM_AUTH=accounts` (in the environment of the install command, or in `app.env`) turns on user
-accounts with roles, sessions and API tokens in place of the admin token; the installer keeps it
-in `app.env`.
+User accounts with roles, sessions and API tokens are the sign-in (there is no admin token and
+no open default any more; an older install's `TANDEM_ADMIN_TOKEN`, `TANDEM_AUTH=accounts` and
+the like are named on the health page and can go once you will not roll back).
 
 - **This machine only** (the default address, no proxy): local mode. The page opens without a
   password and offers "Set a password"; nothing else on the network reaches it. The installer
@@ -144,10 +144,9 @@ stage) and the OpenSSH client, and no compiler or torch:
 
 `--network host` lets Add engine find the engines the LAN advertises. Behind a published port
 (`-p 127.0.0.1:8080:8080`) you type the engine's address instead. Inside the container the server
-binds 0.0.0.0 unless `TANDEM_HOST` says otherwise: set an admin password, or
-`TANDEM_DASHBOARD_LOGIN=on` with `TANDEM_ADMIN_TOKEN`, before anything but loopback reaches it.
-With `-e TANDEM_AUTH=accounts` a container never gets local mode: the first log lines hold a
-setup code that makes the owner (`docker logs tandem-app`).
+binds 0.0.0.0 unless `TANDEM_HOST` says otherwise. A container never gets local mode: nothing
+answers without a sign-in, and the first log lines hold a setup code that makes the owner
+(`docker logs tandem-app`).
 
 Everything it keeps is in `/data`. A new `/data` starts bare: Chat and the conductor off. The start
 script records its choice once in `/data/container.env`; `-e TANDEM_CHAT=own` overrides it, and the

@@ -62,18 +62,9 @@ refuses.
 
     kubectl create namespace tandemapp
 
-**The admin password.** Without one every route answers anyone who reaches the pod. Make the
-Secret from a pipe, never from a values file or a shell history:
-
-    python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")' | \
-      kubectl -n tandemapp create secret generic tandemapp-admin --from-file=admin-token=/dev/stdin
-
-Keep the token in a password manager: it signs in to the page and is the admin token of the API.
-(Leaving `auth.existingSecret` empty makes the chart create a Secret with a random token, kept
-across upgrades.)
-
-**Sign-in with accounts (`auth.mode: accounts`).** User accounts with roles, sessions and API
-tokens replace the admin token. The chart then puts no auth secret into the pod's environment:
+**Sign-in with accounts (`auth.mode: accounts`, the only mode).** User accounts with roles,
+sessions and API tokens are the sign-in; the admin-token mode of older charts (`legacy`) is gone
+and refused. The chart puts no auth secret into the pod's environment:
 
 - The Secret is mounted into the controller as a file (`TANDEM_SETUP_CODE_FILE`) that holds a
   one-time setup code. Leave `auth.existingSecret` empty and the chart makes it with a 20-character
@@ -84,8 +75,8 @@ tokens replace the admin token. The chart then puts no auth secret into the pod'
   Open the page, enter the code with the first owner's name and password. The code is single use
   and spent after 5 wrong tries. With no Secret at all (`auth.create: false`) each start logs a
   fresh code while no owner exists.
-- On a new install, do not make the admin token's Secret above. A Secret named by
-  `auth.existingSecret` (or the one the chart made in legacy mode) is the old admin token as well
+- On a new install, make no admin token. A Secret named by `auth.existingSecret` (or the one an
+  older chart made with an admin token) is the old admin token as well
   (`TANDEM_ADMIN_TOKEN_FILE`): a value of 32 characters or more there becomes an API token for
   scripts for 30 days once the owner exists. Let the chart make the code, or give your own in a
   Secret named by `auth.bootstrap.existingSecret`, which is only ever a setup code.
@@ -178,7 +169,7 @@ and open `https://tandemapp.example.com/`: the setup wizard (pairing an engine h
   names that address (below).
 - **The API paths.** The ingress routes the OpenAI-compatible routes (`/v1/chat/completions`,
   `/v1/completions`, `/v1/embeddings`, `/v1/responses`, `/v1/cache`) and the Messages API
-  (`/v1/messages`) by default, in both auth modes, on a new install and an upgrade alike.
+  (`/v1/messages`) by default, on a new install and an upgrade alike.
   `/v1/models` is always routed: the page reads it. `ingress.api.openai: false` or
   `ingress.api.anthropic: false` sends that protocol's paths to the Service with no endpoints
   (503). The page's Playground, its model windows and the developer view post to
@@ -210,9 +201,9 @@ The full table is the [chart's README](../charts/tandemapp/README.md). The ones 
 |-|-|-|
 | `release.id`, `release.archive.url`, `.sha256` | required, empty, empty | the release the pod runs |
 | `persistence.storageClass`, `.size`, `.existingClaim`, `.hostPath.path` | the cluster's default, 20Gi | the volume; kept on uninstall (`persistence.keep`) |
-| `auth.mode` | `legacy` | `legacy` (the admin token in the env) or `accounts` (section 3) |
-| `auth.existingSecret`, `.secretKey` | a Secret the chart makes | the admin token; in accounts mode the setup code |
-| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty: the Secret above | accounts mode: the setup code's own Secret |
+| `auth.mode` | `accounts` | the only value; `legacy` is refused (section 3) |
+| `auth.existingSecret`, `.secretKey` | a Secret the chart makes | the setup code, or an older release's admin token |
+| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty: the Secret above | the setup code's own Secret |
 | `auth.trustedProxy` | empty | the ingress controller's address or its pods' CIDR range when it ends TLS (section 5) |
 | `ingress.api.openai`, `.anthropic` | empty: routed | `false` blocks that API's paths (section 5) |
 | `chat.mode` | empty: off on a new install, the running release's on an upgrade | `off`, `own` (chatd in this pod), `external` (another host's chatd) |
@@ -348,8 +339,7 @@ after an install or upgrade with an MCP `initialize` and `tools/list` from the c
 5. Check: `rollout status`, `helm test`, the pod's containers all Ready with 0 restarts, and watch it
    for a few minutes (the same pod, restarts unchanged, the page answering).
 
-**From the admin token to accounts.** Upgrade with `auth.mode: accounts` and leave `auth.bootstrap`
-empty. The Secret keeps its name, key and value: the old admin token works once as the setup code,
+**From the admin token to accounts.** Upgrade (leave `auth.mode` and `auth.bootstrap` empty). The Secret keeps its name, key and value: the old admin token works once as the setup code,
 and once an owner exists (made with it, or from the controller's admin password) it is an API token
 for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
 Secret while you may roll back: `helm rollback` to the revision before brings back the template
