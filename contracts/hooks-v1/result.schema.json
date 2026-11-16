@@ -69,7 +69,23 @@
           "additionalProperties": false
         },
         "answer": {
-          "description": "decision.ask: the provider's answer"
+          "description": "decision.ask: an option id of the question, or {choice, confidence?, probabilities?} (numbers 0..1); anything else is refused",
+          "type": [
+            "string",
+            "object"
+          ],
+          "properties": {
+            "choice": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "probabilities": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [],

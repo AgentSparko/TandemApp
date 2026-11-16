@@ -21,10 +21,10 @@ the hooks pages); tests/test_hooks_contract.py holds the two equal (`export()`).
                  patch of one needs payload `full` (a hook that saw less cannot rewrite it)
     decision     the keys a `decision` may hold
     first_token  sync hooks here count toward the 800 ms cap before the first token
-    wired        the controller calls the stage in this version; the others are called by the
-                 work that owns them (decision.ask: decision providers; tool.*, memory.write,
-                 session.*: chatd and the conductor; engine.lifecycle: engine control), through
-                 `proxy.hooks.Runner.run` and `Runner.ask`
+    wired        the controller calls the stage in this version (decision.ask through a `hook`
+                 decision provider, proxy/providers.py, SRV-851); the others are called by the
+                 work that owns them (tool.*, memory.write, session.*: chatd and the conductor;
+                 engine.lifecycle: engine control), through `proxy.hooks.Runner.run`
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ STAGES: dict[str, dict] = {
         "may": ["decide"], "roles": ["decider", "observer"],
         "budget_ms": 400, "on_failure": "open",
         "fields": [], "content": [], "decision": ["answer"],
-        "first_token": True, "wired": False},
+        "first_token": True, "wired": True},
     "stream.chunk": {
         "when": "each event of a streamed answer",
         "may": ["observe"], "roles": ["observer"],

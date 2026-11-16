@@ -210,7 +210,7 @@
         "answer"
       ],
       "first_token": true,
-      "wired": false
+      "wired": true
     },
     "stream.chunk": {
       "when": "each event of a streamed answer",

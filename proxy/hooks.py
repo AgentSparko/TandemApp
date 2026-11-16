@@ -165,9 +165,34 @@ def check_result(stage: str, role: str, level: str, res) -> tuple[dict | None, s
                                         and set(v) <= {"backend", "model"}
                                         and isinstance(v.get("model", ""), str)):
                 return None, "decision.fallback: {backend, model?}"
+            if k == "answer" and not answer_ok(v):
+                return None, ("decision.answer: an option id, or {choice, confidence?, "
+                              "probabilities?} with numbers 0..1")
     elif res.get("decision") is not None:
         return None, "a decision comes only with decide"
     return res, None
+
+
+def _prob(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and 0.0 <= v <= 1.0
+
+
+def answer_ok(v) -> bool:
+    """decision.ask's answer (SRV-851): an option id, or {choice, confidence?, probabilities?}.
+    Whether the id is one of the question's options the decision providers check."""
+    if isinstance(v, str):
+        return 1 <= len(v) <= 128
+    if not isinstance(v, dict) or not set(v) <= {"choice", "confidence", "probabilities"}:
+        return False
+    if not (isinstance(v.get("choice"), str) and 1 <= len(v["choice"]) <= 128):
+        return False
+    if "confidence" in v and not _prob(v["confidence"]):
+        return False
+    p = v.get("probabilities")
+    if p is not None and not (isinstance(p, dict) and len(p) <= 64 and all(
+            isinstance(k, str) and len(k) <= 128 and _prob(x) for k, x in p.items())):
+        return False
+    return True
 
 
 def merge_patch(value: dict, patch: dict) -> dict:
@@ -731,10 +756,12 @@ class Runner:
                                                                      "full"), False)
 
     # ------------------------------------------------------------------ seams for later work
-    def ask(self, ctx: dict, question: dict, content=None) -> dict | None:
-        """decision.ask (E2's seam): the first decider's decision for `question`, or None (the
-        built-in answer)."""
-        r = self.run("decision.ask", ctx, content, lambda v: {"question": question})
+    def ask(self, ctx: dict, question: dict, content=None, hooks=None) -> dict | None:
+        """decision.ask: the first decider's decision for `question`, or None (the built-in
+        answer). `hooks`: these hooks only (a `hook` decision provider names its one,
+        proxy/providers.py), else every decision.ask hook in scope."""
+        r = self.run("decision.ask", ctx, content, lambda v: {"question": question},
+                     hooks=hooks)
         return r.decision
 
     def notify(self, stage: str, ctx: dict, meta: dict, content=None) -> None:

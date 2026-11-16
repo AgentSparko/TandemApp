@@ -47,8 +47,13 @@ def sample(stage: str) -> dict:
     elif stage == "route.select":
         meta = {"route": ROUTE, "backends": ["local", "cloud"]}
     elif stage == "decision.ask":
-        meta = {"question": {"state": "class", "options": ["chat", "code"], "deadline_ms": 400}}
-        content = {"prompt": "What is the capital of France?"}
+        state = "Rename the variable cnt to count in utils.py and run the tests."
+        meta = {"question": {"id": "classify", "type": "choice",
+                             "instructions": "Which kind of task is this message?",
+                             "options": {"code_edit": "change code in the project",
+                                         "chat": "a question or a conversation"},
+                             "model": "auto", "deadline_ms": 400, "state_chars": len(state)}}
+        content = {"state": state}
     elif stage == "stream.chunk":
         req["stream"] = True
         meta = {"index": 3, "kind": "content", "bytes": 120}

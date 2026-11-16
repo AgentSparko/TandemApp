@@ -1,15 +1,64 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "hooks-v1 event: decision.ask",
-  "description": "a question for a decision provider. The call's `event` at this stage.",
+  "description": "a conductor question for a `hook` decision provider (SRV-851): the question as the provider maps it, and the text it is about at payload redacted or full. The hook answers {action: decide, decision: {answer: <option id> | {choice, confidence?, probabilities?}}}; an id that is not one of `options`, a continue or a failure falls back to the built-in answer.",
   "type": "object",
   "properties": {
     "question": {
       "type": "object",
-      "description": "the decision provider's question: its state, options and deadline (decision providers define it)"
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "the question id: classify, packages, deliverable, memory_intent, memory_gate or judge"
+        },
+        "type": {
+          "const": "choice"
+        },
+        "instructions": {
+          "type": "string",
+          "description": "the question in words, as the conductor asks it"
+        },
+        "options": {
+          "type": "object",
+          "description": "option id -> what it means; the answer is one of these ids"
+        },
+        "model": {
+          "type": "string",
+          "description": "the model the provider maps for this question (auto: the hook's own choice)"
+        },
+        "deadline_ms": {
+          "type": "integer",
+          "description": "the time the answer may take, at most the stage's 400 ms"
+        },
+        "state_chars": {
+          "type": "integer",
+          "description": "the length of the text the question is about (content.state)"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "instructions",
+        "options",
+        "model",
+        "deadline_ms",
+        "state_chars"
+      ],
+      "additionalProperties": false
     },
     "content": {
-      "description": "the question's text (payload redacted or full only; redacted: every string through the redaction)"
+      "type": "object",
+      "description": "payload redacted or full only (redacted: every string through the redaction)",
+      "properties": {
+        "state": {
+          "type": "string",
+          "description": "the text the question is about: the conductor's digest of the user's message, the session or the tool output"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

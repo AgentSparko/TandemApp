@@ -103,7 +103,9 @@ def test_real_calls_validate():
         with Proxy(env) as px:
             px.sync()
             ep = f"http://127.0.0.1:{hport}/"
-            wired = [s for s, v in S.STAGES.items() if v["wired"]]
+            # decision.ask is a hook decision provider's call, not the relay's
+            # (tests/test_decision_providers.py validates its calls)
+            wired = [s for s, v in S.STAGES.items() if v["wired"] and s != "decision.ask"]
             for level in ("meta", "full"):
                 for st in wired:
                     role = next(r for r in ("transform", "decider", "observer")
