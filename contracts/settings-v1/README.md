@@ -22,6 +22,7 @@ These files are the truth for `/v1/settings/*`, TandemApp's one settings interfa
 ## Rules
 
 - Every scope answers `schema`, `get`, `plan`, `apply`, `versions` and `restore`. A plan writes nothing.
+- Unsetting a key that is unset already is no change: the plan drops it. A value's `set` is whether its store holds one (a backend's field that holds nothing is unset).
 - A change set holds at most one part a scope and target. Its parts apply in the order app, backends, conductor, engine, hooks (targets by id within a scope), and the first failure stops the set: the parts before it stay applied and say how to restore them, the parts after it are `not_run`.
 - `confirm` is bound to each part's changes and to the state its scope planned against (values, versions, the engine's own plan token). Apply without it is 428 `confirm_required`; with one that no longer matches, 409 `stale_plan`. A key that feeds an engine's disk-cache fingerprint needs `confirm_fingerprint` too (428 `fingerprint_confirm_required`). The same confirm applied again with the same body answers the same result, `replayed` true. While one change set applies, another is 409 `busy`.
 - A secret (a backend's API key) is write-only: no answer, version, audit row, log line or export holds its value. A restore leaves secrets as they are.

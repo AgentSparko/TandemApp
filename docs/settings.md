@@ -53,6 +53,8 @@ POST /v1/settings/apply {changes, confirm, confirm_fingerprint?, when?, deadline
 
 A change set has at most one part per scope and target.
 
+Unsetting a key that is unset already is no change, in every scope: the plan drops it, and a part left with nothing applies as `unchanged`. In `backends`, a field that holds nothing is unset (`set` false).
+
 **The plan** writes nothing. For each part it lists:
 
 - every change, with its restart class;

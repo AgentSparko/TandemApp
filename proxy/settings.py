@@ -43,7 +43,8 @@ lock (a second change set meanwhile is 409 `busy`), and the first failure stops 
 lists each part as applied, scheduled (an engine restart runs it), unchanged, failed or not_run,
 with the version it had before and the restore that brings it back. Applying the same confirm again
 answers the same result (`replayed`); planning the same changes again after a partial failure plans
-only what is still different. A refusal while a part is planned names that part's `scope` and
+only what is still different. Unsetting a key that is unset already is no change: the plan drops
+it, in every scope. A refusal while a part is planned names that part's `scope` and
 `target` (and its `key` when the refusal is about one key's value), so the page marks that field.
 
 SECRETS (a backend's API key) are write-only: a value is never in an answer, a version, a log line,
@@ -312,9 +313,10 @@ class KeyValueScope(Scope):
             if k in sets:
                 new, is_set = sets[k], sets[k] is not None
                 if s["secret"]:
-                    same = False                       # a key is never read back to compare
+                    # a key is never read back to compare; nothing on nothing is no change
+                    same = new is None and not cur[1]
                 else:
-                    same = cur[1] and cur[0] == new
+                    same = (cur[1] and cur[0] == new) or (new is None and not cur[1])
             else:
                 new, is_set = s.get("default"), False
                 same = not cur[1] and not s["secret"]

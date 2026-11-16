@@ -56,6 +56,10 @@ contracts/settings-v1 (tools/contract_check.py).
      marks that field: the same key on two engine hosts, a backend's value, a conductor document,
      a hook's check that names no key itself (a part of one key names it)
                                                         test_refusal_names_its_place
+ 14  Unsetting a key that is unset already is no change, in every scope: the plan drops it (a set
+     beside it still plans), applying it is unchanged; the backends say set or unset as the
+     database holds it
+                                                        test_unset_of_an_unset_key
 
 CPU only. Run: python tests/test_settings.py
 """
@@ -1055,6 +1059,51 @@ def test_refusal_names_its_place():
     finally:
         r.close()
     return "scope and target on every part's refusal; the key of a value's refusal"
+
+
+def test_unset_of_an_unset_key():
+    r = Rig("unset", hooks=FakeHooks())
+    try:
+        # the backends: a field that holds nothing is unset, as the database has it
+        st, vals = r.call("GET", "backends")
+        got = {v["key"]: v for v in ok(vals, "values")["values"]}
+        assert got["backends.eng.max_inflight"]["value"] is None
+        assert got["backends.eng.max_inflight"]["set"] is False, got["backends.eng.max_inflight"]
+        assert got["backends.eng.url"]["set"] is True and got["backends.eng.key"]["set"] is False
+        cases = [
+            {"scope": "backends", "unset": ["backends.eng.max_inflight"]},
+            {"scope": "backends", "set": {"backends.eng.host.url": None}},
+            {"scope": "backends", "unset": ["backends.eng.key"]},
+            {"scope": "app", "unset": ["chat"]},
+            {"scope": "hooks", "unset": ["hooks.audit.token"]},
+            {"scope": "engine", "target": "h1", "unset": ["QWEN38_PREFIX_CHUNK"]},
+            {"scope": "engine", "target": "h1", "unset": ["mode"]},
+            {"scope": "engine", "target": "h1", "unset": ["mode.ext"]},
+        ]
+        n = len(ftr.calls(r.eng))
+        for c in cases:
+            p = r.plan([c])
+            assert not p["changed"] and p["parts"][0]["changes"] == [], (c, p)
+            st, res = r.call("POST", "apply", {"changes": [c]})
+            assert st == 200 and ok(res, "result")["state"] == "unchanged", (c, res)
+        toks = [t["tokens"][:2] for t in ftr.calls(r.eng)[n:]]
+        assert ["settings", "plan"] not in toks and ["settings", "apply"] not in toks, toks
+        # beside a set, the unset is dropped and the set plans
+        p = r.plan([{"scope": "engine", "target": "h1", "set": {"MAX_QUEUE": 18},
+                     "unset": ["QWEN38_PREFIX_CHUNK"]},
+                    {"scope": "backends", "set": {"backends.eng.label": "E"},
+                     "unset": ["backends.eng.max_inflight"]}])
+        assert [[c["key"] for c in x["changes"]] for x in p["parts"]] == [
+            ["backends.eng.label"], ["MAX_QUEUE"]], p
+        assert p["fingerprint_keys"] == [] and p["confirm_fingerprint"] is None, p
+        # a key that holds a value is still unset
+        r.apply([{"scope": "backends", "set": {"backends.eng.max_inflight": 4}}])
+        p = r.plan([{"scope": "backends", "unset": ["backends.eng.max_inflight"]}])
+        assert [(c["key"], c["from"], c["is_set"]) for c in p["parts"][0]["changes"]] == [
+            ("backends.eng.max_inflight", 4, False)], p
+    finally:
+        r.close()
+    return "the plan drops an unset of an unset key in every scope; the backends tell set apart"
 
 
 if __name__ == "__main__":

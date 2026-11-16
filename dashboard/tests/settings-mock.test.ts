@@ -78,6 +78,26 @@ describe('the mock answers the contract', () => {
     expect(facts(await post(r, '/plan', { changes: [{ scope: 'conductor', set: { router: { default: 'main' } } }] }))).toEqual(['invalid_document', 'conductor', 'controller', 'router']);
   });
 
+  it('an unset of a key that is unset already is no change; the backends say set or unset truthfully', async () => {
+    const r = rig();
+    const inflight = await valueOf(r, 'backends', 'backends.engine.max_inflight');
+    expect([inflight.value, inflight.set]).toEqual([null, false]);
+    expect((await valueOf(r, 'backends', 'backends.cloud.max_inflight')).set).toBe(true);
+    for (const c of [
+      { scope: 'backends', unset: ['backends.engine.max_inflight'] },
+      { scope: 'backends', set: { 'backends.engine.host.url': null } },
+      { scope: 'app', unset: ['chat'] },
+      { scope: 'engine', target: 'eh-desk', unset: ['QWEN38_PREFIX_CHUNK'] },
+    ]) {
+      const plan = ok<Plan>(await post(r, '/plan', { changes: [c] }));
+      expect([plan.changed, plan.parts[0].changes], JSON.stringify(c)).toEqual([false, []]);
+      expect(ok<Result>(await post(r, '/apply', { changes: [c] })).state).toBe('unchanged');
+    }
+    // beside a set, the unset is dropped and the set plans
+    const both = ok<Plan>(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { MAX_QUEUE: '18' }, unset: ['QWEN38_PREFIX_CHUNK'] }] }));
+    expect([both.parts[0].changes.map((c) => c.key), both.confirm_fingerprint]).toEqual([['MAX_QUEUE'], null]);
+  });
+
   it('refuses what the controller refuses, each with the contract’s status', async () => {
     const r = rig();
     expect(refused(await get(r, '/memory'))).toEqual([404, 'not_found']);

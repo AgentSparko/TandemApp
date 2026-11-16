@@ -236,7 +236,8 @@ export class QseSettings extends LightElement {
       }
       this.form.invalid.delete(f.id);
       if ('unset' in p) {
-        if (f.held && f.held.value !== null) draft.unset(f.scope, f.target, f.key, f.held);
+        // a key that is unset already: nothing to stage (the controller would drop it too)
+        if (f.held?.set && f.held.value !== null) draft.unset(f.scope, f.target, f.key, f.held);
         else draft.drop(f.scope, f.target, f.key);
       } else this.stage(f, p.value);
     },

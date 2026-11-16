@@ -337,6 +337,10 @@ class EngineScope(Scope):
     def _overlay(self, target: str, sets: dict, unsets: list, rows: dict) -> tuple[dict, list]:
         """A part's keys as the overlay's: the mode as QSE_MODE and QSE_EXT, as `mode set` writes
         them. Refusals name the key the page shows."""
+
+        def managed(k: str) -> bool:
+            return (rows.get(k) or {}).get("source") == "managed"
+
         for k in list(sets) + list(unsets):
             if k in MODE_VARS.values():
                 raise SettingsError(422, "locked", f"{k} changes through the key "
@@ -356,7 +360,8 @@ class EngineScope(Scope):
                 raise SettingsError(422, "bad_value", f"{k} is one of {', '.join(r['values'])}",
                                     key=k)
         changes = {k: _value(k, v) for k, v in sets.items() if k not in MODE_KEYS}
-        unset = [k for k in unsets if k not in MODE_KEYS]
+        # a key the overlay does not set is unset already: no change, the plan drops it
+        unset = [k for k in unsets if k not in MODE_KEYS and managed(k)]
         touched = [k for k in list(sets) + list(unsets) if k in MODE_KEYS]
         if not touched:
             return changes, unset
@@ -375,8 +380,8 @@ class EngineScope(Scope):
         elif "mode.ext" in sets:
             changes["QSE_EXT"] = ext or DEFAULT_EXT
         if "mode" in unsets:
-            unset += [k for k in ("QSE_MODE", "QSE_EXT") if k in rows]
-        elif "mode.ext" in unsets:
+            unset += [k for k in ("QSE_MODE", "QSE_EXT") if managed(k)]
+        elif "mode.ext" in unsets and managed("QSE_EXT"):
             unset.append("QSE_EXT")
         return changes, unset
 
@@ -489,8 +494,12 @@ class EngineScope(Scope):
         install = None
         with self._ctl(target) as ctl:
             if restore is None:
-                rows = {r["key"]: r for r in ctl.settings_get()["keys"]}
+                got = ctl.settings_get()
+                rows = {r["key"]: r for r in got["keys"]}
                 changes, unset = self._overlay(target, sets, unsets, rows)
+                if not changes and not unset:
+                    return part_plan([], state=digest(["no_change", target,
+                                                       (got.get("overlay") or {}).get("current")]))
                 new_mode = changes.get("QSE_MODE", (rows.get("QSE_MODE") or {}).get("value"))
                 if "QSE_EXT" in changes and new_mode == "chat":
                     install = self._ext_need(ctl, changes["QSE_EXT"] or DEFAULT_EXT)

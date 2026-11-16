@@ -21,7 +21,8 @@ BACKENDS (target `controller`): the config database's backends, routes and users
     routes                  the routing rules in order: [{pattern, backend, enabled, variable?}]
     users.<id>.enabled      a user's key on or off
 
-A field the environment sets is not writable (its `variable` says which). The checks are the
+A field that holds nothing is unset (`set` false); unsetting it again is no change. A field the
+environment sets is not writable (its `variable` says which). The checks are the
 Backends screen's (config.schema.json, fallbacks, the environment's rules); restart class none.
 Adding or removing a backend or a user stays on the Backends screen, which hands the key out once.
 
@@ -196,8 +197,11 @@ class BackendsScope(KeyValueScope):
             locks = self.cfg.backend_locks(b["id"])
             for f in self.fields:
                 var = locks.get(f) or locks.get(f.partition(".")[0])
+                v = copy.deepcopy(self._get(b, f))
+                # set: the database (or the environment) holds a value; a field that holds
+                # nothing is unset, and unsetting it again is no change
                 out[f"backends.{b['id']}.{f}"] = (
-                    copy.deepcopy(self._get(b, f)), True, "env" if var else "database",
+                    v, v is not None, "env" if var else "database",
                     {"variable": var} if var else None)
             h = self.cfg.key_hint(b["id"])
             out[f"backends.{b['id']}.key"] = (

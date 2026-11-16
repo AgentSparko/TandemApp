@@ -219,6 +219,7 @@ abstract class KeyValueScope implements ScopeImpl {
       const cur = vals[k] ?? { value: null, set: false, source: '' };
       if (k in sets) {
         if (!s[k].secret && cur.set && stable(cur.value) === stable(sets[k])) continue;
+        if (sets[k] === null && !cur.set) continue; // nothing on nothing is no change
         changes.push(change(k, cur.value, sets[k], { was_set: cur.set, is_set: sets[k] !== null, restart: s[k].restart, fingerprint: s[k].fingerprint, secret: s[k].secret }));
       } else {
         if (!cur.set) continue;
@@ -371,7 +372,8 @@ class BackendsScope extends KeyValueScope {
   values() {
     const out: Record<string, Val> = {};
     for (const b of this.backends) {
-      for (const f of Object.keys(FIELDS)) out[`backends.${b.id}.${f}`] = { value: copy(b.f[f]), set: true, source: b.locks[f] ? 'env' : 'database', ...(b.locks[f] ? { extra: { variable: b.locks[f] } } : {}) };
+      // a field that holds nothing is unset, as the database has it
+      for (const f of Object.keys(FIELDS)) out[`backends.${b.id}.${f}`] = { value: copy(b.f[f]), set: b.f[f] != null, source: b.locks[f] ? 'env' : 'database', ...(b.locks[f] ? { extra: { variable: b.locks[f] } } : {}) };
       out[`backends.${b.id}.key`] = { value: null, set: b.key.set, source: b.key.set ? 'database' : 'unset', extra: { hint: b.key.hint } };
     }
     out.routes = { value: copy(this.routes), set: true, source: 'database' };
@@ -797,11 +799,8 @@ class EngineScope implements ScopeImpl {
       if (d.type === 'cidrs' && v && !v.split(',').every((c) => /^\s*[0-9a-fA-F:.]+\/\d{1,3}\s*$/.test(c))) no('bad_value', `${k} is a list of networks, like 192.0.2.0/24`, { code: 'bad_value', key: k });
       next[k] = v;
     }
-    for (const k of unsets) {
-      if (MODE_VARS[k]) continue;
-      if (!(k in over)) no('bad_value', `${k} is not in the overlay`, { code: 'not_in_overlay' });
-      delete next[k];
-    }
+    // a key the overlay does not set is unset already: no change, the plan drops it
+    for (const k of unsets) if (!MODE_VARS[k]) delete next[k];
     const install = touched && next.QSE_MODE === 'chat' ? this.extNeed(h, next.QSE_EXT || DEFAULT_EXT) : null;
     for (const k of Object.keys(ENGINE_KEYS)) {
       const d = ENGINE_KEYS[k];
