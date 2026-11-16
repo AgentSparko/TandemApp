@@ -377,12 +377,16 @@ describe('the decision providers’ API in the mock', () => {
 
   it('health: ok, failing after a failed call, down when a probe fails, off when switched off', async () => {
     const r = rig();
+    // the list carries the health from the last probes, probing nothing: none yet (SRV-851)
+    const listed = async () => (await r.providers.list()).providers.find((p) => p.id === 'classes')!.health!;
+    expect([(await listed()).status, (await listed()).endpoints[0].probe]).toEqual(['unknown', null]);
     let h = await r.providers.health('classes');
-    expect([h.status, h.endpoints.map((e) => [e.endpoint, e.questions, e.probe.up, e.breaker.state]), h.last_call]).toEqual(['ok', [['http://decider.lan:8720', ['classify', 'judge'], true, 'closed']], null]);
+    expect([h.status, h.endpoints.map((e) => [e.endpoint, e.questions, e.probe!.up, e.breaker.state]), h.last_call]).toEqual(['ok', [['http://decider.lan:8720', ['classify', 'judge'], true, 'closed']], null]);
     // a probe is kept 10 s; force probes now
     r.wait(4000);
-    expect((await r.providers.health('classes')).endpoints[0].probe.age_s).toBe(4);
-    expect((await r.providers.health('classes', true)).endpoints[0].probe.age_s).toBe(0);
+    expect([(await listed()).status, (await listed()).endpoints[0].probe!.age_s]).toEqual(['ok', 4]);
+    expect((await r.providers.health('classes')).endpoints[0].probe!.age_s).toBe(4);
+    expect((await r.providers.health('classes', true)).endpoints[0].probe!.age_s).toBe(0);
     r.reg.control({ provider: { classes: 'timeout' } });
     r.reg.ask(r.now(), { question: 'classify' });
     h = await r.providers.health('classes');
@@ -390,6 +394,7 @@ describe('the decision providers’ API in the mock', () => {
     r.reg.control({ provider: { classes: 'down' } });
     expect((await r.providers.health('classes', true)).status).toBe('down');
     expect((await r.providers.health('classes', true)).endpoints[0].probe).toMatchObject({ up: false, error: 'unreachable' });
+    expect((await listed()).status).toBe('down');
     r.reg.control({ provider: { classes: 'ok' } });
     await r.settings.apply([{ scope: 'hooks', set: { 'providers.classes.enabled': false } }], { confirm: (await r.settings.plan([{ scope: 'hooks', set: { 'providers.classes.enabled': false } }])).confirm! });
     expect((await r.providers.health('classes', true)).status).toBe('off');
@@ -413,6 +418,8 @@ describe('the decision providers’ API in the mock', () => {
     const rep = await r.providers.report(24);
     const on = rep.providers.classes.classify.on!;
     expect([on.calls, on.answered, on.failures, on.fallbacks, on.agreement_pct, on.p50_ms! > 10]).toEqual([43, 40, 3, 3, null, true]);
+    // each fallback counted by its reason (SRV-851)
+    expect(on.fallback_reasons).toEqual({ http_401: 3 });
     const own = rep.providers.own.memory_gate;
     expect([own.shadow!.calls, own.shadow!.compared, own.shadow!.agreement_pct! > 70, own.ab_a!.calls + own.ab_b!.calls, own.ab_b!.calls > 10, own.ab_a!.answered]).toEqual([30, 30, true, 60, true, 0]);
     expect([rep.source, rep.hours, Object.keys(rep.providers).sort()]).toEqual(['memory', 24, ['classes', 'own']]);

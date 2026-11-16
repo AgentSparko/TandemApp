@@ -933,7 +933,7 @@ export class MockHooks {
     for (const r of this.ring) {
       if (r.ts_ms < since || (pid && r.provider !== pid)) continue;
       const arm: Arm = r.mode === 'ab' ? (`ab_${r.arm ?? 'b'}` as Arm) : r.mode;
-      const b = (((out[r.provider] ??= {})[r.question] ??= {})[arm] ??= { calls: 0, answered: 0, failures: 0, fallbacks: 0, compared: 0, agreed: 0, agreement_pct: null, p50_ms: null, p95_ms: null, labels: {}, _ms: [] });
+      const b = (((out[r.provider] ??= {})[r.question] ??= {})[arm] ??= { calls: 0, answered: 0, failures: 0, fallbacks: 0, fallback_reasons: {}, compared: 0, agreed: 0, agreement_pct: null, p50_ms: null, p95_ms: null, labels: {}, _ms: [] });
       b.calls++;
       if (r.answer) {
         if (r.answer.error) b.failures++;
@@ -942,7 +942,10 @@ export class MockHooks {
           b._ms!.push(r.answer.ms);
         }
       } else b._ms!.push((r.builtin as { decider: { ms: number } }).decider.ms);
-      if (r.fallback) b.fallbacks++;
+      if (r.fallback) {
+        b.fallbacks++;
+        b.fallback_reasons[r.fallback] = (b.fallback_reasons[r.fallback] ?? 0) + 1;
+      }
       if (r.agree !== null) {
         b.compared++;
         if (r.agree) b.agreed++;

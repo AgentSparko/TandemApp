@@ -371,6 +371,8 @@ export interface Bucket {
   answered: number;
   failures: number;
   fallbacks: number;
+  /** each reason the built-in answered instead, counted (SRV-851) */
+  fallback_reasons: Record<string, number>;
   compared: number;
   agreed: number;
   agreement_pct: number | null;

@@ -378,7 +378,7 @@ describe('decision providers', () => {
   });
 
   it('the report: a row a question, the arms that have calls side by side', () => {
-    const b = (o: Partial<Bucket>): Bucket => ({ calls: 40, answered: 40, failures: 0, fallbacks: 0, compared: 0, agreed: 0, agreement_pct: null, p50_ms: 21, p95_ms: 34.5, labels: { chat: 30, code_edit: 10 }, ...o });
+    const b = (o: Partial<Bucket>): Bucket => ({ calls: 40, answered: 40, failures: 0, fallbacks: 0, fallback_reasons: {}, compared: 0, agreed: 0, agreement_pct: null, p50_ms: 21, p95_ms: 34.5, labels: { chat: 30, code_edit: 10 }, ...o });
     const report: Report = { contract_version: '1.0', since_ms: 0, hours: 24, source: 'memory', providers: { p: { classify: { shadow: b({ compared: 40, agreed: 37, agreement_pct: 92.5 }), ab_b: b({ calls: 12, answered: 10, failures: 2, fallbacks: 2 }), ab_a: b({ calls: 28, answered: 0 }) }, judge: { shadow: b({ calls: 3, answered: 3 }) } } } };
     const { arms, rows } = reportRows(report, 'p');
     expect(arms).toEqual(['shadow', 'ab_b', 'ab_a']);
