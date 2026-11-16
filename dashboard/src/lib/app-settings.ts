@@ -3,7 +3,7 @@
 // fleet's configuration file and an import's plan. views/fleet/app-settings.ts draws them; the
 // controller's answers are /v1/fleet/app* (proxy/appsettings.py, proxy/adminpw.py).
 
-import type { AppPermission, FleetNode, ImportItem, ImportPlan, ImportResult, PasswordState } from '../api/fleet';
+import type { AppPermission, FleetNode, ImportConfirms, ImportItem, ImportPlan, ImportResult, PasswordState } from '../api/fleet';
 import { mixedVersions, releaseOf } from './fleet-update';
 
 export type Tone = 'ok' | 'warn' | 'err' | 'muted';
@@ -139,6 +139,40 @@ export function planSummary(c: ImportPlan['counts']): string {
 export function applyLabel(c: ImportPlan['counts']): string {
   const n = c.add + c.change + c.remove;
   return `Import ${n} change${n === 1 ? '' : 's'}`;
+}
+
+/** What an import asks a second time, as the settings interface does (SEC-16): keys that feed an
+ *  engine's disk-cache fingerprint, and grants that send prompts or a question's text outside the
+ *  LAN. Each is shown with its keys and agreed to on its own before the apply is sent. */
+export type ImportAskKind = 'fingerprint' | 'grant';
+export interface ImportAsk {
+  kind: ImportAskKind;
+  keys: string[];
+  title: string;
+  text: string;
+  agree: string;
+}
+
+export function importAsks(p: Pick<ImportPlan, 'fingerprint_keys' | 'grant_keys' | 'confirm_fingerprint' | 'confirm_grant'>): ImportAsk[] {
+  const out: ImportAsk[] = [];
+  const fp = p.fingerprint_keys ?? [];
+  const gr = p.grant_keys ?? [];
+  if (p.confirm_fingerprint && fp.length)
+    out.push({ kind: 'fingerprint', keys: fp, title: 'Saved caches start cold', text: `${fp.length === 1 ? 'This key feeds' : 'These keys feed'} an engine’s disk-cache fingerprint. After its restart every saved prefix and every parked chat there misses once: the first turn of each chat reads its whole context again.`, agree: 'Import them, and let the caches start cold' });
+  if (p.confirm_grant && gr.length)
+    out.push({ kind: 'grant', keys: gr, title: 'Prompts and answers leave the LAN', text: `The file grants ${gr.length === 1 ? 'a destination' : 'destinations'} outside the LAN what ${gr.length === 1 ? 'it' : 'they'} would be sent: a hook’s full payload (every prompt and answer as it is) or a provider’s questions’ text. TandemApp keeps who granted it and when.`, agree: 'Import them, and send it there' });
+  return out;
+}
+
+/** The apply's second confirms once every ask was agreed to; null while one is not. */
+export function importConfirms(p: Pick<ImportPlan, 'fingerprint_keys' | 'grant_keys' | 'confirm_fingerprint' | 'confirm_grant'>, agreed: ReadonlySet<ImportAskKind>): ImportConfirms | null {
+  const out: ImportConfirms = {};
+  for (const a of importAsks(p)) {
+    if (!agreed.has(a.kind)) return null;
+    if (a.kind === 'fingerprint') out.confirm_fingerprint = p.confirm_fingerprint!;
+    else out.confirm_grant = p.confirm_grant!;
+  }
+  return out;
 }
 
 export function resultWords(r: ImportResult): string {

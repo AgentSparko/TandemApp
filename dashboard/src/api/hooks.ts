@@ -416,6 +416,8 @@ export interface NewProvider {
   sticky?: Sticky;
   enabled?: boolean;
   api_key?: string | null;
+  /** the token a 409 confirm_needed answered: the endpoint outside the LAN, confirmed (SEC-16) */
+  confirm?: string;
 }
 
 /** what the providers page changes on the API itself; the switches and keys are settings keys */

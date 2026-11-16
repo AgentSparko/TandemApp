@@ -26,7 +26,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { describeError } from '../../api/client';
 import { fleet, type AppView, type ControllerView, type ImportMode, type ImportPlan, type MoveJob, type MovePlan } from '../../api/fleet';
-import { applyLabel, browserNotify, exportName, importGroups, kindWord, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine, type BrowserNotify, type PermRow } from '../../lib/app-settings';
+import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, kindWord, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine, type BrowserNotify, type ImportAskKind, type PermRow } from '../../lib/app-settings';
 import { apiOf, followUrl, hostChoices, MIN_PASSWORD, moveFormError, moveWords, newPassword, planGroups, takeFormError } from '../../lib/controller-host';
 import { onFleet, refreshFleet, sparksOnly, type FleetState } from '../../lib/fleet-state';
 import { poll, type Poller } from '../../lib/poll';
@@ -73,6 +73,8 @@ export class QseAppSettings extends LightElement {
   @state() private file: { name: string; doc: Record<string, unknown> } | null = null;
   @state() private mode: ImportMode = 'merge';
   @state() private iplan: ImportPlan | null = null;
+  /** the import's second confirms the user agreed to (keys that feed a cache fingerprint, grants outside the LAN) */
+  @state() private agreed: ReadonlySet<ImportAskKind> = new Set();
   private poller: Poller | null = null;
   private appPoller: Poller | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -524,6 +526,7 @@ export class QseAppSettings extends LightElement {
     if (!this.file) return;
     this.busy = 'iplan';
     this.msg = { ...this.msg, imp: '' };
+    this.agreed = new Set();
     try {
       this.iplan = await fleet.importPlan(this.file.doc, this.mode);
     } catch (e) {
@@ -535,10 +538,11 @@ export class QseAppSettings extends LightElement {
 
   private async applyImport(): Promise<void> {
     const p = this.iplan;
-    if (!this.file || !p?.confirm || this.busy) return;
+    const more = p && importConfirms(p, this.agreed);
+    if (!this.file || !p?.confirm || !more || this.busy) return;
     this.busy = 'iapply';
     try {
-      const r = await fleet.importApply(this.file.doc, this.mode, p.confirm);
+      const r = await fleet.importApply(this.file.doc, this.mode, p.confirm, more);
       this.msg = { ...this.msg, cfg: resultWords(r), cfgErr: '' };
       this.importDialog?.close();
       refreshFleet();
@@ -548,6 +552,14 @@ export class QseAppSettings extends LightElement {
     } finally {
       this.busy = '';
     }
+  }
+
+  /** An import's second confirm, agreed to or taken back. */
+  private agree(kind: ImportAskKind, on: boolean): void {
+    const next = new Set(this.agreed);
+    if (on) next.add(kind);
+    else next.delete(kind);
+    this.agreed = next;
   }
 
   private configPanel(a: AppView): TemplateResult {
@@ -586,7 +598,17 @@ export class QseAppSettings extends LightElement {
             return g.op === 'keep'
               ? html`<details class="act-sec"><summary class="eyebrow">${g.title} (${g.items.length})</summary>${list}</details>`
               : html`<section class="act-sec" data-group=${g.op}><h3 class="eyebrow">${g.title} (${g.items.length})</h3>${list}</section>`;
-          })}`}
+          })}
+          ${p.allowed
+            ? importAsks(p).map(
+                (a) => html`<section class="rs-second" role="alert" data-import-ask=${a.kind}>
+                  <h3>${a.title}</h3>
+                  <p class="small">${a.text}</p>
+                  <p class="xs num">${a.keys.join(', ')}</p>
+                  <label class="small"><input type="checkbox" data-in=${`import-agree-${a.kind}`} .checked=${this.agreed.has(a.kind)} @change=${(e: Event) => this.agree(a.kind, (e.target as HTMLInputElement).checked)} /> ${a.agree}</label>
+                </section>`,
+              )
+            : nothing}`}
       ${this.signIn === 'import' ? signInCard('Importing') : nothing}
       ${this.msg.imp ? html`<p class="small err-ink" role="alert" data-import-error>${this.msg.imp}</p>` : nothing}`;
   }
@@ -607,7 +629,7 @@ export class QseAppSettings extends LightElement {
           ${this.importBody()}
           <footer class="act-foot">
             <button type="button" class="btn btn-ghost" data-act="import-cancel" @click=${() => this.importDialog?.close()}>${ip && !ip.allowed ? 'Close' : 'Cancel'}</button>
-            ${ip?.allowed ? html`<button type="submit" class="btn btn-primary" data-act="import-go" ?disabled=${this.busy === 'iapply' || this.busy === 'iplan'}>${this.busy === 'iapply' ? 'Importing…' : applyLabel(ip.counts)}</button>` : nothing}
+            ${ip?.allowed ? html`<button type="submit" class="btn btn-primary" data-act="import-go" ?disabled=${this.busy === 'iapply' || this.busy === 'iplan' || !importConfirms(ip, this.agreed)}>${this.busy === 'iapply' ? 'Importing…' : applyLabel(ip.counts)}</button>` : nothing}
           </footer>
         </form>
       </dialog>

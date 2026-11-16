@@ -1361,6 +1361,17 @@ export interface ImportPlan {
   blocked: string | null;
   confirm: string | null;
   expires_at: number | null;
+  /** version 2: keys that feed an engine's disk-cache fingerprint, and grants outside the LAN;
+   *  the apply carries each one's confirm as well (428 without) */
+  fingerprint_keys?: string[];
+  grant_keys?: string[];
+  confirm_fingerprint?: string | null;
+  confirm_grant?: string | null;
+}
+/** an import's second confirms, sent with its apply */
+export interface ImportConfirms {
+  confirm_fingerprint?: string;
+  confirm_grant?: string;
 }
 export interface ImportResult {
   contract_version: string;
@@ -1512,7 +1523,7 @@ export const fleet = {
   removePassword: (current: string) => request<PasswordState & { contract_version: string }>('/v1/fleet/app/password', { ...post({ current }), method: 'DELETE' }),
   exportConfig: () => request<FleetConfigFile>('/v1/fleet/app/export'),
   importPlan: (config: unknown, mode: ImportMode) => request<ImportPlan>('/v1/fleet/app/import', post({ config, mode })),
-  importApply: (config: unknown, mode: ImportMode, confirm: string) => request<ImportResult>('/v1/fleet/app/import/apply', post({ config, mode, confirm })),
+  importApply: (config: unknown, mode: ImportMode, confirm: string, more: ImportConfirms = {}) => request<ImportResult>('/v1/fleet/app/import/apply', post({ config, mode, confirm, ...more })),
   // OPS-288: what this TandemApp runs, switched with a plan and its confirm
   parts: () => request<AppParts>('/v1/fleet/app/parts'),
   planPart: (part: PartId, on: boolean) => request<PartPlan>(`/v1/fleet/app/parts/${part}`, post({ on })),

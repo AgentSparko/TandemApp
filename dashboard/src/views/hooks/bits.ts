@@ -58,11 +58,12 @@ export function refused(e: Pick<HookError, 'type' | 'message' | 'facts'>, o: { q
   </div>`;
 }
 
-/** The second question before a full payload leaves the LAN: where it goes, and the two ways on. */
-export function confirmLeave(c: Confirm, o: { busy: boolean; go: string; onGo: () => void; onBack: () => void }): TemplateResult {
+/** The second question before a full payload (a provider: the questions' text) leaves the LAN:
+ *  where it goes, and the two ways on. */
+export function confirmLeave(c: Confirm, o: { busy: boolean; go: string; onGo: () => void; onBack: () => void; provider?: boolean }): TemplateResult {
   return html`<section class="rs-second" role="alert" data-confirm-needed>
-    <h3>${icon('warn')} Prompts and answers leave the LAN</h3>
-    <p class="small">This hook would get the full payload: every prompt and answer as it is, sent to <span class="num">${c.destination}</span>, outside the LAN.</p>
+    <h3>${icon('warn')} ${o.provider ? 'The questions’ text leaves the LAN' : 'Prompts and answers leave the LAN'}</h3>
+    <p class="small">${o.provider ? 'This provider would be sent the text of each question it answers, a digest of what people wrote,' : 'This hook would get the full payload: every prompt and answer as it is,'} sent to <span class="num">${c.destination}</span>, outside the LAN.</p>
     <p class="small">TandemApp keeps who granted it and when. Go on only if that destination may read them.</p>
     <div class="st-acts">
       <button type="button" class="btn btn-ghost" data-act="confirm-back" ?disabled=${o.busy} @click=${o.onBack}>Back</button>

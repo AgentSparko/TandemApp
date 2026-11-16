@@ -555,6 +555,8 @@ export interface AddProvider {
   errors: Record<string, string>;
   busy: boolean;
   refused: HookError | null;
+  /** an endpoint outside the LAN: the second confirm the controller asks before the text goes there */
+  confirm: Confirm | null;
 }
 
 export interface OneProvider {
@@ -753,7 +755,7 @@ export class ProvidersFlow {
 
   // ---- a new provider -------------------------------------------------------------------------------
   startAdd(): void {
-    this.add = { form: newProviderForm(), errors: {}, busy: false, refused: null };
+    this.add = { form: newProviderForm(), errors: {}, busy: false, refused: null, confirm: null };
     this.changed();
   }
   editAdd(p: Partial<ProviderForm>): void {
@@ -762,9 +764,12 @@ export class ProvidersFlow {
     a.form = { ...a.form, ...p };
     if (Object.keys(a.errors).length) a.errors = checkProvider(a.form, this.info?.providers ?? []);
     a.refused = null;
+    a.confirm = null;
     this.changed();
   }
-  async create(): Promise<Provider | null> {
+  /** Add the provider. `confirmed`: the user agreed that the questions' text goes to an endpoint
+   *  outside the LAN, so the same request goes again with the confirm the controller answered. */
+  async create(confirmed = false): Promise<Provider | null> {
     const a = this.add;
     if (!a || a.busy) return null;
     a.errors = checkProvider(a.form, this.info?.providers ?? []);
@@ -776,12 +781,14 @@ export class ProvidersFlow {
     a.refused = null;
     this.changed();
     try {
-      const p = await this.api.create(providerBody(a.form));
+      const p = await this.api.create({ ...providerBody(a.form), ...(confirmed && a.confirm ? { confirm: a.confirm.token } : {}) });
       this.put(p);
       this.add = null;
       return p;
     } catch (e) {
       const err = asHookError(e);
+      a.confirm = confirmOf(err);
+      if (a.confirm) return null;
       a.refused = err;
       const f = fieldOf(err);
       if (f && err.type === 'invalid') a.errors = { ...a.errors, [f]: err.message };

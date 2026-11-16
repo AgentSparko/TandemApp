@@ -805,7 +805,7 @@ class ConductorScope implements ScopeImpl {
 
 // ---- engine ---------------------------------------------------------------------------------------
 type EngineKey = { default: string | null; type: KeyType; restart: RestartClass; fingerprint?: boolean; managed: boolean; why?: string; values?: string[] };
-const ENGINE_KEYS: Record<string, EngineKey> = {
+export const ENGINE_KEYS: Record<string, EngineKey> = {
   MAX_QUEUE: { default: '16', type: 'integer', restart: 'engine', managed: true },
   QSE_ALLOW_FROM: { default: '', type: 'cidrs', restart: 'hot', managed: true },
   QSE_MODE: { default: 'engine', type: 'enum', restart: 'engine', managed: true, values: ['engine', 'chat'] },

@@ -1,8 +1,9 @@
 // 6.3b: App settings' logic (lib/app-settings.ts: the permission rows with this browser's notification
 // state, the password's state and form, the configuration file, an import's plan and the Updates
 // line) and the mock's App routes (mock/appsettings.ts): the permissions per host, the export without
-// secrets, the import's plan, 428 without the confirm, 409 spent or the fleet changed, applied. Every
-// mock answer validates against fleet-v1.
+// secrets, the import's plan, 428 without the confirm, 409 spent or the fleet changed, applied; an
+// import's second confirms (SEC-16: keys that feed a cache fingerprint, grants outside the LAN)
+// shown, agreed to and sent. Every mock answer validates against fleet-v1.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +11,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { MockFleet } from '../mock/fleet.ts';
 import type { AppPermission, AppView, FleetConfigFile, ImportPlan, ImportResult, PasswordState } from '../src/api/fleet.ts';
-import { applyLabel, browserNotify, exportName, importGroups, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine } from '../src/lib/app-settings.ts';
+import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine, type ImportAskKind } from '../src/lib/app-settings.ts';
 
 const FDIR = join(__dirname, '..', '..', 'contracts', 'fleet-v1');
 // allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
@@ -120,6 +121,65 @@ describe('the Updates line', () => {
     expect([mixed.behind, mixed.mixed]).toEqual([1, true]);
     expect(mixed.text).toContain('1 Spark runs another release');
     expect(updateLine(null, [n('A', '0.15.0')]).text).toContain('not known');
+  });
+});
+
+describe('an import’s second confirms (SEC-16)', () => {
+  const PLAN = { fingerprint_keys: ['engine/eh-1:QWEN38_PREFIX_CHUNK'], grant_keys: ['hooks:hooks.far.payload', 'hooks:providers.away.endpoint'], confirm_fingerprint: 'fp-1', confirm_grant: 'gr-1' };
+
+  it('shows what each one confirms, and sends them only once each was agreed to', () => {
+    const asks = importAsks(PLAN);
+    expect(asks.map((a) => [a.kind, a.keys])).toEqual([['fingerprint', PLAN.fingerprint_keys], ['grant', PLAN.grant_keys]]);
+    expect(asks[0].text).toContain('This key feeds an engine’s disk-cache fingerprint');
+    expect(asks[0].text).toContain('the first turn of each chat reads its whole context again');
+    expect(asks[1].title).toBe('Prompts and answers leave the LAN');
+    expect(asks[1].text).toContain('destinations outside the LAN');
+    expect(asks[1].text).toContain('TandemApp keeps who granted it and when');
+    const agreed = (...k: ImportAskKind[]) => new Set<ImportAskKind>(k);
+    expect(importConfirms(PLAN, agreed())).toBeNull();
+    expect(importConfirms(PLAN, agreed('fingerprint'))).toBeNull();
+    expect(importConfirms(PLAN, agreed('grant'))).toBeNull();
+    expect(importConfirms(PLAN, agreed('fingerprint', 'grant'))).toEqual({ confirm_fingerprint: 'fp-1', confirm_grant: 'gr-1' });
+    // a plan that asks nothing: nothing to agree to, nothing more sent; a version 1 plan too
+    const none = { fingerprint_keys: [], grant_keys: [], confirm_fingerprint: null, confirm_grant: null };
+    expect([importAsks(none), importConfirms(none, agreed())]).toEqual([[], {}]);
+    expect([importAsks({}), importConfirms({}, agreed())]).toEqual([[], {}]);
+    // a key listed with no confirm (a plan that is blocked) asks nothing
+    expect(importAsks({ ...PLAN, confirm_fingerprint: null, confirm_grant: null })).toEqual([]);
+  });
+
+  it('the mock plans them as the controller does: 428 without each, applied with both', () => {
+    const m = new MockFleet({ scenario: 'fleet4', now: T0 / 1000 });
+    const file = JSON.parse(JSON.stringify(m.handle('GET', '/v1/fleet/app/export', q(), null, T0).body)) as FleetConfigFile;
+    file.nodes[0].alias = 'Renamed';
+    const first = file.nodes[0].id;
+    file.hooks = [{ id: 'far', name: 'Far archive', kind: 'http', endpoint: 'https://archive.example.com/hook', payload: 'full' }, { id: 'near', name: 'Near', kind: 'http', endpoint: 'http://audit.lan:9300/hook', payload: 'full' }];
+    file.engines = { 'eh-1': { values: { QWEN38_PREFIX_CHUNK: '4096' } } };
+    const plan = valid('import-plan', m.handle('POST', '/v1/fleet/app/import', q(), { config: file }, T0).body as ImportPlan);
+    expect([plan.allowed, plan.fingerprint_keys, plan.grant_keys]).toEqual([true, ['engine/eh-1:QWEN38_PREFIX_CHUNK'], ['hooks:hooks.far.payload']]);
+    expect([typeof plan.confirm_fingerprint, typeof plan.confirm_grant]).toEqual(['string', 'string']);
+    const apply = (more: object) => m.handle('POST', '/v1/fleet/app/import/apply', q(), { config: file, confirm: plan.confirm, ...more }, T0);
+    // the page's old way, the plan's confirm alone: refused, nothing changed, the confirm still good
+    const bare = apply({});
+    expect([bare.status, (bare.body as { error: { type: string } }).error.type]).toEqual([428, 'fingerprint_confirm_required']);
+    const half = apply({ confirm_fingerprint: plan.confirm_fingerprint });
+    expect([half.status, (half.body as { error: { type: string } }).error.type]).toEqual([428, 'grant_confirm_required']);
+    const nodes = () => (m.handle('GET', '/v1/fleet/nodes', q(), null, T0).body as { nodes: { id: string; alias: string }[] }).nodes;
+    expect(nodes().find((x) => x.id === first)?.alias).not.toBe('Renamed');
+    const done = apply(importConfirms(plan, new Set<ImportAskKind>(['fingerprint', 'grant']))!);
+    expect(done.status).toBe(200);
+    valid('import-result', done.body as ImportResult);
+    expect(nodes().find((x) => x.id === first)?.alias).toBe('Renamed');
+  });
+
+  it('the App page shows each one with a box to agree, keeps Import off until each is ticked, and sends them', () => {
+    const src = readFileSync(join(__dirname, '..', 'src', 'views', 'fleet', 'app-settings.ts'), 'utf8');
+    expect(src).toContain('importAsks(p).map(');
+    expect(src).toContain('data-import-ask=${a.kind}');
+    expect(src).toMatch(/data-act="import-go" \?disabled=\$\{[^}]*!importConfirms\(ip, this\.agreed\)\}/);
+    expect(src).toMatch(/fleet\.importApply\(this\.file\.doc, this\.mode, p\.confirm, more\)/);
+    // a new plan (another mode, the file read again) asks again
+    expect(src).toMatch(/this\.agreed = new Set\(\);\s*try \{\s*this\.iplan = await fleet\.importPlan/);
   });
 });
 

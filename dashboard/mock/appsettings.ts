@@ -12,6 +12,28 @@
 import type { AppParts, AppPermission, AppService, AppSetup, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout, PartId, PartPlan } from '../src/api/fleet.ts';
 import { FLEET_CONTRACT } from '../src/api/fleet.ts';
 import type { MockFleet } from './fleet.ts';
+import { hostIsLan } from './hooks.ts';
+import { ENGINE_KEYS } from './settings.ts';
+
+/** version 2's second confirms (SEC-16), as the controller's change set plans them: an engine
+ *  overlay key that feeds the disk-cache fingerprint, and a hook's full payload or a provider's
+ *  endpoint outside the LAN. Nothing of them is applied here; the plan names them and the apply
+ *  wants each one's confirm. */
+function secondKeys(doc: FleetConfigFile): { fingerprint: string[]; grant: string[] } {
+  const host = (u: unknown): string | null => {
+    try {
+      return typeof u === 'string' ? new URL(u).hostname : null;
+    } catch {
+      return null;
+    }
+  };
+  const fingerprint = Object.entries(doc.engines ?? {}).flatMap(([id, e]) => Object.keys(e.values ?? {}).filter((k) => ENGINE_KEYS[k]?.fingerprint).map((k) => `engine/${id}:${k}`));
+  const grant = [
+    ...(doc.hooks ?? []).filter((h) => h.payload === 'full' && !hostIsLan(host(h.endpoint))).map((h) => `hooks:hooks.${String(h.id)}.payload`),
+    ...(doc.decision_providers ?? []).filter((p) => p.endpoint != null && !hostIsLan(host(p.endpoint))).map((p) => `hooks:providers.${String(p.id)}.endpoint`),
+  ];
+  return { fingerprint: fingerprint.sort(), grant: grant.sort() };
+}
 
 type Reply = { status: number; body: unknown };
 const bad = (status: number, type: string, message: string): Reply => ({ status, body: { error: { type, message } } });
@@ -38,7 +60,7 @@ function stable(v: unknown): string {
 }
 
 export class MockApp {
-  private tokens = new Map<string, { file: string; mode: ImportMode; state: string; until: number }>();
+  private tokens = new Map<string, { file: string; mode: ImportMode; state: string; until: number; fp: string | null; gr: string | null }>();
   private seq = 0;
   settings: Record<string, unknown> = {};
   /** OPS-288: what runs here, bare as a new install */
@@ -240,22 +262,36 @@ export class MockApp {
       identity: `this controller's certificate, its own node's address and trust, and its admin password stay as they are${same ? '' : '; the file comes from another controller: the nodes it adds trust that one, pair them here'}`,
       items, counts, allowed: blocked == null, blocked, confirm: null, expires_at: null,
     };
+    const second = secondKeys(doc);
+    Object.assign(plan, { fingerprint_keys: second.fingerprint, grant_keys: second.grant, confirm_fingerprint: null, confirm_grant: null });
     if (blocked == null && mint) {
       const token = `imp-${++this.seq}`;
-      this.tokens.set(token, { file: stable(doc), mode, state: this.state(now), until: now + CONFIRM_S });
+      const fp = second.fingerprint.length ? `fp-${this.seq}` : null;
+      const gr = second.grant.length ? `gr-${this.seq}` : null;
+      this.tokens.set(token, { file: stable(doc), mode, state: this.state(now), until: now + CONFIRM_S, fp, gr });
       plan.confirm = token;
       plan.expires_at = now + CONFIRM_S;
+      Object.assign(plan, { confirm_fingerprint: fp, confirm_grant: gr });
     }
     return { status: 200, body: plan, apply };
   }
 
   applyImport(body: unknown, now: number): Reply {
-    const b = body as { config?: unknown; mode?: ImportMode; confirm?: unknown } | null;
+    const b = body as { config?: unknown; mode?: ImportMode; confirm?: unknown; confirm_fingerprint?: unknown; confirm_grant?: unknown } | null;
     if (!b || typeof b !== 'object' || !b.confirm) return bad(428, 'confirm_required', 'an import needs its plan’s confirm: POST /v1/fleet/app/import first and send its `confirm`');
     const t = typeof b.confirm === 'string' ? this.tokens.get(b.confirm) : undefined;
     if (typeof b.confirm === 'string') this.tokens.delete(b.confirm);
     if (!t || t.until <= now || t.file !== stable(b.config) || t.mode !== (b.mode ?? 'merge')) return bad(409, 'confirm_invalid', 'that confirm is spent, too old or another file’s: read the plan again');
     if (t.state !== this.state(now)) return bad(409, 'confirm_invalid', 'the fleet changed since the plan: read the plan again');
+    // the second confirms: the plan's confirm stays good for the next try with them
+    if (t.fp && b.confirm_fingerprint !== t.fp) {
+      this.tokens.set(b.confirm as string, t);
+      return bad(428, 'fingerprint_confirm_required', 'these keys feed an engine’s disk-cache fingerprint: every saved prefix misses after its restart; send the plan’s confirm_fingerprint as well');
+    }
+    if (t.gr && b.confirm_grant !== t.gr) {
+      this.tokens.set(b.confirm as string, t);
+      return bad(428, 'grant_confirm_required', 'prompts and answers would go to a destination outside the LAN; send the plan’s confirm_grant as well');
+    }
     const p = this.plan({ config: b.config, mode: b.mode }, now, false);
     if (p.status !== 200) return p;
     const plan = p.body as ImportPlan;

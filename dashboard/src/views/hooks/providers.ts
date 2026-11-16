@@ -14,7 +14,7 @@ import type { AddProvider, OneProvider } from '../../lib/hooks-flow';
 import { at, breakerWords, ms } from '../../lib/hooks';
 import { ARM_WORDS, KIND_WORDS, MODE_WORDS, STICKY_WORDS, adapterHooks, cellWords, conflicts, explainProviderTest, fallbackReasons, healthWords, keyWords, modeWords, probeWords, providerCallWords, reportRows, reportWords, takenBy, whoAnswers, type ProviderForm, type ProviderSwitch, type ShownProvider } from '../../lib/providers';
 import { icon } from '../../ui/bits';
-import { back, cards, chip, field, hooksHref, providersHref, refused, textInput } from './bits';
+import { back, cards, chip, confirmLeave, field, hooksHref, providersHref, refused, textInput } from './bits';
 
 export interface ProvidersHandlers {
   stage(id: string, field: ProviderSwitch, value: unknown): void;
@@ -403,7 +403,9 @@ export function providerGone(id: string): TemplateResult {
 
 export interface AddProviderHandlers {
   edit(p: Partial<ProviderForm>): void;
-  create(): void;
+  /** `confirmed`: the second confirm for an endpoint outside the LAN was given */
+  create(confirmed?: boolean): void;
+  unconfirm(): void;
 }
 
 export interface AddProviderView {
@@ -482,9 +484,11 @@ export function addProviderView(v: AddProviderView, on: AddProviderHandlers): Te
       <section class="panel hk-finish" data-step="name">${field('name', 'Name', textInput('name', f.name, (name) => on.edit({ name }), { placeholder: 'My decider', bad: !!e.name }), { error: e.name, hint: 'Its id is made from the name.' })}</section>
       ${s.refused ? refused(s.refused) : nothing}
       ${v.signIn}
-      <div class="hk-form-foot">
-        ${n ? html`<p class="small err-ink" role="status" data-form-invalid>${n === 1 ? 'One thing needs' : `${n} things need`} a correction above.</p>` : html`<p class="small muted">It is added at once. Its switches can be changed afterwards, staged like every setting.</p>`}
-        <div class="st-acts"><a class="btn btn-ghost" href=${providersHref()} data-act="add-cancel">Cancel</a><button type="submit" class="btn btn-primary" data-act="add-create" ?disabled=${s.busy}>${s.busy ? 'Adding…' : 'Add the provider'}</button></div>
-      </div>
+      ${s.confirm
+        ? confirmLeave(s.confirm, { busy: s.busy, go: 'Add it, and send the text there', onGo: () => on.create(true), onBack: on.unconfirm, provider: true })
+        : html`<div class="hk-form-foot">
+            ${n ? html`<p class="small err-ink" role="status" data-form-invalid>${n === 1 ? 'One thing needs' : `${n} things need`} a correction above.</p>` : html`<p class="small muted">It is added at once. Its switches can be changed afterwards, staged like every setting.</p>`}
+            <div class="st-acts"><a class="btn btn-ghost" href=${providersHref()} data-act="add-cancel">Cancel</a><button type="submit" class="btn btn-primary" data-act="add-create" ?disabled=${s.busy}>${s.busy ? 'Adding…' : 'Add the provider'}</button></div>
+          </div>`}
     </form>`;
 }

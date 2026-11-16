@@ -278,12 +278,13 @@ export class QseHooks extends LightElement {
         { state: p.add, info: p.info, list: p.shown, hooks, signIn: this.signIn(p.add.refused, 'A decision provider') },
         {
           edit: (x) => p.editAdd(x),
-          create: () =>
-            void p.create().then((made) => {
+          create: (confirmed) =>
+            void p.create(confirmed).then((made) => {
               if (!made) return;
               this.told();
               location.hash = providersHref(['p', made.id]);
             }),
+          unconfirm: () => p.editAdd({}),
         },
       );
     }

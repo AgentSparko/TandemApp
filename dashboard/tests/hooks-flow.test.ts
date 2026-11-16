@@ -762,7 +762,7 @@ describe('the decision providers', () => {
     await p.flow.load();
     await p.prov.load();
     p.prov.startAdd();
-    const view = () => text(addProviderView({ state: p.prov.add!, info: p.prov.info!, list: p.prov.shown, hooks: p.flow.list ?? [], signIn: nothing }, { edit: noop, create: noop }));
+    const view = () => text(addProviderView({ state: p.prov.add!, info: p.prov.info!, list: p.prov.shown, hooks: p.flow.list ?? [], signIn: nothing }, { edit: noop, create: noop, unconfirm: noop }));
     let html = view();
     expect([...html.split('data-cards=kind')[1].split('</div>')[0].matchAll(/data-card=([\w-]+)>/g)].map((m) => m[1])).toEqual(['systemone-http', 'hook', 'builtin']);
     for (const s of ['Your own service', 'POST /v1/systemone', 'tools/systemone_example.py', 'A hook as the adapter', 'The built-in decider', 'In shadow', 'Start here.', 'Classes answers it now.']) expect(html, s).toContain(s);
@@ -802,6 +802,51 @@ describe('the decision providers', () => {
     p.r.reg.control({ fail: 'p-create:question_taken' });
     expect(await p.prov.create()).toBeNull();
     expect(view()).toContain('Another provider answers one of these questions already.');
+  });
+
+  it('add a provider outside the LAN: the second confirm is shown, then sent (SEC-16)', async () => {
+    const p = pages();
+    await p.flow.load();
+    await p.prov.load();
+    p.prov.startAdd();
+    const sent: unknown[] = [];
+    const view = () => text(addProviderView({ state: p.prov.add!, info: p.prov.info!, list: p.prov.shown, hooks: p.flow.list ?? [], signIn: nothing }, { edit: noop, create: (c) => sent.push(c), unconfirm: noop }));
+    p.prov.editAdd({ name: 'Far decider', endpoint: 'https://decider.example.com', questions: ['packages'], mode: 'shadow' });
+    // the first call: the controller asks for the second confirm; nothing is made, nothing refused
+    expect(await p.prov.create()).toBeNull();
+    const a = p.prov.add!;
+    expect([a.refused, a.confirm?.destination]).toEqual([null, 'decider.example.com']);
+    expect(a.confirm!.token).toMatch(/\S{8,}/);
+    expect((await p.r.providers.list()).providers.map((x) => x.id)).not.toContain('far-decider');
+    const html = view();
+    expect(html).toContain('data-confirm-needed');
+    expect(html).toContain('The questions’ text leaves the LAN');
+    expect(html).toContain('sent to <span class="num">decider.example.com</span>, outside the LAN');
+    expect(html).toContain('>Add it, and send the text there</button>');
+    expect(html).not.toContain('data-act="add-create"');
+    // Back: the form again, the confirm forgotten
+    p.prov.editAdd({});
+    expect(p.prov.add!.confirm).toBeNull();
+    expect(view()).toContain('data-act="add-create"');
+    // confirmed: the same request again with the controller's token, and the grant records it
+    expect(await p.prov.create()).toBeNull();
+    const token = p.prov.add!.confirm!.token;
+    const made = await p.prov.create(true);
+    expect(made!.id).toBe('far-decider');
+    expect(made!.grant!.confirmed_by).not.toBeNull();
+    expect(made!.grant!.destinations).toEqual({ 'decider.example.com': false });
+    expect(p.r.paths.filter((x) => x.startsWith('POST /v1/fleet/decision-providers')).length).toBeGreaterThanOrEqual(3);
+    expect(token).toMatch(/\S{8,}/);
+    expect(p.prov.add).toBeNull();
+    // a change of a field after the confirm was asked: the confirm goes, the form shows again
+    p.prov.startAdd();
+    p.prov.editAdd({ name: 'Far two', endpoint: 'https://other.example.com', questions: ['deliverable'] });
+    await p.prov.create();
+    expect(p.prov.add!.confirm).not.toBeNull();
+    p.prov.editAdd({ endpoint: 'http://decider2.lan:8720' });
+    expect(p.prov.add!.confirm).toBeNull();
+    expect((await p.prov.create())!.grant!.confirmed_by).toBeNull();
+    expect(sent).toEqual([]);
   });
 
   it('a test call, a change of its connection with a conflict, and its removal', async () => {
