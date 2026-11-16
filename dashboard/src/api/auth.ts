@@ -77,6 +77,41 @@ export interface Token {
   revoked_at: string | null;
   last_used_at: string | null;
 }
+/** SRV-873: one limit that holds (the lower of the token's and its owner's role's); cost in micro-dollars */
+export interface LimitState {
+  limit: number;
+  used: number;
+  left: number;
+  reached: boolean;
+  from: 'role' | 'token';
+}
+/** SRV-873: a usage answer's sums (proxy/tokenusage.py) */
+export interface UseSums {
+  requests: number;
+  refused: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_micros: number | null;
+}
+/** SRV-873: GET /v1/auth/tokens/{id}/usage, the last 30 days */
+export interface TokenUsage {
+  from: string;
+  to: string;
+  tz: string;
+  /** false: the controller keeps no ledger, every figure is 0 */
+  ledger: boolean;
+  totals: UseSums;
+  days: (UseSums & { date: string })[];
+  models: (UseSums & { model: string; priced: boolean })[];
+  /** models whose answered rows had no cost: no spend limit applies to them */
+  unpriced: string[];
+  refusals: { at: string | null; code: string; status: number; model: string }[];
+  last_used_at: string | null;
+  limits: { limits: Partial<Record<LimitKey, LimitState>>; over: boolean; refused_at: string | null };
+  token: Token;
+}
 /** a token's row with the token itself, in the answer that made it only */
 export type TokenOnce = Token & { token: string };
 
@@ -160,6 +195,7 @@ export interface AuthApi {
   rotateToken(id: string, grace_s: number): Promise<TokenOnce>;
   revokeToken(id: string): Promise<Token>;
   confirmToken(id: string): Promise<Token>;
+  tokenUsage(id: string, tz?: string): Promise<TokenUsage>;
   audit(limit?: number): Promise<AuditRow[]>;
   exposure(): Promise<ExposureView>;
   /** plans one key of the `api` scope and applies the plan */
@@ -198,6 +234,7 @@ export function authApi(send: Send): AuthApi {
     rotateToken: (id, grace_s) => call('POST', `${ROOT}/tokens${one(id)}/rotate`, { grace_s }),
     revokeToken: (id) => call('DELETE', `${ROOT}/tokens${one(id)}`),
     confirmToken: (id) => call('PATCH', `${ROOT}/tokens${one(id)}`, { needs_review: false }),
+    tokenUsage: (id, tz = 'UTC') => call('GET', `${ROOT}/tokens${one(id)}/usage?days=30&tz=${encodeURIComponent(tz)}`),
     audit: async (limit = 200) => (await call<{ rows: AuditRow[] }>('GET', `${ROOT}/audit?limit=${limit}`)).rows,
     exposure: async () => {
       const v = await call<{ writable: boolean; values: { key: string; value: unknown }[] }>('GET', '/v1/settings/api');

@@ -466,6 +466,8 @@ export const FINDING_PAGE: Record<string, { href: string; label: string }> = {
   exposure_unreachable: { href: '#/access/exposure', label: 'Open API exposure' },
   exposure_plain_http: { href: '#/access/exposure', label: 'Open API exposure' },
   token_expiring: { href: '#/account/tokens', label: 'Open My tokens' },
+  token_limit_near: { href: '#/account/tokens', label: 'Open My tokens' },
+  token_limit_reached: { href: '#/account/tokens', label: 'Open My tokens' },
 };
 
 export function guideLink(g: HealthGuide): { href: string; label: string } {

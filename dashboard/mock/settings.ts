@@ -371,6 +371,20 @@ export const ACCOUNT_KEYS: Record<'auth' | 'api', Record<string, AccountKey>> = 
     'tokens.max_days': days(0, 'a token lives at most this many days (0: no cap)', 0, 3650),
     'tokens.max_days_external': days(30, 'the cap for an external provider’s accounts (later)', 0, 3650),
     'tokens.viewers_may_create': { type: 'enum', def: 'off', values: ['on', 'off'], admin: true, text: 'viewers may make inference tokens' },
+    // SRV-873: each role's limits, the comprehension of ApiScope.KEYS
+    ...Object.fromEntries(
+      ['viewer', 'operator', 'admin', 'owner'].flatMap((role) =>
+        (
+          [
+            ['requests_per_minute', 'requests a minute'],
+            ['tokens_per_minute', 'tokens a minute'],
+            ['concurrent', 'requests at once'],
+            ['cost_per_day', 'dollars a day'],
+            ['cost_per_month', 'dollars a month'],
+          ] as const
+        ).map(([k, words]): [string, AccountKey] => [`limits.default.${role}.${k}`, { type: k.startsWith('cost') ? 'number' : 'integer', def: 0, lo: 0, hi: 1e9, admin: true, text: `the most a ${role}'s token may use: ${words} (0: no limit); a new token gets it when it names none (SRV-873)` }]),
+      ),
+    ),
   },
 };
 
@@ -419,6 +433,7 @@ class AccountKeys extends KeyValueScope {
       const d = this.keys[k];
       if (d.type === 'enum' && !d.values!.includes(v as string)) no('bad_value', `${n}.${k} is one of ${d.values!.join(', ')}`, { key: k });
       if (d.type === 'integer' && (typeof v !== 'number' || !Number.isInteger(v) || v < d.lo! || v > d.hi!)) no('bad_value', `${n}.${k} is a whole number from ${d.lo} to ${d.hi}`, { key: k });
+      if (d.type === 'number' && (typeof v !== 'number' || !Number.isFinite(v) || v < d.lo! || v > d.hi!)) no('bad_value', `${n}.${k} is a number from ${d.lo} to ${d.hi}`, { key: k });
       if (d.type === 'string' && (typeof v !== 'string' || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(v))) no('bad_value', 'api.listen is an address: 127.0.0.1, 0.0.0.0, ::, or a name', { key: k });
       if (k === 'listen' && this.auth.setupRequired()) no('password_first', 'api.listen lets other devices in: an owner with a password first', { key: k });
     }

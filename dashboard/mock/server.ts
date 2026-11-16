@@ -58,7 +58,7 @@ import { createChatHandler } from './chat.ts';
 import { mockHosts } from './hosts.ts';
 import { dayKey } from '../src/lib/time.ts';
 import { generateYear, makeRow, rng, type LedgerRow, ENGINE_VERSION, CODE_SHA } from './generate.ts';
-import { requests as aggRequests, summary as aggSummary, usage as aggUsage } from './aggregate.ts';
+import { groupSums, requests as aggRequests, summary as aggSummary, usage as aggUsage } from './aggregate.ts';
 import { LogRing } from './logs.ts';
 import { exportText } from './log-export.ts';
 import { exportName } from '../src/lib/log-export.ts';
@@ -76,6 +76,8 @@ import { FAIL_ROUTES, type FailRoute } from './enginehosts.ts';
 import { isHealthScenario, rightsOf } from './health.ts';
 
 type Next = (err?: unknown) => void;
+/** SRV-873: the token a ledger row came with (a controller with accounts) */
+type TokenOf = (r: LedgerRow) => { id: string; label: string; owner: string | null } | null;
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: Next) => void;
 
 const TZ_DEFAULT = 'Europe/Berlin';
@@ -542,7 +544,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
 
   /** /v1/dashboard/{summary,usage,requests} over a ledger's rows: this server's, or the controller's
    *  (VIS-254) with its fleet dimensions (`usageExtra`) and each row's node and deployment (`rowExtra`) */
-  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
+  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string; tokenOf?: TokenOf }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
     if (name === 'summary') {
       if (mode === '500') return json(res, 500, { error: { type: 'internal_error', message: 'ledger query failed: database is locked' } });
       const now = Date.now();
@@ -579,7 +581,24 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       const span = (Date.parse(to) - Date.parse(from)) / 86400000 + 1;
       if (bucket === 'hour' && span > 31) return error(res, 400, 'bad_request', 'bucket=hour allows at most 31 days');
       if (span > 400) return error(res, 400, 'bad_request', 'at most 400 days');
-      const u = aggUsage(data.rows, { from, to, bucket, tz: ztz, model: q.get('model'), client: q.get('client') }) as unknown as Record<string, any>;
+      // SRV-873: with accounts, each row's token (mock/auth.ts tokenOf), `token=` and `group=`
+      const tok = data.tokenOf;
+      const tq = tok ? q.get('token') : null;
+      const rows = tq ? data.rows.filter((r) => tok!(r)?.id === tq) : data.rows;
+      const u = aggUsage(rows, { from, to, bucket, tz: ztz, model: q.get('model'), client: q.get('client') }) as unknown as Record<string, any>;
+      if (tok) {
+        const seen = new Map(data.rows.map((r) => tok(r)).filter((t) => !!t).map((t) => [t!.id, { id: t!.id, label: t!.label, owner: t!.owner }]));
+        u.dimensions.tokens = [...seen.values()];
+        if (tq) u.filters.token = tq;
+        const g = q.get('group');
+        if (g === 'token' || g === 'user') {
+          const lo = Date.parse(`${from}T00:00:00Z`) - 86_400_000;
+          const hi = Date.parse(`${to}T00:00:00Z`) + 2 * 86_400_000;
+          const inRange = rows.filter((r) => r.ts_ms >= lo && r.ts_ms < hi && dayKey(r.ts_ms, ztz) >= from && dayKey(r.ts_ms, ztz) <= to);
+          u.group = g;
+          u.groups = groupSums(inRange, (r) => (g === 'token' ? (tok(r)?.id ?? null) : (tok(r)?.owner ?? null)), (k) => (g === 'token' ? { label: seen.get(k ?? '')?.label ?? null, owner: seen.get(k ?? '')?.owner ?? null } : {}));
+        }
+      }
       if (!backends.off) {
         // 1.3: the backends and users the ledger has seen (the mock's rows are the engine's)
         u.contract_version = '1.3';
@@ -989,7 +1008,8 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         const where = new Map(rows.map((r) => [r.request_id, { node: r.node, deployment: r.deployment }]));
         const fleetDims = { nodes: [...new Set(all.map((r) => r.node).filter((x): x is string => !!x))], deployments: [...new Set(all.map((r) => r.deployment).filter((x): x is string => !!x))] };
         const since = dayKey(from, q.get('tz') || tz);
-        return ledgerAnswer(res, q, fleetLedger[1], { rows, since }, (u) => {
+        const ta = accountsOf(req) === 'on' ? f.auth : null;
+        return ledgerAnswer(res, q, fleetLedger[1], { rows, since, ...(ta ? { tokenOf: (r: LedgerRow) => ta.tokenOf(r.id) } : {}) }, (u) => {
           u.dimensions = { ...u.dimensions, ...fleetDims };
           if (node || dep) u.filters = { ...u.filters, node, deployment: dep };
         }, (r) => Object.assign(r, where.get(String(r.request_id)) ?? { node: null, deployment: null }));
@@ -1156,7 +1176,10 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       }
 
       const own = /^\/v1\/dashboard\/(summary|usage|requests)$/.exec(path);
-      if (own) return ledgerAnswer(res, q, own[1], rowsFor());
+      if (own) {
+        const ta = accountsOf(req) === 'on' ? fleetFor(req).auth : null;
+        return ledgerAnswer(res, q, own[1], ta ? { ...rowsFor(), tokenOf: (r) => ta.tokenOf(r.id) } : rowsFor());
+      }
       if (path === '/v1/dashboard/system') {
         return json(res, 200, sysSnapshot());
       }

@@ -7,7 +7,7 @@
 import { html, nothing, type TemplateResult } from 'lit';
 import { LIMIT_KEYS, type Finding, type Session, type Token, type User } from '../../api/auth';
 import type { AccessFlow, Dialog } from '../../lib/access-flow';
-import { DAY_CHOICES, EXPOSURE_WORDS, LIMIT_WORDS, PAGES, PROTOCOLS, ROLE_WORDS, ago, auditWords, browserOf, can, endsSoon, findingsFor, isImported, isLoopback, isSignIn, lastOwner, mayChange, mayCreate, mine, nameOf, ownersOf, pageDef, peopleOf, reviewOf, roleOf, rolesFor, scopeLabel, scopesFor, servicesOf, snippets, stateWords, tokensFor } from '../../lib/access';
+import { DAY_CHOICES, EXPOSURE_WORDS, LIMIT_WORDS, PAGES, PROTOCOLS, REFUSED_WORDS, ROLE_WORDS, ago, auditWords, browserOf, can, endsSoon, findingsFor, isImported, isLoopback, isSignIn, lastOwner, limitText, mayChange, mayCreate, mine, nameOf, ownersOf, pageDef, peopleOf, reviewOf, roleOf, rolesFor, scopeLabel, scopesFor, servicesOf, snippets, stateWords, tokensFor, unpricedText, useText } from '../../lib/access';
 import { copyButton, icon, skeleton } from '../../ui/bits';
 
 export interface On {
@@ -84,11 +84,26 @@ function tokenMain(f: AccessFlow, t: Token, owner: boolean): TemplateResult {
     <p class="ac-tags">${t.scopes.map((s) => tag(scopeLabel(s)))}</p>
     <p class="small muted">${t.models.length ? html`models <span class="num ac-wrap">${t.models.join(', ')}</span>` : 'every model'} · ${stateWords(t, now)} · last used ${ago(t.last_used_at, now)}${Object.keys(t.limits).length ? html` · limits ${LIMIT_KEYS.filter((k) => t.limits[k] != null).map((k) => `${LIMIT_WORDS[k].toLowerCase()} ${t.limits[k]}`).join(', ')}` : nothing}</p>`;
 }
+/** SRV-873: what the token used in 30 days, its limits' state, models no spend limit holds, and
+ *  its last refusals */
+function useBlock(f: AccessFlow, t: Token): TemplateResult | typeof nothing {
+  const u = f.usage[t.id];
+  if (!u) return nothing;
+  const lims = LIMIT_KEYS.filter((k) => u.limits.limits[k]);
+  const free = unpricedText(u);
+  const last = u.refusals.slice(0, 3);
+  return html`<div class="ac-use" data-usage=${t.id}>
+    <p class="small" data-use>${useText(u)}</p>
+    ${lims.length ? html`<p class="ac-tags" data-limits>${lims.map((k) => tag(limitText(k, u.limits.limits[k]!), u.limits.limits[k]!.reached ? 'ac-warn' : ''))}</p>` : nothing}
+    ${free ? html`<p class="small muted" data-unpriced>${free}</p>` : nothing}
+    ${last.length ? html`<p class="small muted" data-refusals>Last refused: ${last.map((r) => `${utc(r.at)} ${REFUSED_WORDS[r.code] ?? r.code}${r.model ? ` (${r.model})` : ''}`).join('; ')}</p>` : nothing}
+  </div>`;
+}
 const revoke = (f: AccessFlow, t: Token): TemplateResult => html`<button type="button" class="btn btn-sm" data-act="revoke" @click=${() => f.revokeToken(t)}>Revoke</button>`;
 function tokenRow(f: AccessFlow, t: Token, owner: boolean): TemplateResult {
   const own = t.owner_id != null && t.owner_id === f.me?.account?.id;
   const acts = t.state === 'active' ? html`${own ? html`<button type="button" class="btn btn-sm" data-act="rotate" @click=${() => f.show({ kind: 'token-rotate', token: t })}>Rotate</button>` : nothing}${revoke(f, t)}` : nothing;
-  return row(t.id, tokenMain(f, t, owner), acts, t.state !== 'active' ? 'is-off' : '');
+  return row(t.id, html`${tokenMain(f, t, owner)}${useBlock(f, t)}`, acts, t.state !== 'active' ? 'is-off' : '');
 }
 
 function myTokensPage(f: AccessFlow): TemplateResult {
@@ -291,7 +306,7 @@ function dialogBody(f: AccessFlow, d: Dialog, on: On, origin: string): { title: 
           ${field('Models', html`<input name="models" class="num" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="every model" />`, 'Leave empty for every model. Separate names with commas; a name may end in * to match many.')}
           ${field('Expires after', html`<select name="days">${DAY_CHOICES.map((n) => html`<option value=${n} ?selected=${n === 90}>${n} days</option>`)}${admin ? html`<option value="never">Never</option>` : nothing}</select>`)}
           <details class="ac-limits"><summary class="small">Limits</summary>
-            <p class="small muted">Stored with the token now. TandemApp enforces them in a later version.</p>
+            <p class="small muted">Empty: your role's limit, when an admin set one; never more than it. Cost in dollars, for models with a price.</p>
             <div class="ac-grid">${LIMIT_KEYS.map((k) => field(LIMIT_WORDS[k], html`<input name=${`limit.${k}`} class="num" inputmode="decimal" autocomplete="off" placeholder="none" />`))}</div>
           </details>
           ${err} ${foot('Create the token', { submit: true })}

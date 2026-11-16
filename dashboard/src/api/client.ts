@@ -123,6 +123,10 @@ export interface LedgerFilters {
   node?: string | null;
   deployment?: string | null;
   ledger?: LedgerSource;
+  /** SRV-873: one API token's rows (accounts on) */
+  token?: string | null;
+  /** SRV-873: the range's sums per token or per user (`groups`) */
+  group?: 'token' | 'user' | null;
 }
 
 function filterParams(q: URLSearchParams, p: LedgerFilters): void {
@@ -134,6 +138,8 @@ function filterParams(q: URLSearchParams, p: LedgerFilters): void {
   if (p.internal) q.set('internal', '1'); // VIS-60: TandemLLM's own calls too
   if (p.node) q.set('node', p.node);
   if (p.deployment) q.set('deployment', p.deployment);
+  if (p.token) q.set('token', p.token);
+  if (p.group) q.set('group', p.group);
 }
 
 /** a backend row the ledger files as the server's own engine's */

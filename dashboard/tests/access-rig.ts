@@ -26,6 +26,9 @@ export const KEYS = {
   session: ['id', 'account_id', 'username', 'created_at', 'last_seen_at', 'idle_until', 'expires_at', 'address', 'agent', 'current'],
   token: ['id', 'kind', 'label', 'owner', 'owner_id', 'hint', 'scopes', 'models', 'limits', 'memory_user', 'source', 'needs_review', 'state', 'created_at', 'expires_at', 'revoked_at', 'last_used_at'],
   audit: ['at', 'who', 'action', 'object', 'object_id', 'fields', 'detail'],
+  // SRV-873: GET /v1/auth/tokens/{id}/usage (proxy/tokenusage.py)
+  usage: ['from', 'to', 'tz', 'ledger', 'totals', 'days', 'models', 'unpriced', 'refusals', 'last_used_at', 'token', 'limits'],
+  sums: ['requests', 'refused', 'prompt_tokens', 'cached_tokens', 'completion_tokens', 'total_tokens', 'cost_micros'],
 };
 
 function same(what: string, o: unknown, keys: string[], more: string[] = []): void {
@@ -53,6 +56,12 @@ function shape(method: string, path: string, body: unknown): void {
   } else if (p === '/tokens' && method === 'GET') {
     same('tokens', b, ['tokens']);
     for (const t of b.tokens as unknown[]) same('token', t, KEYS.token);
+  } else if (/^\/tokens\/[^/]+\/usage$/.test(p)) {
+    same('token usage', b, KEYS.usage);
+    same('usage totals', b.totals, KEYS.sums);
+    for (const d of b.days as unknown[]) same('usage day', d, KEYS.sums, ['date']);
+    for (const m of b.models as unknown[]) same('usage model', m, KEYS.sums, ['model', 'priced']);
+    same('token', b.token, KEYS.token);
   } else if (p.startsWith('/tokens')) same('token', b, KEYS.token, 'token' in b ? ['token'] : []);
   else throw new Error(`the rig knows no shape for ${method} ${path}`);
 }

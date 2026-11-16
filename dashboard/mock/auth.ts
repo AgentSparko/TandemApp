@@ -13,7 +13,7 @@
 // each signed in somewhere; their tokens (one ending soon, one revoked); two keys imported from an
 // older setup and the old admin token under Review; the service identities.
 
-import type { AuditRow, Me, Role, Session, Token, User } from '../src/api/auth.ts';
+import type { AuditRow, Me, Role, Session, Token, TokenUsage, User } from '../src/api/auth.ts';
 
 export interface Reply {
   status: number;
@@ -217,6 +217,41 @@ export class MockAuth {
   private state(t: Tok, now: number): Token['state'] {
     return t.revoked_at !== null ? 'revoked' : t.expires_at !== null && now >= t.expires_at ? 'expired' : 'active';
   }
+  /** SRV-873: a test's own usage answer per token id (else one made from the token) */
+  usage: Record<string, Partial<TokenUsage>> = {};
+  /** GET /v1/auth/tokens/{id}/usage (proxy/tokenusage.py): 30 days, made from the token's id; a
+   *  spend limit is half used, a rate limit a third, and `local-*` has no price */
+  private usageOf(t: Tok, now: number): TokenUsage {
+    const n = 3 + (parseInt(t.id.slice(0, 2), 16) % 40);
+    const sums = (requests: number, cost: number | null) => ({ requests, refused: 0, prompt_tokens: requests * 600, cached_tokens: requests * 200, completion_tokens: requests * 250, total_tokens: requests * 850, cost_micros: cost });
+    const day = (i: number) => iso(now - i * DAY)!.slice(0, 10);
+    const limits = Object.fromEntries(Object.entries(t.limits).filter(([, v]) => v > 0).map(([k, v]) => {
+      const cost = k.startsWith('cost');
+      const used = cost ? Math.round(v * 500_000) : Math.floor(v / 3);
+      return [k, { limit: v, used, left: (cost ? v * 1e6 : v) - used, reached: false, from: 'token' as const }];
+    }));
+    return {
+      from: day(29), to: day(0), tz: 'UTC', ledger: true,
+      totals: { ...sums(n, n * 12_000), refused: 1 },
+      days: Array.from({ length: 30 }, (_, i) => ({ date: day(29 - i), ...sums(i === 29 ? n : 0, i === 29 ? n * 12_000 : null) })),
+      models: [{ model: 'small-1', priced: true, ...sums(n - 1, n * 12_000) }, { model: 'local-1', priced: false, ...sums(1, null) }],
+      unpriced: ['local-1'],
+      refusals: [{ at: iso(now - 3_600_000), code: 'rate_limited', status: 429, model: 'small-1' }],
+      last_used_at: iso(t.last_used_at),
+      limits: { limits, over: false, refused_at: null },
+      token: this.token(t, now),
+      ...this.usage[t.id],
+    };
+  }
+
+  /** SRV-873: the token a ledger row came with in the mock: the live people's tokens in turn, and
+   *  every (n+1)th row none (the page's own) */
+  tokenOf(rowId: number): { id: string; label: string; owner: string | null } | null {
+    const ts = this.tokens.filter((t) => t.kind === 'user');
+    const t = ts[rowId % (ts.length + 1)];
+    return t ? { id: t.id, label: t.label, owner: this.accounts.find((a) => a.id === t.owner_id)?.username ?? null } : null;
+  }
+
   private token(t: Tok, now: number): Token {
     const owner = this.accounts.find((a) => a.id === t.owner_id) ?? null;
     return {
@@ -498,6 +533,7 @@ export class MockAuth {
     const tokOwner = this.accounts.find((a) => a.id === tok.owner_id) ?? null;
     const others = admin && (this.may(c, 'owner') || !tokOwner || tokOwner.role !== 'owner' || tok.source === 'admin_token');
     if (!mine && !others) no(404, 'not_found', 'no such token');
+    if (rest.length === 2 && rest[1] === 'usage' && method === 'GET') return { status: 200, body: this.usageOf(tok, now) };
     if (rest.length === 2) {
       if (rest[1] !== 'rotate' || method !== 'POST') no(404, 'not_found', 'no such token route');
       if (!mine) no(403, 'permission_denied', 'only its owner rotates a token');

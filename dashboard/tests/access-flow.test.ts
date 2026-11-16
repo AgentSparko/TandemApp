@@ -634,8 +634,12 @@ describe('Settings: the Sign-in and the API page', () => {
   it('API draws the exposure switches, the listen address and the tokens’ rules, the viewers’ switch among them', async () => {
     const r = rig('kim');
     const { text: t, fields } = await scopePage(r, 'api');
-    expect(fields.map((f) => f.key).sort()).toEqual(['anthropic.exposure', 'listen', 'openai.exposure', 'tokens.default_days', 'tokens.max_days', 'tokens.max_days_external', 'tokens.viewers_may_create']);
-    expect([...t.matchAll(/data-group=([\w:]+)/g)].map((m) => m[1])).toEqual(['api:exposure', 'api:tokens']);
+    expect(fields.map((f) => f.key).filter((k) => !k.startsWith('limits.')).sort()).toEqual(['anthropic.exposure', 'listen', 'openai.exposure', 'tokens.default_days', 'tokens.max_days', 'tokens.max_days_external', 'tokens.viewers_may_create']);
+    expect([...t.matchAll(/data-group=([\w:]+)/g)].map((m) => m[1])).toEqual(['api:exposure', 'api:tokens', 'api:limits']);
+    // SRV-873: each role's limits, an admin's to write, the dollars a number
+    expect(fields.filter((f) => f.key.startsWith('limits.default.'))).toHaveLength(20);
+    for (const label of ['Limits per role', 'Operator: dollars a day', 'Viewer: requests a minute']) expect(t, label).toContain(label);
+    expect(fields.find((f) => f.key === 'limits.default.operator.cost_per_day')!.spec.type).toBe('number');
     for (const label of ['Who may use the APIs', 'API tokens', 'OpenAI-compatible API', 'Messages API', 'Listen address', 'Viewers create inference tokens', 'A new token’s days']) expect(t, label).toContain(label);
     expect(fields.find((f) => f.key === 'tokens.viewers_may_create')!.value).toBe('off');
     expect(fields.find((f) => f.key === 'listen')!.spec.restart).toBe('app');

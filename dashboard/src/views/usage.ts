@@ -17,6 +17,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { api, describeError } from '../api/client';
 import type { BackendRef, LedgerSource, Summary, Totals, Usage, UsageBucket } from '../api/types';
+import { groupRows, groupWindow, type GroupBy, type GroupRow } from '../lib/usage-groups';
 import { onFleet, type FleetState } from '../lib/fleet-state';
 import { currentScope, onScope, resolveScope, setScope, type Scope } from '../lib/scope';
 import { isFleet, ledgerFor } from '../lib/where';
@@ -73,6 +74,9 @@ export class QseUsage extends LightElement {
   @state() private metric: HeatMetric = 'total_tokens';
   @state() private fleet: FleetState | null = null;
   @state() private scope: Scope = currentScope();
+  /** SRV-873: the range's sums per token or per user (accounts on: the ledger names tokens) */
+  @state() private groups: { by: GroupBy; rows: GroupRow[] } | null = null;
+  @state() private groupBy: GroupBy = 'token';
   /** the controller's summary, for the hero when the page reads its ledger */
   @state() private fleetSummary: Loadable<Summary> = { state: 'loading' };
   private tz = browserTz();
@@ -105,7 +109,7 @@ export class QseUsage extends LightElement {
     if (changed.has('params')) this.reloadOnKey();
   }
   private reloadOnKey(): void {
-    const key = `${this.model}|${this.client}|${this.backend}|${this.user}|${this.internal}|${this.range}|${this.from}|${this.to}|${this.ledger}|${this.node}|${this.deployment}`;
+    const key = `${this.model}|${this.client}|${this.backend}|${this.user}|${this.token}|${this.internal}|${this.range}|${this.from}|${this.to}|${this.ledger}|${this.node}|${this.deployment}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
       void this.load();
@@ -146,6 +150,10 @@ export class QseUsage extends LightElement {
   private get user() {
     return this.params.get('user');
   }
+  /** SRV-873: one API token's rows */
+  private get token() {
+    return this.params.get('token');
+  }
   /** VIS-60: count TandemLLM's own calls too (the router's question to the engine); off by default */
   private get internal() {
     return this.params.get('internal') === '1';
@@ -169,8 +177,8 @@ export class QseUsage extends LightElement {
     // response that lands after a param change is discarded instead of showing the old selection.
     const my = ++this.loadSeq;
     const mine = () => my === this.loadSeq;
-    const { model, client, backend, user, internal, range, from: customFrom, to: customTo, ledger, node, deployment } =
-      { model: this.model, client: this.client, backend: this.backend, user: this.user, internal: this.internal, range: this.range, from: this.from, to: this.to, ledger: this.ledger, node: this.node, deployment: this.deployment };
+    const { model, client, backend, user, token, internal, range, from: customFrom, to: customTo, ledger, node, deployment } =
+      { model: this.model, client: this.client, backend: this.backend, user: this.user, token: this.token, internal: this.internal, range: this.range, from: this.from, to: this.to, ledger: this.ledger, node: this.node, deployment: this.deployment };
     if (!quiet) this.usage = { state: 'loading' };
     const today = todayKey(this.tz);
     const { from, to } = yearWindow(today);
@@ -180,11 +188,12 @@ export class QseUsage extends LightElement {
         (e) => mine() && (this.fleetSummary = { state: 'error', endpoint: describeError(e).endpoint, message: describeError(e).message }),
       );
     }
-    const where = { ledger, node, deployment };
+    const where = { ledger, node, deployment, token };
     try {
       const u = await api.usage({ from, to, bucket: 'day', tz: this.tz, model, client, backend, user, internal, ...where });
       if (!mine()) return; // a newer load owns the view now
       this.usage = { state: 'ready', data: u };
+      void this.loadGroups(u, mine);
       // the engine against each relayed backend (a cloud model), over the same year and filters
       const rel = backend ? [] : relayedBackends(u);
       if (rel.length) {
@@ -212,6 +221,23 @@ export class QseUsage extends LightElement {
     } else this.custom = null;
   }
 
+  /** SRV-873: the range's sums per token or per user, when the ledger names tokens */
+  private async loadGroups(u: Usage, mine: () => boolean = () => true): Promise<void> {
+    if (!u.dimensions.tokens) return void (this.groups = null);
+    const by = this.groupBy;
+    const w = groupWindow(this.range, this.from, this.to, todayKey(this.tz));
+    try {
+      const g = await api.usage({ ...w, bucket: 'day', tz: this.tz, model: this.model, client: this.client, backend: this.backend, user: this.user, token: this.token, internal: this.internal, ledger: this.ledger, node: this.node, deployment: this.deployment, group: by });
+      if (mine() && by === this.groupBy) this.groups = { by, rows: groupRows(g.groups ?? [], by) };
+    } catch {
+      if (mine()) this.groups = null;
+    }
+  }
+  private setGroup(by: GroupBy) {
+    this.groupBy = by;
+    if (this.usage.state === 'ready') void this.loadGroups(this.usage.data);
+  }
+
   private setRange(r: Range) {
     if (r === 'custom') {
       const today = todayKey(this.tz);
@@ -230,7 +256,7 @@ export class QseUsage extends LightElement {
   }
 
   render() {
-    const filtered = !!(this.model || this.client || this.backend || this.user || this.internal || this.node || this.deployment);
+    const filtered = !!(this.model || this.client || this.backend || this.user || this.token || this.internal || this.node || this.deployment);
     const fleet = isFleet(this.fleet);
     if (fleet) void loadFleetScope();
     return html`
@@ -242,6 +268,7 @@ export class QseUsage extends LightElement {
         ${this.renderCharts()}
         ${fleet ? html`<qse-usage-fleet .window=${this.byNodeWindow()}></qse-usage-fleet>` : nothing}
         ${this.renderBackends()}
+        ${this.renderGroups()}
         ${this.renderTopDays()}
       </div>
     `;
@@ -381,6 +408,7 @@ export class QseUsage extends LightElement {
       chips.push(html`<button class="chip" @click=${() => setParams({ backend: null })}>backend ${b?.label ?? this.backend} ${icon('x')}</button>`);
     }
     if (this.user) chips.push(html`<button class="chip" @click=${() => setParams({ user: null })}>user ${this.user} ${icon('x')}</button>`);
+    if (this.token) chips.push(html`<button class="chip" @click=${() => setParams({ token: null })}>token ${dims.tokens?.find((t) => t.id === this.token)?.label ?? this.token} ${icon('x')}</button>`);
     if (this.internal) chips.push(html`<button class="chip" @click=${() => setParams({ internal: null })}>with internal calls ${icon('x')}</button>`);
     const f = this.fleet;
     const node = this.node ? f?.nodes.find((n) => n.id === this.node) : null;
@@ -425,6 +453,15 @@ export class QseUsage extends LightElement {
             <select @change=${(e: Event) => setParams({ user: (e.target as HTMLSelectElement).value || null })} .value=${this.user ?? ''}>
               <option value="">all</option>
               ${dims.users.map((u) => html`<option value=${u} ?selected=${u === this.user}>${u}</option>`)}
+            </select>
+          </label>`
+        : nothing}
+      ${dims.tokens?.length
+        ? html`<label class="field" data-filter="token">
+            <span>Token</span>
+            <select @change=${(e: Event) => setParams({ token: (e.target as HTMLSelectElement).value || null })} .value=${this.token ?? ''}>
+              <option value="">all</option>
+              ${dims.tokens.map((t) => html`<option value=${t.id} ?selected=${t.id === this.token}>${t.label ?? t.id}${t.owner ? ` (${t.owner})` : ''}</option>`)}
             </select>
           </label>`
         : nothing}
@@ -572,6 +609,28 @@ export class QseUsage extends LightElement {
           </tbody>
         </table></div>`,
       { sub: "the last year, per backend: the engine's own requests and each one the proxy relayed (a cloud model's TTFT holds the network and its queue)", id: 'backends' },
+    );
+  }
+
+  // ---- SRV-873: per token, per user ------------------------------------------------------
+  private renderGroups(): TemplateResult | typeof nothing {
+    const g = this.groups;
+    if (!g) return nothing;
+    const seg = (by: GroupBy, label: string) => html`<button type="button" class="seg-btn ${g.by === by ? 'is-on' : ''}" aria-pressed=${g.by === by} data-group=${by} @click=${() => this.setGroup(by)}>${label}</button>`;
+    return panel(
+      g.by === 'token' ? 'By token' : 'By user',
+      g.rows.length
+        ? html`<div class="table-scroll"><table class="table" data-testid="usage-groups">
+            <thead><tr><th>${g.by === 'token' ? 'Token' : 'User'}</th><th class="num-col">Requests</th><th class="num-col">Refused</th><th class="num-col">Tokens</th><th class="num-col">Cost</th></tr></thead>
+            <tbody>${g.rows.map(
+              (r) => html`<tr data-key=${r.key ?? ''}>
+                <td class="cell-wrap">${r.key != null && g.by === 'token' ? html`<a href="#/usage?token=${encodeURIComponent(r.key)}" @click=${(e: Event) => (e.preventDefault(), setParams({ token: r.key }))}>${r.name}</a>` : r.name}${r.sub ? html` <span class="muted">${r.sub}</span>` : nothing}</td>
+                <td class="num-col num">${exact(r.requests)}</td><td class="num-col num">${exact(r.refused)}</td>
+                <td class="num-col num" title=${exact(r.tokens)}>${compact(r.tokens)}</td><td class="num-col num">${money(r.cost)}</td>
+              </tr>`,
+            )}</tbody></table></div>`
+        : emptyState('No requests in this range'),
+      { sub: 'the range of the charts, each sum the ledger’s rows', id: 'usage-groups', tools: html`<div class="seg" role="group" aria-label="Group by">${seg('token', 'Token')}${seg('user', 'User')}</div>` },
     );
   }
 

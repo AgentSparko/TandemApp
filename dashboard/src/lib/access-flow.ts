@@ -3,7 +3,7 @@
 // call under way. A token or a one-time code lives here only while its dialog shows it: closing
 // the dialog drops it, and nothing here writes to the URL, the console or the browser's storage.
 
-import { AuthError, type AuditRow, type AuthApi, type ExposureView, type Exposure, type Finding, type Me, type Protocol, type Role, type Session, type Token, type TokenOnce, type User, type UserCode } from '../api/auth';
+import { AuthError, type AuditRow, type AuthApi, type ExposureView, type Exposure, type Finding, type Me, type Protocol, type Role, type Session, type Token, type TokenOnce, type TokenUsage, type User, type UserCode } from '../api/auth';
 import { can, errorWords, pageDef, tokenBody, userNameError, type Page, type TokenForm } from './access';
 
 export type Dialog =
@@ -33,6 +33,8 @@ export class AccessFlow {
   users: User[] | null = null;
   sessions: Session[] | null = null;
   tokens: Token[] | null = null;
+  /** SRV-873: My tokens: each live token's use of the last 30 days and its limits' state */
+  usage: Record<string, TokenUsage> = {};
   audit: AuditRow[] | null = null;
   exposure: ExposureView | null = null;
   findings: Finding[] = [];
@@ -65,6 +67,7 @@ export class AccessFlow {
       // nothing of the page before shows under this one's head
       this.users = this.sessions = this.tokens = this.audit = this.exposure = null;
       this.findings = [];
+      this.usage = {};
     }
     this.loading = true;
     this.changed();
@@ -91,6 +94,13 @@ export class AccessFlow {
     } else if (page === 'my-tokens' || page === 'tokens') {
       const got = await a.tokens(page === 'tokens');
       if (here()) this.tokens = got;
+      if (page === 'my-tokens') {
+        // a usage read that fails leaves its token without the line, never the page without its list
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const live = got.filter((t) => t.state === 'active');
+        const use = await Promise.all(live.map((t) => a.tokenUsage(t.id, tz).catch(() => null)));
+        if (here()) this.usage = Object.fromEntries(live.flatMap((t, i) => (use[i] ? [[t.id, use[i]!]] : [])));
+      }
     } else if (page === 'users') {
       const got = await a.users();
       if (here()) this.users = got;

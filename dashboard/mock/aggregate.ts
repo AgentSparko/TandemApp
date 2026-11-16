@@ -212,6 +212,22 @@ export function usage(all: LedgerRow[], q: UsageQuery): Usage {
   };
 }
 
+/** SRV-873: a ledger's rows summed per key (a token's id or a user; null: rows without one), each
+ *  group the sum of its rows, the most tokens first */
+export function groupSums(rows: LedgerRow[], keyOf: (r: LedgerRow) => string | null, more: (k: string | null) => Record<string, unknown> = () => ({})) {
+  const by = new Map<string | null, LedgerRow[]>();
+  for (const r of rows) {
+    const k = keyOf(r);
+    (by.get(k) ?? by.set(k, []).get(k)!).push(r);
+  }
+  return [...by.entries()]
+    .map(([key, rs]) => {
+      const t = totals(rs, 'UTC');
+      return { key, ...more(key), requests: t.requests, refused: rs.filter((r) => r.finish_reason === 'refused').length, prompt_tokens: t.prompt_tokens, cached_tokens: t.cached_tokens, completion_tokens: t.completion_tokens, reasoning_tokens: t.reasoning_tokens, total_tokens: t.total_tokens, cost_micros: null };
+    })
+    .sort((a, b) => b.total_tokens - a.total_tokens);
+}
+
 export interface SummaryInput {
   rows: LedgerRow[];
   tz: string;

@@ -120,6 +120,8 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   exposure_unreachable: ['warning', null],
   exposure_plain_http: ['warning', null],
   token_expiring: ['info', null],
+  token_limit_near: ['info', null],
+  token_limit_reached: ['warning', null],
 };
 
 export const actionView = (a: ActionId | null): HealthAction | null => (a === null ? null : { id: a, label: HEALTH_ACTIONS[a][0], changes: HEALTH_ACTIONS[a][1], confirm: HEALTH_ACTIONS[a][2] });
@@ -296,6 +298,8 @@ function build(name: HealthScenario, t0: number): Sim {
             { code: 'exposure_unreachable', facts: { protocol: 'OpenAI', reason: 'listening on this machine only' } },
             { code: 'exposure_plain_http', facts: {} },
             { code: 'token_expiring', facts: { n: 2 } },
+            { code: 'token_limit_near', facts: { n: 1 } },
+            { code: 'token_limit_reached', facts: { n: 1 } },
           ],
         }),
         pairings: [],

@@ -210,12 +210,35 @@ export interface Usage {
   bucket: Bucket;
   tz: string;
   /** SRV-731: `node` and `deployment` on a ledger that has them (a TandemApp controller's) */
-  filters: { model: string | null; client: string | null; backend?: string | null; user?: string | null; node?: string | null; deployment?: string | null };
+  filters: { model: string | null; client: string | null; backend?: string | null; user?: string | null; node?: string | null; deployment?: string | null; token?: string | null };
   buckets: UsageBucket[];
   totals: Totals;
   top_days: TopDay[];
   /** SRV-731: the fleet nodes and deployments the ledger has seen, when it has seen any */
-  dimensions: { models: string[]; clients: ClientDim[]; backends?: BackendRef[]; users?: string[]; nodes?: string[]; deployments?: string[] };
+  dimensions: { models: string[]; clients: ClientDim[]; backends?: BackendRef[]; users?: string[]; nodes?: string[]; deployments?: string[]; tokens?: TokenDim[] };
+  /** SRV-873: with `group=`, the range's sums per token or per user (key null: rows without one) */
+  group?: 'token' | 'user';
+  groups?: UsageGroup[];
+}
+
+/** SRV-873: an API token the ledger has seen (accounts on) */
+export interface TokenDim {
+  id: string;
+  label: string | null;
+  owner: string | null;
+}
+export interface UsageGroup {
+  key: string | null;
+  label?: string | null;
+  owner?: string | null;
+  requests: number;
+  refused: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  cost_micros: number | null;
 }
 
 /** VIS-254: where a ledger row, a lane or an answer ran in a fleet: the node's id and the

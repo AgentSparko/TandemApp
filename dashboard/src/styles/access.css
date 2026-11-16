@@ -103,6 +103,13 @@ qse-access .panel-head {
   border-color: var(--warn);
   color: var(--warn-ink);
 }
+.ac-use {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--rule);
+}
 .ac-acts {
   display: flex;
   flex-wrap: wrap;

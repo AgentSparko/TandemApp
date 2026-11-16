@@ -142,8 +142,15 @@ const ACCOUNT_LABEL: Record<string, string> = {
   'tokens.viewers_may_create': 'Viewers create inference tokens',
 };
 
+/** SRV-873: `limits.default.<role>.<limit>`: "Operator: dollars a day" */
+const LIMIT_LABEL: Record<string, string> = { requests_per_minute: 'requests a minute', tokens_per_minute: 'tokens a minute', concurrent: 'requests at once', cost_per_day: 'dollars a day', cost_per_month: 'dollars a month' };
+const roleLimit = (key: string): string | null => {
+  const m = /^limits\.default\.(\w+)\.(\w+)$/.exec(key);
+  return m && LIMIT_LABEL[m[2]] ? `${m[1][0].toUpperCase()}${m[1].slice(1)}: ${LIMIT_LABEL[m[2]]}` : null;
+};
+
 export function labelOf(scope: Scope, key: string, held: KeyValue | null = null): { label: string; mono: boolean } {
-  if (scope === 'auth' || scope === 'api') return { label: ACCOUNT_LABEL[key] ?? humanize(key), mono: false };
+  if (scope === 'auth' || scope === 'api') return { label: ACCOUNT_LABEL[key] ?? roleLimit(key) ?? humanize(key), mono: false };
   if (scope === 'app') return { label: key === 'chat' ? 'Chat' : key === 'conductor' ? 'Conductor' : humanize(key), mono: false };
   if (scope === 'engine') return key === MODE_KEY ? { label: 'Mode', mono: false } : key === EXT_KEY ? { label: 'Chat extension', mono: false } : { label: key, mono: true };
   if (scope === 'conductor') return { label: key.startsWith('profiles.') ? `Profile ${key.slice(9)}` : humanize(key), mono: false };
@@ -355,9 +362,12 @@ export function groupsOf(scope: Scope, fields: Field[]): Group[] {
   if (scope === 'api') {
     // SRV-875: who gets in, then the rules of the tokens that let them
     const tokens = fields.filter((f) => f.key.startsWith('tokens.'));
+    // SRV-873: each role's limits, the most a token of that role may use
+    const limits = fields.filter((f) => f.key.startsWith('limits.'));
     return [
-      { id: 'api:exposure', title: 'Who may use the APIs', sub: 'The same switches as on the API exposure page, and the address TandemApp listens on.', fields: fields.filter((f) => !tokens.includes(f)) },
+      { id: 'api:exposure', title: 'Who may use the APIs', sub: 'The same switches as on the API exposure page, and the address TandemApp listens on.', fields: fields.filter((f) => !tokens.includes(f) && !limits.includes(f)) },
       { id: 'api:tokens', title: 'API tokens', sub: 'How long a token may live, and whether viewers create their own.', fields: tokens },
+      { id: 'api:limits', title: 'Limits per role', sub: 'The most a token of each role may use; a new token gets them, and no token goes above them. 0: no limit.', fields: limits },
     ].filter((g) => g.fields.length);
   }
   return fields.length ? [{ id: scope, title: scope === 'conductor' ? 'Documents' : '', sub: null, fields }] : [];

@@ -3,7 +3,8 @@
 // takes, a refusal in words, and how a session, a token and an audit row read.
 
 import { ACCESS_PAGES } from './menu';
-import { LIMIT_KEYS, type AuditRow, type AuthError, type Finding, type Limits, type Me, type NewToken, type Protocol, type Role, type Session, type Token, type User } from '../api/auth';
+import { LIMIT_KEYS, type AuditRow, type AuthError, type Finding, type LimitKey, type Limits, type LimitState, type Me, type NewToken, type Protocol, type Role, type Session, type Token, type TokenUsage, type User } from '../api/auth';
+import { compact, money } from './format';
 
 export type Page = 'account' | 'my-tokens' | 'users' | 'tokens' | 'exposure' | 'sessions' | 'audit';
 
@@ -118,6 +119,38 @@ export const LIMIT_WORDS: Record<(typeof LIMIT_KEYS)[number], string> = {
   cost_per_day: 'Cost a day',
   cost_per_month: 'Cost a month',
 };
+
+// ---- SRV-873: a token's use and its limits' state (My tokens) ---------------------------------------
+
+/** a refusal's code in a few words */
+export const REFUSED_WORDS: Record<string, string> = {
+  rate_limited: 'requests a minute',
+  tokens_limited: 'tokens a minute',
+  concurrency_limited: 'requests at once',
+  spend_limit_reached: 'spend limit',
+  permission_denied: 'not allowed',
+};
+
+/** "Cost a day $0.58 of $1.00": one limit that holds, what is used of it; "(role)" when the
+ *  owner's role sets it lower than the token does */
+export function limitText(k: LimitKey, s: LimitState): string {
+  const cost = k.startsWith('cost');
+  return `${LIMIT_WORDS[k]} ${cost ? money(s.used) : compact(s.used)} of ${cost ? money(s.limit * 1e6) : compact(s.limit)}${s.from === 'role' ? ' (role)' : ''}`;
+}
+
+/** "30 days: 12 requests, 3.4k tokens, $0.58, 2 refused" */
+export function useText(u: TokenUsage): string {
+  const t = u.totals;
+  return `30 days: ${t.requests} ${t.requests === 1 ? 'request' : 'requests'}, ${compact(t.total_tokens)} tokens${t.cost_micros != null ? `, ${money(t.cost_micros)}` : ''}${t.refused ? `, ${t.refused} refused` : ''}`;
+}
+
+/** the models a spend limit cannot hold (no price), in a sentence; null without a spend limit or
+ *  without such a model */
+export function unpricedText(u: TokenUsage): string | null {
+  const spend = Object.keys(u.limits.limits).some((k) => k.startsWith('cost'));
+  if (!spend || !u.unpriced.length) return null;
+  return `The spend limit does not apply to ${u.unpriced.join(', ')}: ${u.unpriced.length === 1 ? 'it has' : 'they have'} no price.`;
+}
 
 /** the two lines a client needs beside a new token: where each kind of client points */
 export const snippets = (origin: string): { label: string; value: string }[] => [

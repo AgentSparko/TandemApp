@@ -107,12 +107,23 @@ describe('the mock’s tables are the controller’s', () => {
     let n = 0;
     for (const scope of ['auth', 'api'] as const) {
       for (const [k, d] of Object.entries(ACCOUNT_KEYS[scope])) {
+        if (k.startsWith('limits.default.')) continue;
         expect(src, `${scope}.${k}`).toContain(`"${k}": _spec("${d.type}", ${JSON.stringify(d.def)},`);
         n++;
       }
     }
+    // SRV-873: the role limits, one comprehension there: 4 roles x 5 limits, written by an admin
+    const lim = Object.entries(ACCOUNT_KEYS.api).filter(([k]) => k.startsWith('limits.default.'));
+    expect(lim).toHaveLength(20);
+    expect(src).toContain('**{f"limits.default.{role}.{key}": _spec(');
+    expect(src).toContain('"number" if key.startswith("cost") else "integer", 0,');
+    expect(src).toContain('for role in ("viewer", "operator", "admin", "owner")');
+    for (const [k, d] of lim) {
+      expect([d.type, d.def, d.lo, d.admin], k).toEqual([k.includes('.cost_') ? 'number' : 'integer', 0, 0, true]);
+      expect(src, k).toContain(`("${k.split('.').pop()}", "`);
+    }
     // no key of the controller is missing here
-    expect(src.match(/": _spec\(/g)).toHaveLength(n);
+    expect(src.match(/": _spec\(/g)).toHaveLength(n + 1);
     expect(src).toContain('values=("on", "off"), perm="users")');
     for (const k of ['provider', 'openai.exposure', 'anthropic.exposure', 'listen']) expect([ACCOUNT_KEYS.auth[k] ?? ACCOUNT_KEYS.api[k]].map((d) => d.password), k).toEqual([true]);
   });

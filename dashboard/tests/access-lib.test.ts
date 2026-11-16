@@ -95,7 +95,7 @@ describe('the routes and the menu', () => {
   });
 
   it('a health finding about the sign-in links to the page that settles it', () => {
-    expect(Object.keys(FINDING_PAGE).sort()).toEqual(['auth_owner_no_password', 'exposure_no_tokens', 'exposure_plain_http', 'exposure_unreachable', 'legacy_admin_token', 'local_mode_proxy_seen', 'token_expiring', 'tokens_need_review']);
+    expect(Object.keys(FINDING_PAGE).sort()).toEqual(['auth_owner_no_password', 'exposure_no_tokens', 'exposure_plain_http', 'exposure_unreachable', 'legacy_admin_token', 'local_mode_proxy_seen', 'token_expiring', 'token_limit_near', 'token_limit_reached', 'tokens_need_review']);
     const hrefs = PAGES.map((p) => p.href);
     for (const [code, link] of Object.entries(FINDING_PAGE)) {
       expect(ENGINE_CODES[code], code).toBeTruthy();
