@@ -129,6 +129,7 @@
 // merged, each a chunk of its own that loads when its page opens (11.8 KB js and 31.2 KB js). The plugins pages'
 // chunk grew from 29.8 KB with a wheel's upload, the list's run state, the controller's word on which grants ask
 // twice and the words of the trust routes' refusals. The entry chunk stays at 106.0 KB.
+// 772 KB with the controller's sign-in (SEC-26, 2026-11-16): the sign-in, first-run and password screens in a chunk of their own, the CSRF header on every write in the entry.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';
