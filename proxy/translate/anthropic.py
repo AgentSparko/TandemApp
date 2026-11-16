@@ -24,7 +24,8 @@ one, `parallel_tool_calls: false` to `disable_parallel_tool_use`. A model that r
 `tool` answers its own 400, which the client gets as it is: nothing is downgraded silently. An
 assistant's `tool_calls` become `tool_use` blocks (the arguments parsed; a string that is not JSON
 is a 400) and `role: tool` messages `tool_result` blocks, every result of one turn in one user
-message, first. Images: a data URL to a `base64` source, an http(s) URL to a `url` source.
+message, first (a tool message's image parts go into its result). Images: a data URL to a
+`base64` source, an http(s) URL to a `url` source.
 `reasoning_effort` asks for thinking in the backend's `thinking_shape`: `adaptive` (thinking
 `adaptive` with `output_config.effort`; `none` and `minimal` read as `low`, since current models
 cannot switch thinking off), `budget` (`enabled` with `budget_tokens`, for older models) or `off`
@@ -172,7 +173,8 @@ def _tool_result(m: dict, where: str) -> dict:
                                                       f"tool_call_id")
     c = m.get("content")
     if isinstance(c, list):
-        c = [{"type": "text", "text": t} for t in _text_of(c, f"{where}.content") if t]
+        # text and image parts (a screenshot a tool returned): blocks of the result
+        c = _user_blocks(c, f"{where}.content")
     elif c is None:
         c = ""
     elif not isinstance(c, str):
