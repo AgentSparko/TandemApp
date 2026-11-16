@@ -604,8 +604,9 @@ describe('a risky grant is asked a second time', () => {
     // installing and removing take them too
     expect(await check(p, { path: '/srv/plugins/usage-board' })).toBe(true);
     expect(await p.flow.commit()).toBeNull();
-    expect(p.flow.install!.refused!.type).toBe('unauthorized');
+    expect(p.flow.install!.refused!.type).toBe('trust_required');
     expect(installPage(p)).toContain('This needs pairing’s rights.');
+    expect(installPage(p)).toContain('only the controller’s own machine may install');
     expect(p.r.reg.rows['usage-board']).toBeUndefined();
   });
 });
@@ -1111,7 +1112,7 @@ describe('the plugins pages on the controller’s own answers (SRV-857)', () => 
     // the controller's refusal stands under the button
     p.r.reg.control({ trust: false });
     expect(await p.flow.uploadWheel({ name: 'hello_tool-0.2.0-py3-none-any.whl', size: 100, bytes: wheelBytes(100) })).toBe(false);
-    expect([p.flow.install!.upload!.refused!.type, installPage(p).includes('data-upload=refused')]).toEqual(['unauthorized', true]);
+    expect([p.flow.install!.upload!.refused!.type, installPage(p).includes('data-upload=refused')]).toEqual(['trust_required', true]);
   });
 
   it('a plugin’s page says which grants ask twice as the controller says it, not as the page reads a host', async () => {

@@ -144,7 +144,8 @@ describe('the upload, the list’s run state and the grants that ask twice, in t
     expect(err((await ask('x-1.0-py3-none-any.whl', { source: 'json' })).body).type).toBe('unsupported_media_type');
     expect(err((await ask('x-1.0-py3-none-any.whl', wheelBytes(UPLOAD_MAX + 1))).body).type).toBe('upload_too_large');
     r.reg.control({ trust: false });
-    expect(err((await ask('x-1.0-py3-none-any.whl', wheelBytes())).body).type).toBe('unauthorized');
+    const refused = await ask('x-1.0-py3-none-any.whl', wheelBytes());
+    expect([refused.status, err(refused.body).type]).toEqual([403, 'trust_required']);
   });
 
   it('the list carries each plugin’s run state as its status has it; every view names the grants that ask twice; times are milliseconds', async () => {

@@ -33,7 +33,7 @@ refusals (proxy/pluginhost.py), the routes (proxy/pluginapi.py) and tools/plugin
                                                                test_policy_require_signature
   9  The routes end to end through a running controller: /v1/fleet/plugin-trust and
      /v1/fleet/plugins/{id}/trust, every answer and refusal against contracts/plugin-v1, pairing's
-     rights for every write (401 from another machine without the admin)
+     rights for every write (403 trust_required from another machine with no admin password)
                                                                test_trust_over_http
  10  tools/plugin_sign.py: keygen (0600, never overwritten), pubkey, sign, verify (and the
      signer's fingerprint); the private key never in its output
@@ -555,8 +555,9 @@ def test_trust_over_http():
                             ("/v1/fleet/plugin-trust/policy",
                              {"require_signature_sandboxed": True}),
                             (f"/v1/fleet/plugin-trust/keys/{fp[:16]}", None)):
-                st, _, _ = px.request("DELETE" if b is None else "POST", path, b, away)
-                assert st == 401, (path, st)
+                st, _, out = px.request("DELETE" if b is None else "POST", path, b, away)
+                assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", \
+                    (path, st)
             j(px, "GET", "/v1/fleet/plugin-trust", headers=away, schema="plugin-trust")
             # a signed and an unsigned host plugin, granted over HTTP
             base = "/v1/fleet/plugins"
@@ -565,8 +566,9 @@ def test_trust_over_http():
                   schema="install")
             tv = j(px, "GET", f"{base}/web-host/trust", schema="trust")["trust"]
             assert tv["grant_needs"] == "rights" and tv["signature"]["key_name"] == "Acme plugins"
-            st, _, _ = px.request("POST", f"{base}/web-host/trust", {"level": "host"}, away)
-            assert st == 401, "a grant takes pairing's rights"
+            st, _, out = px.request("POST", f"{base}/web-host/trust", {"level": "host"}, away)
+            assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", \
+                "a grant takes pairing's rights"
             tv = j(px, "POST", f"{base}/web-host/trust", {"level": "host"},
                    schema="trust")["trust"]
             assert tv["grant"]["basis"] == "signature"

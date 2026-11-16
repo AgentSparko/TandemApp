@@ -70,7 +70,8 @@ audit.
 THE RIGHTS. Reads, inspect, disable and verify take the configuration's writes (`conductor_write`).
 Install, upgrade, an upload, enable, remove, a trust grant or revoke, a key added or removed and
 the policy take pairing's (`fleet_trust`): with no admin password set only this machine may, as
-pairing a node does. No answer holds a secret: a secret is set or unset with its hint.
+pairing a node does. A caller without the writes gets 401; one with the writes but not pairing's
+rights 403 `trust_required`. No answer holds a secret: a secret is set or unset with its hint.
 """
 
 from __future__ import annotations
@@ -159,17 +160,18 @@ def _keys_rights(method: str, sub: list[str]) -> str:
 
 
 def _rights(handler, route: str, what: str):
-    """None when the caller may go on, else the answer was sent."""
+    """None when the caller may go on, else the answer was sent: 401 to a caller without the
+    configuration's writes (no session, no token), 403 trust_required to one that has them but
+    not pairing's rights (with no admin password set: another machine), as the hooks, the
+    decision providers and the settings interface refuse the same grant (SEC-16)."""
     from proxy import app as app_mod
-    a = app_mod.STATE.get("auth")
-    if route == "fleet_trust" and a is not None and not a.password_set and \
-            a.decide(route, handler._peer(), handler.headers) != "ok":
-        return _send(handler, 401, {"error": {
-            "type": "unauthorized", "message": f"{what} take pairing's rights: set an admin "
-            f"password (App settings) to do it from another machine, or do it from this one"}}) \
-            or True
-    if not handler._allowed(route):
+    if not handler._allowed("conductor_write"):
         return True
+    a = app_mod.STATE.get("auth")
+    if route == "fleet_trust" and a is not None and \
+            a.decide(route, handler._peer(), handler.headers) != "ok":
+        from proxy import hookapi
+        return _send(handler, 403, hookapi.trust_required(what)) or True
     return None
 
 

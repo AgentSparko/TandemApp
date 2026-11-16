@@ -43,7 +43,7 @@
 //   {fail: "<route>:<error type>" | null}  a route answers that refusal until cleared (list,
 //                                          inspect, install, get, verify, delete, status, logs,
 //                                          start, stop, restart, panels, bridge)
-//   {trust: true | false}                  the caller has pairing's rights (install, enable, remove)
+//   {trust: true | false}                  the caller has pairing's rights (install, enable, remove; else 403 trust_required)
 //   {sandbox: true | false}                this machine has a sandbox runtime
 //   {crash: "<id>"}                        that plugin's process exits at once, and at each start
 //   {tamper: "<id>"}                       its files changed since the install
@@ -71,7 +71,7 @@ export const PANEL_CSP = "sandbox allow-scripts allow-forms; default-src 'none';
 
 /** every error type with its HTTP status (contracts/plugin-v1/api.json `errors`) */
 export const PLUGIN_ERRORS: Record<string, number> = {
-  bad_request: 400, unauthorized: 401, cross_site: 403, cross_origin: 403, not_found: 404, bad_source: 422, commit_required: 422, commit_not_found: 422, plugin_refused: 422,
+  bad_request: 400, unauthorized: 401, cross_site: 403, cross_origin: 403, trust_required: 403, not_found: 404, bad_source: 422, commit_required: 422, commit_not_found: 422, plugin_refused: 422,
   manifest_missing: 422, bad_wheel: 422, symlink: 422, special_file: 422, bad_name: 422, too_large: 422, submodule: 422, lfs: 422, not_a_folder: 422, exists: 409,
   version_unchanged: 409, downgrade: 409, conflict: 409, referenced: 409, integrity: 409, disabled: 409, incompatible_tandemapp: 409, incompatible_hooks_api: 409,
   incompatible_plugin_api: 409, git_failed: 422, git_missing: 503, git_timeout: 504, unavailable: 503, unreadable: 422, plugin_down: 503, refused: 403, plugin_error: 502, bad_arguments: 400,
@@ -794,7 +794,8 @@ export class MockPlugins {
     if (type) no(type, SENTENCE[type] ?? `${type} (the mock was told to refuse ${route})`);
   }
   private rights(): void {
-    if (!this.trust) no('unauthorized', 'installing, enabling and removing a plugin take pairing’s rights: set an admin password (App settings) to do it from another machine, or do it from this one');
+    // SEC-16: the configuration's writes but not pairing's rights: 403, as the controller answers
+    if (!this.trust) no('trust_required', 'installing, enabling, trusting and removing a plugin take pairing’s rights: set an admin password (App settings) to do it from another machine, or do it from this one');
   }
   private fields(body: Record<string, unknown>, allowed: string[]): void {
     const extra = Object.keys(body).filter((k) => !allowed.includes(k)).sort();

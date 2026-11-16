@@ -11,8 +11,9 @@ Every answer validates against contracts/plugin-v1 (and settings-v1).
      second install of the name (409 exists), removal while a hook names it (409 referenced), an
      unknown field in the body, an unknown plugin (404)        test_refusals_over_http
   3  The rights: from another machine without the admin's token every route is 401; with it,
-     reads and installs work; with no admin password set, install, enable and remove are this
-     machine's only (401 from another); a write from another origin is 403
+     reads and installs work; with no admin password set, install, upload, enable, trust,
+     remove and the policy are this machine's only (403 trust_required from another, SEC-16); a
+     write from another origin is 403
                                                                test_rights
   4  The settings, secrets and grants over /v1/settings/plugins; no secret in any answer, the log,
      a file under the controller's state dir in plain text, or the move's export
@@ -221,15 +222,22 @@ def test_rights():
             assert st == 403
             _j(px, "DELETE", BASE + "/hello-tool", headers=h)
         with Proxy({}) as px:                                     # no admin password
+            # SEC-16: the configuration's writes but not pairing's rights: 403 trust_required,
+            # as the hooks and the settings interface answer (not 401: nothing to sign in to)
             for method, path, b in (("POST", BASE, body),):
-                err = _j(px, method, path, b, 401, AWAY)
+                err = _j(px, method, path, b, 403, AWAY)
+                assert err["error"]["type"] == "trust_required", err
                 assert "pairing" in err["error"]["message"]
             _j(px, "POST", BASE, body, 201)                       # from this machine
             _j(px, "GET", BASE, headers=AWAY)                     # reads: the configuration's
-            st, _, _ = px.request("POST", BASE + "/hello-tool/enable", {}, AWAY)
-            assert st == 401
-            st, _, _ = px.request("DELETE", BASE + "/hello-tool", None, AWAY)
-            assert st == 401
+            for method, path, b in (("POST", BASE + "/hello-tool/enable", {}),
+                                    ("POST", BASE + "/hello-tool/trust", {"level": "host"}),
+                                    ("DELETE", BASE + "/hello-tool", None),
+                                    ("POST", "/v1/fleet/plugin-trust/policy",
+                                     {"require_signature_sandboxed": True})):
+                st, _, out = px.request(method, path, b, AWAY)
+                assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", \
+                    (method, path, st, out)
             _j(px, "POST", BASE + "/hello-tool/disable", {}, headers=AWAY)
             # the plugins scope: enabling and granting take pairing's rights there too
             st, _, out = px.request("POST", "/v1/settings/plugins/plan", {
@@ -317,7 +325,8 @@ def test_upload_run_and_confirm():
             _j(px, "POST", BASE + "/upload" + name, data, 415, {"Content-Type": "text/plain"})
             _j(px, "POST", BASE + "/upload" + name, b"not a zip", 422, octet)
             _j(px, "POST", BASE + "/upload" + name, b"", 400, octet)
-            _j(px, "POST", BASE + "/upload" + name, data, 401, dict(octet, **AWAY))
+            err = _j(px, "POST", BASE + "/upload" + name, data, 403, dict(octet, **AWAY))
+            assert err["error"]["type"] == "trust_required", err
             made = _ok(_j(px, "POST", BASE, {"source": up["source"]}, 201), "install")
             assert made["plugin"]["source"]["type"] == "wheel"
             # past its time it is gone, and so is what it answered

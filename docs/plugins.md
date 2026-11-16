@@ -204,6 +204,8 @@ The install checks each part: the tree, the manifest, the name and the version m
 
 A signature that holds is only trusted when its key is one this TandemApp trusts for that plugin at that level. A signature by any other key counts as none.
 
+A route that takes pairing's rights (install, upload, enable, remove, a trust grant, the keys and the policy) answers 403 `trust_required` to a caller that may change the configuration but has not those rights (with no admin password set: any other machine), and 401 to one that may not change the configuration at all.
+
 **Trusted keys** (`/v1/fleet/plugin-trust`, pairing's rights to change). Adding a key takes its fingerprint typed or pasted back: compare it with the one its publisher published. Without it the answer is 428 `fingerprint_confirm_required` with the fingerprint to compare; a different one is 422 `fingerprint_mismatch`. A key can be limited to plugin ids (`plugins`) and to trust levels (`levels`); `null` means any. Removing a key takes its fingerprint as well. To change a key's limits, remove it and add it again.
 
 ```

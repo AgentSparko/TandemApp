@@ -410,6 +410,8 @@ export function pluginErrorWords(e: Pick<PluginError, 'type' | 'message' | 'fact
   const f = e.facts ?? {};
   const own = (title: string, fix: string | null): Said => ({ title, fix, detail: m && m !== title ? m : null });
   switch (e.type) {
+    case 'trust_required':
+      return { title: 'This needs pairing’s rights.', fix: 'With no admin password set, only the controller’s own machine may install, turn on, trust and remove a plugin: do it there, or set an admin password under App settings and sign in. Nothing was changed.', detail: null };
     case 'unauthorized':
       return { title: 'This needs pairing’s rights.', fix: 'Installing, turning on and removing a plugin are the admin’s: sign in below, or do it on the controller’s own machine. Nothing was changed.', detail: m && !/^a session/.test(m) && !/admin password is needed/.test(m) ? m : null };
     case 'offline':

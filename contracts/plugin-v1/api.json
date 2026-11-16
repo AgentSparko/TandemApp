@@ -147,6 +147,7 @@
   "unauthorized": 401,
   "cross_site": 403,
   "cross_origin": 403,
+  "trust_required": 403,
   "not_found": 404,
   "bad_source": 422,
   "commit_required": 422,
