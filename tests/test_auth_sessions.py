@@ -34,6 +34,9 @@
  11  the timeouts are settings: the idle time renews at most once a day (the cookie again), a
      shorter idle or absolute time ends open sessions, the cap is 400 days   test_timeouts
  12  sign out everywhere and the old session routes over the accounts       test_everywhere_and_old_routes
+ 13  no state rides on a kept connection: a renewal cookie an answer never sent is dropped by the
+     next request; two demotions of the last two owners at once leave one; a users' key of the
+     old rule opens nothing on the OpenAI routes                   test_races_and_leftovers
 
     python tests/test_auth_sessions.py
 """
@@ -153,9 +156,13 @@ def test_sign_in_and_out():
         a.trusted_proxies = frozenset({"192.0.2.9"})
         assert a.secure("192.0.2.9", {"X-Forwarded-Proto": "https"})
         assert not a.secure("127.0.0.1", {})
-        # the __Host- cookie wins when both are sent
+        # each scheme reads its own cookie only: an http one never opens an https session
+        https = {"X-Forwarded-Proto": "https"}
         both = {"Cookie": f"{acc_mod.COOKIE_HTTP}=nothing; {cookie.split(';')[0]}"}
-        assert px.get("/v1/dashboard/summary", both)[0] == 200
+        assert px.get("/v1/dashboard/summary", {**both, **https})[0] == 200
+        assert px.get("/v1/dashboard/summary", both)[0] == 401
+        plain = cookie.split(";")[0].replace(acc_mod.COOKIE_HTTPS, acc_mod.COOKIE_HTTP)
+        assert px.get("/v1/dashboard/summary", {"Cookie": plain, **https})[0] == 401
 
 
 # ---------------------------------------------------------------------------- 2
@@ -569,6 +576,79 @@ def test_everywhere_and_old_routes():
         assert j(px.get("/v1/fleet/app/password", ro(a1)))[0] == 200
         assert px.request("DELETE", "/v1/fleet/session", None, a1)[0] == 204
         assert px.get("/v1/settings", ro(a1))[0] == 401
+
+
+
+# ---------------------------------------------------------------------------- 13
+
+def test_races_and_leftovers():
+    with Proxy(env=ON) as px:
+        a = accounts()
+        make("own", "owner")
+        st = a.store
+
+        class FakeHandler:
+            path = "/health"
+            headers: dict = {}
+            connection = None
+
+            def _peer(self):
+                return "127.0.0.1"
+
+        h = FakeHandler()
+        h._set_cookie = "tandem_session=someone-else; Max-Age=1"
+        assert a.gate(h, "GET") is False and "_set_cookie" not in h.__dict__
+        # two demotions at once: the check and the write hold one lock, one owner stays
+        o2 = st.create("own2", "owner", "the second long password", actor="test")
+        o1 = st.by_username("own")
+        for _ in range(5):
+            st.update(o2["id"], {"role": "owner"}, actor="test")
+            barrier = threading.Barrier(2)
+            got = []
+
+            def demote(aid):
+                barrier.wait()
+                try:
+                    st.update(aid, {"role": "admin"}, actor="test")
+                    got.append("ok")
+                except acc_mod.AccountError as exc:
+                    got.append(exc.status)
+
+            ts = [threading.Thread(target=demote, args=(x["id"],)) for x in (o1, o2)]
+            [t.start() for t in ts]
+            [t.join() for t in ts]
+            assert sorted(got, key=str) == [409, "ok"], got
+            assert len(st.owners_enabled()) == 1
+            survivor = st.owners_enabled()[0]
+            o1, o2 = st.get(survivor), st.get(o2["id"] if survivor == o1["id"] else o1["id"])
+        # an API key of the old rule: nothing on the OpenAI routes or the model list
+        _row, key = px.svc.cfg.create_user({"label": "old-client"}, who="test")
+        for path in ("/v1/models",):
+            assert px.get(path, {"Authorization": f"Bearer {key}"})[0] == 401
+        assert px.post("/v1/chat/completions", {"model": "m", "messages": []},
+                       {"Authorization": f"Bearer {key}"})[0] == 401
+
+        class Bare:
+            headers = {"Authorization": f"Bearer {key}"}
+            client_address = ("127.0.0.1", 1)
+            _principal = None
+            sent: list = []
+
+            def send_response(self, code):
+                self.sent.append(code)
+
+            def send_header(self, *a):
+                pass
+
+            def end_headers(self):
+                pass
+
+            class wfile:
+                @staticmethod
+                def write(b):
+                    pass
+        b = Bare()
+        assert px.svc.authorize(b) == (False, None) and b.sent == [401]
 
 
 if __name__ == "__main__":

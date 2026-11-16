@@ -21,7 +21,8 @@ time at most once a day, and the cookie with it. The table is the truth: a resta
 and an end needs no restart. A stream or a WebSocket of a session that ends is closed: at once
 when this process ends it, within STREAM_CHECK_S otherwise.
 
-THE COOKIE. `__Host-tandem_session` over https, `tandem_session` over http; HttpOnly,
+THE COOKIE. `__Host-tandem_session` over https, `tandem_session` over http (each read only on
+its own scheme); HttpOnly,
 SameSite=Strict, Path=/, no Domain, Secure over https, Max-Age the idle time. Https is known from
 the listener's own TLS, or from X-Forwarded-Proto sent by a loopback peer or a TANDEM_TRUSTED_PROXY
 peer; from any other peer the header counts for nothing.
@@ -263,7 +264,16 @@ class AccountStore:
             self.owners_enabled() == [row["id"]]
 
     def update(self, account_id: str, changes: dict, *, actor: str) -> tuple[dict, bool]:
-        """(the row, whether its sessions end: a disable or a lower role)."""
+        """(the row, whether its sessions end: a disable or a lower role). The last-owner check
+        and the write hold the database's lock together: two at once never leave none."""
+        with self.cfg._lock:
+            row, ends = self._update_locked(account_id, changes, actor)
+        if ends:
+            self.revoke_account(account_id, actor=actor,
+                                why="role" if row["enabled"] else "disabled")
+        return row, bool(ends)
+
+    def _update_locked(self, account_id: str, changes: dict, actor: str):
         row = self.get(account_id)
         if row is None:
             raise AccountError(404, "not_found", "no such account")
@@ -282,32 +292,29 @@ class AccountStore:
         if name is not None and not isinstance(name, str):
             raise AccountError(400, "bad_request", "display_name is a string")
         ends = (not enabled and row["enabled"]) or authz.rank(role) < authz.rank(row["role"])
-        with self.cfg._lock:
-            self._c.execute("UPDATE accounts SET role = ?, enabled = ?, display_name = ? WHERE "
-                            "id = ?", (role, int(enabled), _clean(name, 120) or None, account_id))
-            for what, old, new in (("role", row["role"], role),
-                                   ("enabled", row["enabled"], enabled)):
-                if old != new:
-                    self.cfg._audit(actor, what if what == "role" else
-                                    ("enable" if new else "disable"), "account", account_id,
-                                    detail={"username": row["username"], "from": old, "to": new})
-            if row["display_name"] != name:
-                self.cfg._audit(actor, "update", "account", account_id, fields=["display_name"],
-                                detail={"username": row["username"]})
-            self._c.commit()
-        if ends:
-            self.revoke_account(account_id, actor=actor, why="role" if enabled else "disabled")
-        return self.get(account_id), bool(ends)
+        self._c.execute("UPDATE accounts SET role = ?, enabled = ?, display_name = ? WHERE "
+                        "id = ?", (role, int(enabled), _clean(name, 120) or None, account_id))
+        for what, old, new in (("role", row["role"], role),
+                               ("enabled", row["enabled"], enabled)):
+            if old != new:
+                self.cfg._audit(actor, what if what == "role" else
+                                ("enable" if new else "disable"), "account", account_id,
+                                detail={"username": row["username"], "from": old, "to": new})
+        if row["display_name"] != name:
+            self.cfg._audit(actor, "update", "account", account_id, fields=["display_name"],
+                            detail={"username": row["username"]})
+        self._c.commit()
+        return self.get(account_id), ends
 
     def remove(self, account_id: str, *, actor: str) -> dict:
-        row = self.get(account_id)
-        if row is None:
-            raise AccountError(404, "not_found", "no such account")
-        if self._last_owner(row):
-            raise AccountError(409, "last_owner", "this is the last enabled owner: make another "
-                                                  "owner first")
-        self.revoke_account(account_id, actor=actor, why="removed")
-        with self.cfg._lock:
+        with self.cfg._lock:                 # the last-owner check and the delete: one hold
+            row = self.get(account_id)
+            if row is None:
+                raise AccountError(404, "not_found", "no such account")
+            if self._last_owner(row):
+                raise AccountError(409, "last_owner", "this is the last enabled owner: make "
+                                                      "another owner first")
+            self.revoke_account(account_id, actor=actor, why="removed")
             self._c.execute("DELETE FROM sessions WHERE account_id = ?", (account_id,))
             self._c.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
             self.cfg._audit(actor, "delete", "account", account_id,
@@ -650,13 +657,15 @@ class AccountsAuth:
     def has_token(self, headers) -> bool:
         return bool(self._h(headers, "Authorization") or self._h(headers, "x-api-key"))
 
-    def cookie_value(self, headers) -> str | None:
-        got = {}
+    def cookie_value(self, headers, peer: str = "") -> str | None:
+        """The session cookie of the request's scheme: over https only __Host-tandem_session,
+        over http only tandem_session (a cookie set over http never opens an https session)."""
+        name = COOKIE_HTTPS if self.secure(peer, headers) else COOKIE_HTTP
         for part in self._h(headers, "Cookie").split(";"):
             k, _, v = part.strip().partition("=")
-            if k in (COOKIE_HTTPS, COOKIE_HTTP) and v:
-                got.setdefault(k, v)
-        return got.get(COOKIE_HTTPS) or got.get(COOKIE_HTTP)
+            if k == name and v:
+                return v
+        return None
 
     def resolve(self, headers, peer: str = "", path: str = "") -> Principal | None:
         if self.has_token(headers):
@@ -668,7 +677,7 @@ class AccountsAuth:
             key = reg.key_for(tok) if reg is not None else None
             return (Principal(kind=authz.SESSION_ADDRESS, id=key, name="session address",
                               via="address") if key else None)
-        sid = self.cookie_value(headers)
+        sid = self.cookie_value(headers, peer)
         if sid:
             got = self.store.lookup(sid)
             if got is not None:
@@ -807,6 +816,9 @@ class AccountsAuth:
         """True when the request was refused (answered here)."""
         raw = handler.path.split("?", 1)[0]
         path = raw.rstrip("/") or "/"
+        # an answer written without end_headers (a relayed one) never sent the renewal; it must
+        # not ride on the next request of the connection, whoever sends that
+        handler.__dict__.pop("_set_cookie", None)
         handler._principal = None
         self._tls.headers, self._tls.principal, self._tls.conn = handler.headers, None, None
         perm = authz.permission_for(method, raw)
@@ -828,7 +840,7 @@ class AccountsAuth:
                 return self._refuse(handler, method, *bad)
             row = self.store.session_row(p.session)
             if row is not None and self.store.touch(row, self.limits.key(peer, handler.headers)):
-                sid = self.cookie_value(handler.headers)
+                sid = self.cookie_value(handler.headers, peer)
                 handler._set_cookie = self.cookie(sid, peer, handler.headers)
             conn = getattr(handler, "connection", None)
             if conn is not None:

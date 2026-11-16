@@ -324,8 +324,9 @@ class Service:
             if p is not None and (authz.allow(p, "inference", self.auth.policy)
                                   or authz.allow(p, "chat-engine", self.auth.policy)):
                 return True, p.name
-            active = True
+            active, legacy_keys = True, False
         else:
+            legacy_keys = True
             try:
                 active = self.cfg.users_active()
             except Exception:                                      # noqa: BLE001
@@ -340,7 +341,7 @@ class Service:
             pass
         if auth[:7].lower() == "bearer ":
             token = auth[7:].strip()
-        label = self.cfg.user_for_key(token)
+        label = self.cfg.user_for_key(token) if legacy_keys else None
         if label is not None:
             return True, label
         peer = (getattr(handler, "client_address", None) or ("",))[0]
