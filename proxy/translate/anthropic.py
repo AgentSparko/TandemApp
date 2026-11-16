@@ -635,8 +635,8 @@ def next_page(doc) -> str | None:
 # THE ANSWER. Reasoning (`reasoning_content` or `reasoning`) becomes a `thinking` block whose
 # signature this server makes (`signature`; the text empty with `display: "omitted"`), then the
 # text block, then a `tool_use` block per call. Stop reasons: `stop` to `end_turn`, or
-# `stop_sequence` when the backend names the string that matched (`choices[].stop_reason`, as vLLM
-# does); `length` to `max_tokens`; `tool_calls` to `tool_use`; `content_filter` to `refusal`.
+# `stop_sequence` when the backend names the string that matched (`choices[].stop_reason`, where a
+# server sets it); `length` to `max_tokens`; `tool_calls` to `tool_use`; `content_filter` to `refusal`.
 # Usage: `input_tokens` = prompt minus cached, `cache_read_input_tokens` = cached,
 # `cache_creation_input_tokens` = 0, `output_tokens` = completion.
 #

@@ -491,7 +491,11 @@ class Out:
                 elif self.mode == "stream" and not self.gone:
                     if self.sbuf.strip():
                         self._send(self.conv.feed(bytes(self.sbuf)))
-                    self._send(self.conv.fail("api_error", "the stream ended early"))
+                    if self.conv.finish_reason is not None:
+                        # a finish without `[DONE]`: whole, as the relay reads it too
+                        self._send(self.conv.finish())
+                    else:
+                        self._send(self.conv.fail("api_error", "the stream ended early"))
                 elif self.mode is None and self.head and not self.gone:
                     self._send(self.conv.fail("api_error", "the request ended without an answer"))
             except OSError:

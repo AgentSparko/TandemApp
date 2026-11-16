@@ -202,7 +202,34 @@ def test_golden_requests():
         assert "cache_control" not in json.dumps(chat), name
 
 
+class _H:
+    """A client socket's handler: what `Out` writes to it."""
+
+    def __init__(self):
+        self.out, self.close_connection, self.status, self.headers = bytearray(), False, None, {}
+        outer = self
+
+        class W:
+            def write(self, d):
+                outer.out += d
+
+            def flush(self):
+                pass
+        self.wfile = W()
+
+    def send_response(self, st, *_):
+        self.status = st
+
+    def send_header(self, *a):
+        pass
+
+    def end_headers(self):
+        pass
+
+
 def test_golden_answers_and_streams():
+    import random
+    rnd = random.Random(879)
     fx = _fx()
     for name, c in fx["answers"].items():
         got = tr.to_message(c["chat"], "msg_fixture", c["meta"])
@@ -222,10 +249,21 @@ def test_golden_answers_and_streams():
                 [{"city": "Oslo"}, {}]
         if name == "error_frame":
             assert got["error"]["type"] == "api_error"
-        # cut anywhere: the events in pieces give the same bytes
-        conv2 = tr.ChatToMessages("msg_fixture", c["meta"])
-        assert conv2.start() + b"".join(conv2.feed(e.encode()) for e in c["events"]) + \
-            conv2.finish() == data
+        # the same events through `Out` in random pieces, as a socket gives them: the same bytes
+        raw = ("\n\n".join(c["events"]) + "\n\n").encode()
+        for _ in range(10):
+            h = _H()
+            o = messages_mod.Out(h, {}, False, "msg_fixture", c["meta"], "req_t", [])
+            o.send_response(200)
+            o.send_header("Content-Type", "text/event-stream")
+            o.end_headers()
+            i = 0
+            while i < len(raw):
+                j = min(len(raw), i + rnd.randint(1, 40))
+                o.wfile.write(raw[i:j])
+                i = j
+            o.end()
+            assert bytes(h.out) == data, name
 
 
 def test_golden_errors():
@@ -288,6 +326,9 @@ class Scripted:
                 if isinstance(item, dict) and "quiet" in item:
                     time.sleep(item["quiet"])
                     item = item["then"]
+                done = True
+                if isinstance(item, dict) and "chunks" in item:
+                    item, done = item["chunks"], item.get("done", True)
                 if isinstance(item, dict):
                     return self._json(200, item)
                 self.send_response(200)
@@ -297,7 +338,8 @@ class Scripted:
                 for c in item:
                     self.wfile.write(b"data: " + json.dumps(c).encode() + b"\n\n")
                     self.wfile.flush()
-                self.wfile.write(b"data: [DONE]\n\n")
+                if done:
+                    self.wfile.write(b"data: [DONE]\n\n")
 
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
         self.srv.daemon_threads = True
@@ -666,28 +708,7 @@ def test_a_model_on_a_messages_api_backend_is_translated_twice():
 def test_a_whole_answer_to_a_stream_request_and_a_late_error():
     """`Out` on its own: a backend that answers a stream request whole still gives a stream; a
     refusal after the ping thread started the head is an error event."""
-    class H:
-        def __init__(self):
-            self.out, self.close_connection = bytearray(), False
-            self.status = None
-            self.headers = {}
-
-            class W:
-                def write(w, d):
-                    self.out += d
-
-                def flush(w):
-                    pass
-            self.wfile = W()
-
-        def send_response(self, st, *_):
-            self.status = st
-
-        def send_header(self, *a):
-            pass
-
-        def end_headers(self):
-            pass
+    H = _H
 
     def feed(o, status, obj):
         data = json.dumps(obj).encode()
@@ -715,6 +736,75 @@ def test_a_whole_answer_to_a_stream_request_and_a_late_error():
         messages_mod.PING_S = old
     got = strict(bytes(h.out))
     assert h.status == 200 and got["error"] == {"type": "overloaded_error", "message": "full"}
+
+
+def test_a_stream_that_ends_without_done_ends_whole():
+    """A finish chunk and then the close (no `[DONE]`): the relay reads it as whole, and so does
+    the client: message_delta and message_stop, no error."""
+    eng = Scripted()
+    eng.queue = [{"chunks": [{"choices": [{"index": 0, "delta": {"content": "all"},
+                                           "finish_reason": "stop"}]}], "done": False}]
+    with Proxy(_env(eng.port)) as px:
+        px.sync()
+        st, _, data = px.post("/v1/messages", {"model": "m-a", "max_tokens": 9, "stream": True,
+                                               "messages": [{"role": "user", "content": "x"}]},
+                              headers=_hdr())
+        m = strict(data)
+        assert st == 200 and "error" not in m and m["stop_reason"] == "end_turn", data
+        assert m["content"] == [{"type": "text", "text": "all"}]
+    eng.shutdown()
+
+
+def test_thinking_reaches_the_engine_as_its_own_switch():
+    srv, port = fake_backend.start(models=["fake-a"])
+    with Proxy(_env(port)) as px:
+        px.sync()
+        st, h, _ = px.post("/v1/messages", _msg(thinking={"type": "disabled"}), headers=_hdr())
+        assert st == 200 and \
+            srv.fake.bodies[-1]["chat_template_kwargs"] == {"enable_thinking": False}
+        st, h, _ = px.post("/v1/messages", _msg(thinking={"type": "adaptive"},
+                                                output_config={"effort": "high"}),
+                           headers=_hdr())
+        assert st == 200 and "chat_template_kwargs" not in srv.fake.bodies[-1]
+        st, h, _ = px.post("/v1/messages", _msg(thinking={"type": "enabled",
+                                                          "budget_tokens": 2048}),
+                           headers=_hdr())
+        assert h["X-Tandem-Dropped"] == "thinking.budget_tokens"
+    srv.shutdown()
+
+
+def test_hooks_see_the_chat_shape_and_a_deny_keeps_the_messages_shape():
+    from hooks_util import hook_server
+    srv, port = fake_backend.start(models=["fake-a"])
+    hs, hport = hook_server()
+    hs.respond = lambda env: {"action": "modify", "patch": {"temperature": 0.01}}
+    try:
+        with Proxy(_env(port)) as px:
+            px.sync()
+
+            def hook(doc):
+                st, _, out = px.post("/v1/fleet/hooks", doc)
+                assert st == 201, out
+            hook({"name": "cool", "endpoint": f"http://127.0.0.1:{hport}/", "role": "transform",
+                  "stages": ["request.before_engine"], "priority": 1})
+            st, _, data = px.post("/v1/messages", _msg("hi", system="S", temperature=0.9),
+                                  headers=_hdr())
+            assert st == 200 and srv.fake.last["body"]["temperature"] == 0.01, data
+            env = hs.calls[-1]["env"]
+            assert env["stage"] == "request.before_engine" and \
+                env["event"]["sizes"]["chars"]["system"] == 1, env
+            hook({"name": "stop", "kind": "builtin", "target": "deny", "role": "guard",
+                  "stages": ["request.before_engine"], "priority": 100,
+                  "options": {"reason": "not today"}})
+            for stream in (False, True):
+                st, h, data = px.post("/v1/messages", _msg(stream=stream), headers=_hdr())
+                doc = json.loads(data)
+                assert st == 403 and doc["error"] == {"type": "permission_error",
+                                                      "message": "not today"}, data
+                assert h["X-Tandem-Hook"] == "stop" and h["request-id"] == doc["request_id"]
+    finally:
+        srv.shutdown()
+        hs.shutdown()
 
 
 # ------------------------------------------------------------------------- 4 the harness guard
