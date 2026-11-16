@@ -166,6 +166,18 @@ export interface HookCalls {
   metrics: HookMetrics;
 }
 
+/** GET /v1/fleet/hooks/calls?request=: one request's calls across hooks and stages, in the order
+ *  the request met them; each names its hook (its name now, its id when it is gone) */
+export interface HookTraceCall extends HookCall {
+  hook: string;
+  name: string;
+}
+
+export interface HookTrace {
+  request: string;
+  calls: HookTraceCall[];
+}
+
 export interface HookTest {
   hook: string;
   stage: string;
@@ -399,6 +411,8 @@ export interface HooksApi {
   /** the hook once against the stage's sample event; nothing counted, nothing applied */
   test(id: string, stage?: string, event?: Record<string, unknown>): Promise<HookTest>;
   calls(id: string, limit?: number): Promise<HookCalls>;
+  /** one request's calls across every hook and stage, from the journals */
+  trace(request: string): Promise<HookTrace>;
   /** a new secret, answered once; the previous one signs beside it for `grace_s` */
   rotate(id: string, grace_s?: number): Promise<{ hook: Hook; secret: string }>;
 }
@@ -450,6 +464,7 @@ export function hooksApi(send: HookSend): HooksApi {
     remove: async (id) => void (await call('DELETE', seg(id))),
     test: (id, stage, event) => call('POST', `${seg(id)}/test`, { ...(stage ? { stage } : {}), ...(event ? { event } : {}) }),
     calls: (id, limit = 200) => call('GET', `${seg(id)}/calls?limit=${limit}`),
+    trace: (request) => call('GET', `/calls?request=${encodeURIComponent(request)}`),
     rotate: (id, grace_s = 0) => call('POST', `${seg(id)}/secret`, { grace_s }),
   };
 }

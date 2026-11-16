@@ -52,6 +52,7 @@ export function schemaOf(method: string, path: string): string | null {
   if (hook) {
     if (!sub.length) return method === 'GET' ? 'hooks' : 'hook-created';
     if (sub[0] === 'stages') return null;
+    if (sub[0] === 'calls') return 'hook-trace';
     if (sub[1] === 'test') return 'hook-test';
     if (sub[1] === 'calls') return 'hook-calls';
     if (sub[1] === 'secret') return 'hook-created';

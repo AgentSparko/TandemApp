@@ -129,6 +129,8 @@ describe('Gherkin: the hooks pages (VIS-282)', () => {
     // When the user opens its trace
     await p.flow.readTrace(id);
     const t = p.flow.trace.trace!;
+    // the open request is read from the controller's trace of it (SRV-849)
+    expect(p.r.paths).toContain(`GET /v1/fleet/hooks/calls?request=${id}`);
     // Then each stage, hook, time and result is listed
     expect(t.stages.map((s) => [s.stage, s.calls.map((c) => c.hook)])).toEqual([['request.before_engine', ['temperature-cap']], ['response.after_engine', ['export']], ['request.finished', ['audit', 'export']]]);
     expect([t.calls, t.hooks.length, t.refused]).toEqual([4, 3, null]);

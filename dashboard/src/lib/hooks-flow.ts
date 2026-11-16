@@ -527,10 +527,13 @@ export class HooksFlow {
       await this.load();
       if (this.refused) throw this.refused;
       const hooks = this.list ?? [];
-      const got = await Promise.all(hooks.map((h) => this.api.calls(h.id, 500)));
+      const [got, one] = await Promise.all([Promise.all(hooks.map((h) => this.api.calls(h.id, 500))), t.request ? this.api.trace(t.request) : Promise.resolve(null)]);
       this.journals = Object.fromEntries(got.map((r) => [r.hook, r.calls]));
       t.recent = recentRequests(this.journals);
-      t.trace = t.request ? traceOf(t.request, this.journals, hooks, this.table!) : null;
+      // the open request from the controller's own trace, which also holds the calls of a hook gone since
+      const mine: Record<string, HookCall[]> = {};
+      for (const c of one?.calls ?? []) (mine[c.hook] ??= []).push(c);
+      t.trace = t.request ? traceOf(t.request, mine, hooks, this.table!) : null;
       t.refused = null;
     } catch (e) {
       t.refused = asHookError(e);

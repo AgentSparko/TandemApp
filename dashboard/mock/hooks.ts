@@ -548,8 +548,9 @@ export class MockHooks {
     const d: Record<string, unknown> = { name: doc.name, kind: doc.kind ?? 'http', stages: doc.stages, role: doc.role, priority: doc.priority ?? 100, mode: doc.mode ?? 'on', scope: doc.scope ?? {}, policy: doc.policy ?? null, timeout_ms: doc.timeout_ms ?? null, payload: doc.payload ?? 'meta', endpoint: doc.endpoint ?? null, target: doc.target ?? null, options: doc.options ?? {}, enabled: doc.enabled ?? true };
     this.check(d);
     let id = doc.id as string | undefined;
-    if (id == null) id = this.freeId(d.name as string, this.hooks, 'hook');
+    if (id == null) id = this.freeId(d.name as string, { ...this.hooks, stages: 1, calls: 1 }, 'hook');
     else if (typeof id !== 'string' || !ID_RE.test(id)) bad('id: [a-z0-9][a-z0-9._-]{0,47}', 'id');
+    else if (id === 'stages' || id === 'calls') bad(`id: '${id}' is a route of the hooks' API; choose another`, 'id');
     else if (this.hooks[id]) no('exists', `a hook '${id}' exists`, 'id');
     const host = d.kind === 'http' ? hostOf(d.endpoint as string) : null;
     const lan = d.kind === 'http' ? hostIsLan(host) : true;
@@ -612,6 +613,15 @@ export class MockHooks {
     } else if (sub.length === 1 && sub[0] === 'stages' && method === 'GET') {
       this.forced('stages');
       return [200, STAGES];
+    } else if (sub.length === 1 && sub[0] === 'calls' && method === 'GET') {
+      // SRV-849: one request's trace, every hook's journal read for it
+      this.forced('trace');
+      const rid = q.get('request') ?? '';
+      if (!rid || rid.length > 200) no('bad_request', "request: the id of a request (its X-Request-Id, or a journal row's `request`)");
+      const order = Object.keys(STAGES.stages);
+      const calls = Object.entries(this.hooks).flatMap(([id, h]) => h.journal.filter((c) => c.request === rid).map((c) => ({ ...copy(c), hook: id, name: h.name, prio: h.vals.priority as number })));
+      calls.sort((a, b) => a.ts - b.ts || order.indexOf(a.stage) - order.indexOf(b.stage) || a.prio - b.prio || (a.hook < b.hook ? -1 : 1));
+      return [200, { request: rid, calls: calls.map(({ prio: _p, ...c }) => c) }];
     } else if (sub.length === 1) {
       const id = sub[0];
       if (method === 'GET') {

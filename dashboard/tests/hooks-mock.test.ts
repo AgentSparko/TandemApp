@@ -190,6 +190,32 @@ describe('a request through the stages, in the mock', () => {
     expect(JSON.stringify(await r.hooks.calls('second-cap'))).not.toContain('0.123456');
   });
 
+  it('one request’s trace: every hook’s calls of it, in the order the request met them, each with its hook’s name (SRV-849)', async () => {
+    const r = rig();
+    await r.hooks.create({ ...HTTP, priority: 20 });
+    await r.hooks.create({ name: 'Watch', kind: 'builtin', target: 'noop', role: 'observer', stages: ['request.before_engine'], priority: 1 });
+    const id = r.reg.request(r.now());
+    r.reg.request(r.now() + 1000);
+    const t = await r.hooks.trace(id);
+    expect(t.request).toBe(id);
+    expect(t.calls.map((c) => [c.stage, c.hook, c.name])).toEqual([
+      ['request.before_engine', 'temperature-cap', 'Temperature cap'],
+      ['request.before_engine', 'watch', 'Watch'],
+      ['response.after_engine', 'export', 'Export to the archive'],
+      ['request.finished', 'audit', 'Audit log'],
+      ['request.finished', 'export', 'Export to the archive'],
+    ]);
+    // the same calls the hooks' own journals hold for it, and no other request's
+    const each = (await Promise.all(['temperature-cap', 'watch', 'export', 'audit'].map((h) => r.hooks.calls(h)))).flatMap((x) => x.calls).filter((c) => c.request === id);
+    expect(t.calls.length).toBe(each.length);
+    expect((await r.hooks.trace('chatcmpl-none')).calls).toEqual([]);
+    const none = await r.send('GET', '/v1/fleet/hooks/calls');
+    expect([none.status, (none.body as { error: { type: string } }).error.type]).toEqual([400, 'bad_request']);
+    // `stages` and `calls` are routes: no hook takes either id
+    expect(await refusal(r.hooks.create({ ...HTTP, id: 'calls' } as never))).toMatchObject([422, 'invalid', { field: 'id' }]);
+    expect((await r.hooks.create({ ...HTTP, name: 'Calls' })).hook.id).toBe('calls-2');
+  });
+
   it('a guard’s deny ends the path: only the ledger’s stage still runs', async () => {
     const r = rig();
     await r.hooks.create(HTTP);
