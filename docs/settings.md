@@ -242,6 +242,12 @@ The plugins scope (settings-v1 1.1) has one target a plugin. Its keys come from 
 
 Enabling a plugin and every grant take pairing's rights (403 `trust_required` otherwise). A grant of `prompts:full`, `engine:control`, `network:<host>` outside the LAN or `trust` host is in the plan's `grant_keys` and needs `confirm_grant`. The plugin host restarts a running plugin when its settings, secrets or grants change. A restore that brings a grant back asks again.
 
+## The configuration as a file
+
+`GET /v1/fleet/app/export` writes the configuration as a file (`tandemapp-fleet-config`, version 2): the fleet's nodes, deployments, alert rules, layouts and `app.*` settings, and the hooks, the decision providers, the plugins (name, version, source, sha256, settings and grants, never their files), each paired engine host's overlay and the conductor's stored documents. No secret is in it: a hook's secret, a provider's keys, a plugin's secrets and an engine's secret keys appear by name only.
+
+`POST /v1/fleet/app/import {config, mode?}` plans the file and changes nothing; `POST /v1/fleet/app/import/apply` with the plan's `confirm` applies it. Version 2's switches, settings, grants, overlay keys and documents go through one change set of this interface, in its order, stopping at the first failure; the hooks and providers the file adds are created after it, the hooks first. A plugin the file names that is not installed is a conflict naming what to install, and so is a hook of that plugin; an engine host that is not paired is a conflict. A plan whose change set feeds an engine's disk-cache fingerprint, or that grants a payload outside the LAN, gives `confirm_fingerprint` or `confirm_grant`, and the apply sends them too. A secret the file holds by mistake is stripped and listed in the plan's `stripped`. A version 1 file still imports; a file of a later version is refused with the version it needs.
+
 ## The pages
 
 The dashboard shows this interface under Settings, App: one page per scope.

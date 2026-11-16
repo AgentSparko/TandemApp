@@ -47,7 +47,12 @@
               "deployment",
               "rule",
               "layout",
-              "setting"
+              "setting",
+              "hook",
+              "provider",
+              "plugin",
+              "engine",
+              "conductor"
             ]
           },
           "id": {
@@ -87,6 +92,33 @@
           "fields"
         ],
         "additionalProperties": false
+      }
+    },
+    "settings": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "version 2: the change set's result (state applied, partial or failed, what applied, failed and did not run)"
+    },
+    "created": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "`hook/<id>`, `provider/<id>` the import created after the change set"
+    },
+    "failed": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "where version 2's apply stopped: `settings` or the create that failed"
+    },
+    "not_run": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     }
   },

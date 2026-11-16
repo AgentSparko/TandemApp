@@ -67,7 +67,12 @@
               "deployment",
               "rule",
               "layout",
-              "setting"
+              "setting",
+              "hook",
+              "provider",
+              "plugin",
+              "engine",
+              "conductor"
             ]
           },
           "id": {
@@ -157,6 +162,115 @@
         "number",
         "null"
       ]
+    },
+    "settings": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "version 2: the change set the import applies through the settings interface (its parts and keys, restart, fingerprint and grant keys); null when it has none",
+      "properties": {
+        "change_set": {
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "restart": {
+                "type": "string"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "scope",
+              "target",
+              "keys",
+              "restart",
+              "warnings"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "restart": {
+          "type": "string"
+        },
+        "fingerprint_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "grant_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "change_set",
+        "changed",
+        "parts",
+        "restart",
+        "fingerprint_keys",
+        "grant_keys"
+      ],
+      "additionalProperties": false
+    },
+    "stripped": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "where the file held a secret by mistake: stripped, never written or answered"
+    },
+    "fingerprint_keys": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "grant_keys": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confirm_fingerprint": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the apply carries it when fingerprint_keys is not empty"
+    },
+    "confirm_grant": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the apply carries it when grant_keys is not empty"
     }
   },
   "required": [

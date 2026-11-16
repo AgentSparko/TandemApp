@@ -23,15 +23,19 @@ from the Keychain where one is stored there; the Keychain is not used for the ot
 and on Linux it does not apply. Notifications: the page's (the browser's permission); the
 controller sends none. Sudo on a node: asked per action (fabric link setup), never stored.
 
-THE EXPORT (`kind: tandemapp-fleet-config`, version 1) is JSON for a person to keep: the nodes
-(id, alias, colour, icon, tags, class, hardware, address, transport, lease and cost, whether it is
-the controller's own machine, whether it is paired and the pinned certificate's SHA-256), the
-deployment records, the alert rules as they are now, the saved layouts and the `app.*` settings.
-SECRETS ARE LEFT OUT, never sealed into it: the controller's certificate key, each node's trust
-(the pinned certificate stays only as its fingerprint), SSH routes, key files and tunnels, the
-admin password and token, the backends and their API keys, the metric history and the events.
-Moving the controller with its keys is Move / Take the fleet (proxy/ctlmove.py: sealed ECDH
-P-256, HKDF-SHA256, AES-256-GCM to the taker's certificate); the file says what it left out.
+THE EXPORT (`kind: tandemapp-fleet-config`, version 2; SRV-847) is JSON for a person to keep: the
+nodes (id, alias, colour, icon, tags, class, hardware, address, transport, lease and cost, whether
+it is the controller's own machine, whether it is paired and the pinned certificate's SHA-256), the
+deployment records, the alert rules as they are now, the saved layouts and the `app.*` settings
+(version 1's sections), and version 2's: the hooks, the decision providers, the plugins (name,
+version, source, sha256, settings, grants), each paired engine host's overlay and the conductor's
+documents (proxy/configv2.py). A version 1 file still imports; a file of a later version is refused
+with the version it needs. SECRETS ARE LEFT OUT, never sealed into it: the controller's certificate
+key, each node's trust (the pinned certificate stays only as its fingerprint), SSH routes, key
+files and tunnels, the admin password and token, the backends and their API keys, the metric
+history and the events. Moving the controller with its keys is Move / Take the fleet
+(proxy/ctlmove.py: sealed ECDH P-256, HKDF-SHA256, AES-256-GCM to the taker's certificate); the
+file says what it left out.
 
 THE IMPORT merges a file into the running controller (`mode` merge, the default) or makes the
 registry the file's (`replace`: also removes what the file lacks, where removing is safe). It
@@ -43,6 +47,12 @@ starts them); one that serves here is never replaced or removed. A paired node i
 (release it on its page). The plan lists each item (`add`, `change`, `remove`, `keep`, `conflict`
 with why); conflicts are skipped. The confirm is single use, good for CONFIRM_S, and bound to the
 file, the mode and the registry as it was planned: a registry that changed since is 409.
+
+Version 2's sections apply through ONE change set of the settings interface (switches, settings,
+grants, overlay keys, documents), after version 1's items; the hooks and providers the file adds
+are created after it (proxy/configv2.py). A plan whose change set feeds an engine's disk-cache
+fingerprint names `fingerprint_keys` and gives `confirm_fingerprint`, one that grants a payload
+outside the LAN `grant_keys` and `confirm_grant`: the apply carries them as well (428 without).
 """
 
 from __future__ import annotations
@@ -63,6 +73,8 @@ from proxy import _version, fleethealth
 
 CONTRACT = "1.0"
 KIND = "tandemapp-fleet-config"
+VERSION = 2
+READS = (1, 2)
 CONFIRM_S = 300.0
 SERVICE_CACHE_S = 30.0
 AGENT_PORT = 7700
@@ -272,9 +284,12 @@ def check_file(doc) -> dict:
     if doc.get("kind") != KIND:
         raise AppError(400, "bad_request", f"not a TandemApp fleet configuration (kind is "
                                            f"{KIND})")
-    if doc.get("version") != 1:
-        raise AppError(400, "bad_request", f"version {doc.get('version')!r}: this controller "
-                                           f"reads version 1")
+    if doc.get("version") not in READS:
+        v = doc.get("version")
+        later = isinstance(v, int) and not isinstance(v, bool) and v > max(READS)
+        raise AppError(400, "bad_request", f"version {v!r}: this controller reads versions "
+                                           f"1 and 2" + (f"; the file needs a TandemApp that "
+                                                         f"reads version {v}" if later else ""))
     for k, cap in LIMITS.items():
         v = doc.get(k, {} if k == "settings" else [])
         want = dict if k == "settings" else list
@@ -307,6 +322,16 @@ def check_file(doc) -> dict:
     for k in doc.get("settings") or {}:
         if not _str(k, 120) or any(ord(c) < 32 for c in k):
             raise AppError(400, "bad_request", "a setting's key is a string")
+    if doc["version"] >= 2:
+        from proxy import configv2
+
+        def bad(m):
+            raise AppError(400, "bad_request", m)
+        configv2.check(doc, bad)
+    elif any(k in doc for k in ("hooks", "decision_providers", "plugins", "engines",
+                                "conductor")):
+        raise AppError(400, "bad_request", "a version 1 file has no hooks, providers, plugins, "
+                                           "engines or conductor: set version 2")
     return doc
 
 
@@ -328,6 +353,15 @@ def _ip(text) -> str | None:
         return None
 
 
+def _settings_of():
+    """The controller's settings interface (proxy/app.py STATE["settings"]), or None."""
+    try:
+        from proxy import app as app_mod
+        return app_mod.STATE.get("settings")
+    except Exception:                                                # noqa: BLE001
+        return None
+
+
 # ---------------------------------------------------------------------- the settings
 
 class AppSettings:
@@ -339,6 +373,8 @@ class AppSettings:
         self._service: tuple[float, dict] | None = None
         self._tokens: dict[str, tuple] = {}
         self._lock = threading.Lock()
+        # SRV-847: the settings interface (proxy/settings.py), when the controller runs one
+        self.settings_of = _settings_of
 
     @property
     def cfg(self):
@@ -385,8 +421,8 @@ class AppSettings:
                                            service=svc, key_source=self.cfg.key_source(),
                                            files=self._files(), system_rules=system),
                 "service": svc,
-                "export": {"kind": KIND, "version": 1, "secrets": "excluded",
-                           "excluded": EXCLUDED},
+                "export": {"kind": KIND, "version": VERSION, "secrets": "excluded",
+                           "excluded": self._excluded()},
                 # OPS-282: the page opens the first run's wizard while nothing serves here
                 "setup": fleethealth.setup_state(self.fleet)}
 
@@ -401,7 +437,12 @@ class AppSettings:
         except Exception:                                            # noqa: BLE001
             return getattr(self.fleet, "_local_id", None)
 
+    def _excluded(self) -> list[str]:
+        from proxy import configv2
+        return EXCLUDED + configv2.EXCLUDED
+
     def export(self, now: float) -> dict:
+        from proxy import configv2
         lid = self._local()
         nodes = []
         for r in self.cfg.nodes():
@@ -422,16 +463,24 @@ class AppSettings:
             src = {"name": tr.name, "fingerprint": tr.fingerprint()}
         except Exception:                                            # noqa: BLE001
             src = {"name": None, "fingerprint": None}
-        return {"kind": KIND, "version": 1, "release": _version.release() or None,
+        v2, notes = configv2.export(self.fleet, self.settings_of())
+        return {"kind": KIND, "version": VERSION, "release": _version.release() or None,
                 "exported_at": round(now, 3), "from": dict(src, node=lid),
-                "secrets": "excluded", "excluded": EXCLUDED, "nodes": nodes,
+                "secrets": "excluded", "excluded": self._excluded(), "nodes": nodes,
                 "deployments": deps, "rules": rules, "layouts": layouts,
-                "settings": self.cfg.settings_under(SETTINGS_PREFIX)}
+                "settings": self.cfg.settings_under(SETTINGS_PREFIX), **v2,
+                "notes": notes}
 
     # ------------------------------------------------------------------ the plan
-    def _state(self) -> str:
-        """The registry as an import reads it: a plan's confirm holds only while this is so."""
-        return _digest({"nodes": [{k: r[k] for k in ("id", "endpoint", "address") + NODE_FIELDS}
+    def _state(self, extra=None) -> str:
+        """The registry as an import reads it: a plan's confirm holds only while this is so
+        (version 2: the hooks, providers and plugins too, and the change set's plan, `extra`)."""
+        from proxy import configv2
+        return _digest({"v2": configv2.digest_state(self.fleet), "extra": extra,
+                        "v1": self._state_v1()})
+
+    def _state_v1(self) -> dict:
+        return ({"nodes": [{k: r[k] for k in ("id", "endpoint", "address") + NODE_FIELDS}
                                   | {"trust": (r["trust"] or {}).get("kind")}
                                   for r in self.cfg.nodes()],
                         "deps": self.cfg.deployments(), "rules": self.fleet.watch.rules(),
@@ -440,8 +489,9 @@ class AppSettings:
 
     def _body(self, body) -> tuple[dict, str]:
         if not isinstance(body, dict) or "config" not in body or \
-                set(body) - {"config", "mode", "confirm"}:
-            raise AppError(400, "bad_request", "the body is {config, mode?, confirm?}: config is "
+                set(body) - {"config", "mode", "confirm", "confirm_fingerprint", "confirm_grant"}:
+            raise AppError(400, "bad_request", "the body is {config, mode?, confirm?, "
+                                               "confirm_fingerprint?, confirm_grant?}: config is "
                                                "the exported file")
         mode = body.get("mode") or "merge"
         if mode not in MODES:
@@ -704,10 +754,21 @@ class AppSettings:
                 if k not in (doc.get("settings") or {}):
                     item("setting", k, k, "remove", None, None, ("setting-delete", k, None))
 
+        # ---- version 2: hooks, providers, plugins, engines, conductor (proxy/configv2.py)
+        from proxy import configv2
+        v2 = configv2.plan(f, self.settings_of(), doc, mode) if doc["version"] >= 2 \
+            else configv2.Plan()
+        items += v2.items
+        sv = configv2.plan_view(v2)
+        fps = list((sv or {}).get("fingerprint_keys") or [])
+        grants = sorted(set((sv or {}).get("grant_keys") or []) | set(v2.grants))
+
         counts = {op: sum(1 for i in items if i["op"] == op)
                   for op in ("add", "change", "remove", "keep", "conflict")}
         blocked = None
-        if f.cfg.setting("controller.moved_to"):
+        if v2.refused:
+            blocked = v2.refused
+        elif f.cfg.setting("controller.moved_to"):
             blocked = "this controller moved: import into the one that runs the fleet now"
         elif any(j and j.get("state") == "running" for j in
                  (f.cfg.job("move"), f.cfg.job("update"))):
@@ -724,16 +785,27 @@ class AppSettings:
                                            "nodes it adds trust that one, pair them here")),
              "items": [{k: v for k, v in i.items() if k != "_apply"} for i in items],
              "counts": counts, "allowed": blocked is None, "blocked": blocked,
-             "confirm": None, "expires_at": None}
+             "confirm": None, "expires_at": None,
+             "settings": sv, "stripped": v2.stripped, "fingerprint_keys": fps,
+             "grant_keys": grants, "confirm_fingerprint": None, "confirm_grant": None}
         p["_apply"] = [i["_apply"] for i in items if i["_apply"] is not None]
+        p["_v2"] = v2
         if blocked is None and mint:
             token = secrets.token_urlsafe(18)
-            bound = (_digest(doc), mode, self._state())
+            fp = secrets.token_urlsafe(12) if fps else None
+            gr = secrets.token_urlsafe(12) if grants else None
+            bound = (_digest(doc), mode, self._state(self._extra(v2)))
             with self._lock:
                 self._tokens = {k: v for k, v in self._tokens.items() if v[3] > now}
-                self._tokens[token] = (*bound, now + CONFIRM_S)
+                self._tokens[token] = (*bound, now + CONFIRM_S, fp, gr)
             p["confirm"], p["expires_at"] = token, round(now + CONFIRM_S, 3)
+            p["confirm_fingerprint"], p["confirm_grant"] = fp, gr
         return p
+
+    @staticmethod
+    def _extra(v2) -> str | None:
+        """What a v2 plan binds of its change set: the settings interface's own confirm."""
+        return (v2.view or {}).get("confirm")
 
     @staticmethod
     def _node_fields(n: dict) -> dict | str:
@@ -820,12 +892,27 @@ class AppSettings:
         if got is None or got[3] <= now or got[:2] != (_digest(doc), mode):
             raise AppError(409, "confirm_invalid", "that confirm is spent, too old or another "
                                                    "file's: read the plan again")
-        if got[2] != self._state():
-            raise AppError(409, "confirm_invalid", "the fleet changed since the plan: read the "
-                                                   "plan again")
         p = self.plan(body, now, mint=False)
+        v2 = p.pop("_v2")
+        if got[2] != self._state(self._extra(v2)):
+            raise AppError(409, "confirm_invalid", "the fleet or its settings changed since the "
+                                                   "plan: read the plan again")
         if not p["allowed"]:
             raise AppError(409, "conflict", p["blocked"])
+        fp, gr = got[4], got[5]
+        if fp and body.get("confirm_fingerprint") != fp:
+            with self._lock:
+                self._tokens[body["confirm"]] = got
+            raise AppError(428, "fingerprint_confirm_required",
+                           f"{', '.join(p['fingerprint_keys'])} feed an engine's disk-cache "
+                           f"fingerprint: every saved prefix misses after its restart; send "
+                           f"the plan's confirm_fingerprint as well")
+        if gr and body.get("confirm_grant") != gr:
+            with self._lock:
+                self._tokens[body["confirm"]] = got
+            raise AppError(428, "grant_confirm_required",
+                           f"{', '.join(p['grant_keys'])}: prompts and answers would go to a "
+                           f"destination outside the LAN; send the plan's confirm_grant as well")
         f = self.fleet
         done = {"add": 0, "change": 0, "remove": 0}
         order = ("node-add", "node-change", "dep-put", "rule-edit", "rule-reset", "layout-put",
@@ -859,14 +946,21 @@ class AppSettings:
         for i in p["items"]:
             if i["op"] in done:
                 done[i["op"]] += 1
+        from proxy import configv2
+        v2r = configv2.apply(f, self.settings_of(), v2, who, fingerprint_ok=bool(fp),
+                             grant_ok=bool(gr)) if v2.items else None
         text = (f"Fleet configuration imported ({mode}): {done['add']} added, {done['change']} "
                 f"changed, {done['remove']} removed, {p['counts']['conflict']} skipped")
+        if v2r and v2r["failed"]:
+            text += f"; stopped at {v2r['failed'].split(':')[0]}"
         f.cfg.log_audit(who, "import", "fleet-config", None, detail={"text": text})
         f.store.add_event("controller", "host", text,
                           f"from {p['from']['name'] or 'a file'}")
         f.log(f"[fleet] {text} by {who}")
         return {"contract_version": CONTRACT, "mode": mode, "applied": done,
-                "skipped": p["counts"]["conflict"], "items": p["items"]}
+                "skipped": p["counts"]["conflict"], "items": p["items"],
+                "settings": (v2r or {}).get("settings"), "created": (v2r or {}).get("created", []),
+                "failed": (v2r or {}).get("failed"), "not_run": (v2r or {}).get("not_run", [])}
 
     # ------------------------------------------------------------------ routes
     def handle(self, method: str, parts: list[str], q: dict, body, who: str, now: float) -> dict:
@@ -880,6 +974,7 @@ class AppSettings:
         if method == "POST" and sub == ["import"]:
             p = self.plan(body, now)
             p.pop("_apply", None)
+            p.pop("_v2", None)
             return p
         if method == "POST" and sub == ["import", "apply"]:
             return self.apply(body, who, now)

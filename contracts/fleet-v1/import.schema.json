@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/import.schema.json",
-  "title": "the body of POST /v1/fleet/app/import (the plan) and /v1/fleet/app/import/apply: the exported file as `config`, `mode` merge (the default) or replace, and on apply the plan's `confirm`",
+  "title": "the body of POST /v1/fleet/app/import (the plan) and /v1/fleet/app/import/apply: the exported file as `config`, `mode` merge (the default) or replace, and on apply the plan's `confirm`; with the plan's `confirm_fingerprint` and `confirm_grant` when it gave them (SRV-847)",
   "type": "object",
   "properties": {
     "config": {
@@ -14,6 +14,12 @@
       ]
     },
     "confirm": {
+      "type": "string"
+    },
+    "confirm_fingerprint": {
+      "type": "string"
+    },
+    "confirm_grant": {
       "type": "string"
     }
   },

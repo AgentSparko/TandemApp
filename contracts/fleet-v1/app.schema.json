@@ -194,7 +194,10 @@
           "const": "tandemapp-fleet-config"
         },
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "secrets": {
           "const": "excluded"

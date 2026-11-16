@@ -1,14 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qwen38-spark-engine/contract/fleet-v1/fleet-config.schema.json",
-  "title": "GET /v1/fleet/app/export (200, a download): the fleet's configuration as a file (kind tandemapp-fleet-config, version 1): nodes, deployment records, alert rules, saved layouts and app settings; secrets left out (`excluded` says which), each paired node's pin only as its SHA-256",
+  "title": "GET /v1/fleet/app/export (200, a download): the fleet's configuration as a file (kind tandemapp-fleet-config, version 2; a version 1 file has only version 1's sections): nodes, deployment records, alert rules, saved layouts and app settings, and since version 2 (SRV-847) the hooks, the decision providers, the plugins (name, version, source, sha256, settings, grants), each paired engine host's overlay and the conductor's documents; secrets left out (`excluded` says which), each paired node's pin only as its SHA-256",
   "type": "object",
   "properties": {
     "kind": {
       "const": "tandemapp-fleet-config"
     },
     "version": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "release": {
       "type": [
@@ -310,6 +313,152 @@
     },
     "settings": {
       "type": "object"
+    },
+    "hooks": {
+      "type": "array",
+      "description": "every hook: its id, fields and switches; an http hook's secret by name only (`secrets`)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "decision_providers": {
+      "type": "array",
+      "description": "every decision provider: its id, fields, switches and question mapping; its keys by scope only (`keys`)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "questions": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "description": "every installed plugin, never its files: its secrets by name only",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "settings": {
+            "type": "object"
+          },
+          "grants": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "trust": {
+                "type": "string"
+              }
+            }
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "source",
+          "sha256",
+          "settings",
+          "grants",
+          "secrets"
+        ]
+      }
+    },
+    "engines": {
+      "type": "object",
+      "description": "engine host id -> {label, values: the keys its managed overlay sets, secrets: the names of its secret keys that are set}",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "values": {
+            "type": "object"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "values"
+        ]
+      }
+    },
+    "conductor": {
+      "type": "object",
+      "description": "the conductor's stored documents: settings key -> document",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "what could not be read (an engine host that did not answer)"
     }
   },
   "required": [
