@@ -395,7 +395,8 @@ class Native:
 
 # ----------------------------------------------------------------------------- /v1/models
 # SRV-881: one path for two protocols. A request with `anthropic-version`, or with `x-api-key` and
-# no `Authorization`, gets the Messages API's shape: {data: [{type: "model", id, display_name,
+# no `Authorization` (with the accounts on: the token the gate took came that way), gets the
+# Messages API's shape: {data: [{type: "model", id, display_name,
 # created_at, ...}], has_more, first_id, last_id}, paged by `limit` (20, 1 to 1000), `after_id`
 # and `before_id`. The models are the OpenAI list's, under the same ids. `capabilities` has every
 # leaf the API names; only what a card states is true (image input, thinking, effort levels).
@@ -407,6 +408,10 @@ def wants_models(headers) -> bool:
     try:
         if headers.get("anthropic-version"):
             return True
+        # with the accounts on the gate has taken the token out; it says which header held it
+        via = getattr(headers, "tandem_credential", None)
+        if via is not None:
+            return via == "x-api-key"
         return bool(headers.get("x-api-key")) and not headers.get("Authorization")
     except Exception:                                              # noqa: BLE001
         return False

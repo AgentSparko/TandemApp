@@ -717,7 +717,15 @@ CREDENTIAL_HEADERS = ("Authorization", "x-api-key")
 
 def strip_credentials(headers) -> None:
     """SRV-867: after the check the request holds no token: no handler, adapter or backend sees
-    it (proxy/adapters/generic.py also refuses to pass either on once this ran)."""
+    it (proxy/adapters/generic.py also refuses to pass either on once this ran). The header that
+    carried it stays known (`tandem_credential`: x-api-key alone, else authorization), so the
+    model list still answers a Messages API client in its shape (proxy/messages.py)."""
+    try:
+        key = (headers.get("x-api-key") or "").strip()
+        auth = (headers.get("Authorization") or "").strip()
+        headers.tandem_credential = "x-api-key" if key and not auth else "authorization"
+    except Exception:                                              # noqa: BLE001
+        pass
     for name in CREDENTIAL_HEADERS:
         try:
             del headers[name]
