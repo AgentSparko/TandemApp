@@ -609,7 +609,7 @@ export class MockFleet {
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
-    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', hooks: this.scenario !== 'empty' && 'demo', now: this.t0 * 1000 });
+    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', hooks: this.scenario !== 'empty' && 'demo', plugins: this.scenario !== 'empty' && 'demo', now: this.t0 * 1000 });
     if (this.scenario === 'mixed') this.ops.seed('r3', '0.15.1');
     const seed = o.seed ?? 42;
     this.ph = (key) => hash(`${seed}:${key}`);
@@ -1358,6 +1358,8 @@ export class MockFleet {
     if (parts[0] === 'engines') return this.engines.handle(method, parts, q, body, nowMs);
     // VIS-282: the hooks and the decision providers, the registry the settings' hooks scope holds too
     if (parts[0] === 'hooks' || parts[0] === 'decision-providers') return this.settings.registry.handle(method, parts, q, body, nowMs);
+    // VIS-284: the plugins, the registry the settings' plugins scope holds too
+    if (parts[0] === 'plugins') return this.settings.plugins.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'update') return this.ops.handleUpdate(method, parts, q, body, now);
     if (parts[0] === 'controller') return this.ops.handleController(method, parts, q, body, now);
     if (parts[0] === 'app') return this.app.handle(method, parts, body, now);

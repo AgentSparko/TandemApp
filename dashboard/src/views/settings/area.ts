@@ -1,12 +1,17 @@
 // <qse-settings>: the settings area (VIS-280, SRV-845), Settings → App and the pages beside it:
 // App (what this TandemApp runs: the Chat and conductor switches, what is connected, then the
 // controller's own page: its host, its service, the admin password, the permissions, the
-// configuration file), Backends, Conductor, Engines (one page an engine host), Hooks and History.
+// configuration file), Backends, Conductor, Engines (one page an engine host), Hooks, Plugins and
+// History.
 // A chunk of its own, loaded when the area opens.
 //
 // Hooks holds the hooks pages (VIS-282, views/hooks/area.ts, a chunk of their own): the pipeline,
 // a hook's page, the trace and the decision providers. They stage their switches into this area's
 // draft, so the bar, the run sheet and the versions below serve them too.
+//
+// Plugins holds the plugins pages (VIS-284, views/plugins/area.ts, a chunk of their own): the
+// installed list, the install, a plugin's page and its panels. A plugin's switch, settings, secrets
+// and grants are keys of the plugins scope, one target a plugin, staged into the same draft.
 //
 // Every page but History is a scope of the settings interface, drawn from its schema
 // (lib/settings-form.ts): nothing here knows a key by name but the engine's mode. A change is
@@ -52,12 +57,15 @@ interface VersionData {
 }
 
 const HERE = 'controller';
+/** the plugins scope before the overview is read: one list, so the pages below see no change */
+const NO_TARGETS: Target[] = [];
 const HEAD: Record<SettingsTab, string> = {
   app: 'What this TandemApp runs, where its controller runs, who may change the fleet, and its configuration.',
   backends: 'The servers behind the one API: each backend’s address, limits and key, the routing rules, and which users’ keys are on.',
   conductor: 'The conductor’s documents as this controller keeps them, each edited whole and versioned.',
   engines: 'Each engine host’s own settings. Some apply at once; the others restart the engine once, when it is idle.',
   hooks: 'Your code on a request’s way through TandemApp, and who answers the conductor’s questions.',
+  plugins: 'Other people’s code, and your own, added to TandemApp: checked before it is installed, run in a sandbox, granted only what you allow.',
   history: 'Every change made through these settings, and the engine restarts they caused.',
 };
 const dkey = (scope: Scope, target: string): string => `${scope}|${target}`;
@@ -65,6 +73,9 @@ const dkey = (scope: Scope, target: string): string => `${scope}|${target}`;
  *  a chunk of their own that loads when the Hooks page opens; the element upgrades in place. */
 let hooksChunk: Promise<unknown> | null = null;
 const loadHooks = () => (hooksChunk ??= import('../hooks/area'));
+/** The plugins pages (VIS-284), a chunk of their own that loads when the Plugins page opens. */
+let pluginsChunk: Promise<unknown> | null = null;
+const loadPlugins = () => (pluginsChunk ??= import('../plugins/area'));
 
 @customElement('qse-settings')
 export class QseSettings extends LightElement {
@@ -100,6 +111,10 @@ export class QseSettings extends LightElement {
   private get engine(): Target | null {
     return this.targets.find((t) => t.id === this.path[1]) ?? (this.path[1] ? null : (this.targets[0] ?? null));
   }
+  /** the plugin whose page shows (#/app/plugins/p/<id>): its keys are read as a target of the plugins scope */
+  private get plugin(): string | null {
+    return this.tab === 'plugins' && this.path[1] === 'p' && this.path.length === 3 ? this.path[2] : null;
+  }
   private get dialog(): HTMLDialogElement | null {
     return this.querySelector('dialog[data-dialog="review"]');
   }
@@ -122,7 +137,16 @@ export class QseSettings extends LightElement {
   protected willUpdate(changed: PropertyValues): void {
     if (changed.has('path')) this.enter();
   }
-  protected updated(): void {
+  protected updated(changed: PropertyValues): void {
+    // on a phone the strip of pages scrolls: the page that shows is brought into it
+    if (changed.has('path')) {
+      const strip = this.querySelector<HTMLElement>('.st-tabs');
+      const on = strip?.querySelector<HTMLElement>('.st-tab.is-on');
+      if (strip && on) {
+        const [s, t] = [strip.getBoundingClientRect(), on.getBoundingClientRect()];
+        if (t.left < s.left || t.right > s.right) strip.scrollLeft += t.right > s.right ? t.right - s.right + 12 : t.left - s.left - 12;
+      }
+    }
     const d = this.dialog;
     if (!d) return;
     const open = this.flow.state.phase !== 'closed';
@@ -168,7 +192,7 @@ export class QseSettings extends LightElement {
       return;
     }
     const scope = SETTINGS_TABS.find((t) => t.id === tab)!.scope!;
-    const target = scope === 'engine' ? this.engine?.id : HERE;
+    const target = scope === 'engine' ? this.engine?.id : scope === 'plugins' ? this.plugin : HERE;
     if (target && !this.data.has(dkey(scope, target))) void this.reload(scope, target);
   }
 
@@ -454,6 +478,33 @@ export class QseSettings extends LightElement {
       ${(!sub.length || (sub.length === 1 && sub[0] === 'providers')) && keys && d?.schema?.writable ? this.versions('hooks', HERE, d!) : nothing}`;
   }
 
+  /** The Plugins page: the plugins pages themselves (their own chunk), which stage every switch,
+   *  setting, secret and grant into this area's draft; under a plugin's page the same keys as the
+   *  plain form of the settings interface, and the plugin's own versions. */
+  private pluginsPage(): TemplateResult {
+    void loadPlugins();
+    const sub = this.path.slice(1);
+    const id = this.plugin;
+    const d = id ? this.data.get(dkey('plugins', id)) : undefined;
+    const keys = !!d?.schema?.keys.length;
+    return html`<qse-plugins .path=${sub} .targets=${this.overview?.scopes.find((s) => s.scope === 'plugins')?.targets ?? NO_TARGETS} .stamp=${d?.values ?? null} @qse-plugins-changed=${() => this.pluginsChanged()}></qse-plugins>
+      ${id && keys
+        ? html`<details class="st-keys" data-plugin-keys>
+            <summary class="small">The same switches as settings keys</summary>
+            <p class="small muted st-lead">A change here and a change above are one and the same: both are staged, planned and versioned.</p>
+            <div class="st-keys-b">${groupsOf('plugins', fieldsOf(d!.schema!, d!.values, draft.part('plugins', id))).map((g) => groupPanel(g, this.form, this.handlers, { fold: true }))}</div>
+          </details>`
+        : nothing}
+      ${id && keys && d?.schema?.writable ? this.versions('plugins', id, d!) : nothing}`;
+  }
+
+  /** A plugin was installed, upgraded or removed: the scope's targets changed, and so did its keys. */
+  private pluginsChanged(): void {
+    for (const k of [...this.data.keys()]) if (k.startsWith('plugins|')) this.data.delete(k);
+    for (const k of [...this.vers.keys()]) if (k.startsWith('plugins|')) this.vers.delete(k);
+    void this.loadOverview();
+  }
+
   private page(): TemplateResult {
     switch (this.tab) {
       case 'app':
@@ -471,6 +522,8 @@ export class QseSettings extends LightElement {
         return this.enginesPage();
       case 'hooks':
         return this.hooksPage();
+      case 'plugins':
+        return this.pluginsPage();
       default:
         return this.historyPage();
     }

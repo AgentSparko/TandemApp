@@ -108,6 +108,17 @@
 // chunk grows by 0.2 KB for the import and the page that holds them. Room looked for first: the pages use the
 // settings area's draft, run sheet, refusals and row styles, not copies of their own, and read the stage table
 // from the controller; the budget counts every file, so a further split saves nothing.
+// 752 KB with the plugins pages (VIS-284, 2026-11-16: 749.4 KB, 767,421 bytes, from 714.5 KB): the installed list,
+// an install with its checks, the sha256, the capabilities in words with their risk and what a plugin adds, a
+// plugin's page with its state, the form drawn from its settings schema, its secrets, grants, log and files, and
+// a panel's frame with the page's side of its bridge, with the API's client, the flow and every refusal's words.
+// They are a chunk of their own (29.8 KB js, 2.1 KB css) that loads when Settings → Plugins opens. The entry
+// chunk stays at 106.0 KB. The small templates they share with the hooks pages moved into a chunk of 1.0 KB
+// that both load (the hooks pages' chunk went from 39.6 to 39.1 KB); the settings area's chunk carries the
+// capability words its review sheet uses and the page that holds the plugins pages. Room looked for first: the
+// pages use the settings area's draft, run sheet, versions and rows and the hooks pages' cards, fields and
+// stylesheet, not copies of their own; the panel the mock serves is not in the bundle; the budget counts every
+// file, so a further split saves nothing.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

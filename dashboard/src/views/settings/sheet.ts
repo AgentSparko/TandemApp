@@ -2,7 +2,7 @@
 // backends, conductor, engine, hooks: the first failure stops the set, so the order is told). The
 // same sheet goes from plan to result: before the apply each stop lists its changes, what it costs
 // (a restart or none) and its warnings; a plan that restarts an engine asks when, and one with a
-// fingerprint key or a hook's full payload outside the LAN asks a second time. After the apply each stop shows how it ended, with Restore on
+// fingerprint key, a hook's full payload outside the LAN or a plugin's risky grant asks a second time. After the apply each stop shows how it ended, with Restore on
 // what was applied and the restart's card on what waits for one. The restart card (state, the
 // countdown while it waits for idle, the engine's job, Cancel while it can still be cancelled, the
 // version restored after a failed start) is the same on every page that shows a restart. Templates
@@ -12,7 +12,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 import type { Change, Overview, PartChange, PartPlan, PartResult, Restart, SettingsError } from '../../api/settings';
 import { FINGERPRINT_NOTE, shown } from '../../lib/settings-form';
 import { needsSecond, restartsEngine, restoreOf, type FlowState } from '../../lib/settings-flow';
-import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, fingerprintWords, grantWords, partStateWords, placeOf, planSummary, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
+import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, fingerprintWords, grantWords, partStateWords, placeOf, planSummary, pluginGrantWords, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
 import { icon } from '../../ui/bits';
 
 export interface SheetHandlers {
@@ -126,11 +126,14 @@ function whenBlock(s: FlowState, names: string[], h: SheetHandlers, blocked: str
 }
 
 /** The second confirm: the keys that feed a disk cache's fingerprint, and what that costs; the
- *  hooks that get the full payload at a destination outside the LAN, and where it goes. */
+ *  hooks that get the full payload at a destination outside the LAN, and where it goes; the
+ *  plugins that get a risky capability or leave the sandbox, and what each grant lets them do. */
 function secondConfirm(s: FlowState, o: Overview | null): TemplateResult {
   const plan = s.plan!;
   const fp = plan.fingerprint_keys.length ? fingerprintWords(plan.fingerprint_keys, o) : null;
-  const g = plan.grant_keys?.length ? grantWords(plan) : null;
+  const hooks = plan.grant_keys?.length ? grantWords(plan) : null;
+  const g = hooks?.keys.length ? hooks : null;
+  const plugins = plan.grant_keys?.length ? pluginGrantWords(plan, o) : [];
   return html`${fp
     ? html`<section class="rs-second" role="alert" data-second>
         <h3>${icon('warn')} Saved caches on ${fp.hosts.join(' and ')} start cold</h3>
@@ -144,15 +147,23 @@ function secondConfirm(s: FlowState, o: Overview | null): TemplateResult {
         ${g.where.length ? html`<ul class="small" data-grant-where>${g.where.map((w) => html`<li>${w.charAt(0).toUpperCase()}${w.slice(1)}.</li>`)}</ul>` : nothing}
         <p class="small">TandemApp keeps who granted it and when. Apply only if that destination may read them.</p>
       </section>`
-    : nothing}`;
+    : nothing}${plugins.map(
+    (p) => html`<section class="rs-second" role="alert" data-second-plugin=${p.plugin}>
+      <h3>${icon('warn')} ${p.plugin} would get ${p.grants.length === 1 ? 'a grant' : `${p.grants.length} grants`} that ${p.grants.length === 1 ? 'is' : 'are'} asked twice</h3>
+      <ul class="small" data-grant-what>${p.grants.map((x) => html`<li><b>${x.title}.</b> ${x.text} <span class="num xs">${x.key}</span></li>`)}</ul>
+      <p class="small">A plugin is someone else’s code. TandemApp keeps who granted this and when, and you can take it back on the plugin’s page. Apply only if you trust this plugin with it.</p>
+    </section>`,
+  )}`;
 }
 
 /** the second confirm's button: what applying costs */
 function secondLabel(plan: FlowState['plan']): string {
   const fp = !!plan?.confirm_fingerprint;
   const grant = !!plan?.confirm_grant;
-  if (fp && grant) return 'Apply anyway';
-  return grant ? 'Apply, and send the full payload' : 'Apply, and let the caches start cold';
+  const hooks = !!plan?.grant_keys?.some((k) => !k.startsWith('plugins/'));
+  const plugins = !!plan?.grant_keys?.some((k) => k.startsWith('plugins/'));
+  if ((fp && grant) || (hooks && plugins)) return 'Apply anyway';
+  return plugins ? 'Apply, and grant it' : grant ? 'Apply, and send the full payload' : 'Apply, and let the caches start cold';
 }
 
 const sheetHead = (title: string, id: string | null, sub: TemplateResult | string | typeof nothing = nothing) =>

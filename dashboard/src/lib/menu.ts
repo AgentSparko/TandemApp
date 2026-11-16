@@ -122,6 +122,7 @@ export const SETTINGS_TABS = [
   { id: 'conductor', label: 'Conductor', scope: 'conductor' },
   { id: 'engines', label: 'Engines', scope: 'engine' },
   { id: 'hooks', label: 'Hooks', scope: 'hooks' },
+  { id: 'plugins', label: 'Plugins', scope: 'plugins' },
   { id: 'history', label: 'History', scope: null },
 ] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];

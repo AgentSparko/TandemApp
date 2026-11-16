@@ -101,8 +101,9 @@ describe('AU1: no password prompt in the source', () => {
       // host's own login, used for one SSH session and kept nowhere); and a settings form's secret
       // (VIS-280: a backend's API key or a hook's token, set or removed and never shown); and a
       // decision provider's API key (VIS-282: the key of the user's own decision service, typed
-      // once, staged and never shown again)
-      if (/type="password"/.test(text) && ![join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts'), join('views', 'settings', 'form.ts'), join('views', 'hooks', 'providers.ts')].includes(rel)) bad.push(`${rel}: a password input`);
+      // once, staged and never shown again); and a plugin's secret (VIS-284: a value the plugin
+      // declared by name, typed once, staged and never shown again)
+      if (/type="password"/.test(text) && ![join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts'), join('views', 'settings', 'form.ts'), join('views', 'hooks', 'providers.ts'), join('views', 'plugins', 'plugin.ts')].includes(rel)) bad.push(`${rel}: a password input`);
       for (const [re, what] of [
         [/Unlock editing|>Unlock<|'Unlock'/, 'an unlock step'],
         [/Admin token needed|Enter admin token|Enter the admin token/, 'a token prompt'],

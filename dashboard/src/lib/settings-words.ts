@@ -4,17 +4,19 @@
 // about it, and an audit row. Kept free of the DOM so each sentence is tested by itself.
 
 import { RESTART_ENDED, type AuditRow, type Change, type Overview, type PartPlan, type PartResult, type Plan, type Restart, type Result, type Scope, type SettingsError } from '../api/settings';
+import { grantLine } from './plugin-caps';
 import { shown } from './settings-form';
 
-export const SCOPE_NAME: Record<Scope, string> = { app: 'App', backends: 'Backends', conductor: 'Conductor', engine: 'Engine', hooks: 'Hooks' };
+export const SCOPE_NAME: Record<Scope, string> = { app: 'App', backends: 'Backends', conductor: 'Conductor', engine: 'Engine', hooks: 'Hooks', plugins: 'Plugins' };
 
 /** a target's name as the overview gives it; the id when it is not listed (any more) */
 export function targetLabel(o: Overview | null, scope: Scope, target: string): string {
   return o?.scopes.find((s) => s.scope === scope)?.targets.find((t) => t.id === target)?.label ?? target;
 }
 
-/** `App`, `Engine: spark-desk` */
+/** `App`, `Engine: spark-desk`, `Plugin: Hello tool` */
 export function placeOf(p: { scope: Scope; target: string }, o: Overview | null = null): string {
+  if (p.scope === 'plugins') return `Plugin: ${targetLabel(o, p.scope, p.target)}`;
   return p.scope === 'engine' ? `Engine: ${targetLabel(o, p.scope, p.target)}` : SCOPE_NAME[p.scope];
 }
 
@@ -98,6 +100,7 @@ export function costOf(p: PartPlan, label: string): { tone: Tone; text: string }
     return { tone: 'live', text: `Restarts the engine on ${label}, once.${e ? ` ${e}` : ''}` };
   }
   if (p.restart === 'app') return { tone: 'live', text: 'Restarts TandemApp.' };
+  if (p.scope === 'plugins') return { tone: 'ok', text: 'No restart of TandemApp: the plugin host starts the plugin again with what changed.' };
   if (p.restart === 'hot') return { tone: 'ok', text: p.scope === 'engine' ? 'No restart: the running engine takes it at once.' : 'No restart: the conductor reads it at the next request.' };
   return { tone: 'ok', text: 'No restart: it applies at once.' };
 }
@@ -114,12 +117,33 @@ export function fingerprintWords(keys: string[], o: Overview | null = null): { k
   return { keys: names, hosts: [...new Set(rows.map((r) => r.host))], verb: names.length === 1 ? 'feeds' : 'feed' };
 }
 
-/** The keys of a plan's grants (a hook's full payload outside the LAN): the keys and the hooks'
- *  ids, and the plan's own warnings that name each destination. */
+/** The keys of a plan's grants that are a hook's (its full payload outside the LAN): the keys and
+ *  the hooks' ids, and the plan's own warnings that name each destination. */
 export function grantWords(plan: Pick<Plan, 'grant_keys' | 'parts'>): { keys: string[]; hooks: string[]; where: string[] } {
-  const keys = [...new Set((plan.grant_keys ?? []).map((k) => k.split(':').slice(1).join(':')))];
-  const where = plan.parts.flatMap((p) => p.warnings.filter((w) => keys.some((k) => w.startsWith(`${k}:`))));
+  const keys = [...new Set((plan.grant_keys ?? []).filter((k) => !k.startsWith('plugins/')).map((k) => k.split(':').slice(1).join(':')))];
+  const where = plan.parts.flatMap((p) => (p.scope === 'plugins' ? [] : p.warnings.filter((w) => keys.some((k) => w.startsWith(`${k}:`)))));
   return { keys, hooks: keys.map((k) => k.replace(/^hooks\./, '').replace(/\.payload$/, '')), where };
+}
+
+export interface PluginGrant {
+  /** the plugin's name as the overview gives it */
+  plugin: string;
+  grants: { key: string; title: string; text: string }[];
+}
+
+/** The keys of a plan's grants that are a plugin's (`plugins/<id>:capabilities.<capability>`,
+ *  `plugins/<id>:trust`): a plugin each, with what each grant lets it do in plain words. */
+export function pluginGrantWords(plan: Pick<Plan, 'grant_keys'>, o: Overview | null = null): PluginGrant[] {
+  const by = new Map<string, PluginGrant>();
+  for (const k of plan.grant_keys ?? []) {
+    if (!k.startsWith('plugins/')) continue;
+    const cut = k.indexOf(':');
+    const id = k.slice(8, cut);
+    const key = k.slice(cut + 1);
+    if (!by.has(id)) by.set(id, { plugin: targetLabel(o, 'plugins', id), grants: [] });
+    by.get(id)!.grants.push({ key, ...grantLine(key) });
+  }
+  return [...by.values()];
 }
 
 export const changeCount = (plan: Pick<Plan, 'parts'>): number => plan.parts.reduce((n, p) => n + p.changes.length, 0);
@@ -287,7 +311,7 @@ export function errorWords(e: Pick<SettingsError, 'type' | 'message' | 'facts'>)
     case 'grant_confirm_required':
       return { title: 'This change needs its confirm.', fix: 'Review the changes again.', detail: null };
     case 'trust_required':
-      return { title: 'Granting a hook the full payload needs pairing’s rights.', fix: 'Set an admin password under App and sign in, or make this change on the controller’s own machine. Nothing was changed.', detail: m || null };
+      return { title: f.scope === 'plugins' ? 'Turning a plugin on, and granting it anything, needs pairing’s rights.' : 'Granting a hook the full payload needs pairing’s rights.', fix: 'Set an admin password under App and sign in, or make this change on the controller’s own machine. Nothing was changed.', detail: m || null };
     case 'locked':
       return { title: `${f.key ?? 'This setting'} cannot be changed here.`, fix: f.variable ? `${f.variable} sets it in the environment: change it there.` : 'Take it out of the change set.', detail: f.variable ? null : m };
     case 'unknown_key':
@@ -301,7 +325,7 @@ export function errorWords(e: Pick<SettingsError, 'type' | 'message' | 'facts'>)
     case 'no_version':
       return own('That version is no longer kept.', 'Open the versions again and pick one that is listed.');
     case 'no_target':
-      return own('That engine host is no longer in the fleet.', 'Take its changes out of the change set.');
+      return f.scope === 'plugins' ? own('That plugin is no longer installed.', 'Take its changes out of the change set.') : own('That engine host is no longer in the fleet.', 'Take its changes out of the change set.');
     case 'no_scope':
     case 'not_found':
       return own('This controller does not offer these settings.', 'Update TandemApp on the controller’s machine.');

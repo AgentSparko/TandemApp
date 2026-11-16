@@ -294,6 +294,19 @@ Pairing's rights are the admin's, or this machine's while no admin password is s
 
 They are the settings interface's `plugins` scope, one target a plugin: `GET /v1/settings/plugins/schema?target=<id>`, then plan and apply as for any scope ([settings](settings.md#plugins)). Its keys are `enabled`, `settings.<property>`, `secrets.<NAME>` (write-only), `capabilities.<capability>` and, for a manifest that asks `trust: host`, `trust`. Each plugin keeps its own versions.
 
+## The Plugins pages
+
+The dashboard has all of this under Settings, Plugins.
+
+- **The list.** Each installed plugin with its version, its kind, where it came from, its trust level, its signature and its state.
+- **Install.** A folder or a wheel on the controller's machine, or a git URL with a full commit id. The source is checked first. The page then shows every check with how it ended, the sha256 of the files, where the plugin asks to run, each capability in plain words with its risk, and what it adds. Install comes after that. A refused source installs nothing; each reason stands with what to change and the controller's own sentence.
+- **A plugin's page.** Its state, restarts and last error, with start, stop and restart; what it adds and where each shows; its settings as a form drawn from its schema; its secrets, set or removed and never shown; each capability with its grant; its log; its files, with a check against the sha256 of the install; a newer version; and its removal. A plugin that is off has one button that stages the switch and everything it asks for.
+- **A panel.** The plugin's own page in a sandboxed frame. The page relays the frame's bridge calls to `/v1/fleet/plugins/<id>/bridge`, only the methods `GET .../panels` lists for it; anything else is refused on the page. A panel that cannot be shown says why.
+
+The switch, the settings, the secrets, the grants and the trust level are staged and go through the settings' review, which asks a second time for `prompts:full`, `engine:control`, a network host outside the LAN and the host. Install, upgrade, removal, start, stop and restart are done at once.
+
+A wheel is named by its path on the controller's machine: the page uploads no file.
+
 ## The engine-stats plugins
 
 The two packages in [`plugins/`](../plugins/README.md) that an engine loads to send its figures have a manifest of kind `engine-stats`. The controller can check and record them; installing them into the engine stays `pip install plugins/<engine>`.

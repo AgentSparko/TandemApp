@@ -358,12 +358,12 @@ describe('refusals and the audit', () => {
 });
 
 describe('where the settings area lives', () => {
-  it('six pages under Settings, App; the panel lists them and marks the one you are on', () => {
-    expect(SETTINGS_TABS.map((t) => [t.id, t.scope])).toEqual([['app', 'app'], ['backends', 'backends'], ['conductor', 'conductor'], ['engines', 'engine'], ['hooks', 'hooks'], ['history', null]]);
+  it('seven pages under Settings, App; the panel lists them and marks the one you are on', () => {
+    expect(SETTINGS_TABS.map((t) => [t.id, t.scope])).toEqual([['app', 'app'], ['backends', 'backends'], ['conductor', 'conductor'], ['engines', 'engine'], ['hooks', 'hooks'], ['plugins', 'plugins'], ['history', null]]);
     expect([settingsHref('app'), settingsHref('engines'), settingsHref('engines', 'eh desk'), settingsHref('history')]).toEqual(['#/app', '#/app/engines', '#/app/engines/eh%20desk', '#/app/history']);
     const r = parseHash('#/app/engines/eh-desk');
     expect([r.view, r.path, sectionOf(r.view), crumb(r.view)]).toEqual(['app', ['engines', 'eh-desk'], 'app', { group: 'Settings', label: 'App' }]);
-    expect(subPages(r).map((s) => `${s.on ? '*' : ''}${s.label} ${s.href}`)).toEqual(['App #/app', 'Backends #/app/backends', 'Conductor #/app/conductor', '*Engines #/app/engines', 'Hooks #/app/hooks', 'History #/app/history']);
+    expect(subPages(r).map((s) => `${s.on ? '*' : ''}${s.label} ${s.href}`)).toEqual(['App #/app', 'Backends #/app/backends', 'Conductor #/app/conductor', '*Engines #/app/engines', 'Hooks #/app/hooks', 'Plugins #/app/plugins', 'History #/app/history']);
     expect(subPages(parseHash('#/app')).find((s) => s.on)!.label).toBe('App');
     expect(parseHash('#/app/history?change_set=cs-0123456789ab').params.get('change_set')).toBe('cs-0123456789ab');
     // the Backends page of the API section keeps its own route

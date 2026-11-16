@@ -29,6 +29,9 @@
 // click produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
 // registry plugged in, no wheel for the chat extension); while one of its restarts drains the engine host, the gateway answers 503
 // with Retry-After.
+// The plugins (/v1/fleet/plugins, mock/plugins.ts, VIS-284) are the registry the settings' plugins scope
+// shows: POST /__mock/plugins {fail, trust, sandbox, crash, tamper, unref, panel, seed} sets what no click
+// produces; a running plugin's panel is served at /plugin-panels/<id>/<panel>/ under its sandbox policy.
 // The hooks and the decision providers (/v1/fleet/hooks, /v1/fleet/decision-providers, mock/hooks.ts,
 // VIS-282) are the same registry the settings' hooks scope shows: POST /__mock/hooks {fail, trust, race,
 // behave, provider, requests, asks, replay} makes a route refuse, takes pairing's rights away, lets a
@@ -56,6 +59,7 @@ import { MockBackends } from './backends.ts';
 import { longSession } from './memory.ts';
 import { MockSetup } from './setup.ts';
 import { isFleetScenario, MockFleet, type FleetScenario } from './fleet.ts';
+import { PANEL_CSP } from './plugins.ts';
 import { FAIL_ROUTES, type FailRoute } from './enginehosts.ts';
 
 type Next = (err?: unknown) => void;
@@ -993,6 +997,22 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         } catch (e) {
           return error(res, 400, 'bad_request', (e as Error).message);
         }
+      }
+      // VIS-284: what no click produces on the plugins' API (mock/plugins.ts)
+      if (path === '/__mock/plugins' && req.method === 'POST') {
+        try {
+          return json(res, 200, fleetFor(req).settings.plugins.control(JSON.parse((await readBody(req)) || '{}')));
+        } catch (e) {
+          return error(res, 400, 'bad_request', (e as Error).message);
+        }
+      }
+      // a running plugin's panel: its page under the policy that gives it an origin of its own
+      if (path.startsWith('/plugin-panels/')) {
+        const [id, name, ...rest] = path.slice('/plugin-panels/'.length).split('/').map((x) => decodeURIComponent(x));
+        const page = id && name && !rest.join('') ? fleetFor(req).settings.plugins.panelFile(id, name, Date.now()) : null;
+        if (page === null) return error(res, 404, 'not_found', `no panel ${name ?? ''} of a running plugin ${id ?? ''}`);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': PANEL_CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin', 'Cache-Control': 'no-store' });
+        return res.end(page);
       }
       if (path === '/v1/settings' || path.startsWith('/v1/settings/')) {
         const write = req.method !== 'GET';

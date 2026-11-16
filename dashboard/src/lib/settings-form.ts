@@ -133,6 +133,12 @@ export function labelOf(scope: Scope, key: string, held: KeyValue | null = null)
     if (key.startsWith('users.')) return { label: held?.label ? `Key of ${held.label}` : `Key ${key.split('.')[1]}`, mono: false };
     return { label: humanize(key.split('.').slice(2).join('.')), mono: false };
   }
+  if (scope === 'plugins') {
+    if (key === 'enabled') return { label: 'On', mono: false };
+    if (key === 'trust') return { label: 'Where it runs', mono: false };
+    const [group, ...rest] = key.split('.');
+    return group === 'settings' ? { label: humanize(rest.join('.')), mono: false } : { label: rest.join('.'), mono: true };
+  }
   const h = hookKey(key);
   if (h?.question) return { label: `API key for ${h.question}`, mono: false };
   const own = h && (h.kind === 'hook' ? HOOK_LABEL : PROVIDER_LABEL)[h.field];
@@ -168,6 +174,7 @@ const RESET: Record<Scope, string> = {
   conductor: 'Back to the built-in one',
   engine: 'Use the engine’s own value',
   hooks: 'Use the default',
+  plugins: 'Use the default',
 };
 
 function resetOf(scope: Scope, spec: KeySpec, held: KeyValue | null): string | null {
@@ -311,6 +318,16 @@ export function groupsOf(scope: Scope, fields: Field[]): Group[] {
     out.sort((a, b) => (a.id.startsWith('hook:') === b.id.startsWith('hook:') ? 0 : a.id.startsWith('hook:') ? -1 : 1));
     if (rest.length) out.push({ id: 'hooks', title: 'Other settings', sub: null, fields: rest });
     return out;
+  }
+  if (scope === 'plugins') {
+    // by what a key is: how it runs, its own settings, its secrets, what it was granted
+    const of = (id: string, title: string, sub: string | null, has: (k: string) => boolean): Group => ({ id: `plugin:${id}`, title, sub, fields: fields.filter((f) => has(f.key)) });
+    return [
+      of('run', 'How it runs', null, (k) => k === 'enabled' || k === 'trust'),
+      of('settings', 'Settings', 'Each property of the plugin’s own schema.', (k) => k.startsWith('settings.')),
+      of('secrets', 'Secrets', 'Write-only: set or removed, never shown.', (k) => k.startsWith('secrets.')),
+      of('capabilities', 'Capabilities', 'On: granted. A grant takes pairing’s rights.', (k) => k.startsWith('capabilities.')),
+    ].filter((g) => g.fields.length);
   }
   return fields.length ? [{ id: scope, title: scope === 'conductor' ? 'Documents' : '', sub: null, fields }] : [];
 }
