@@ -23,7 +23,12 @@ exposure switches and the `auth` and `api` settings.
 
 Service permissions (collect:write, chat-engine, plugin-backend) belong to no role: only a service
 identity holds them, and service identities come with a later change. Until then those routes
-refuse everyone while accounts are on.
+refuse everyone while accounts are on, but for an imported service key (proxy/tokens.py).
+
+SRV-867: an API token acts with its `perms` (proxy/tokens.py `effective`: what its scopes imply,
+cut to its owner's role at each request); which routes take which scope is tokens.scope_for. The
+token routes (/v1/auth/tokens) need `self` and a signed-in account; their handler checks
+`tokens:inference`, `tokens:management` and `users`.
 
 THE ROUTE TABLE (ROUTES) names every route family the server dispatches: an exact path or a
 prefix (the path itself, or anything under it), the methods, and the permission the caller needs
@@ -84,6 +89,7 @@ ROUTES: tuple = (
     # accounts and sessions
     (("GET", "DELETE"), "prefix", "/v1/auth/sessions", "self"),
     (("PUT",), "exact", "/v1/auth/password", "self"),
+    (("GET", "POST", "PATCH", "DELETE"), "prefix", "/v1/auth/tokens", "self"),
     (("GET", "POST", "PATCH", "DELETE"), "prefix", "/v1/auth/users", "users"),
     # the session address: its token is the credential, for the library and Laya only
     (("GET", "POST"), "prefix", "/s", SESSION_ADDRESS),
@@ -107,6 +113,9 @@ ROUTES: tuple = (
     (GET, "prefix", "/v1/models", "inference"),
     *((POST, "exact", p, "inference") for p in PROXY_PATHS),
     *((POST, "exact", p, "inference") for p in CACHE_PATHS),
+    # the Messages API (SRV-879; its routes come with that change, their rule is here already)
+    (POST, "exact", "/v1/messages", "inference"),
+    (POST, "exact", "/v1/messages/count_tokens", "inference"),
     (GET, "prefix", "/v1/library", "inference"),
     (("GET", "POST"), "prefix", "/v1/laya", "inference"),
     # families whose handlers check a route kind of their own (KIND_PERMISSION)
@@ -219,5 +228,6 @@ def allow(principal, permission: str | None, policy: Policy | None = None) -> bo
         return permission in role_permissions(principal.role, policy)
     if principal.kind == SESSION_ADDRESS:
         return permission == SESSION_ADDRESS
-    # a token or a service identity: its scopes (later changes make them)
-    return permission in (principal.scopes or ())
+    # a token or a service identity: its scopes cut to its owner's role (proxy/tokens.py)
+    perms = getattr(principal, "perms", None)
+    return permission in (perms if perms is not None else (principal.scopes or ()))

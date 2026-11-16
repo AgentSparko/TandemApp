@@ -47,7 +47,9 @@
         "legacy_env_set",
         "legacy_env_invalid",
         "legacy_users_from_unreadable",
-        "bootstrap_secret_left"
+        "bootstrap_secret_left",
+        "tokens_need_review",
+        "legacy_admin_token"
       ]
     },
     "severity": {
@@ -178,6 +180,9 @@
         },
         "file": {
           "type": "string"
+        },
+        "n": {
+          "type": "integer"
         }
       },
       "required": [],

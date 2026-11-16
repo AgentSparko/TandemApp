@@ -33,6 +33,12 @@ neither `X-Forwarded-For` nor `X-Real-IP` (trusted-local, server/auth.py) needs 
 label of the key fills the ledger's `user` column; the client id stays the token's hash.
 `TANDEM_API_USERS_FROM` (SRV-733) makes another config database's users count too: a controller in
 front of an engine takes the keys the engine takes, read from the engine's file, never copied.
+
+With TANDEM_AUTH=accounts (SRV-867) none of that is read: the request gate's principal decides
+(proxy/accounts.py), an API token's included (proxy/tokens.py). The user is the principal's
+memory owner: a token's owner's username, an imported key's old label. A token with a model list
+answers 403 for any other model (`resolve`), and the ledger row names the token (`token_id`) with
+the same client id the bearer's hash gave before.
 """
 
 from __future__ import annotations
@@ -317,10 +323,10 @@ class Service:
         """(may it go on, the user's label). On False a 401 is already written, with `headers`
         beside its own."""
         if getattr(self.auth, "accounts", False):
-            # SEC-22: with accounts on, the gate's principal decides (proxy/accounts.py); the
-            # users' keys answer here again once API tokens replace them
+            # SEC-22, SRV-867: with accounts on, the gate's principal decides (proxy/accounts.py):
+            # a session, local mode, or an API token checked there and stripped from the request
             from proxy import authz
-            p = getattr(handler, "_principal", None)
+            p = self.principal(handler)
             if p is not None and (authz.allow(p, "inference", self.auth.policy)
                                   or authz.allow(p, "chat-engine", self.auth.policy)):
                 return True, p.name
@@ -363,10 +369,34 @@ class Service:
             pass
         return False, None
 
-    def resolve(self, body: dict, headers=None):
+    def principal(self, handler=None):
+        """SRV-867: the request's principal with accounts on (the gate's), else None. A handler
+        that rebuilt the request (the Messages API's) finds it through the gate's thread."""
+        if not getattr(self.auth, "accounts", False):
+            return None
+        p = getattr(handler, "_principal", None) if handler is not None else None
+        if p is None and hasattr(self.auth, "request_principal"):
+            p = self.auth.request_principal()
+        return p
+
+    def check_model(self, model) -> None:
+        """SRV-867: a token with a model list takes only those models (403 naming the model)."""
+        p = self.principal()
+        if p is None or getattr(p, "via", None) != "token":
+            return
+        from proxy import deployments
+        from proxy import tokens as tokens_mod
+        if not tokens_mod.model_allowed(p.models, model):
+            raise deployments.Refused(403, "permission_denied",
+                                      f"this token may not use the model {model!r}")
+
+    def resolve(self, body: dict, headers=None, check_token: bool = True):
         """The route of a request at the standalone proxy: a fleet deployment's (its members),
         else the table's. route.NotFound, or proxy.deployments.Refused for a deployment that
-        serves nothing now."""
+        serves nothing now, and (SRV-867) for a model the request's token may not use; a hook's
+        own choice of model later (`check_token` False) is not the client's."""
+        if check_token:
+            self.check_model(body.get("model"))
         model = body.get("model") or ""
         if self.place is not None:
             r = self.place(model, body, headers)
@@ -400,6 +430,10 @@ class Service:
         rec.model_served = route.public
         rec.user = user
         rec.client_id, rec.client_kind = ledger_mod.client_of(handler.headers, body)
+        p = self.principal(handler)
+        if p is not None and getattr(p, "via", None) == "token":
+            # SRV-867: the token's row; the client id its hash gave before it was stripped
+            rec.token_id, rec.client_id = p.id, p.client or rec.client_id
         rec.sock = getattr(handler, "connection", None)
         try:                        # the session a client names (opencode's x-session-id)
             sess = handler.headers.get("x-session-id") or handler.headers.get("X-Session-Id")
@@ -492,7 +526,7 @@ class Service:
             return body, raw, route, deny
         if body.get("model") != asked:
             try:
-                route = self.resolve(body, getattr(handler, "headers", None))
+                route = self.resolve(body, getattr(handler, "headers", None), check_token=False)
             except route_mod.NotFound as exc:
                 return body, raw, route, {"hook": None, "status": 404,
                                           "code": "model_not_found", "message": exc.message}

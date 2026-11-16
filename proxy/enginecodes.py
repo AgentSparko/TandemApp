@@ -192,6 +192,10 @@ CATALOG: dict[str, tuple[int, str, str]] = {
         "Correct the path or remove the line: sign-in and API tokens replace it."),
     "bootstrap_secret_left": (409, "An owner exists and the setup code's Secret is still mounted at {path}.",
         "Delete the Secret; it opens nothing now."),
+    "tokens_need_review": (409, "{n} API keys were imported from the older setup. Confirm or revoke each one.",
+        "Open All tokens and confirm or revoke each key under Review."),
+    "legacy_admin_token": (409, "The old admin token still works as an API token for scripts, for 30 days after the upgrade.",
+        "Give each script a token of its own, then revoke the admin token under All tokens."),
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
     "job_not_found": (404, "{node} has no job {job} any more.",
@@ -209,7 +213,9 @@ FACTS = ("address", "port", "host", "user", "dir", "tries_left", "state", "retry
          # the plugin host (SRV-859)
          "plugin",
          # the sign-in's legacy variables (SRV-865)
-         "variable", "file")
+         "variable", "file",
+         # the imported keys under review (SRV-867)
+         "n")
 _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "address": "the address",
             "host": "the engine host", "user": "the user", "dir": "the engine's folder",
             "detail": "no reason given", "expected": "one", "offered": "another",
@@ -217,7 +223,7 @@ _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "addr
             "state": "starting", "path": "its folder", "image": "tandem-sandbox:1", "free_gb": "a few", "need_gb": "5",
             "backend": "named", "engine_api": "another version", "speaks": "another",
             "plugin": "named", "job": "by that id", "variable": "A variable",
-            "file": "the environment"}
+            "file": "the environment", "n": "Some"}
 
 
 class _Facts(dict):

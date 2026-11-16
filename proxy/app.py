@@ -608,6 +608,8 @@ class Handler(BaseHTTPRequestHandler):
         if not ok:
             return
         try:
+            # SRV-867: a token with a model list peeks and warms only those models
+            svc.check_model(body.get("model") if isinstance(body, dict) else None)
             st, doc, hdrs = svc.cache_route(path, body, self.headers)
         except route_mod.NotFound as exc:
             return self._json(404, exc.body())

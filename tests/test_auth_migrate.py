@@ -236,11 +236,13 @@ def test_migration_twice():
                     c.execute("SELECT * FROM auth_state ORDER BY key").fetchall(),
                     c.execute("SELECT * FROM setup_codes ORDER BY hash").fetchall(),
                     c.execute("SELECT COUNT(*) FROM audit").fetchone(),
-                    open(os.path.join(px.dir, "admin.json")).read())
+                    open(os.path.join(px.dir, "admin.json")).read(),
+                    c.execute("SELECT * FROM api_tokens ORDER BY id").fetchall(),   # SRV-867
+                    c.execute("SELECT * FROM users ORDER BY id").fetchall())
         before = snapshot()
         assert len(before[0]) == 1 and before[2] == [], "an owner: the token is no setup code"
         did = authlegacy.migrate(a, px.dir)
-        assert did == {"owner": None, "token_code": False}
+        assert did == {"owner": None, "token_code": False, "tokens": {}}
         assert snapshot() == before
         # a restart on the same state
         again = Proxy(env={**ON, "TANDEM_ADMIN_TOKEN": TOKEN})

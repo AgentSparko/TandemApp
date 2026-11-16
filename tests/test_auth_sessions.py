@@ -363,20 +363,20 @@ def test_token_with_stray_cookie():
         # no API tokens yet: a credential is a 401, whatever cookie comes with it
         assert px.get("/v1/settings", {**adm, "Authorization": "Bearer anything"})[0] == 401
         assert px.get("/v1/settings", {**adm, "x-api-key": "anything"})[0] == 401
-        # a token that may read: its cookie is ignored, and there is no CSRF check
-        token = acc_mod.Principal(kind="token", id="t1", name="t1", via="token",
-                                  scopes=frozenset({"read"}))
-        accounts().token_resolver = lambda h: token if h.get("Authorization") == \
-            "Bearer t1-secret" else None
-        tok = {"Authorization": "Bearer t1-secret"}
+        # a token that may read (SRV-867's, made for the admin): the admin's cookie beside it is
+        # ignored, and there is no CSRF check
+        st = accounts().store
+        _view, secret = st.tokens.create(st.by_username("adm"), label="t1",
+                                         scopes=["settings:read"], actor="test")
+        tok = {"Authorization": f"Bearer {secret}"}
         assert px.get("/v1/settings", tok)[0] == 200
         assert px.get("/v1/auth/users", {**tok, "Cookie": adm["Cookie"]})[0] == 403
         st, out = j(px.post("/v1/settings/plan", {"changes": []},
                             {**tok, "Cookie": adm["Cookie"]}))
         assert st == 403 and out["error"]["code"] == "permission_denied", out
-        assert out["error"]["permission"] == "settings:write"
+        assert out["error"]["scope"] == "settings:write", out
         assert j(px.get("/v1/auth/session", {**tok, "Cookie": adm["Cookie"]}))[1]["principal"] \
-            == {"kind": "token", "name": "t1"}
+            == {"kind": "token", "name": "adm"}
 
 
 # ---------------------------------------------------------------------------- 9

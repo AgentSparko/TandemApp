@@ -197,6 +197,9 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "legacy_env_invalid": ("error", None),
     "legacy_users_from_unreadable": ("warning", None),
     "bootstrap_secret_left": ("info", None),
+    # API tokens (SRV-867)
+    "tokens_need_review": ("warning", None),
+    "legacy_admin_token": ("warning", None),
 }
 
 ERR = enginecodes.error

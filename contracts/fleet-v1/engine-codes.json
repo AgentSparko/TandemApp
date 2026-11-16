@@ -317,6 +317,16 @@
       "message": "An owner exists and the setup code's Secret is still mounted at {path}.",
       "fix": "Delete the Secret; it opens nothing now."
     },
+    "tokens_need_review": {
+      "status": 409,
+      "message": "{n} API keys were imported from the older setup. Confirm or revoke each one.",
+      "fix": "Open All tokens and confirm or revoke each key under Review."
+    },
+    "legacy_admin_token": {
+      "status": 409,
+      "message": "The old admin token still works as an API token for scripts, for 30 days after the upgrade.",
+      "fix": "Give each script a token of its own, then revoke the admin token under All tokens."
+    },
     "not_offered": {
       "status": 409,
       "message": "{node} does not need that fix now.",
@@ -496,6 +506,14 @@
     },
     "bootstrap_secret_left": {
       "severity": "info",
+      "action": null
+    },
+    "tokens_need_review": {
+      "severity": "warning",
+      "action": null
+    },
+    "legacy_admin_token": {
+      "severity": "warning",
       "action": null
     }
   },

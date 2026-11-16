@@ -21,6 +21,8 @@ NOT_FORWARDED = frozenset((
     "te", "trailer", "transfer-encoding", "upgrade", "expect", "host", "content-length",
     "content-type", "accept", "accept-encoding", "cookie", "x-tandem-user", "x-tandem-relay-id",
     "x-tandem-pin"))
+# the client's credentials: never on once TandemApp checked them (SRV-867)
+CREDENTIALS = frozenset(("authorization", "x-api-key"))
 # ... and back: the hop's own, what the relay writes itself, and the facts this proxy states
 NOT_PASSED = frozenset((
     "connection", "keep-alive", "transfer-encoding", "content-length", "content-type", "date",
@@ -46,7 +48,11 @@ class TandemLLM(Generic):
     conductor's and memory's headers, the session headers, `X-Real-IP` and `X-Forwarded-For` as
     the reverse proxy set them, its `Authorization` when the backend has no key of its own)
     except NOT_FORWARDED; every header of the answer comes back except NOT_PASSED. The engine's
-    model list is kept whole (`cards`): /v1/models here lists its cards as the engine does."""
+    model list is kept whole (`cards`): /v1/models here lists its cards as the engine does.
+
+    SRV-867: with the accounts on, the client's credential is TandemApp's own API token. The
+    request gate removes `Authorization` and `x-api-key` after its check and marks the headers;
+    marked headers never pass either on, so the engine sees the backend's key or none."""
 
     kind = "tandemllm"
     cards = True
@@ -56,9 +62,11 @@ class TandemLLM(Generic):
             items = list(client_headers.items())
         except Exception:                                          # noqa: BLE001
             return []
+        checked = getattr(client_headers, "tandem_credentials_checked", False)
         return [(k, v) for k, v in items
                 if v and k.lower() not in NOT_FORWARDED
-                and not (key and k.lower() == "authorization")]
+                and not (key and k.lower() == "authorization")
+                and not (checked and k.lower() in CREDENTIALS)]
 
     def passes(self, name: str) -> bool:
         return name.lower() not in NOT_PASSED

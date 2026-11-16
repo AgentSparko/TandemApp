@@ -8,8 +8,12 @@ THE OWNER. admin.json with a password becomes the account `owner` (role owner) w
 and parameters, so the password keeps working; it is the first owner (`auth_state.first_owner`).
 Nothing is imported once an owner with a password exists. With no admin.json password and the
 admin token set, no account is made: the token is accepted once as the setup code at POST
-/v1/auth/setup (proxy/authlocal.py). The admin token as a management token for tools comes with
-the API tokens.
+/v1/auth/setup (proxy/authlocal.py).
+
+THE KEYS (SRV-867, proxy/tokens.py import_legacy): the rows of `users`, TANDEM_API_KEYS and
+TANDEM_API_USERS_FROM become API tokens with the same hash, under review; the admin token, once
+an owner exists, a 30-day management token of the first owner. After it none of them is read to
+let a request in.
 
 THE WAY BACK. The config database keeps its schema number and its tables; admin.json is never
 removed. Each change of the first owner's password (the page, the setup, `tandem-app password
@@ -165,4 +169,8 @@ def migrate(a, state_dir: str) -> dict:
     if len(token) >= 32 and st.setup_required():
         a.codes.add_secret(token, "admin_token")
         did["token_code"] = True
+    # SRV-867: the legacy keys and the admin token as API tokens
+    did["tokens"] = st.tokens.import_legacy(a.env, keys_env=dict(st.cfg.env_users),
+                                            users_from=getattr(st.cfg, "users_from", None),
+                                            first_owner=st.first_owner())
     return did

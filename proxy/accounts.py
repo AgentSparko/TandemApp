@@ -45,9 +45,17 @@ rule and key). Per name tried: after five failures each further try waits twice 
 one before, 2 s up to 300 s, never a lock for good; the name tried is the key whether or not it
 exists, so the answer does not tell. Over every address: proxy/identity.py's cap.
 
-SEAMS for the changes after this one: `token_resolver(headers) -> Principal | None` (API tokens;
-None until then: an API credential is a 401 here), `service_resolver` (service identities),
-`on_account_removed(account_id)` (tokens of a removed or disabled account).
+SEAMS for the changes after this one: `service_resolver` (service identities), `exposure`
+(SRV-871: `(principal, method, path, peer, headers) -> (status, code, message) | None`, the
+protocol's exposure switch for a token), `on_account_removed(account_id)`.
+
+SRV-867 adds API tokens (proxy/tokens.py): `token_resolver` is the token store's. A request with
+an API credential is that token and nothing else: unknown, revoked, expired or of a disabled owner
+is a 401 saying which (an open route lets it through as anonymous); the route must take one of
+the token's scopes (403 naming the scope); the token acts with its scopes cut to its owner's role
+of now. After the check `Authorization` and `x-api-key` are removed from the request, so no
+handler and no backend sees them. A disable or a removal revokes the account's tokens here in the
+store, so the CLI's changes do too.
 
 SEC-26 adds local mode and the setup code (proxy/authlocal.py), the tables `setup_codes` and
 `auth_state`, and one-time codes: `users add` and `users reset-password` (proxy/userscli.py)
@@ -74,6 +82,7 @@ from dataclasses import dataclass
 from proxy import adminpw
 from proxy import authz
 from proxy import identity as identity_mod
+from proxy import tokens as tokens_mod
 from tandemapp import auth as auth_mod
 
 ENV = "TANDEM_AUTH"
@@ -144,6 +153,9 @@ class Principal:
     csrf: str | None = None         # the session's CSRF token (cookie)
     expires_at: int | None = None   # ms
     must_change: bool = False       # signed in with a one-time code: only a new password
+    perms: frozenset | None = None  # SRV-867: a token's scopes cut to its owner's role of now
+    models: tuple = ()              # SRV-867: a token's model globs (none: every model)
+    client: str | None = None       # SRV-867: the ledger's client id (a prefix of the hash)
 
 
 def _sha(text: str) -> str:
@@ -176,6 +188,7 @@ class AccountStore:
         with cfg._lock:
             cfg._conn.executescript(DDL)
             cfg._conn.commit()
+        self.tokens = tokens_mod.TokenStore(self)       # SRV-867
 
     def now_ms(self) -> int:
         return int(self.clock() * 1000)
@@ -284,6 +297,9 @@ class AccountStore:
             row, ends = self._update_locked(account_id, changes, actor)
         if not row["enabled"] or row["role"] != "owner":
             self._first_owner_left(account_id)
+        if not row["enabled"]:
+            # SRV-867: a disabled account's tokens stop for good (the page's and the CLI's)
+            self.tokens.revoke_owner(account_id, actor=actor, why="owner disabled")
         if ends:
             self.revoke_account(account_id, actor=actor,
                                 why="role" if row["enabled"] else "disabled")
@@ -331,6 +347,7 @@ class AccountStore:
                 raise AccountError(409, "last_owner", "this is the last enabled owner: make "
                                                       "another owner first")
             self.revoke_account(account_id, actor=actor, why="removed")
+            self.tokens.revoke_owner(account_id, actor=actor, why="owner removed")
             self._c.execute("DELETE FROM sessions WHERE account_id = ?", (account_id,))
             self._c.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
             self.cfg._audit(actor, "delete", "account", account_id,
@@ -677,6 +694,23 @@ class SignInLimits:
 
 
 # ======================================================================================== the gate
+CREDENTIAL_HEADERS = ("Authorization", "x-api-key")
+
+
+def strip_credentials(headers) -> None:
+    """SRV-867: after the check the request holds no token: no handler, adapter or backend sees
+    it (proxy/adapters/generic.py also refuses to pass either on once this ran)."""
+    for name in CREDENTIAL_HEADERS:
+        try:
+            del headers[name]
+        except Exception:                                          # noqa: BLE001
+            pass
+    try:
+        headers.tandem_credentials_checked = True
+    except Exception:                                              # noqa: BLE001
+        pass
+
+
 class AccountsAuth:
     """tandemapp/auth.py's Auth, as every guard of the server calls it, over the accounts: a
     route kind is a permission (proxy/authz.py), the caller is the request's principal. The
@@ -709,7 +743,9 @@ class AccountsAuth:
         self._unmapped: set = set()
         self._tls = threading.local()
         # the seams of the later changes
-        self.token_resolver = None          # (headers) -> Principal | None: API tokens
+        self.tokens = self.store.tokens
+        self.token_resolver = self.tokens.resolve   # SRV-867: (headers) -> Principal | Refused
+        self.exposure = None                # SRV-871: (p, method, path, peer, headers) -> refusal
         self.service_resolver = None        # (headers, peer) -> Principal | None
         self.local_mode = None              # (peer, headers) -> Principal | None
         self.on_account_removed = None      # (account_id) -> None: its tokens
@@ -764,6 +800,12 @@ class AccountsAuth:
         for f in self.legacy:
             out.append({"code": f["code"], "facts": {"variable": f["variable"],
                                                      "file": f["file"]}})
+        # SRV-867: imported keys to confirm, and the admin token while it still works
+        n = self.tokens.need_review()
+        if n:
+            out.append({"code": "tokens_need_review", "facts": {"n": n}})
+        if self.tokens.admin_token_live() is not None:
+            out.append({"code": "legacy_admin_token", "facts": {}})
         return out
 
     def describe(self) -> str:
@@ -832,7 +874,13 @@ class AccountsAuth:
     def current(self, headers) -> Principal | None:
         if getattr(self._tls, "headers", None) is headers:
             return self._tls.principal
-        return self.resolve(headers)
+        p = self.resolve(headers)
+        return None if isinstance(p, tokens_mod.Refused) else p
+
+    def request_principal(self) -> Principal | None:
+        """The principal the gate found for the request this thread serves (a handler that
+        rebuilt the request's headers, as the Messages API's does, asks this way)."""
+        return getattr(self._tls, "principal", None)
 
     def who_of(self, handler) -> str:
         p = getattr(handler, "_principal", None) or self.current(handler.headers)
@@ -961,7 +1009,15 @@ class AccountsAuth:
             return self._refuse(handler, method, 403, "unmapped_route",
                                 "no permission is defined for this route")
         peer = handler._peer()
+        token_call = self.has_token(handler.headers)
         p = self.resolve(handler.headers, peer, raw)
+        if token_call:
+            strip_credentials(handler.headers)       # SRV-867: checked; never passed on
+        if isinstance(p, tokens_mod.Refused):
+            if perm != authz.OPEN:
+                return self._token_refuse(handler, method, raw, p.status, p.code, p.message,
+                                          **p.facts)
+            p = None                                 # an open route: as without a token
         handler._principal = p
         self._tls.principal, self._tls.conn = p, getattr(handler, "connection", None)
         if p is not None and p.via == "local":
@@ -989,10 +1045,41 @@ class AccountsAuth:
         if p.must_change and (method, path) not in MUST_CHANGE_OK:
             return self._refuse(handler, method, 403, "password_change_required",
                                 "set a new password first (PUT /v1/auth/password)")
+        if p.via == "token":
+            return self._token_gate(handler, method, raw, peer, perm, p)
         if not authz.allow(p, perm, self.policy):
             return self._refuse(handler, method, 403, "permission_denied",
                                 f"this needs the permission {perm}", permission=perm)
         return False
+
+    def _token_gate(self, handler, method: str, raw: str, peer: str, perm: str, p) -> bool:
+        """SRV-867: a token's route: one of its scopes, the exposure switch, its owner's role."""
+        need = tokens_mod.scope_for(method, raw)
+        if need is None:
+            return self._token_refuse(handler, method, raw, 403, "permission_denied",
+                                      "an API token cannot use this route; sign in")
+        if not set(need) & set(p.scopes or ()):
+            return self._token_refuse(handler, method, raw, 403, "permission_denied",
+                                      f"this token lacks the scope {' or '.join(need)}",
+                                      scope=need[0])
+        if self.exposure is not None:
+            bad = self.exposure(p, method, raw, peer, handler.headers)
+            if bad is not None:
+                return self._token_refuse(handler, method, raw, *bad)
+        if not authz.allow(p, perm, self.policy):
+            return self._token_refuse(handler, method, raw, 403, "permission_denied",
+                                      f"the token's owner may not use {perm} now",
+                                      permission=perm)
+        return False
+
+    def _token_refuse(self, handler, method: str, raw: str, status: int, code: str,
+                      message: str, **facts) -> bool:
+        if method not in ("GET", "HEAD"):
+            handler.close_connection = True
+        extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else ()
+        handler._json(status, tokens_mod.refusal(raw, status, code, message, **facts),
+                      extra_headers=extra)
+        return True
 
     def _local_csrf(self, handler, method: str, path: str):
         """SEC-26: a local-mode request has no cookie and no token, so a page of another site
