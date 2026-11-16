@@ -31,6 +31,9 @@ import { addDays, browserTz, dayKey, diffDays, todayKey } from '../lib/time';
 import { LightElement, type Loadable } from '../ui/base';
 import { icon, panel, skeleton, statTile, errorState, emptyState } from '../ui/bits';
 
+/** SEC-28: what a reader without the right `users` sees for another account's username */
+const ANOTHER = 'another account';
+
 type Range = '30d' | '90d' | '365d' | 'custom';
 
 const SPLIT: { key: 'uncached' | 'cached' | 'completion' | 'reasoning'; name: string; color: string }[] = [
@@ -452,7 +455,7 @@ export class QseUsage extends LightElement {
             <span>User</span>
             <select @change=${(e: Event) => setParams({ user: (e.target as HTMLSelectElement).value || null })} .value=${this.user ?? ''}>
               <option value="">all</option>
-              ${dims.users.map((u) => html`<option value=${u} ?selected=${u === this.user}>${u}</option>`)}
+              ${dims.users.map((u) => html`<option value=${u} ?selected=${u === this.user} ?disabled=${u === ANOTHER}>${u}</option>`)}
             </select>
           </label>`
         : nothing}

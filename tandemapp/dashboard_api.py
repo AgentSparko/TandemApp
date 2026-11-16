@@ -62,7 +62,9 @@ from tandemapp.activity import REPLAY  # noqa: E402  (answered from memory, noth
 # the dimension `tokens` (each API token the ledger has seen, its label and owner), `token=`
 # filters usage and requests, and usage's `group=token` or `group=user` adds `groups`: the
 # range's sums per token or per user, each the sum of the ledger's rows. A reader without the
-# permission `users` gets only its own tokens' rows, labels and owners there (`own`).
+# permission `users` gets only its own tokens' rows, labels and owners there (`own`), and sees
+# no other account's username (SEC-28): the `users` list and a request row's `user` say
+# ANOTHER for them, and `user=` names only its own (`me`).
 CONTRACT = "1.3"
 # the log endpoints did not change: their answers stay at 1.0
 LOGS_CONTRACT = "1.0"
@@ -90,6 +92,7 @@ ERROR = ("(finish_reason = 'error' OR (status >= 500 AND (finish_reason IS NULL 
 
 #: SRV-873: usage's `group=`, and the column it sums by
 GROUPS = {"token": "token_id", "user": "user"}
+ANOTHER = "another account"
 
 
 class ApiError(Exception):
@@ -107,6 +110,21 @@ def _not_own(token, own) -> None:
     if token and own is not None and token not in own:
         raise ApiError(403, "permission_denied", "another account's token needs the permission "
                        "users", permission="users")
+
+
+def _not_me(user, own, me) -> None:
+    """SEC-28: `user=` naming another account (`me`: the reader's own names)."""
+    if user and own is not None and user not in me:
+        raise ApiError(403, "permission_denied", "another account's usage needs the permission "
+                       "users", permission="users")
+
+
+def _masked(user, token_id, own, me):
+    """SEC-28: a row's user as a reader without the permission `users` sees it: its own (its
+    token's row, or its own name), else ANOTHER; None stays None."""
+    if own is None or user is None or user in me or (token_id is not None and token_id in own):
+        return user
+    return ANOTHER
 
 
 def _flag(v) -> bool:
@@ -513,9 +531,10 @@ class DashboardAPI:
         return row[0] if row else None
 
     # ----------------------------------------------------------------- endpoints
-    def usage(self, q: dict, own=None) -> dict:
+    def usage(self, q: dict, own=None, me=()) -> dict:
         """`own`: None, every token (the permission `users`, or no accounts); else the ids of
-        the reader's own tokens, the only ones its token dimension, `token=` and `groups` see."""
+        the reader's own tokens, the only ones its token dimension, `token=` and `groups` see.
+        `me` (with `own`): the reader's own names, the only ones `users` and `user=` show."""
         tz_name = q.get("tz") or DEFAULT_TZ
         tz = zone(tz_name)
         bucket = q.get("bucket") or "day"
@@ -541,16 +560,19 @@ class DashboardAPI:
         if (token or group) and self.tokens_fn is None:
             raise _bad("token= and group= need the accounts")
         own = None if own is None or self.tokens_fn is None else tuple(sorted(set(own)))
+        me = () if own is None else tuple(sorted(set(me or ())))
         _not_own(token, own)
+        _not_me(user, own, me)
+        # the reader is in the key: two readers with the same tokens (none) but other names
         key = ("usage", tz_name, bucket, first, last, model, client, backend, user, internal,
-               node, deployment, token, group, own)
+               node, deployment, token, group, own, me)
         return self._cached(key, lambda: self._usage(first, last, bucket, tz, tz_name, model,
                                                      client, backend, user, internal, node,
-                                                     deployment, token, group, own))
+                                                     deployment, token, group, own, me))
 
     def _usage(self, first, last, bucket, tz, tz_name, model, client, backend=None,
                user=None, internal=False, node=None, deployment=None, token=None,
-               group=None, own=None) -> dict:
+               group=None, own=None, me=()) -> dict:
         rng = Range(first, last, bucket, tz)
         aggs = (self._days(first, last, tz, tz_name, model, client, backend, user, internal,
                            node, deployment, token)
@@ -586,11 +608,14 @@ class DashboardAPI:
                "bucket": bucket, "tz": tz_name, "filters": filters,
                "buckets": buckets,
                "totals": Agg.merge(aggs).totals(sum(1 for a in aggs if a.n)),
-               "top_days": top_days, "dimensions": self.dimensions(internal, own)}
+               "top_days": top_days, "dimensions": self.dimensions(internal, own, me)}
         if group:
             out["group"] = group
             out["groups"] = self._groups(group, rng.start_ms, rng.end_ms, model, client, backend,
                                          user, internal, node, deployment, token, own)
+            if group == "user" and own is not None:
+                for g in out["groups"]:
+                    g["key"] = _masked(g["key"], None, own, me)
         return out
 
     def _groups(self, group: str, start_ms: int, end_ms: int, model, client, backend, user,
@@ -636,7 +661,7 @@ class DashboardAPI:
         except Exception:                                          # noqa: BLE001
             return {}
 
-    def dimensions(self, internal: bool = False, own=None) -> dict:
+    def dimensions(self, internal: bool = False, own=None, me=()) -> dict:
         """Every model and client the ledger has seen (the filter lists), from the covering
         index on (model, client_id, ts_ms); a client's kind is the one on its latest row. A
         model or client seen only on internal rows is listed with `internal` alone (VIS-60)."""
@@ -656,7 +681,7 @@ class DashboardAPI:
                                       (model, cid, ts)).fetchone()[0]
                     clients[cid] = (ts, {"id": cid, "label": labels.get(cid), "kind": kind})
         out = {"models": sorted(models), "clients": [clients[c][1] for c in sorted(clients)]}
-        extra = self._proxy_dimensions(db, own)
+        extra = self._proxy_dimensions(db, own, me)
         if extra is not None:
             out.update(extra)
         return out
@@ -693,7 +718,7 @@ class DashboardAPI:
             v = db.execute(f"SELECT MIN({col}) FROM requests WHERE {col} > ?", (v,)).fetchone()[0]
         return out
 
-    def _proxy_dimensions(self, db, own=None) -> dict | None:
+    def _proxy_dimensions(self, db, own=None, me=()) -> dict | None:
         """1.3: the backends and users the ledger has seen, with the configured ones; None on a
         server without the proxy and a ledger with no relayed row (the 1.0 answer)."""
         rows, users, fleet = [], [], {"nodes": [], "deployments": []}
@@ -720,6 +745,9 @@ class DashboardAPI:
         for bid in sorted(set(seen) | set(conf)):
             b = conf.get(bid) or {}
             backends.append({"id": bid, "kind": b.get("kind"), "label": b.get("label") or bid})
+        if own is not None:                    # SEC-28: no other account's username
+            others = [u for u in users if u not in me]
+            users = [u for u in users if u in me] + ([ANOTHER] if others else [])
         out = {"backends": backends, "users": users}
         if fleet["nodes"] or fleet["deployments"]:
             out.update(fleet)                          # SRV-731: rows a fleet's gateway wrote
@@ -778,10 +806,15 @@ class DashboardAPI:
                 "tz": tz_name, "windows": windows,
                 "streak": {"current_days": cur, "longest_days": longest}, "ledger": ledger}
 
-    def requests(self, q: dict, own=None) -> dict:
-        """`own`: as usage's; `token=` may name only the reader's own tokens."""
-        if self.tokens_fn is not None:
+    def requests(self, q: dict, own=None, me=()) -> dict:
+        """`own`, `me`: as usage's; `token=` and `user=` may name only the reader's own, and a
+        row of another account says ANOTHER as its user."""
+        if self.tokens_fn is None:
+            own = None
+        me = () if own is None else tuple(me or ())
+        if own is not None:
             _not_own(q.get("token") or None, own)
+            _not_me(q.get("user") or None, own, me)
         try:
             limit = int(q.get("limit") or 50)
             before = int(q["before"]) if q.get("before") else None
@@ -820,7 +853,14 @@ class DashboardAPI:
                 conf = {}
         return {"contract_version": CONTRACT,
                 "next_before": rows[-1]["id"] if more and rows else None,
-                "requests": [self._request(r, labels, shadow, conf) for r in rows]}
+                "requests": [self._mask(self._request(r, labels, shadow, conf), r, own, me)
+                             for r in rows]}
+
+    @staticmethod
+    def _mask(out: dict, r: dict, own, me) -> dict:
+        if own is not None and out.get("user") is not None:
+            out["user"] = _masked(out["user"], r.get("token_id"), own, me)
+        return out
 
     @staticmethod
     def _request(r: dict, labels: dict, shadow: dict | None = None,

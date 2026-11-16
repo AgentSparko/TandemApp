@@ -652,28 +652,33 @@ class Handler(BaseHTTPRequestHandler):
                                               "type": "invalid_request_error"}})
         return self._complete("/v1/chat/completions", raw, body, t_arrival)
 
-    def _own_tokens(self):
-        """SRV-873: the API tokens whose rows, labels and owners the ledger views show this
-        reader: None for all (no accounts, or the permission `users`), else its own tokens' ids
-        (a token reads its owner's; one without an owner only itself)."""
+    def _reader(self) -> tuple:
+        """SRV-873, SEC-28: what the ledger views show this reader, (own, me). `own`: None for
+        all (the permission `users`), else its own tokens' ids (a token reads its owner's; one
+        without an owner only itself). `me`: the reader's own names; any other account's
+        username is shown as "another account"."""
         a = STATE.get("accounts")
         p = self._principal
-        if a is None or p is None:
-            return None
+        if a is None:
+            return None, ()
         from proxy import authz
-        if authz.allow(p, "users", a.policy):
-            return None
+        if p is not None and authz.allow(p, "users", a.policy):
+            return None, ()
+        if p is None:
+            return (), ()
         try:
-            if p.kind == "account":
-                return tuple(r["id"] for r in a.tokens.mine(p.id))
+            if p.kind in ("account", "local"):
+                return tuple(r["id"] for r in a.tokens.mine(p.id)), (p.name,)
             if p.kind in ("token", "service"):
                 row = a.tokens.get(p.id)
                 if row is not None and row["owner_id"]:
-                    return tuple(r["id"] for r in a.tokens.mine(row["owner_id"]))
-                return (p.id,)
+                    acc = a.store.get(row["owner_id"])
+                    return (tuple(r["id"] for r in a.tokens.mine(row["owner_id"])),
+                            (acc["username"],) if acc is not None else ())
+                return (p.id,), ()
         except Exception:                                          # noqa: BLE001
             pass
-        return ()
+        return (), ()
 
     def _fleet_ledger(self, name: str) -> None:
         """`GET /v1/fleet/ledger/{summary,usage,requests}` (VIS-254): this controller's ledger
@@ -681,9 +686,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self._allowed("dashboard"):
             return
         api = dashboard()
-        own = self._own_tokens()
-        fn = {"summary": api.summary, "usage": lambda q: api.usage(q, own),
-              "requests": lambda q: api.requests(q, own)}.get(name)
+        own, me = self._reader()
+        fn = {"summary": api.summary, "usage": lambda q: api.usage(q, own, me),
+              "requests": lambda q: api.requests(q, own, me)}.get(name)
         if fn is None:
             return self._json(404, {"error": {"type": "not_found",
                                               "message": f"no route /v1/fleet/ledger/{name}"}})
@@ -1026,10 +1031,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/v1/dashboard/logs":
                 return self._logs(q)
             api = dashboard()
-            own = self._own_tokens()
+            own, me = self._reader()
             fn = {"/v1/dashboard/summary": api.summary,
-                  "/v1/dashboard/usage": lambda q: api.usage(q, own),
-                  "/v1/dashboard/requests": lambda q: api.requests(q, own),
+                  "/v1/dashboard/usage": lambda q: api.usage(q, own, me),
+                  "/v1/dashboard/requests": lambda q: api.requests(q, own, me),
                   "/v1/dashboard/system": lambda _q: api.system()}.get(path)
             if fn is None:
                 return self._json(404, {"error": {"type": "not_found",

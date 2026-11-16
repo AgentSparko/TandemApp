@@ -551,7 +551,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
 
   /** /v1/dashboard/{summary,usage,requests} over a ledger's rows: this server's, or the controller's
    *  (VIS-254) with its fleet dimensions (`usageExtra`) and each row's node and deployment (`rowExtra`) */
-  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string; tokenOf?: TokenOf; own?: Set<string> | null }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
+  function ledgerAnswer(res: ServerResponse, q: URLSearchParams, name: string, data: { rows: LedgerRow[]; since: string; tokenOf?: TokenOf; own?: Set<string> | null; me?: string | null }, usageExtra?: (u: Record<string, any>) => void, rowExtra?: (r: Record<string, unknown>) => void): void {
     if (name === 'summary') {
       if (mode === '500') return json(res, 500, { error: { type: 'internal_error', message: 'ledger query failed: database is locked' } });
       const now = Date.now();
@@ -580,6 +580,10 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
     const own = data.tokenOf ? (data.own ?? null) : null;
     const asked = data.tokenOf ? q.get('token') : null;
     if (asked && own && !own.has(asked)) return json(res, 403, { error: { type: 'permission_denied', message: 'another account’s token needs the permission users', permission: 'users' } });
+    // SEC-28: nor another account's username: `user=` its own only; the list and rows say ANOTHER
+    const me = own ? (data.me ?? null) : null;
+    const theirs = (u: unknown): boolean => !!own && typeof u === 'string' && u !== me;
+    if (theirs(q.get('user'))) return json(res, 403, { error: { type: 'permission_denied', message: 'another account’s usage needs the permission users', permission: 'users' } });
     if (name === 'usage') {
       const ztz = q.get('tz') || tz;
       const bucket = (q.get('bucket') as 'day' | 'hour') || 'day';
@@ -614,7 +618,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         // 1.3: the backends and users the ledger has seen (the mock's rows are the engine's)
         u.contract_version = '1.3';
         u.dimensions.backends = [{ id: 'engine', kind: 'engine', label: 'this engine' }, ...backends.backends.map((b) => ({ id: b.id, kind: b.kind, label: b.label }))];
-        u.dimensions.users = ['laptop'];
+        u.dimensions.users = theirs('laptop') ? ['another account'] : ['laptop'];
         if (q.get('backend') || q.get('user')) u.filters = { ...u.filters, backend: q.get('backend'), user: q.get('user') };
         u.totals.cost_micros = 41_230;
       }
@@ -628,6 +632,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
     // a server without the monitor (VIS-44's older server) sends no conductor block
     if (live.conductorMode == null) for (const r of page.requests) delete r.conductor;
     if (!backends.off) for (const r of page.requests) proxied(r as unknown as Record<string, unknown>);
+    for (const r of page.requests as unknown as Record<string, unknown>[]) if (theirs(r.user)) r.user = 'another account';
     if (rowExtra) for (const r of page.requests) rowExtra(r as unknown as Record<string, unknown>);
     return json(res, 200, { contract_version: '1.0', ...page });
   }
@@ -1020,7 +1025,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         const fleetDims = { nodes: [...new Set(all.map((r) => r.node).filter((x): x is string => !!x))], deployments: [...new Set(all.map((r) => r.deployment).filter((x): x is string => !!x))] };
         const since = dayKey(from, q.get('tz') || tz);
         const ta = accountsOf(req) === 'on' ? f.auth : null;
-        return ledgerAnswer(res, q, fleetLedger[1], { rows, since, ...(ta ? { tokenOf: (r: LedgerRow) => ta.tokenOf(r.id), own: ownOf(ta) } : {}) }, (u) => {
+        return ledgerAnswer(res, q, fleetLedger[1], { rows, since, ...(ta ? { tokenOf: (r: LedgerRow) => ta.tokenOf(r.id), own: ownOf(ta), me: ta.account(ta.caller)?.username ?? null } : {}) }, (u) => {
           u.dimensions = { ...u.dimensions, ...fleetDims };
           if (node || dep) u.filters = { ...u.filters, node, deployment: dep };
         }, (r) => Object.assign(r, where.get(String(r.request_id)) ?? { node: null, deployment: null }));
@@ -1189,7 +1194,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       const own = /^\/v1\/dashboard\/(summary|usage|requests)$/.exec(path);
       if (own) {
         const ta = accountsOf(req) === 'on' ? fleetFor(req).auth : null;
-        return ledgerAnswer(res, q, own[1], ta ? { ...rowsFor(), tokenOf: (r) => ta.tokenOf(r.id), own: ownOf(ta) } : rowsFor());
+        return ledgerAnswer(res, q, own[1], ta ? { ...rowsFor(), tokenOf: (r) => ta.tokenOf(r.id), own: ownOf(ta), me: ta.account(ta.caller)?.username ?? null } : rowsFor());
       }
       if (path === '/v1/dashboard/system') {
         return json(res, 200, sysSnapshot());

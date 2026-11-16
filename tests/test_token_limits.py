@@ -29,6 +29,9 @@ counters.
   c2 a Usage reader without the permission users sees only its own tokens' rows, labels and
      owners (the token dimension, token= and group=token|user); users sees all
                                                                        test_usage_is_ones_own
+  c3 SEC-28: nor another account's username: the users list and a request row's user say
+     "another account", user= names only its own (403 else), in /v1/dashboard/* and
+     /v1/fleet/ledger/*; an admin sees every name                     test_no_other_username
 
   Also:
   d  defaults per role from api.limits.default.*, written by an admin; a token never above its
@@ -41,7 +44,8 @@ counters.
   f  the findings token_limit_near and token_limit_reached fire and clear   test_the_findings
   g  the counters come from the ledger at the first sight, and roll at midnight
                                                                        test_counters_from_the_ledger
-  h  switched off, nothing of this exists                             test_switched_off
+  h  SEC-28: no switch: the limits always run; local mode (this machine, no password) reads
+     the usage as the owner                                             test_always_on
 
     python tests/test_token_limits.py
 """
@@ -49,6 +53,7 @@ counters.
 from __future__ import annotations
 
 import concurrent.futures as cf
+import functools
 import json
 import os
 import sqlite3
@@ -64,9 +69,13 @@ import fake_anthropic  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import authz  # noqa: E402
 from proxy import tokenlimits  # noqa: E402
-from proxy_util import Proxy, fake, run  # noqa: E402
+from proxy_util import Proxy as _Proxy, fake, run  # noqa: E402
 from test_auth_tokens import (CHAT, ON, accounts, bearer, env_for, j, make,  # noqa: E402
                               new_token, sign_in)
+
+# SEC-28: these tests run as before the flip made local mode the default of a bare
+# process: a controller that is not listening yet, so this machine is trusted for nothing
+Proxy = functools.partial(_Proxy, local=False)
 
 PRICE = {"TANDEM_PRICE_1": "engine/big-1=20000,20000,20000"}     # 2 cents a token
 BIG = {"model": "big-1", **CHAT}
@@ -526,6 +535,62 @@ def test_usage_is_ones_own():
         srv.shutdown()
 
 
+def test_no_other_username():
+    srv, port = engine()
+    try:
+        with controller(port) as px:
+            px.sync()
+            setting(px, "api.tokens.viewers_may_create", True)
+            make("ops", "operator")
+            make("view", "viewer")
+            make("adm", "admin")
+            ops, view, adm = sign_in(px, "ops"), sign_in(px, "view"), sign_in(px, "adm")
+            for who, label, n in ((ops, "o", 2), (view, "v", 1), (adm, "a", 1)):
+                tok, _ = new_token(px, who, label=label, scopes=["inference:openai"])
+                for _ in range(n):
+                    assert px.post("/v1/chat/completions", SMALL, bearer(tok))[0] == 200
+            px.rows()
+            names = {"ops", "view", "adm"}
+
+            def users_of(who, base):
+                st, out = j(px.get(f"{base}/usage?bucket=day&tz=UTC", who))
+                assert st == 200, (st, out)
+                st, req = j(px.get(f"{base}/requests?limit=50", who))
+                assert st == 200, (st, req)
+                return out["dimensions"]["users"], [r["user"] for r in req["requests"]]
+
+            for base in ("/v1/dashboard", "/v1/fleet/ledger"):
+                # the permission users: every name, in the list and on the rows
+                listed, rows = users_of(adm, base)
+                assert names <= set(listed) and names <= set(rows), (listed, rows)
+                # a viewer: its own name, and "another account" for the others
+                listed, rows = users_of(view, base)
+                assert listed == ["view", "another account"], listed
+                assert set(rows) == {"view", "another account"}, rows
+                assert rows.count("view") == 1 and rows.count("another account") == 3, rows
+                st, out = j(px.get(f"{base}/requests?limit=50", view))
+                text = json.dumps([r["user"] for r in out["requests"]] + listed)
+                assert '"ops"' not in text and '"adm"' not in text, text
+                # user= of another account: refused, the name not echoed; its own: its rows
+                for path in ("usage?bucket=day&tz=UTC", "requests?limit=5"):
+                    st, out = j(px.get(f"{base}/{path}&user=ops", view))
+                    assert st == 403 and out["error"]["permission"] == "users", (path, st, out)
+                    assert "ops" not in out["error"]["message"], out
+                st, out = j(px.get(f"{base}/requests?limit=5&user=view", view))
+                assert st == 200 and [r["user"] for r in out["requests"]] == ["view"], out
+                # an operator has no users either
+                listed, rows = users_of(ops, base)
+                assert listed == ["ops", "another account"] and set(rows) == \
+                    {"ops", "another account"}, (listed, rows)
+            # by user: a viewer's sums are its own only
+            st, out = j(px.get("/v1/dashboard/usage?bucket=day&tz=UTC&group=user", view))
+            assert st == 200 and [g["key"] for g in out["groups"]] == ["view"], out
+            # one cache: the admin after the viewer still sees every name
+            assert names <= set(users_of(adm, "/v1/dashboard")[0])
+    finally:
+        srv.shutdown()
+
+
 # ---------------------------------------------------------------------------- d
 
 def test_role_defaults_and_caps():
@@ -779,18 +844,16 @@ def test_counters_from_the_ledger():
 
 # ---------------------------------------------------------------------------- h
 
-def test_switched_off():
+def test_always_on():
     srv, port = engine()
     try:
-        with Proxy(env=env_for(port, **PRICE)) as px:
+        with _Proxy(env=env_for(port, **PRICE)) as px:
             px.sync()
-            assert px.svc.limits is None
+            assert px.svc.limits is not None
             assert px.post("/v1/chat/completions", BIG)[0] == 200
-            st, out = j(px.get("/v1/dashboard/usage"))
-            assert st == 200 and "tokens" not in out["dimensions"] and "groups" not in out, out
-            for q in ("group=token", "token=abc"):
-                assert px.get(f"/v1/dashboard/usage?{q}")[0] == 400, q
-            assert px.get("/v1/auth/usage")[0] == 404
+            st, out = j(px.get("/v1/dashboard/usage?group=token"))
+            assert st == 200 and "tokens" in out["dimensions"] and "groups" in out, out
+            assert px.get("/v1/dashboard/usage?token=abc")[0] == 200
     finally:
         srv.shutdown()
 

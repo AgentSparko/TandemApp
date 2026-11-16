@@ -132,6 +132,26 @@ describe('Gherkin: limits and usage (SRV-873)', () => {
     // the admin again, after the viewer: still every token
     expect((await read(sam)).dimensions.tokens!.length).toBe(all.dimensions.tokens!.length);
   });
+
+  it('No other username (SEC-28): a viewer sees “another account” in the user list and on the rows; an admin sees the names', async () => {
+    const mw = createMockMiddleware({ live: false });
+    const sam = await signedIn(mw, 'sam');
+    const vic = await signedIn(mw, 'vic');
+    const q = '/v1/dashboard/usage?bucket=day&tz=UTC&from=2026-01-01&to=2026-12-31';
+    const rq = '/v1/dashboard/requests?limit=50';
+    const users = async (who: string) => ((await call(mw, 'GET', q, who)).body as Usage).dimensions.users;
+    const rowUsers = async (who: string) => ((await call(mw, 'GET', rq, who)).body as { requests: { user?: string | null }[] }).requests.map((r) => r.user).filter((u) => u);
+    expect(await users(sam)).toEqual(['laptop']);
+    expect(await rowUsers(sam)).toContain('laptop');
+    expect(await users(vic)).toEqual(['another account']);
+    const seen = await rowUsers(vic);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set(['another account']));
+    const no = await call(mw, 'GET', `${q}&user=laptop`, vic);
+    expect([no.status, (no.body as { error: { permission: string } }).error.permission]).toEqual([403, 'users']);
+    // the admin after the viewer: the names again
+    expect(await users(sam)).toEqual(['laptop']);
+  });
 });
 
 describe('My tokens: each token’s use and its limits’ state', () => {
