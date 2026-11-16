@@ -238,7 +238,7 @@ The plugins scope (settings-v1 1.1) has one target a plugin. Its keys come from 
 | `settings.<property>` | one property of the plugin's settings schema, with its type and default. A value must hold against the property's schema. Unset: the default. |
 | `secrets.<NAME>` | a declared secret, write-only, sealed under the master key |
 | `capabilities.<capability>` | a requested capability, `false` until granted. Unset revokes it. |
-| `trust` | only for a plugin whose manifest asks `trust: host`: `host` lets it run as a process of the app's user, outside any sandbox; `sandboxed` (the default) keeps it from starting. |
+| `trust` | only for a plugin whose manifest asks `trust: host`: `host` lets it run as a process of the app's user, outside any sandbox; `sandboxed` (the default) keeps it from starting. Set to `host` here only for a plugin signed by a key trusted for host; an unsigned plugin's grant takes the typed confirmation on its trust route ([plugins](plugins.md#trust)), and here answers 409. |
 
 Enabling a plugin and every grant take pairing's rights (403 `trust_required` otherwise). A grant of `prompts:full`, `engine:control`, `network:<host>` outside the LAN or `trust` host is in the plan's `grant_keys` and needs `confirm_grant`. The plugin host restarts a running plugin when its settings, secrets or grants change. A restore that brings a grant back asks again.
 

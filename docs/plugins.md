@@ -146,13 +146,14 @@ The checks, each a refusal with its code and the manifest field it is about (`co
 - `secrets:<NAME>` names a declared secret; payloads covered by a `prompts:` capability; `engine_hooks` only with `trust: engine`;
 - the settings schema, as above;
 - `tandemapp` holds for this TandemApp, `hooks_api` and `plugin_api` are not newer than this controller's (same major, minor not newer). A refusal names the needed version and this one's;
-- a signature, when there is one, holds.
+- a signature, when there is one, holds;
+- with the policy on, a sandboxed plugin carries a trusted signature (409 `signature_required`).
 
 ### The tree's sha256 and a signature
 
-The install records the sha256 of the plugin's files: sha256 over `plugin-tree-v1\n` and a line a file, in byte order of the path, `<sha256 of the file> <x or -> <path>\n` (`x`: executable). `.git` and `__pycache__` folders, `.pyc`, `.DS_Store` and `._*` files are not part of the tree; a symlink or a special file refuses it. The registry checks the tree again when the plugin is enabled and before it is started: a tree that changed reads `mismatch` (or `missing`) and does not load until it is installed again.
+The install records the sha256 of the plugin's files: sha256 over `plugin-tree-v1\n` and a line a file, in byte order of the path, `<sha256 of the file> <x or -> <path>\n` (`x`: executable). `.git` and `__pycache__` folders, `.pyc`, `.DS_Store` and `._*` files are not part of the tree; a symlink or a special file refuses it. The registry checks the tree again when the plugin is enabled and before it is started, and `plugin.sig.json` with it (the tree's sha256 leaves the signature out, so the registry records the signature file's own sha256): a tree or a signature that changed reads `mismatch` (or `missing`), with the reason, and does not load until it is installed again. The health page names it (`plugin_tampered`).
 
-A plugin may carry `plugin.sig.json` at its root: `{algorithm: "ed25519", public_key, signed, signature}`, where `signed` is the tree's sha256 and `signature` is over `tandemapp-plugin-v1\0` followed by that sha256 in hex. When it is present it must hold, or the install is refused. Which keys are trusted is not decided in this version: the registry records the key's id and `trusted: null`.
+A plugin may carry a signature, `plugin.sig.json` at its root ([signing](#sign-a-plugin)). When it is present it must hold, or the install is refused (`signature_invalid`).
 
 ## Lifecycle
 
@@ -161,10 +162,74 @@ A plugin may carry `plugin.sig.json` at its root: `{algorithm: "ed25519", public
 | install | the plugin is stored under the controller's state dir, `plugins/<name>/<version>/`, disabled |
 | enable | checks the tree and the compatibility with this TandemApp first |
 | disable | always works |
-| upgrade | install the new version with `"upgrade": true`. Settings whose property is still there and whose value still holds, secrets still declared and capabilities still asked for are kept; the rest is dropped and listed. A new capability starts ungranted. The old version's folder is removed. The same version with other files is refused (raise the version); an older version needs `"allow_downgrade": true`. |
+| upgrade | install the new version with `"upgrade": true`. Settings whose property is still there and whose value still holds, secrets still declared and capabilities still asked for are kept; the rest is dropped and listed. A new capability starts ungranted (listed in `new`): it takes its own grant. The old version's folder is removed. The same version with other files is refused (raise the version); an older version needs `"allow_downgrade": true`, signed or not. A version that asks a higher trust level, or whose host grant rested on a signature it no longer carries, is refused (409 `trust_confirm_needed`) and the installed version keeps running, until it comes again with `"confirm_trust": "<plugin id>"` ([trust](#trust)). |
 | remove | refused while a hook names the plugin (409 `referenced`, with the hooks); takes its folder and secrets |
 
 An install cut short leaves nothing: the files move into place before the registry row is written, and the next start removes a staging folder or a version folder no row names.
+
+## Sign a plugin
+
+`tools/plugin_sign.py` makes an ed25519 key and signs a plugin folder with it; it never prints the private key.
+
+```
+python tools/plugin_sign.py keygen ~/keys/acme-plugins.pem      # 0600, never overwritten
+public_key g2KYlmjw...UZJzY=
+fingerprint sha256:27b251a6f466ff65ffa8c9f9dc4a3033d3752871cc05faea0637f08152a37788
+
+python tools/plugin_sign.py sign --key ~/keys/acme-plugins.pem path/to/hello-tool
+python tools/plugin_sign.py verify path/to/hello-tool --fingerprint sha256:27b2...7788
+```
+
+`--passphrase-env NAME` encrypts the key at keygen and reads the passphrase at sign. Publish the public key and its fingerprint where your users can compare them. Sign last: a file changed after signing breaks the signature.
+
+What is signed. `plugin.sig.json` holds `{format, algorithm, public_key, plugin, version, tree_sha256, manifest_sha256, signature}`: `format` is `tandemapp-plugin-sig-1`, `algorithm` `ed25519`, `public_key` the base64 of the key's 32 bytes, `tree_sha256` the tree's sha256 (above: it folds in every file's sha256) and `manifest_sha256` the sha256 of `plugin.json`'s bytes. `signature` is the base64 of the 64-byte ed25519 signature over five lines of UTF-8, each ending in `\n`:
+
+```
+tandemapp-plugin-sig-1
+plugin <name>
+version <version>
+tree <tree_sha256>
+manifest <manifest_sha256>
+```
+
+The install checks each part: the tree, the manifest, the name and the version must be this plugin's, and the signature must hold. A key's id is the first 16 hex digits of its fingerprint, the sha256 of its 32 bytes.
+
+## Trust
+
+A signature that holds is only trusted when its key is one this TandemApp trusts for that plugin at that level. A signature by any other key counts as none.
+
+**Trusted keys** (`/v1/fleet/plugin-trust`, pairing's rights to change). Adding a key takes its fingerprint typed or pasted back: compare it with the one its publisher published. Without it the answer is 428 `fingerprint_confirm_required` with the fingerprint to compare; a different one is 422 `fingerprint_mismatch`. A key can be limited to plugin ids (`plugins`) and to trust levels (`levels`); `null` means any. Removing a key takes its fingerprint as well. To change a key's limits, remove it and add it again.
+
+```
+POST /v1/fleet/plugin-trust/keys {"public_key": "g2KYlmjw...UZJzY=", "name": "Acme plugins",
+                                  "plugins": ["hello-tool"], "levels": ["sandboxed", "host"],
+                                  "confirm_fingerprint": "sha256:27b251a6...7788"}
+DELETE /v1/fleet/plugin-trust/keys/27b251a6f466ff65 {"confirm_fingerprint": "sha256:27b2...7788"}
+POST /v1/fleet/plugin-trust/policy {"require_signature_sandboxed": true}
+```
+
+**The levels.**
+
+| level | runs when | a grant takes |
+|-|-|-|
+| `sandboxed` | always; with `require_signature_sandboxed` on (off by default), only with a trusted signature, refused at install, enable and load otherwise | nothing |
+| `host` | it holds a host grant | pairing's rights, and either a signature trusted for host (basis `signature`) or the plugin's id typed (basis `typed`). A grant on a signature holds only while that signature stays trusted: remove the key, and the plugin stops until it is granted again |
+| `engine` | not yet: the in-process chain does not exist | per engine host: a signature trusted for engine AND the plugin's id typed. The grant is recorded; the plugin is refused at runtime until engine extensions install through `ext install` |
+
+```
+GET  /v1/fleet/plugins/<id>/trust                      what it asks, what it has, its signature,
+                                                       whether it runs and what a grant takes
+POST /v1/fleet/plugins/<id>/trust {"level": "host", "confirm": "<id>"}
+POST /v1/fleet/plugins/<id>/trust {"level": "engine", "engine": "<engine host>", "confirm": "<id>"}
+POST /v1/fleet/plugins/<id>/trust {"level": "sandboxed"}                     revoke every grant
+POST /v1/fleet/plugins/<id>/trust {"level": "sandboxed", "engine": "<host>"}  revoke one engine
+```
+
+A grant without the typed confirmation where one is needed is 428 `typed_confirm_required`; a wrong one is 422 `typed_confirm_mismatch`; an engine grant without a trusted signature is 409 `signature_required`. The settings interface's `trust` key grants host only for a plugin signed by a key trusted for host (with its second confirm); for an unsigned one it answers 409 and points here.
+
+**Updates.** A new capability starts ungranted. A version that asks a higher level than the installed one, or whose host grant rested on a signature this version does not carry, waits for `confirm_trust` (the plugin's id): the installed version keeps running meanwhile. With it, the upgrade goes ahead, and a host plugin's grant is renewed on the new version's trusted signature or, unsigned, on the typed confirmation. A host grant carries over an upgrade that still asks host; an engine grant carries over while the new version is still signed by a key trusted for engine. Going back to an older version, signed or not, takes `allow_downgrade`.
+
+**Audit.** Each trust decision is a row of the audit table: a key trusted or distrusted (with its fingerprint), the policy set, a grant or revoke (its level, basis, key and engine host), and each refusal at install, upgrade, enable, load or grant (`refused`, with where and why). The health page names a plugin that may not run as it asks (`plugin_untrusted`) or that changed (`plugin_tampered`).
 
 ## Running plugins
 
@@ -174,9 +239,9 @@ The plugin host in the controller starts one process for each enabled plugin of 
 
 | `trust` | where it runs | how |
 |-|-|-|
-| `sandboxed` (default) | a container (Docker or Podman) or a Kubernetes pod of the chat sandbox's class | always; it waits when there is no sandbox runtime here |
-| `host` | a process of the app's user, outside any sandbox | only once the admin set its `trust` key to `host` (pairing's rights and the second confirm); until then it does not start |
-| `engine` | a wheel inside the engine | refused: not available yet |
+| `sandboxed` (default) | a container (Docker or Podman) or a Kubernetes pod of the chat sandbox's class | always, signed or not, unless the policy requires a trusted signature for sandboxed plugins; it waits when there is no sandbox runtime here |
+| `host` | a process of the app's user, outside any sandbox | only once granted ([trust](#trust)): on a signature by a trusted key, or with the plugin's id typed; until then it does not start |
+| `engine` | a wheel inside the engine | a grant per engine host takes a trusted signature and the plugin's id typed; refused at runtime until the in-process chain exists |
 
 **The sandbox.** The sandbox image (`QSE_SANDBOX_IMAGE`, `tandem-sandbox:1`), uid 1000, every capability dropped, no-new-privileges, a read-only root, a small in-memory /tmp, no devices, 512 MiB (`TANDEM_PLUGIN_MEM_MB`), one CPU and 128 processes, and no network but its loopback. Mounted: the plugin's installed tree at `/plugin`, read-only; its own folder at `/workspace` (`TANDEM_PLUGIN_DATA`) and a home at `/home/agent`. Nothing else of the controller's: not the config database, not another plugin's folder or secrets. Its way out is the chat sandbox's egress proxy (`HTTP_PROXY` and `HTTPS_PROXY` are set) with a host list: only the hosts of its granted `network:` capabilities, a granted LAN address included; any other address is refused, and this box (loopback), link-local addresses and the Kubernetes API are refused even when granted.
 
@@ -272,7 +337,8 @@ A panel is served at `/plugin-panels/<id>/<panel>/` (its HTML; the files beside 
 | its stderr and the host's lines about it, every secret value replaced by `[secret NAME]` | `GET /v1/fleet/plugins/<id>/logs?tail=200`; `<state dir>/logs/plugins/<id>.log` (1 MiB, then one older file) |
 | start again, stop (held), start | `POST /v1/fleet/plugins/<id>/restart`, `/stop`, `/start` |
 | a hook's calls and breaker | `GET /v1/fleet/hooks/<id>/calls` for a hook of kind plugin; the runner's metrics for `<plugin>/<hook>` |
-| a plugin that gave up or has no sandbox | the health page's controller findings |
+| a plugin that gave up, has no sandbox, changed since its install or is not trusted as it asks | the health page's controller findings |
+| why it may not run at its level | `GET /v1/fleet/plugins/<id>/trust` |
 
 ## The API
 
@@ -280,8 +346,12 @@ A panel is served at `/plugin-panels/<id>/<panel>/` (its HTML; the files beside 
 |-|-|
 | `GET /v1/fleet/plugins` | the configuration's |
 | `POST /v1/fleet/plugins/inspect {source}` | the configuration's |
-| `POST /v1/fleet/plugins {source, upgrade?, allow_downgrade?}` | pairing's |
+| `POST /v1/fleet/plugins {source, upgrade?, allow_downgrade?, confirm_trust?}` | pairing's |
 | `GET /v1/fleet/plugins/{id}` | the configuration's |
+| `GET /v1/fleet/plugins/{id}/trust` | the configuration's |
+| `POST /v1/fleet/plugins/{id}/trust {level, engine?, confirm?}` | pairing's |
+| `GET /v1/fleet/plugin-trust` | the configuration's |
+| `POST /v1/fleet/plugin-trust/keys`, `DELETE /v1/fleet/plugin-trust/keys/{key}`, `POST /v1/fleet/plugin-trust/policy` | pairing's |
 | `POST /v1/fleet/plugins/{id}/enable` | pairing's |
 | `POST /v1/fleet/plugins/{id}/disable`, `/verify` | the configuration's |
 | `DELETE /v1/fleet/plugins/{id}` | pairing's |
@@ -292,7 +362,7 @@ Pairing's rights are the admin's, or this machine's while no admin password is s
 
 ## Settings, secrets and capabilities
 
-They are the settings interface's `plugins` scope, one target a plugin: `GET /v1/settings/plugins/schema?target=<id>`, then plan and apply as for any scope ([settings](settings.md#plugins)). Its keys are `enabled`, `settings.<property>`, `secrets.<NAME>` (write-only), `capabilities.<capability>` and, for a manifest that asks `trust: host`, `trust`. Each plugin keeps its own versions.
+They are the settings interface's `plugins` scope, one target a plugin: `GET /v1/settings/plugins/schema?target=<id>`, then plan and apply as for any scope ([settings](settings.md#plugins)). Its keys are `enabled`, `settings.<property>`, `secrets.<NAME>` (write-only), `capabilities.<capability>` and, for a manifest that asks `trust: host`, `trust` (host only on a trusted signature; [trust](#trust)). Each plugin keeps its own versions.
 
 ## The engine-stats plugins
 
