@@ -163,6 +163,12 @@ CATALOG: dict[str, tuple[int, str, str]] = {
     "backend_down": (502, "The backend {backend} does not answer: {detail}",
                      "Check that it runs and that its address and key are right; Backends tests "
                      "it."),
+    # SRV-879: the harness asked of a kind it cannot run on (proxy/config.py NO_HARNESS)
+    "harness_unsupported": (409, "The harness is switched on for {backend}, which cannot run "
+                                 "it yet: {detail}",
+                            "Switch the harness and the memory writer off there, and point any "
+                            "role that names it at another backend; its requests are relayed "
+                            "without the harness meanwhile."),
     # the plugin host (SRV-859)
     "plugin_failed": (409, "The plugin {plugin} does not run: {detail}",
                       "Its page's log says why; fix it, then enable or start it again."),

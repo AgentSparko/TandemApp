@@ -68,8 +68,9 @@ unavailable is sandbox_unavailable, the memory cgroup on that host (Linux: the k
 controller, and its delegation to the user whose /run/user/<uid> holds the socket:
 no_memory_cgroup), the free space where the state and chat data live (disk_low under DISK_WARN_GB,
 an error under DISK_ERROR_GB), each enabled backend that the background poll found down
-(backend_down; retry probes them now), and no_engine while the first run's wizard still waits
-(`setup.needs_setup`).
+(backend_down; retry probes them now), a harness switched on for a backend whose kind it cannot
+run on (harness_unsupported, SRV-879: held off, said here), and no_engine while the first run's
+wizard still waits (`setup.needs_setup`).
 
 THE FIXES. `retry` checks again (and probes the down backends); `start`, `rotate_token` and
 `upgrade` run through EngineHostControl (proxy/enginectl.py) with this controller's key;
@@ -184,6 +185,7 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "no_memory_cgroup": ("warning", None),
     "disk_low": ("warning", None),
     "backend_down": ("warning", "retry"),
+    "harness_unsupported": ("warning", None),                      # SRV-879
     # the plugin host (SRV-859)
     "plugin_failed": ("warning", None),
     "plugin_no_sandbox": ("warning", None),
@@ -742,6 +744,13 @@ class Health:
             found.append(finding("backend_down", (b.get("last_error") or "")[:200] or None,
                                  backend=b["label"] or b["id"]))
         checks.append(_check("backends", not down, "backend_down" if down else None))
+        # SRV-879: the harness asked of a backend whose kind it cannot run on (held off; a
+        # finding without a check of its own, the page's checks stay as they are)
+        from proxy import harness as harness_mod
+        clash = harness_mod.conflicts(self.fleet.svc)
+        for name in dict.fromkeys(n for n, _ in clash):
+            found.append(finding("harness_unsupported",
+                                 "; ".join(w for n, w in clash if n == name), backend=name))
         # the plugins (SRV-859): one that gave up or may not start, one with no sandbox
         host = getattr(self.fleet.svc, "plugin_host", None)
         probs = host.problems() if host is not None else []

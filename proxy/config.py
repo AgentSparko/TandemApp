@@ -148,6 +148,26 @@ KINDS = {
 }
 # the defaults of a kind anthropic backend's own settings
 ANTHROPIC = anthropic_tr.DEFAULTS
+# SRV-879: kinds the harness cannot run on yet. Its own requests (the class question, the
+# narrator, the memory writer) speak the OpenAI chat shape straight to the backend, and through
+# the translation they would lose what they rely on (logprobs, greedy sampling, thinking off), so
+# its switches are refused here and held off at run time (proxy/harness.py `switches`).
+NO_HARNESS = frozenset({"anthropic"})
+
+
+def harness_refusal(doc: dict) -> tuple[str, str] | None:
+    """(field, why) when a backend document switches the harness on for a kind in NO_HARNESS:
+    its mode, or its memory writer (`auto` stays allowed: it resolves to off there)."""
+    if doc.get("kind") not in NO_HARNESS:
+        return None
+    h = doc.get("harness") or {}
+    why = (f"the harness cannot run on a backend of kind {doc['kind']} yet: its own requests "
+           f"speak the OpenAI chat shape")
+    if h.get("mode") not in (None, "off"):
+        return "harness.mode", why
+    if h.get("writer") not in (None, "off", "auto"):
+        return "harness.writer", why
+    return None
 # the backend fields that are objects, stored as JSON and patched field by field
 JSON_GROUPS = ("timeouts", "harness", "host", "anthropic")
 TIMEOUTS = {False: {"connect": 5.0, "first_byte": 600.0, "idle": 120.0},
@@ -519,6 +539,11 @@ def parse_env(env) -> dict:
             var = out["vars"].get(("backend", bid, path)) or \
                 f"TANDEM_BACKEND_{env_name(bid)}_{path.upper().replace('.', '_')}"
             raise ConfigError(f"{var}: {msg}", var=var, field=path)
+        bad = harness_refusal(doc)
+        if bad is not None:
+            var = out["vars"].get(("backend", bid, bad[0])) or \
+                f"TANDEM_BACKEND_{env_name(bid)}_{bad[0].split('.')[1].upper()}"
+            raise ConfigError(f"{var}: {bad[1]}", var=var, field=bad[0])
     for r in out["rules"]:
         for path, msg in schema.validate({"pattern": r["pattern"], "backend": r["backend"]},
                                          "rule"):
@@ -821,6 +846,9 @@ class ConfigDB:
         errs = schema.validate(doc, "backend")
         if errs:
             raise ConfigError(f"{errs[0][0]} {errs[0][1]}", field=errs[0][0])
+        bad = harness_refusal(doc)
+        if bad is not None:
+            raise ConfigError(f"{bad[0]}: {bad[1]}", field=bad[0])
         with self._lock:
             if self._conn.execute("SELECT 1 FROM backends WHERE id = ?",
                                   (doc["id"],)).fetchone():
@@ -841,6 +869,11 @@ class ConfigDB:
         cur = self.backend(bid)
         if cur is None:
             raise ConfigError(f"no backend '{bid}'", status=404)
+        after = dict(cur, **{k: v for k, v in patch.items() if k != "harness"})
+        after["harness"] = dict(cur.get("harness") or {}, **(patch.get("harness") or {}))
+        bad = harness_refusal(after)
+        if bad is not None:
+            raise ConfigError(f"{bad[0]}: {bad[1]}", field=bad[0])
         locks = self.backend_locks(bid)
         for k, v in patch.items():
             subs = ([f"{k}.{s}" for s in v] if isinstance(v, dict) and k in JSON_GROUPS

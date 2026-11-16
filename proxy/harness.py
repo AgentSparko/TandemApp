@@ -77,6 +77,58 @@ def lower(a: str, b: str) -> str:
     return a if RANK.get(a, 0) <= RANK.get(b, 0) else b
 
 
+def runs_on(backend: dict | None) -> bool:
+    """Whether the harness may run on a backend (its kind; proxy/config.py NO_HARNESS). A role
+    whose endpoint names a backend it may not run on falls back as if it named none."""
+    from proxy.config import NO_HARNESS
+    return backend is not None and backend.get("kind") not in NO_HARNESS
+
+
+def conflicts(svc) -> list[tuple[str, str]]:
+    """(backend label, what) for each switch that asks the harness of a backend it may not run
+    on: the backend's mode or writer, a model's mode, a role's endpoint. The health page's
+    `harness_unsupported` (proxy/fleethealth.py)."""
+    out = []
+    try:
+        backends = svc.cfg.backends()
+    except Exception:                                              # noqa: BLE001
+        return out
+    by_id = {b["id"]: b for b in backends}
+    for b in backends:
+        if runs_on(b):
+            continue
+        name = b.get("label") or b["id"]
+        h = b.get("harness") or {}
+        if h.get("mode") not in (None, "off"):
+            out.append((name, "its harness mode is " + str(h.get("mode"))))
+        if h.get("writer") not in (None, "off", "auto"):
+            out.append((name, "its memory writer is " + str(h.get("writer"))))
+        try:
+            rows = svc.cfg.models(b["id"])
+        except Exception:                                          # noqa: BLE001
+            rows = []
+        for m in rows:
+            mode = ((m.get("features") or {}).get("mode"))
+            if mode not in (None, "inherit", "off"):
+                out.append((name, f"the model {m.get('model')} has the harness {mode}"))
+    hx = getattr(svc, "harness", None)
+    cond = getattr(hx, "cond", None)
+    if cond is not None:
+        try:
+            _, roles = cond.store.peek("roles")
+        except Exception:                                          # noqa: BLE001
+            roles = {}
+        for name in ("classifier", "narrator"):
+            role = (roles or {}).get(name) or {}
+            ep = str(role.get("endpoint") or "")
+            if role.get("mode", "off") == "off" or not ep.startswith("backend:"):
+                continue
+            b = by_id.get(ep[8:].partition("/")[0])
+            if b is not None and not runs_on(b):
+                out.append((b.get("label") or b["id"], f"the {name} role names it"))
+    return out
+
+
 def switches(backend: dict, model_row: dict | None) -> dict:
     """The effective switches of one model on one backend: `mode` and every group, each `off`,
     `shadow` or `on`, a group never above the mode."""
@@ -84,6 +136,8 @@ def switches(backend: dict, model_row: dict | None) -> dict:
     feats = (model_row or {}).get("features") or {}
     if feats.get("mode") not in (None, "inherit"):
         mode = feats["mode"]
+    if not runs_on(backend):
+        mode = "off"                          # SRV-879: its own requests cannot reach this kind
     out = {"mode": mode}
     base = DEFAULTS[bool(backend.get("cloud"))]
     for g in GROUPS:
@@ -244,7 +298,7 @@ class Harness:
         if ep.startswith("backend:") and role.get("mode", "off") != "off":
             bid, _, model = ep[8:].partition("/")
             b = self.svc.table.backend_for(bid) or self.svc.cfg.backend(bid)
-            if b is not None:
+            if b is not None and runs_on(b):
                 return BackendQuestion(self, b, model or t.route.model,
                                        int(stage.get("timeout_ms") or CLASS_TIMEOUT_MS), t)
         return BackendQuestion(self, t.backend, t.route.model,
@@ -756,7 +810,7 @@ class Turn:
             return None
         bid, _, model = ep[8:].partition("/")
         b = self.hx.svc.cfg.backend(bid)
-        if b is None or not model:
+        if b is None or not model or not runs_on(b):
             return None
         return BackendNarrator(self.hx, b, model, float(role.get("latency_budget_ms") or 150))
 

@@ -37,6 +37,7 @@
         "no_memory_cgroup",
         "disk_low",
         "backend_down",
+        "harness_unsupported",
         "plugin_failed",
         "plugin_no_sandbox",
         "plugin_tampered",

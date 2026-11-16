@@ -262,6 +262,11 @@
       "message": "The backend {backend} does not answer: {detail}",
       "fix": "Check that it runs and that its address and key are right; Backends tests it."
     },
+    "harness_unsupported": {
+      "status": 409,
+      "message": "The harness is switched on for {backend}, which cannot run it yet: {detail}",
+      "fix": "Switch the harness and the memory writer off there, and point any role that names it at another backend; its requests are relayed without the harness meanwhile."
+    },
     "plugin_failed": {
       "status": 409,
       "message": "The plugin {plugin} does not run: {detail}",
@@ -418,6 +423,10 @@
     "backend_down": {
       "severity": "warning",
       "action": "retry"
+    },
+    "harness_unsupported": {
+      "severity": "warning",
+      "action": null
     },
     "plugin_failed": {
       "severity": "warning",
