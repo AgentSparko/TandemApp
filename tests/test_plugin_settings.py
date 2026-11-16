@@ -320,7 +320,9 @@ def test_secrets_never_leave():
                 f.write(base64.b64decode(exp["db"]))
             c = sqlite3.connect(db)
             assert c.execute("SELECT COUNT(*) FROM plugin_secrets").fetchone()[0] == 0
-            assert c.execute("SELECT COUNT(*) FROM plugins").fetchone()[0] == 1
+            # SEC-16: plugins stay with their files on a move, and the export says so
+            assert c.execute("SELECT COUNT(*) FROM plugins").fetchone()[0] == 0
+            assert any("plugins stay" in x for x in exp["dropped"]), exp["dropped"]
             c.close()
         finally:
             shutil.rmtree(d)
