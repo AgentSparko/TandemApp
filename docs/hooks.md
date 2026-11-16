@@ -76,7 +76,7 @@ and reads the answer (`result.schema.json`):
 {"action": "modify", "patch": {"temperature": 0.3}, "reason": "capped", "labels": {"team": "a"}}
 ```
 
-`continue` (or an empty 200, or 204) changes nothing. `deny` refuses with your `reason`. `decide` carries a `decision`: `{backend, model, profile}` at `route.select`, `{fallback: {backend, model}}` at `request.error`, `{retry: true}` at `response.after_engine`. `labels` travel to `request.finished`. Any other answer, a status other than 200 or 204, or no answer within the timeout counts as a failure.
+`continue` (or an empty 200, or 204) changes nothing. `deny` refuses with your `reason`. `decide` carries a `decision`: `{backend, model, profile}` at `route.select`, `{fallback: {backend, model}}` at `request.error`, `{retry: true}` at `response.after_engine`, `{answer}` at `decision.ask` (a question of the conductor, asked through a `hook` [decision provider](decision-providers.md)). `labels` travel to `request.finished`. Any other answer, a status other than 200 or 204, or no answer within the timeout counts as a failure.
 
 ### Checking the signature
 
