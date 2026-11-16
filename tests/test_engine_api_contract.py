@@ -872,8 +872,13 @@ def test_additive_1_9():
         ("POST", "/v1/engine/pair/2", 9, "1.9"), ("POST", "/v1/engine/pair/abandon", 9, "1.9"),
         ("POST", "/v1/engine/pair/close", 9, "1.9"), ("POST", "/v1/engine/pair/open", 9, "1.9")], new
     assert all(r["used_by"] == [] and r["consumer"] for r in new), new
-    assert {k: v for k, v in doc.items() if k not in ("version", "routes")} == \
-        {k: v for k, v in old.items() if k not in ("version", "routes")}, "nothing else changes"
+    # app_families lists routes the engine never serves (TandemApp's): a new family is additive, and
+    # every family 1.8 named stays as it was (ENG-452: the settings interface, /v1/settings*)
+    assert {k: v for k, v in doc.items() if k not in ("version", "routes", "app_families")} == \
+        {k: v for k, v in old.items() if k not in ("version", "routes", "app_families")}, "nothing else changes"
+    assert [f for f in doc["app_families"] if f in old["app_families"]] == old["app_families"]
+    assert sorted(f["path"] for f in doc["app_families"] if f not in old["app_families"]) == \
+        ["/v1/settings", "/v1/settings/*"]
     for name in ("health.example.json", "health.stage-front.example.json", "health.stage-tail.example.json"):
         assert ok(_ex("compat/1.8/" + name), health), name
     ex = _ex("health.example.json")
