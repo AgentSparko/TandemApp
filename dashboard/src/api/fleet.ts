@@ -1260,7 +1260,7 @@ export interface AppView {
   release: string | null;
   permissions: AppPermission[];
   service: AppService;
-  export: { kind: 'tandemapp-fleet-config'; version: 1; secrets: 'excluded'; excluded: string[] };
+  export: { kind: 'tandemapp-fleet-config'; version: 1 | 2; secrets: 'excluded'; excluded: string[] };
   password: PasswordState;
   setup: AppSetup;
 }
@@ -1317,7 +1317,8 @@ export interface PartPlan {
 /** GET /v1/fleet/app/export: the fleet's configuration as a file, secrets left out. */
 export interface FleetConfigFile {
   kind: 'tandemapp-fleet-config';
-  version: 1;
+  /** 2 since SRV-847: the hooks, providers, plugins, engine overlays and conductor documents too */
+  version: 1 | 2;
   release: string | null;
   exported_at: number;
   from: { name: string | null; fingerprint: string | null; node: string | null };
@@ -1331,11 +1332,18 @@ export interface FleetConfigFile {
   rules: { id: string; enabled: boolean; notify: ('app' | 'system')[]; threshold: number | null; for_s: number; scope: string }[];
   layouts: { page: string; device: LayoutDevice; doc: Record<string, unknown> }[];
   settings: Record<string, unknown>;
+  /** version 2 (SRV-847): secrets by name only */
+  hooks?: Record<string, unknown>[];
+  decision_providers?: Record<string, unknown>[];
+  plugins?: Record<string, unknown>[];
+  engines?: Record<string, { label?: string; values: Record<string, unknown>; secrets?: string[] }>;
+  conductor?: Record<string, Record<string, unknown>>;
+  notes?: string[];
 }
 
 export type ImportMode = 'merge' | 'replace';
 export interface ImportItem {
-  kind: 'node' | 'deployment' | 'rule' | 'layout' | 'setting';
+  kind: 'node' | 'deployment' | 'rule' | 'layout' | 'setting' | 'hook' | 'provider' | 'plugin' | 'engine' | 'conductor';
   id: string;
   label: string;
   op: 'add' | 'change' | 'remove' | 'keep' | 'conflict';

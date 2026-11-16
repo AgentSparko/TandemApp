@@ -121,7 +121,7 @@ export function readConfig(text: string, size: number): { doc: Record<string, un
 
 const OP_TITLE: Record<ImportItem['op'], string> = { conflict: 'Cannot import', add: 'Added', change: 'Changed', remove: 'Removed', keep: 'Already so' };
 export const OPS: ImportItem['op'][] = ['conflict', 'add', 'change', 'remove', 'keep'];
-const KIND_WORD: Record<ImportItem['kind'], string> = { node: 'Spark', deployment: 'Deployment', rule: 'Alert rule', layout: 'Layout', setting: 'Setting' };
+const KIND_WORD: Record<ImportItem['kind'], string> = { node: 'Spark', deployment: 'Deployment', rule: 'Alert rule', layout: 'Layout', setting: 'Setting', hook: 'Hook', provider: 'Decision provider', plugin: 'Plugin', engine: 'Engine host', conductor: 'Conductor document' };
 export const kindWord = (k: ImportItem['kind']) => KIND_WORD[k];
 
 /** The plan's items by what happens to them, conflicts first; empty groups left out. */

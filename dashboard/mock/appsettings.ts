@@ -84,7 +84,7 @@ export class MockApp {
   }
 
   view(): Omit<AppView, 'password'> {
-    return { contract_version: FLEET_CONTRACT, platform: this.mac ? 'mac' : 'linux', release: '0.15.1', permissions: this.permissions(), service: this.service(), export: { kind: KIND, version: 1, secrets: 'excluded', excluded: EXCLUDED }, setup: this.setup() };
+    return { contract_version: FLEET_CONTRACT, platform: this.mac ? 'mac' : 'linux', release: '0.15.1', permissions: this.permissions(), service: this.service(), export: { kind: KIND, version: 2, secrets: 'excluded', excluded: EXCLUDED }, setup: this.setup() };
   }
 
   /** OPS-282: as proxy/fleethealth.py setup_state: engine hosts (SSH), other nodes, backends on no node */
@@ -104,7 +104,7 @@ export class MockApp {
     const here = this.fleet.hereId();
     const rules = (this.fleet.handle('GET', '/v1/fleet/rules', new URLSearchParams(), null).body as { rules: { id: string; enabled: boolean; notify: ('app' | 'system')[]; threshold: number | null; for_s: number; scope: string }[] }).rules;
     return {
-      kind: KIND, version: 1, release: '0.15.1', exported_at: now, from: { name: 'TandemApp on mock', fingerprint: 'c0'.repeat(32), node: here }, secrets: 'excluded', excluded: EXCLUDED,
+      kind: KIND, version: 2, release: '0.15.1', exported_at: now, from: { name: 'TandemApp on mock', fingerprint: 'c0'.repeat(32), node: here }, secrets: 'excluded', excluded: EXCLUDED,
       nodes: nodes.map((n) => ({
         id: n.id, alias: n.alias, colour: n.colour, icon: n.icon, tags: [...n.tags], class: n.class, hw: n.hw, address: n.address.replace(/:\d+$/, ''), transport: n.transport,
         lease_end_ms: n.lease_end == null ? null : n.lease_end * 1000, cost_per_hour: n.cost_per_hour, controller_host: n.id === here, paired: n.pairing.state === 'paired', pin_sha256: n.pairing.state === 'paired' ? n.pairing.fingerprint : null,
@@ -113,6 +113,9 @@ export class MockApp {
       rules: rules.map((r) => ({ id: r.id, enabled: r.enabled, notify: [...r.notify], threshold: r.threshold, for_s: r.for_s, scope: r.scope })),
       layouts: this.fleet.savedLayouts().map((l) => ({ page: l.page, device: l.device, doc: { ...l } as Record<string, unknown> })),
       settings: { ...this.settings },
+      // SRV-847, version 2: the mock's controller has no hook, provider, plugin, engine overlay
+      // or conductor document to export (the hooks area's mock registry is its own)
+      hooks: [], decision_providers: [], plugins: [], engines: {}, conductor: {}, notes: [],
     };
   }
 
@@ -130,7 +133,7 @@ export class MockApp {
     if (!doc || typeof doc !== 'object') return bad(400, 'bad_request', 'the file is a JSON object');
     if ((doc as { kind?: string }).kind === 'tandemapp-export') return bad(400, 'bad_request', 'this is a controller move’s export (with its keys): take the fleet with Take the fleet instead');
     if (doc.kind !== KIND) return bad(400, 'bad_request', `not a TandemApp fleet configuration (kind is ${KIND})`);
-    if (doc.version !== 1) return bad(400, 'bad_request', `version ${JSON.stringify(doc.version)}: this controller reads version 1`);
+    if (doc.version !== 1 && doc.version !== 2) return bad(400, 'bad_request', `version ${JSON.stringify(doc.version)}: this controller reads versions 1 and 2${typeof doc.version === 'number' && doc.version > 2 ? `; the file needs a TandemApp that reads version ${doc.version}` : ''}`);
     for (const k of ['nodes', 'deployments', 'rules', 'layouts'] as const) if (doc[k] != null && !Array.isArray(doc[k])) return bad(400, 'bad_request', `${k} is a list`);
     const items: ImportItem[] = [];
     const apply: (() => void)[] = [];
