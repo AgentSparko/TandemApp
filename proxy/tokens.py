@@ -255,10 +255,12 @@ def request_id() -> str:
     return "req_" + secrets.token_hex(12)
 
 
-def refusal(path: str, status: int, code: str, message: str, **facts) -> dict:
-    """A token's refusal in the protocol of the route: the Messages API's shape on its routes,
-    else the OpenAI shape (`invalid_api_key`, `permission_denied`, `api_not_exposed`)."""
-    if anthropic(path):
+def refusal(path: str, status: int, code: str, message: str, shape: str | None = None,
+            **facts) -> dict:
+    """A token's refusal in the protocol of the route: the Messages API's shape on its routes
+    (and with `shape` "messages", the model list a Messages API client asked for), else the
+    OpenAI shape (`invalid_api_key`, `permission_denied`, `api_not_exposed`)."""
+    if anthropic(path) or shape == "messages":
         from proxy.translate import anthropic as tr
         return {"type": "error", "error": {"type": tr.error_type(status), "message": message}}
     return {"error": {"type": "invalid_request_error" if status == 401 else code, "code": code,

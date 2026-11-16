@@ -737,6 +737,18 @@ def strip_credentials(headers) -> None:
         pass
 
 
+def _messages_shape(handler, raw: str) -> bool:
+    """A refusal the client reads in the Messages API's shape: on its routes, and on the model
+    list when that list would answer in its shape (proxy/messages.py wants_models)."""
+    if tokens_mod.anthropic(raw):
+        return True
+    p = raw.rstrip("/")
+    if p == "/v1/models" or p.startswith("/v1/models/"):
+        from proxy import messages as messages_mod
+        return messages_mod.wants_models(handler.headers)
+    return False
+
+
 class AccountsAuth:
     """tandemapp/auth.py's Auth, as every guard of the server calls it, over the accounts: a
     route kind is a permission (proxy/authz.py), the caller is the request's principal. The
@@ -1039,9 +1051,10 @@ class AccountsAuth:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True          # its body stays unread
         raw = handler.path.split("?", 1)[0]
-        if tokens_mod.anthropic(raw):
+        if _messages_shape(handler, raw):
             # the Messages API's routes refuse in its own shape, as its handler does
-            handler._json(status, tokens_mod.refusal(raw, status, code, message),
+            handler._json(status, tokens_mod.refusal(raw, status, code, message,
+                                                     shape="messages"),
                           extra_headers=tuple(extra) + (("request-id",
                                                          tokens_mod.request_id()),))
             return True
@@ -1176,9 +1189,12 @@ class AccountsAuth:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True
         extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else ()
-        if tokens_mod.anthropic(raw):
+        shape = None
+        if _messages_shape(handler, raw):
+            shape = "messages"
             extra += (("request-id", tokens_mod.request_id()),)
-        handler._json(status, tokens_mod.refusal(raw, status, code, message, **facts),
+        handler._json(status, tokens_mod.refusal(raw, status, code, message, shape=shape,
+                                                 **facts),
                       extra_headers=extra)
         return True
 

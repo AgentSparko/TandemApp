@@ -99,6 +99,14 @@ def test_the_gate_and_the_handler_agree():
             st, hd, out = px.post("/v1/messages/count_tokens", MSG, bearer(only_openai))
             gate_refused(px)
             is_messages_error(st, hd, out, 403, "permission_error")
+            # a path under the route from another device: the exposure switch first, then the
+            # handler (no ledger row for either)
+            far = {"x-api-key": tok, **te.LAN}
+            st, hd, out = px.post("/v1/messages/batches", {"requests": []}, far)
+            is_messages_error(st, hd, out, 403, "permission_error")
+            assert te.change(px, own, "api", {"anthropic.exposure": "network"})[0] == 200
+            st, hd, out = px.post("/v1/messages/batches", {"requests": []}, far)
+            is_messages_error(st, hd, out, 404, "not_found_error")
             # the OpenAI routes keep their own shape
             st, out = j(px.post("/v1/chat/completions", {**MSG}, te.LAN))
             gate_refused(px)
@@ -231,6 +239,16 @@ def test_the_model_list_shape_with_accounts_on():
                 assert "small-1" in [m["id"] for m in out["data"]]
             st, out = j(px.get("/v1/models/small-1", {"x-api-key": tok}))
             assert st == 200 and out["type"] == "model", out
+            # the gate's refusals of the list come in the shape the list would have
+            dead = "tdm-0123abcd-" + "x" * 43
+            for h, shape in (({"x-api-key": dead}, "messages"), (bearer(dead), "openai"),
+                             ({"anthropic-version": "2023-06-01", **te.LAN}, "messages"),
+                             (dict(te.LAN), "openai")):
+                st, hd, out = px.get("/v1/models", h)
+                if shape == "messages":
+                    is_messages_error(st, hd, out, 401, "authentication_error")
+                else:
+                    assert st == 401 and "type" not in json.loads(out), (h, out)
     finally:
         srv.shutdown()
     return "x-api-key alone: the Messages list; Bearer, both, the cookie: the OpenAI list"
@@ -252,7 +270,8 @@ def test_the_model_list_shape_with_accounts_off():
                 assert st == 200, (h.keys(), st, out)
                 assert ("messages" if "has_more" in out else "openai") == shape, (sorted(h), out)
                 assert "small-1" in [m["id"] for m in out["data"]]
-            assert px.get("/v1/models", {"x-api-key": "wrong-key-000000", **te.LAN})[0] == 401
+            st, hd, out = px.get("/v1/models", {"x-api-key": "wrong-key-000000", **te.LAN})
+            is_messages_error(st, hd, out, 401, "authentication_error")
     finally:
         srv.shutdown()
     return "the headers decide with the switch off"
