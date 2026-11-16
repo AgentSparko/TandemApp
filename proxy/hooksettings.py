@@ -329,13 +329,12 @@ class RegistryHooks(HooksAdapter):
                 continue                         # a bad mapping: check() refuses it on its key
             from proxy.providerstore import destinations
             dests = destinations(new)
+            had = (old.get("grant") or {}).get("destinations") or {}
+            fresh = sorted(h for h in dests if h not in had) or sorted(dests)
             away = self.providers.away(old, new)
             out.append({"key": k, "hook": old["id"], "kind": "provider",
-                        "destination": ", ".join(sorted(h for h in dests
-                                                        if h not in ((old.get("grant") or {})
-                                                                     .get("destinations") or {}))))
-                        or ", ".join(sorted(dests)),
-                        "lan": not away, "away": away, "version": old["version"]})
+                        "destination": ", ".join(fresh), "lan": not away, "away": away,
+                        "version": old["version"]})
         return out
 
     def write(self, sets, unsets, who, grants=None) -> None:
