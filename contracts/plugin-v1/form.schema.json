@@ -1,0 +1,194 @@
+{
+ "$id": "plugin-v1/form",
+ "description": "A JSON schema as a form (proxy/schemaform.py describe, dashboard/src/lib/schema-form.ts schemaForm): the page draws `fields` in order. forms/*.json hold a schema and the form both generators give for it.",
+ "type": "object",
+ "properties": {
+  "form": {
+   "const": "1.0"
+  },
+  "title": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "description": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "fields": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/field"
+   }
+  },
+  "notes": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "each place the generator fell back to the raw JSON editor, and why"
+  }
+ },
+ "required": [
+  "form",
+  "title",
+  "description",
+  "fields",
+  "notes"
+ ],
+ "additionalProperties": false,
+ "$defs": {
+  "field": {
+   "type": "object",
+   "properties": {
+    "key": {
+     "type": "string",
+     "description": "the dot path; a list's item is <list>[]"
+    },
+    "path": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "label": {
+     "type": "string"
+    },
+    "description": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "type": {
+     "enum": [
+      "string",
+      "integer",
+      "number",
+      "boolean",
+      "object",
+      "array",
+      "null",
+      "any"
+     ]
+    },
+    "control": {
+     "enum": [
+      "switch",
+      "number",
+      "text",
+      "textarea",
+      "select",
+      "choice",
+      "const",
+      "secret",
+      "group",
+      "list",
+      "json"
+     ]
+    },
+    "required": {
+     "type": "boolean"
+    },
+    "nullable": {
+     "type": "boolean"
+    },
+    "read_only": {
+     "type": "boolean"
+    },
+    "secret": {
+     "type": "boolean",
+     "description": "write-only: the page shows set or unset, never a value"
+    },
+    "has_default": {
+     "type": "boolean"
+    },
+    "default": {},
+    "options": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "value": {},
+       "label": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "value",
+       "label"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "min": {
+     "type": "number"
+    },
+    "max": {
+     "type": "number"
+    },
+    "exclusive_min": {
+     "type": "number"
+    },
+    "exclusive_max": {
+     "type": "number"
+    },
+    "step": {
+     "type": "number"
+    },
+    "min_length": {
+     "type": "integer"
+    },
+    "max_length": {
+     "type": "integer"
+    },
+    "pattern": {
+     "type": "string"
+    },
+    "format": {
+     "type": "string"
+    },
+    "min_items": {
+     "type": "integer"
+    },
+    "max_items": {
+     "type": "integer"
+    },
+    "unique": {
+     "type": "boolean"
+    },
+    "fields": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/field"
+     }
+    },
+    "item": {
+     "$ref": "#/$defs/field"
+    },
+    "why": {
+     "type": "string",
+     "description": "control json: why the raw editor"
+    }
+   },
+   "required": [
+    "key",
+    "path",
+    "label",
+    "description",
+    "type",
+    "control",
+    "required",
+    "nullable",
+    "read_only",
+    "secret",
+    "has_default",
+    "default"
+   ],
+   "additionalProperties": false
+  }
+ }
+}

@@ -1,0 +1,201 @@
+{
+ "name": "scalars",
+ "schema": {
+  "type": "object",
+  "title": "Scalars",
+  "description": "one of each",
+  "required": [
+   "name",
+   "count"
+  ],
+  "additionalProperties": false,
+  "properties": {
+   "name": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 40,
+    "pattern": "^[a-z]+$"
+   },
+   "notes": {
+    "type": "string",
+    "maxLength": 2000,
+    "description": "free text"
+   },
+   "count": {
+    "type": "integer",
+    "minimum": 0,
+    "maximum": 10,
+    "default": 3
+   },
+   "ratio": {
+    "type": "number",
+    "exclusiveMinimum": 0,
+    "exclusiveMaximum": 1,
+    "multipleOf": 0.05
+   },
+   "on": {
+    "type": "boolean",
+    "default": true
+   },
+   "url": {
+    "type": "string",
+    "format": "uri"
+   },
+   "maxTokens": {
+    "type": "integer"
+   },
+   "retry_after_s": {
+    "type": "number",
+    "title": "Retry after (s)"
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": "Scalars",
+  "description": "one of each",
+  "fields": [
+   {
+    "key": "name",
+    "path": [
+     "name"
+    ],
+    "label": "Name",
+    "description": null,
+    "type": "string",
+    "control": "text",
+    "required": true,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "min_length": 1,
+    "max_length": 40,
+    "pattern": "^[a-z]+$"
+   },
+   {
+    "key": "notes",
+    "path": [
+     "notes"
+    ],
+    "label": "Notes",
+    "description": "free text",
+    "type": "string",
+    "control": "textarea",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "max_length": 2000
+   },
+   {
+    "key": "count",
+    "path": [
+     "count"
+    ],
+    "label": "Count",
+    "description": null,
+    "type": "integer",
+    "control": "number",
+    "required": true,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": 3,
+    "min": 0,
+    "max": 10,
+    "step": 1
+   },
+   {
+    "key": "ratio",
+    "path": [
+     "ratio"
+    ],
+    "label": "Ratio",
+    "description": null,
+    "type": "number",
+    "control": "number",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "exclusive_min": 0,
+    "exclusive_max": 1,
+    "step": 0.05
+   },
+   {
+    "key": "on",
+    "path": [
+     "on"
+    ],
+    "label": "On",
+    "description": null,
+    "type": "boolean",
+    "control": "switch",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": true
+   },
+   {
+    "key": "url",
+    "path": [
+     "url"
+    ],
+    "label": "Url",
+    "description": null,
+    "type": "string",
+    "control": "text",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "format": "uri"
+   },
+   {
+    "key": "maxTokens",
+    "path": [
+     "maxTokens"
+    ],
+    "label": "Max tokens",
+    "description": null,
+    "type": "integer",
+    "control": "number",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "step": 1
+   },
+   {
+    "key": "retry_after_s",
+    "path": [
+     "retry_after_s"
+    ],
+    "label": "Retry after (s)",
+    "description": null,
+    "type": "number",
+    "control": "number",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null
+   }
+  ],
+  "notes": []
+ }
+}

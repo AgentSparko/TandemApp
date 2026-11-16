@@ -1,0 +1,124 @@
+{
+ "name": "audit-hook",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "keep_days": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 365,
+    "default": 30,
+    "description": "how long a line is kept"
+   },
+   "fields": {
+    "type": "array",
+    "items": {
+     "enum": [
+      "id",
+      "model",
+      "tokens",
+      "ms",
+      "status"
+     ]
+    },
+    "uniqueItems": true,
+    "default": [
+     "id",
+     "model",
+     "tokens",
+     "ms"
+    ],
+    "description": "what each line holds"
+   }
+  },
+  "additionalProperties": false
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "keep_days",
+    "path": [
+     "keep_days"
+    ],
+    "label": "Keep days",
+    "description": "how long a line is kept",
+    "type": "integer",
+    "control": "number",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": 30,
+    "min": 1,
+    "max": 365,
+    "step": 1
+   },
+   {
+    "key": "fields",
+    "path": [
+     "fields"
+    ],
+    "label": "Fields",
+    "description": "what each line holds",
+    "type": "array",
+    "control": "list",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": [
+     "id",
+     "model",
+     "tokens",
+     "ms"
+    ],
+    "unique": true,
+    "item": {
+     "key": "fields[]",
+     "path": [
+      "fields",
+      "[]"
+     ],
+     "label": "Fields",
+     "description": null,
+     "type": "string",
+     "control": "select",
+     "required": true,
+     "nullable": false,
+     "read_only": false,
+     "secret": false,
+     "has_default": false,
+     "default": null,
+     "options": [
+      {
+       "value": "id",
+       "label": "id"
+      },
+      {
+       "value": "model",
+       "label": "model"
+      },
+      {
+       "value": "tokens",
+       "label": "tokens"
+      },
+      {
+       "value": "ms",
+       "label": "ms"
+      },
+      {
+       "value": "status",
+       "label": "status"
+      }
+     ]
+    }
+   }
+  ],
+  "notes": []
+ }
+}

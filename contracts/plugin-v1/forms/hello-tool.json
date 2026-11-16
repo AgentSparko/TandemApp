@@ -1,0 +1,62 @@
+{
+ "name": "hello-tool",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "greeting": {
+    "type": "string",
+    "title": "Greeting",
+    "description": "the word before the name",
+    "default": "Hello",
+    "maxLength": 40
+   },
+   "excited": {
+    "type": "boolean",
+    "description": "end with an exclamation mark",
+    "default": false
+   }
+  },
+  "additionalProperties": false
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "greeting",
+    "path": [
+     "greeting"
+    ],
+    "label": "Greeting",
+    "description": "the word before the name",
+    "type": "string",
+    "control": "text",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": "Hello",
+    "max_length": 40
+   },
+   {
+    "key": "excited",
+    "path": [
+     "excited"
+    ],
+    "label": "Excited",
+    "description": "end with an exclamation mark",
+    "type": "boolean",
+    "control": "switch",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": false
+   }
+  ],
+  "notes": []
+ }
+}
