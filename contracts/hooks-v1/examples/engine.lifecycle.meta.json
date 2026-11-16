@@ -1,5 +1,5 @@
 {
-  "hooks": "1.0",
+  "hooks": "1.1",
   "id": "hd-0123456789abcdef0123456789abcdef",
   "hook": "example-hook",
   "stage": "engine.lifecycle",
@@ -16,7 +16,8 @@
     "user": null,
     "session": null,
     "client_kind": null,
-    "stream": null
+    "stream": null,
+    "protocol": null
   },
   "event": {
     "event": "start",

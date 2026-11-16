@@ -80,6 +80,13 @@ HOOK_FAILURES = ("timeout", "error", "invalid")
 SKIPS = ("cap", "breaker_open", "redaction_failed")
 
 
+class ProtocolNative(Exception):
+    """A patch that cannot apply to a request that passes through in the Messages API's shape
+    (SRV-881): a content field, or a parameter with no field of its own there. The hook answered
+    well; its patch is journaled `refused` with `protocol_native` and its failure policy applies
+    (its breaker does not count it)."""
+
+
 # ---------------------------------------------------------------------------------- builtins
 def _b_set(env, options):
     patch = options.get("set") if isinstance(options.get("set"), dict) else {}
@@ -682,6 +689,11 @@ class Runner:
                 try:
                     out.value = apply(out.value, c.result["patch"])
                     out.changed = True
+                except ProtocolNative as exc:
+                    self._journal_note(h, stage, ctx, "refused", f"protocol_native: {exc}")
+                    if self._fail(out, h, stage, c, why="its patch cannot apply to a request "
+                                  "that passes through (protocol_native)"):
+                        return out
                 except Exception as exc:                           # noqa: BLE001
                     self._journal_note(h, stage, ctx, "invalid", f"the patch does not apply: "
                                        f"{type(exc).__name__}")
@@ -740,13 +752,15 @@ class Runner:
         if c.ok and c.result.get("labels"):
             out.labels.update(c.result["labels"])
 
-    def _fail(self, out: StageResult, h: dict, stage: str, c: Call) -> bool:
+    def _fail(self, out: StageResult, h: dict, stage: str, c: Call, why: str | None = None
+              ) -> bool:
         """A failed sync hook: True when its closed policy refuses the request."""
         if self.policy(h, stage) != "closed":
             return False
         out.deny = {"hook": h["id"], "status": 503, "code": "hook_unavailable",
-                    "message": f"the hook {h['name']!r} did not answer ({c.outcome}) and its "
-                               f"policy is closed"}
+                    "message": f"the hook {h['name']!r} "
+                               + (why or f"did not answer ({c.outcome})")
+                               + " and its policy is closed"}
         return True
 
     def _journal_note(self, h, stage, ctx, outcome, error) -> None:
@@ -900,7 +914,7 @@ class Runner:
 
 
 CTX_KEYS = ("request_id", "endpoint", "model", "upstream_model", "backend", "profile", "user",
-            "session", "client_kind", "stream")
+            "session", "client_kind", "stream", "protocol")
 
 
 def _decision_view(d: dict) -> dict:
@@ -935,6 +949,21 @@ class Turn:
         self.chunks = 0
         self.stream_bytes = 0
         self.tool_names: dict[int, str] = {}
+        # SRV-881: a request that passes through in the Messages API's shape
+        # (proxy/passthrough.HookView): the stages see a canonical copy in the chat shape; a
+        # patch of a parameter goes back to the native body, a content patch is refused
+        self.native = None
+        self._canon_stream = None
+
+    def _native_apply(self, patches: list):
+        def apply(v, p):
+            self.native.check(p)                # ProtocolNative for what has no native field
+            patches.append(p)
+            return merge_patch(v, p)
+        return apply
+
+    def _refuse_patch(self, v, p):
+        raise ProtocolNative("the answer passes through as the backend sent it")
 
     # budgets
     def left(self, stage: str) -> float:
@@ -967,6 +996,19 @@ class Turn:
         if not self.has("request.received"):
             return body, raw, None
         n = len(raw)
+        if self.native is not None:
+            canon, patches = self.native.request(body), []
+            r = self._run("request.received", canon,
+                          lambda b: hookcall.request_meta(b, n if b is canon else None),
+                          apply=self._native_apply(patches))
+            if r.deny is not None:
+                return body, raw, r.deny
+            if not (r.changed and patches):
+                return body, raw, None
+            body = self.native.patch(body, patches)
+            self.ctx["model"] = body.get("model") if isinstance(body.get("model"), str) \
+                else self.ctx.get("model")
+            return body, json.dumps(body, ensure_ascii=False).encode(), None
         r = self._run("request.received", body,
                       lambda b: hookcall.request_meta(b, n if b is body else None))
         if r.deny is not None:
@@ -1008,14 +1050,19 @@ class Turn:
                 def keep(v, p):
                     patches.append(p)
                     return merge_patch(v, p)
-                r = self._run("request.before_engine", body,
-                              lambda b: dict(hookcall.request_meta(b), route=rt), apply=keep)
+                value = body if self.native is None else self.native.request(body)
+                r = self._run("request.before_engine", value,
+                              lambda b: dict(hookcall.request_meta(b), route=rt),
+                              apply=keep if self.native is None
+                              else self._native_apply(patches))
                 self._before = (patches if r.changed else [], r.deny)
         patches, deny = self._before
         if deny is not None:
             return body, False, deny
         if not patches:
             return body, False, None
+        if self.native is not None:
+            return self.native.patch(body, patches), True, None
         for p in patches:
             body = merge_patch(body, p)
         return body, True, None
@@ -1028,6 +1075,18 @@ class Turn:
             self.has("response.after_engine")
 
     def see(self, event: bytes) -> None:
+        if self.native is not None:
+            # a Messages API event: its canonical chunks, each seen as a relayed chunk is
+            if self._canon_stream is None:
+                self._canon_stream = self.native.stream()
+            body = event.rstrip(b"\r\n")
+            for ch in self._canon_stream.feed(body).split(b"\n\n"):
+                if ch.strip():
+                    self._see(ch + b"\n\n")
+            return
+        self._see(event)
+
+    def _see(self, event: bytes) -> None:
         index = self.chunks
         self.chunks += 1
         self.stream_bytes += len(event)
@@ -1067,13 +1126,16 @@ class Turn:
             obj = None
         if not isinstance(obj, dict):
             return data, None, False
+        native = self.native is not None
+        if native:
+            obj = self.native.answer(obj)       # the canonical copy; the bytes go as they are
         changed = False
         msg = _first_message(obj)
         calls = msg.get("tool_calls") if isinstance(msg, dict) else None
         if want_calls and isinstance(calls, list) and calls:
             r = self._run("tool_call.detected", calls,
                           lambda v: {"calls": hookcall.calls_meta(v), "streamed": False},
-                          apply=lambda v, p: p["tool_calls"])
+                          apply=self._refuse_patch if native else lambda v, p: p["tool_calls"])
             if r.deny is not None:
                 return data, r.deny, False
             if r.changed:
@@ -1085,7 +1147,8 @@ class Turn:
             r = self._run("response.after_engine", obj,
                           lambda v: hookcall.answer_meta(
                               v, status, n if (v is obj and not changed) else len(
-                                  json.dumps(v).encode()), False))
+                                  json.dumps(v).encode()), False),
+                          **({"apply": self._refuse_patch} if native else {}))
             if r.deny is not None:
                 return data, r.deny, False
             if r.changed:
@@ -1097,7 +1160,7 @@ class Turn:
                                          "one retry per request; the answer goes as it is")
                 else:
                     self.retried = retry = True
-        if changed:
+        if changed and not native:
             data = json.dumps(obj, ensure_ascii=False).encode()
         return data, None, retry
 

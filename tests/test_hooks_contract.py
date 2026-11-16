@@ -92,6 +92,18 @@ def test_examples_validate():
             assert served["event"] == {k: v for k, v in env["event"].items()
                                        if k != "content"}, f
         n += 1
+    # SRV-881: hooks-v1 1.1 carries request.protocol; the 1.0 calls (no protocol) still
+    # validate, one per example
+    old = sorted(os.listdir(os.path.join(CONTRACT, "compat", "1.0")))
+    assert old == sorted(os.listdir(os.path.join(CONTRACT, "examples")))
+    for f in old:
+        env = _load(os.path.join("compat", "1.0", f))
+        _call_ok(env)
+        assert env["hooks"] == "1.0" and "protocol" not in env["request"], f
+        new = _load(os.path.join("examples", f))
+        assert new["hooks"] == S.VERSION == "1.1" and "protocol" in new["request"], f
+        assert {k: v for k, v in new["request"].items() if k != "protocol"} == env["request"]
+        assert dict(new, hooks="1.0", request=env["request"]) == env, f
     # a redacted envelope validates too, its strings through the redaction
     s = hooksample.sample("request.received")
     body = dict(s["content"], messages=[{"role": "user", "content":
@@ -331,10 +343,11 @@ def test_readme_names_every_file():
     with open(os.path.join(CONTRACT, "README.md"), encoding="utf-8") as f:
         text = f.read()
     for name in os.listdir(CONTRACT):
-        if name in ("README.md", "__pycache__", "events", "examples"):
+        if name in ("README.md", "__pycache__", "events", "examples", "compat"):
             continue
         assert f"`{name}`" in text, name
-    assert "`events/<stage>.schema.json`" in text and "`examples/" in text
+    assert "`events/<stage>.schema.json`" in text and "`examples/" in text and \
+        "`compat/1.0/`" in text
 
 
 if __name__ == "__main__":

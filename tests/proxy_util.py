@@ -109,7 +109,8 @@ class Proxy:
 
     #: the routes whose every answer is one ledger row
     ROW_ROUTES = ("/v1/chat/completions", "/v1/completions", "/v1/responses", "/v1/embeddings",
-                  "/v1/fleet/gateway/chat/completions")
+                  "/v1/fleet/gateway/chat/completions", "/v1/messages",
+                  "/v1/messages/count_tokens")
 
     def request(self, method: str, path: str, body=None, headers=None, timeout=30.0):
         if method == "POST" and path.split("?")[0] in self.ROW_ROUTES:

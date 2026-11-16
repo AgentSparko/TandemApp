@@ -54,7 +54,7 @@ same code path.
 
     TANDEM_BACKENDS=deepseek,vllm1                  the backends the environment declares
     TANDEM_BACKEND_<ID>_KIND=deepseek               generic | tandemllm | vllm | sglang |
-                                                    openai | deepseek
+                                                    openai | deepseek | anthropic
     TANDEM_BACKEND_<ID>_URL=https://api.deepseek.com/v1
     TANDEM_BACKEND_<ID>_KEY=sk-...                  held in memory, never stored
     TANDEM_BACKEND_<ID>_LABEL=DeepSeek
@@ -75,6 +75,14 @@ same code path.
     TANDEM_BACKEND_<ID>_WRITER_RUNS_DAY=48          its runs a day
     TANDEM_BACKEND_<ID>_WRITER_PROMPT_TOKENS=32000  its prompt at most (older messages dropped)
     TANDEM_BACKEND_<ID>_TIMEOUT_CONNECT=10          seconds; also _TIMEOUT_FIRST_BYTE, _TIMEOUT_IDLE
+    TANDEM_BACKEND_<ID>_ANTHROPIC_AUTH=x-api-key    kind anthropic (SRV-877): x-api-key | bearer;
+                                                    also _ANTHROPIC_API_VERSION,
+                                                    _ANTHROPIC_SAMPLING (drop | pass),
+                                                    _ANTHROPIC_DEFAULT_MAX_TOKENS,
+                                                    _ANTHROPIC_AUTO_CACHE,
+                                                    _ANTHROPIC_THINKING_DISPLAY (summarized |
+                                                    omitted), _ANTHROPIC_THINKING_SHAPE
+                                                    (adaptive | budget | off)
     TANDEM_BACKEND_<ID>_HOST=auto                   where the System view reads the backend's
                                                     machine: auto (this machine when the URL is),
                                                     same, collector, exporter, off
@@ -87,7 +95,8 @@ same code path.
     TANDEM_ROUTE_<n>="gpt-*=openai"                 routing rules, ordered by n
     TANDEM_PRICE_<n>="deepseek/deepseek-flash=0.30,0.006,1.2"
                                                     USD per million: input, cached input, output,
-                                                    and optionally cache write
+                                                    and optionally cache write, then the 1-hour
+                                                    cache write (SRV-881)
     TANDEM_PRICE_<n>_OFFPEAK="0.15,0.003,0.6"       the same model outside the provider's peak
                                                     hours (DeepSeek)
     TANDEM_API_KEYS="laptop:tdm-...,ci:tdm-..."     the proxy's own keys, in memory only
@@ -121,6 +130,7 @@ import time
 
 from proxy import schema
 from proxy import secrets as vault_mod
+from proxy.translate import anthropic as anthropic_tr
 
 SCHEMA_VERSION = 2
 DEFAULT_PATH = "~/.tandemllm/config.sqlite3"
@@ -134,7 +144,33 @@ KINDS = {
     "sglang": {"cloud": False, "url": None, "inject_usage": True},
     "openai": {"cloud": True, "url": "https://api.openai.com/v1", "inject_usage": True},
     "deepseek": {"cloud": True, "url": "https://api.deepseek.com/v1", "inject_usage": True},
+    # SRV-877: any Messages API server, by its base URL (with or without its /v1), no default
+    "anthropic": {"cloud": True, "url": None, "inject_usage": False},
 }
+# the defaults of a kind anthropic backend's own settings
+ANTHROPIC = anthropic_tr.DEFAULTS
+# SRV-879: kinds the harness cannot run on yet. Its own requests (the class question, the
+# narrator, the memory writer) speak the OpenAI chat shape straight to the backend, and through
+# the translation they would lose what they rely on (logprobs, greedy sampling, thinking off), so
+# its switches are refused here and held off at run time (proxy/harness.py `switches`).
+NO_HARNESS = frozenset({"anthropic"})
+
+
+def harness_refusal(doc: dict) -> tuple[str, str] | None:
+    """(field, why) when a backend document switches the harness on for a kind in NO_HARNESS:
+    its mode, or its memory writer (`auto` stays allowed: it resolves to off there)."""
+    if doc.get("kind") not in NO_HARNESS:
+        return None
+    h = doc.get("harness") or {}
+    why = (f"the harness cannot run on a backend of kind {doc['kind']} yet: its own requests "
+           f"speak the OpenAI chat shape")
+    if h.get("mode") not in (None, "off"):
+        return "harness.mode", why
+    if h.get("writer") not in (None, "off", "auto"):
+        return "harness.writer", why
+    return None
+# the backend fields that are objects, stored as JSON and patched field by field
+JSON_GROUPS = ("timeouts", "harness", "host", "anthropic")
 TIMEOUTS = {False: {"connect": 5.0, "first_byte": 600.0, "idle": 120.0},
             True: {"connect": 10.0, "first_byte": 120.0, "idle": 60.0}}
 # A backend's requests at once: None, the default, is no limit from the proxy (a cloud API, vLLM or
@@ -240,7 +276,11 @@ ADDED = (("models", "price_offpeak", "TEXT"),
          # VIS-250: a node in maintenance (drained): {since, by} as JSON, NULL when it serves
          ("nodes", "drain", "TEXT"),
          # SRV-845: the settings change set an audit row belongs to
-         ("audit", "change_set", "TEXT"))
+         ("audit", "change_set", "TEXT"),
+         # SRV-877: a kind's own settings (kind anthropic: auth, api_version, sampling, ...)
+         ("backends", "anthropic", "TEXT NOT NULL DEFAULT '{}'"),
+         # SRV-881: the price of a cache write kept for 1 hour (the cache write price without)
+         ("models", "price_cache_write_1h", "REAL"))
 
 
 def _inflight_col(v) -> int:
@@ -343,6 +383,14 @@ def _env_fields():
         "TIMEOUT_CONNECT": ("timeouts.connect", lambda v, var: _num(v, var)),
         "TIMEOUT_FIRST_BYTE": ("timeouts.first_byte", lambda v, var: _num(v, var)),
         "TIMEOUT_IDLE": ("timeouts.idle", lambda v, var: _num(v, var)),
+        "ANTHROPIC_AUTH": ("anthropic.auth", lambda v, var: v.strip()),
+        "ANTHROPIC_API_VERSION": ("anthropic.api_version", lambda v, var: v.strip()),
+        "ANTHROPIC_SAMPLING": ("anthropic.sampling", lambda v, var: v.strip()),
+        "ANTHROPIC_DEFAULT_MAX_TOKENS": ("anthropic.default_max_tokens",
+                                         lambda v, var: _int(v, var)),
+        "ANTHROPIC_AUTO_CACHE": ("anthropic.auto_cache", _bool),
+        "ANTHROPIC_THINKING_DISPLAY": ("anthropic.thinking_display", lambda v, var: v.strip()),
+        "ANTHROPIC_THINKING_SHAPE": ("anthropic.thinking_shape", lambda v, var: v.strip()),
         "HOST": ("host.mode", lambda v, var: v.strip()),
         "HOST_URL": ("host.url", lambda v, var: v.strip()),
         "HOST_DCGM_URL": ("host.dcgm_url", lambda v, var: v.strip()),
@@ -443,14 +491,17 @@ def parse_env(env) -> dict:
             ref, sep, nums = env[var].partition("=")
             bid, slash, mid = ref.strip().partition("/")
             vals = [x.strip() for x in nums.split(",")]
-            if not sep or not slash or len(vals) not in (3, 4):
+            if not sep or not slash or len(vals) not in (3, 4, 5):
                 raise ConfigError(f"{var}: write it as <backend>/<model>=<input>,<cached input>,"
-                                  f"<output>[,<cache write>] in USD per million tokens", var=var)
+                                  f"<output>[,<cache write>[,<cache write 1 h>]] in USD per "
+                                  f"million tokens", var=var)
             p = [_num(x, var) for x in vals]
             out["prices"].append({"backend": bid, "model": mid, "var": var,
                                   "price": {"input": p[0], "cached_input": p[1], "output": p[2],
                                             "cache_write": p[3] if len(p) > 3 else None,
                                             "currency": "USD"}})
+            if len(p) > 4:
+                out["prices"][-1]["price"]["cache_write_1h"] = p[4]
             if m.group(1) in offpeak:
                 out["prices"][-1]["price"]["offpeak"] = offpeak.pop(m.group(1))
     for n in offpeak:
@@ -494,6 +545,11 @@ def parse_env(env) -> dict:
             var = out["vars"].get(("backend", bid, path)) or \
                 f"TANDEM_BACKEND_{env_name(bid)}_{path.upper().replace('.', '_')}"
             raise ConfigError(f"{var}: {msg}", var=var, field=path)
+        bad = harness_refusal(doc)
+        if bad is not None:
+            var = out["vars"].get(("backend", bid, bad[0])) or \
+                f"TANDEM_BACKEND_{env_name(bid)}_{bad[0].split('.')[1].upper()}"
+            raise ConfigError(f"{var}: {bad[1]}", var=var, field=bad[0])
     for r in out["rules"]:
         for path, msg in schema.validate({"pattern": r["pattern"], "backend": r["backend"]},
                                          "rule"):
@@ -713,14 +769,15 @@ class ConfigDB:
         self._conn.execute(
             "INSERT INTO backends(id, kind, label, url, enabled, models_mode, models, fallback, "
             "max_inflight, timeouts, inject_usage, harness, created_at, updated_at, updated_by, "
-            "host) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "host, anthropic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (doc["id"], kind, doc.get("label"), norm_url(doc["url"]),
              int(doc.get("enabled", True)), doc.get("models_mode", "discover"),
              json.dumps(doc.get("models", [])), json.dumps(doc.get("fallback", [])),
              _inflight_col(doc.get("max_inflight", MAX_INFLIGHT)),
              json.dumps(doc.get("timeouts", {})),
              None if doc.get("inject_usage") is None else int(doc["inject_usage"]),
-             json.dumps(doc.get("harness", {})), now, now, who, json.dumps(doc.get("host", {}))))
+             json.dumps(doc.get("harness", {})), now, now, who, json.dumps(doc.get("host", {})),
+             json.dumps(doc.get("anthropic", {}))))
         self._audit(who, "create", "backend", doc["id"], [k for k in doc if k != "key"])
 
     def _update_backend_fields(self, bid: str, fields: dict, who: str) -> None:
@@ -728,7 +785,7 @@ class ConfigDB:
         for k, v in fields.items():
             if k == "key":
                 continue
-            if k in ("timeouts", "harness", "host"):
+            if k in JSON_GROUPS:
                 old = json.loads(self._conn.execute(f"SELECT {k} FROM backends WHERE id = ?",
                                                     (bid,)).fetchone()[0] or "{}")
                 old.update(v or {})
@@ -752,7 +809,7 @@ class ConfigDB:
 
     def _row_backend(self, r) -> dict:
         (bid, kind, label, url, enabled, mmode, models, fallback, maxin, timeouts, inject,
-         harness, created, updated, by, host) = r
+         harness, created, updated, by, host, anth) = r
         cloud = KINDS.get(kind, KINDS["generic"])["cloud"]
         to = dict(TIMEOUTS[cloud])
         to.update(json.loads(timeouts or "{}"))
@@ -767,10 +824,13 @@ class ConfigDB:
                 "harness": h, "cloud": cloud,
                 "host": dict({"mode": "auto", "url": None, "dcgm_url": None},
                              **json.loads(host or "{}")),
-                "created_at": created, "updated_at": updated, "updated_by": by}
+                "created_at": created, "updated_at": updated, "updated_by": by,
+                # SRV-877: the settings stored; proxy/translate/anthropic.py fills the defaults
+                **({"anthropic": json.loads(anth or "{}")} if kind == "anthropic" else {})}
 
     _BCOLS = ("id, kind, label, url, enabled, models_mode, models, fallback, max_inflight, "
-              "timeouts, inject_usage, harness, created_at, updated_at, updated_by, host")
+              "timeouts, inject_usage, harness, created_at, updated_at, updated_by, host, "
+              "anthropic")
 
     def backends(self) -> list[dict]:
         with self._lock:
@@ -792,6 +852,9 @@ class ConfigDB:
         errs = schema.validate(doc, "backend")
         if errs:
             raise ConfigError(f"{errs[0][0]} {errs[0][1]}", field=errs[0][0])
+        bad = harness_refusal(doc)
+        if bad is not None:
+            raise ConfigError(f"{bad[0]}: {bad[1]}", field=bad[0])
         with self._lock:
             if self._conn.execute("SELECT 1 FROM backends WHERE id = ?",
                                   (doc["id"],)).fetchone():
@@ -812,10 +875,15 @@ class ConfigDB:
         cur = self.backend(bid)
         if cur is None:
             raise ConfigError(f"no backend '{bid}'", status=404)
+        after = dict(cur, **{k: v for k, v in patch.items() if k != "harness"})
+        after["harness"] = dict(cur.get("harness") or {}, **(patch.get("harness") or {}))
+        bad = harness_refusal(after)
+        if bad is not None:
+            raise ConfigError(f"{bad[0]}: {bad[1]}", field=bad[0])
         locks = self.backend_locks(bid)
         for k, v in patch.items():
-            subs = ([f"{k}.{s}" for s in v] if isinstance(v, dict) and k in
-                    ("timeouts", "harness", "host") else [k])
+            subs = ([f"{k}.{s}" for s in v] if isinstance(v, dict) and k in JSON_GROUPS
+                    else [k])
             for f in subs:
                 var = locks.get(f)
                 if var is None:
@@ -1015,12 +1083,16 @@ class ConfigDB:
         p = price or {}
         self._conn.execute("UPDATE models SET price_input = ?, price_cached_input = ?, "
                            "price_cache_write = ?, price_output = ?, currency = ?, "
-                           "price_updated_at = ?, price_offpeak = ? WHERE backend_id = ? AND "
-                           "model_id = ?",
+                           "price_updated_at = ?, price_offpeak = ?, price_cache_write_1h = "
+                           "CASE WHEN ? THEN ? ELSE price_cache_write_1h END "
+                           "WHERE backend_id = ? AND model_id = ?",
                            (p.get("input"), p.get("cached_input"), p.get("cache_write"),
                             p.get("output"), p.get("currency", "USD") if price else None,
                             _now_ms() if price else None,
-                            json.dumps(p["offpeak"]) if p.get("offpeak") else None, bid, mid))
+                            json.dumps(p["offpeak"]) if p.get("offpeak") else None,
+                            # a price set without the field (the page has none) keeps it
+                            not price or "cache_write_1h" in p, p.get("cache_write_1h"),
+                            bid, mid))
 
     def sync_models(self, bid: str, found: list[dict] | None, listed: list[str],
                     mode: str, trust_new: bool = False) -> list[str]:
@@ -1081,7 +1153,8 @@ class ConfigDB:
         sql = ("SELECT backend_id, model_id, public_id, enabled, present, source, discovered_at, "
                "context_length, price_input, price_cached_input, price_cache_write, "
                "price_output, currency, price_updated_at, fallback, price_offpeak, name, "
-               "max_output, input_modalities, effort, max_output_set FROM models")
+               "max_output, input_modalities, effort, max_output_set, price_cache_write_1h "
+               "FROM models")
         args: tuple = ()
         if bid is not None:
             sql += " WHERE backend_id = ?"
@@ -1094,11 +1167,13 @@ class ConfigDB:
                 feats.setdefault((b, m), {})[f] = v
         out = []
         for (b, m, pub, en, present, src, disc, ctx, pi, pci, pcw, po, cur, pat, fb,
-             off, name, mout, mods, eff, mset) in rows:
+             off, name, mout, mods, eff, mset, pcw1h) in rows:
             price = None
             if pat is not None:
                 price = {"input": pi, "cached_input": pci, "cache_write": pcw, "output": po,
                          "currency": cur or "USD", "updated_at": pat}
+                if pcw1h is not None:
+                    price["cache_write_1h"] = pcw1h
                 if off:
                     price["offpeak"] = json.loads(off)
             f = {g: "inherit" for g in FEATURE_GROUPS}

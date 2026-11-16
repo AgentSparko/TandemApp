@@ -114,6 +114,21 @@ def test_price():
     assert A.Adapter.cost(u, dict(p, output=None)) is None
 
 
+def test_cache_writes_are_paid_once_at_the_write_price():
+    """SRV-877: prompt_tokens holds the cache reads and the cache writes; a written token is paid
+    at the write price only, never at the input price as well."""
+    p = {"input": 3.0, "cached_input": 0.3, "cache_write": 3.75, "output": 15.0}
+    u = {"prompt_tokens": 2600, "cached_tokens": 2000, "cache_write_tokens": 500,
+         "completion_tokens": 100, "reasoning_tokens": None}
+    want = 100 * 3.0 + 2000 * 0.3 + 500 * 3.75 + 100 * 15.0      # 300 + 600 + 1875 + 1500
+    assert A.Adapter.cost(u, p) == round(want) == 4275
+    # no write price: the written tokens at the input price, still once
+    assert A.Adapter.cost(u, dict(p, cache_write=None)) == round(600 * 3.0 + 600 + 1500)
+    # no writes: the formula as before
+    assert A.Adapter.cost(dict(u, prompt_tokens=2100, cache_write_tokens=None), p) == \
+        round(100 * 3.0 + 600 + 1500)
+
+
 def test_deepseek_offpeak_price_by_the_hour():
     import datetime as dt
     ds = A.make({"id": "ds", "kind": "deepseek"})

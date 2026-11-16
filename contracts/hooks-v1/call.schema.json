@@ -5,7 +5,11 @@
   "type": "object",
   "properties": {
     "hooks": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
+      "description": "the contract version: 1.1 adds request.protocol; a 1.0 call has none"
     },
     "id": {
       "type": "string",
@@ -113,6 +117,32 @@
             "boolean",
             "null"
           ]
+        },
+        "protocol": {
+          "description": "1.1 (SRV-881): the client's protocol and the backend's: `openai` (chat completions and the other OpenAI routes) or `messages` (the Messages API). Both `messages`: the request passes through in that shape, and a patch of a content field is refused (`protocol_native`). Absent in a 1.0 call; null where no request is about (engine.lifecycle)",
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "inbound": {
+              "enum": [
+                "openai",
+                "messages"
+              ]
+            },
+            "upstream": {
+              "enum": [
+                "openai",
+                "messages"
+              ]
+            }
+          },
+          "required": [
+            "inbound",
+            "upstream"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

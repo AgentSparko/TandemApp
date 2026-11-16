@@ -1,0 +1,2550 @@
+{
+ "about": "SRV-879 golden fixtures for cell 4 of the design (a Messages API client in front of an OpenAI-compatible backend): requests, whole answers, streams and errors, written from the documented shapes; never recorded from paid calls.",
+ "requests": {
+  "system_string": {
+   "row": "system prompts",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "system": "You are terse."
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are terse."
+     },
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "system_blocks": {
+   "row": "system prompts",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "system": [
+     {
+      "type": "text",
+      "text": "Part one."
+     },
+     {
+      "type": "text",
+      "text": "Part two."
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "system",
+      "content": "Part one.\n\nPart two."
+     },
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "system_mid_conversation": {
+   "row": "system prompts",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     },
+     {
+      "role": "system",
+      "content": "Be brief now."
+     },
+     {
+      "role": "assistant",
+      "content": "ok"
+     },
+     {
+      "role": "user",
+      "content": "b"
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     },
+     {
+      "role": "system",
+      "content": "Be brief now."
+     },
+     {
+      "role": "assistant",
+      "content": "ok"
+     },
+     {
+      "role": "user",
+      "content": "b"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "system_bad_block": {
+   "row": "system prompts",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "system": [
+     {
+      "type": "image",
+      "source": {}
+     }
+    ]
+   },
+   "error": "system.0",
+   "message": "system.0: only text blocks can stand here"
+  },
+  "cache_control_everywhere": {
+   "row": "cache control",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "long doc",
+        "cache_control": {
+         "type": "ephemeral"
+        }
+       }
+      ]
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "system": [
+     {
+      "type": "text",
+      "text": "S",
+      "cache_control": {
+       "type": "ephemeral",
+       "ttl": "1h"
+      }
+     }
+    ],
+    "tools": [
+     {
+      "name": "f",
+      "input_schema": {
+       "type": "object"
+      },
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "system",
+      "content": "S"
+     },
+     {
+      "role": "user",
+      "content": "long doc"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "f",
+       "parameters": {
+        "type": "object"
+       }
+      }
+     }
+    ]
+   },
+   "dropped": [
+    "cache_control"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "thinking_adaptive_effort": {
+   "row": "thinking",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "output_config": {
+     "effort": "high"
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    true,
+    "high"
+   ]
+  },
+  "thinking_budget": {
+   "row": "thinking",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "enabled",
+     "budget_tokens": 4000
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [
+    "thinking.budget_tokens"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    true,
+    null
+   ]
+  },
+  "thinking_omitted": {
+   "row": "thinking",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "adaptive",
+     "display": "omitted"
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "omitted"
+   },
+   "thinking": [
+    true,
+    null
+   ]
+  },
+  "thinking_history_ours_and_foreign": {
+   "row": "thinking",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "q1"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "earlier reasoning",
+        "signature": "tandemapp-1.d8d8bcfec9af6f9fdc880b011646144c2af53232"
+       },
+       {
+        "type": "text",
+        "text": "a1"
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": "q2"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "thinking",
+        "thinking": "theirs",
+        "signature": "EqQBfore1gn"
+       },
+       {
+        "type": "redacted_thinking",
+        "data": "xyz"
+       },
+       {
+        "type": "text",
+        "text": "a2"
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": "q3"
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "q1"
+     },
+     {
+      "role": "assistant",
+      "content": "a1"
+     },
+     {
+      "role": "user",
+      "content": "q2"
+     },
+     {
+      "role": "assistant",
+      "content": "a2"
+     },
+     {
+      "role": "user",
+      "content": "q3"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [
+    "thinking"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tool_choice_auto": {
+   "row": "tool choice",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "f",
+      "input_schema": {
+       "type": "object"
+      }
+     }
+    ],
+    "tool_choice": {
+     "type": "auto"
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "f",
+       "parameters": {
+        "type": "object"
+       }
+      }
+     }
+    ],
+    "tool_choice": "auto"
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tool_choice_any_no_parallel": {
+   "row": "tool choice",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "f",
+      "input_schema": {
+       "type": "object"
+      }
+     }
+    ],
+    "tool_choice": {
+     "type": "any",
+     "disable_parallel_tool_use": true
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "f",
+       "parameters": {
+        "type": "object"
+       }
+      }
+     }
+    ],
+    "tool_choice": "required",
+    "parallel_tool_calls": false
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tool_choice_tool": {
+   "row": "tool choice",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "f",
+      "input_schema": {
+       "type": "object"
+      }
+     }
+    ],
+    "tool_choice": {
+     "type": "tool",
+     "name": "f"
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "f",
+       "parameters": {
+        "type": "object"
+       }
+      }
+     }
+    ],
+    "tool_choice": {
+     "type": "function",
+     "function": {
+      "name": "f"
+     }
+    }
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tool_choice_none": {
+   "row": "tool choice",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "f",
+      "input_schema": {
+       "type": "object"
+      }
+     }
+    ],
+    "tool_choice": {
+     "type": "none"
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "f",
+       "parameters": {
+        "type": "object"
+       }
+      }
+     }
+    ],
+    "tool_choice": "none"
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tool_choice_bad": {
+   "row": "tool choice",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "sometimes"
+    }
+   },
+   "error": "tool_choice",
+   "message": "tool_choice.type must be auto, any, tool or none"
+  },
+  "tools_client_tool": {
+   "row": "tools",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "get_weather",
+      "description": "Weather of a city",
+      "input_schema": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ],
+       "additionalProperties": false
+      },
+      "strict": true
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Weather of a city",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city"
+        ],
+        "additionalProperties": false
+       },
+       "strict": true
+      }
+     }
+    ]
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tools_server_tool": {
+   "row": "tools",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "type": "web_search_20260209",
+      "name": "web_search"
+     }
+    ]
+   },
+   "error": "tools.0.type",
+   "message": "tools.0: the tool type 'web_search_20260209' runs on the provider's servers or has no schema; only client tools with an input_schema can be used here"
+  },
+  "tools_schema_less_builtin": {
+   "row": "tools",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "type": "bash_20250124",
+      "name": "bash"
+     }
+    ]
+   },
+   "error": "tools.0.type",
+   "message": "tools.0: the tool type 'bash_20250124' runs on the provider's servers or has no schema; only client tools with an input_schema can be used here"
+  },
+  "tools_use_and_result": {
+   "row": "tools",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "weather in two cities"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "text",
+        "text": "Checking."
+       },
+       {
+        "type": "tool_use",
+        "id": "toolu_1",
+        "name": "get_weather",
+        "input": {
+         "city": "Paris"
+        }
+       },
+       {
+        "type": "tool_use",
+        "id": "toolu_2",
+        "name": "get_weather",
+        "input": {
+         "city": "Oslo"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "toolu_1",
+        "content": "12 C"
+       },
+       {
+        "type": "tool_result",
+        "tool_use_id": "toolu_2",
+        "is_error": true,
+        "content": [
+         {
+          "type": "text",
+          "text": "no data"
+         },
+         {
+          "type": "image",
+          "source": {
+           "type": "base64",
+           "media_type": "image/png",
+           "data": "iVBORw0KGgo="
+          }
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": "and summarize"
+       }
+      ]
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "weather in two cities"
+     },
+     {
+      "role": "assistant",
+      "content": "Checking.",
+      "tool_calls": [
+       {
+        "id": "toolu_1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"city\":\"Paris\"}"
+        }
+       },
+       {
+        "id": "toolu_2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"city\":\"Oslo\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_1",
+      "content": "12 C"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_2",
+      "content": "no data"
+     },
+     {
+      "role": "user",
+      "content": "and summarize"
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [
+    "tool_result.image",
+    "tool_result.is_error"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "tools_mcp_servers": {
+   "row": "tools",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "mcp_servers": [
+     {
+      "type": "url",
+      "url": "https://mcp.example",
+      "name": "x"
+     }
+    ]
+   },
+   "error": "mcp_servers",
+   "message": "mcp_servers: MCP servers run on the provider's side; this server cannot run it"
+  },
+  "images_base64_and_url": {
+   "row": "images",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "image",
+        "source": {
+         "type": "base64",
+         "media_type": "image/jpeg",
+         "data": "/9j/4AAQ"
+        }
+       },
+       {
+        "type": "image",
+        "source": {
+         "type": "url",
+         "url": "https://img.example/cat.png"
+        }
+       },
+       {
+        "type": "text",
+        "text": "What is in these?"
+       }
+      ]
+     }
+    ]
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "image_url",
+        "image_url": {
+         "url": "data:image/jpeg;base64,/9j/4AAQ"
+        }
+       },
+       {
+        "type": "image_url",
+        "image_url": {
+         "url": "https://img.example/cat.png"
+        }
+       },
+       {
+        "type": "text",
+        "text": "What is in these?"
+       }
+      ]
+     }
+    ],
+    "max_tokens": 256
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "images_document_refused": {
+   "row": "images",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "document",
+        "source": {
+         "type": "base64",
+         "media_type": "application/pdf",
+         "data": "JVBERi0="
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "messages.0.content.0.type",
+   "message": "messages.0.content.0: the block type 'document' has no equal in the OpenAI chat shape of this backend"
+  },
+  "images_file_source_refused": {
+   "row": "images",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "image",
+        "source": {
+         "type": "file",
+         "file_id": "file_1"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "messages.0.content.0.source",
+   "message": "messages.0.content.0.source: an image is a base64 or a url source here"
+  },
+  "parameters_all": {
+   "row": "parameters",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stop_sequences": [
+     "END",
+     "\n\nHuman:"
+    ],
+    "temperature": 0.3,
+    "top_p": 0.9,
+    "top_k": 40,
+    "metadata": {
+     "user_id": "u-1"
+    },
+    "service_tier": "auto",
+    "output_config": {
+     "format": {
+      "type": "json_schema",
+      "schema": {
+       "type": "object"
+      }
+     },
+     "task_budget": {
+      "type": "tokens",
+      "total": 20000
+     }
+    }
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "stop": [
+     "END",
+     "\n\nHuman:"
+    ],
+    "temperature": 0.3,
+    "top_p": 0.9,
+    "top_k": 40,
+    "response_format": {
+     "type": "json_schema",
+     "json_schema": {
+      "name": "output",
+      "schema": {
+       "type": "object"
+      },
+      "strict": true
+     }
+    }
+   },
+   "dropped": [
+    "metadata",
+    "output_config.task_budget",
+    "service_tier"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END",
+     "\n\nHuman:"
+    ],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  },
+  "parameters_no_max_tokens": {
+   "row": "parameters",
+   "body": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ]
+   },
+   "error": "max_tokens",
+   "message": "max_tokens: a positive integer is required"
+  },
+  "parameters_container": {
+   "row": "parameters",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "container": "cntr_1"
+   },
+   "error": "container",
+   "message": "container: a container runs on the provider's side; this server cannot run it"
+  },
+  "stream_asks_for_usage": {
+   "row": "stream",
+   "body": {
+    "model": "m-a",
+    "max_tokens": 256,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stream": true
+   },
+   "want": {
+    "model": "m-a",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_tokens": 256,
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    }
+   },
+   "dropped": [],
+   "meta": {
+    "model": "m-a",
+    "stop": [],
+    "display": "summarized"
+   },
+   "thinking": [
+    null,
+    null
+   ]
+  }
+ },
+ "answers": {
+  "text_end_turn": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "Hello."
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "Hello."
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "stop_sequence_named": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "finish_reason": "stop",
+      "stop_reason": "END"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "stop_sequence",
+    "stop_sequence": "END",
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "stop_unknown_string": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "finish_reason": "stop",
+      "stop_reason": 151645
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "length": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "trunc"
+      },
+      "finish_reason": "length"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "trunc"
+     }
+    ],
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "content_filter": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": ""
+      },
+      "finish_reason": "content_filter"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": ""
+     }
+    ],
+    "stop_reason": "refusal",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "tool_calls": {
+   "row": "tools",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_a",
+         "type": "function",
+         "function": {
+          "name": "f",
+          "arguments": "{\"x\": 1}"
+         }
+        },
+        {
+         "id": "call_b",
+         "type": "function",
+         "function": {
+          "name": "g",
+          "arguments": "not json"
+         }
+        }
+       ]
+      },
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "call_a",
+      "name": "f",
+      "input": {
+       "x": 1
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "call_b",
+      "name": "g",
+      "input": {
+       "_raw_arguments": "not json"
+      }
+     }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "reasoning_then_text": {
+   "row": "thinking",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "reasoning_content": "step one",
+       "content": "42"
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "step one",
+      "signature": "tandemapp-1.52831d1d544eb10c068d22669f462f0b6bf18593"
+     },
+     {
+      "type": "text",
+      "text": "42"
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "reasoning_field_omitted": {
+   "row": "thinking",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "reasoning": "hidden",
+       "content": "ok"
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "omitted"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "tandemapp-1.e564b4081d7a9ea4b00dada53bdae70c99b87b6f"
+     },
+     {
+      "type": "text",
+      "text": "ok"
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "cached_usage": {
+   "row": "cache control",
+   "chat": {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "m-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "c"
+      },
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 120,
+     "completion_tokens": 30,
+     "total_tokens": 150,
+     "prompt_tokens_details": {
+      "cached_tokens": 100
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "c"
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 30,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 100,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   }
+  },
+  "no_usage": {
+   "row": "stop reasons",
+   "chat": {
+    "id": "c",
+    "object": "chat.completion",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": ""
+      },
+      "finish_reason": "stop"
+     }
+    ]
+   },
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "m-a",
+    "content": [
+     {
+      "type": "text",
+      "text": ""
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0
+    }
+   }
+  }
+ },
+ "streams": {
+  "text": {
+   "row": "stream",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\", \"content\": \"\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hel\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"lo\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\"}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [], \"usage\": {\"prompt_tokens\": 120, \"completion_tokens\": 30, \"total_tokens\": 150, \"prompt_tokens_details\": {\"cached_tokens\": 100}, \"completion_tokens_details\": {\"reasoning_tokens\": 12}}}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "Hel"
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "lo"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "end_turn",
+      "stop_sequence": null
+     },
+     "usage": {
+      "input_tokens": 20,
+      "output_tokens": 30,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 100,
+      "output_tokens_details": {
+       "thinking_tokens": 12
+      }
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  },
+  "reasoning_then_text": {
+   "row": "thinking",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"a\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"b\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"x\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 120, \"completion_tokens\": 30, \"total_tokens\": 150, \"prompt_tokens_details\": {\"cached_tokens\": 100}, \"completion_tokens_details\": {\"reasoning_tokens\": 12}}}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "thinking",
+      "thinking": "",
+      "signature": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "thinking_delta",
+      "thinking": "a"
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "thinking_delta",
+      "thinking": "b"
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "signature_delta",
+      "signature": "tandemapp-1.fb8e20fc2e4c3f248c60c39bd652f3c1347298bb"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "content_block_start",
+     "index": 1,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 1,
+     "delta": {
+      "type": "text_delta",
+      "text": "x"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 1
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "end_turn",
+      "stop_sequence": null
+     },
+     "usage": {
+      "input_tokens": 20,
+      "output_tokens": 30,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 100,
+      "output_tokens_details": {
+       "thinking_tokens": 12
+      }
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  },
+  "tool_calls_in_pieces": {
+   "row": "tools",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"role\": \"assistant\", \"content\": \"Let me check.\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 0, \"id\": \"call_a\", \"type\": \"function\", \"function\": {\"name\": \"f\", \"arguments\": \"\"}}]}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 0, \"function\": {\"arguments\": \"{\\\"ci\"}}]}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 1, \"id\": \"call_b\", \"type\": \"function\", \"function\": {\"name\": \"g\", \"arguments\": \"{}\"}}]}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"tool_calls\": [{\"index\": 0, \"function\": {\"arguments\": \"ty\\\": \\\"Oslo\\\"}\"}}]}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"tool_calls\"}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [], \"usage\": {\"prompt_tokens\": 120, \"completion_tokens\": 30, \"total_tokens\": 150, \"prompt_tokens_details\": {\"cached_tokens\": 100}, \"completion_tokens_details\": {\"reasoning_tokens\": 12}}}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "Let me check."
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "content_block_start",
+     "index": 1,
+     "content_block": {
+      "type": "tool_use",
+      "id": "call_a",
+      "name": "f",
+      "input": {}
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 1,
+     "delta": {
+      "type": "input_json_delta",
+      "partial_json": "{\"city\":\"Oslo\"}"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 1
+    },
+    {
+     "type": "content_block_start",
+     "index": 2,
+     "content_block": {
+      "type": "tool_use",
+      "id": "call_b",
+      "name": "g",
+      "input": {}
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 2,
+     "delta": {
+      "type": "input_json_delta",
+      "partial_json": "{}"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 2
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "tool_use",
+      "stop_sequence": null
+     },
+     "usage": {
+      "input_tokens": 20,
+      "output_tokens": 30,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 100,
+      "output_tokens_details": {
+       "thinking_tokens": 12
+      }
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  },
+  "stop_sequence": {
+   "row": "stop reasons",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"abc\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\", \"stop_reason\": \"END\"}]}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "abc"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "stop_sequence",
+      "stop_sequence": "END"
+     },
+     "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  },
+  "length": {
+   "row": "stop reasons",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"abc\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"length\"}], \"usage\": {\"prompt_tokens\": 120, \"completion_tokens\": 30, \"total_tokens\": 150, \"prompt_tokens_details\": {\"cached_tokens\": 100}, \"completion_tokens_details\": {\"reasoning_tokens\": 12}}}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "abc"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "max_tokens",
+      "stop_sequence": null
+     },
+     "usage": {
+      "input_tokens": 20,
+      "output_tokens": 30,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 100,
+      "output_tokens_details": {
+       "thinking_tokens": 12
+      }
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  },
+  "error_frame": {
+   "row": "stream",
+   "events": [
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"abc\"}, \"finish_reason\": null}]}",
+    "data: {\"error\": {\"message\": \"engine failed\", \"type\": \"upstream_error\"}}",
+    "data: [DONE]"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "abc"
+     }
+    },
+    {
+     "type": "error",
+     "error": {
+      "type": "api_error",
+      "message": "engine failed"
+     }
+    }
+   ]
+  },
+  "comments_and_no_done": {
+   "row": "stream",
+   "events": [
+    ": tandem-cost {\"cost_micros\": 1}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {\"content\": \"x\"}, \"finish_reason\": null}]}",
+    "data: {\"id\": \"chatcmpl-s\", \"object\": \"chat.completion.chunk\", \"created\": 1, \"model\": \"m-a\", \"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"stop\"}]}"
+   ],
+   "meta": {
+    "model": "m-a",
+    "stop": [
+     "END"
+    ],
+    "display": "summarized"
+   },
+   "want": [
+    {
+     "type": "message_start",
+     "message": {
+      "id": "msg_fixture",
+      "type": "message",
+      "role": "assistant",
+      "model": "m-a",
+      "content": [],
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": {
+       "input_tokens": 0,
+       "output_tokens": 0
+      }
+     }
+    },
+    {
+     "type": "content_block_start",
+     "index": 0,
+     "content_block": {
+      "type": "text",
+      "text": ""
+     }
+    },
+    {
+     "type": "content_block_delta",
+     "index": 0,
+     "delta": {
+      "type": "text_delta",
+      "text": "x"
+     }
+    },
+    {
+     "type": "content_block_stop",
+     "index": 0
+    },
+    {
+     "type": "message_delta",
+     "delta": {
+      "stop_reason": "end_turn",
+      "stop_sequence": null
+     },
+     "usage": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+     }
+    },
+    {
+     "type": "message_stop"
+    }
+   ]
+  }
+ },
+ "errors": {
+  "drained_503": {
+   "status": 503,
+   "body": {
+    "error": {
+     "message": "node x is drained",
+     "type": "server_busy",
+     "code": "node_draining"
+    }
+   },
+   "want_status": 529,
+   "want_type": "overloaded_error",
+   "want_message": "node x is drained"
+  },
+  "not_found_404": {
+   "status": 404,
+   "body": {
+    "error": {
+     "message": "no model m-z",
+     "type": "invalid_request_error"
+    }
+   },
+   "want_status": 404,
+   "want_type": "not_found_error",
+   "want_message": "no model m-z"
+  },
+  "auth_401": {
+   "status": 401,
+   "body": {
+    "error": {
+     "message": "bad key",
+     "type": "invalid_request_error",
+     "code": "invalid_api_key"
+    }
+   },
+   "want_status": 401,
+   "want_type": "authentication_error",
+   "want_message": "bad key"
+  },
+  "rate_429": {
+   "status": 429,
+   "body": {
+    "error": {
+     "message": "slow down",
+     "type": "rate_limit"
+    }
+   },
+   "want_status": 429,
+   "want_type": "rate_limit_error",
+   "want_message": "slow down"
+  },
+  "timeout_504": {
+   "status": 504,
+   "body": {
+    "error": {
+     "message": "sent nothing",
+     "type": "upstream_timeout"
+    }
+   },
+   "want_status": 504,
+   "want_type": "timeout_error",
+   "want_message": "sent nothing"
+  },
+  "bad_gateway_502": {
+   "status": 502,
+   "body": null,
+   "want_status": 502,
+   "want_type": "api_error",
+   "want_message": "the backend answered HTTP 502"
+  },
+  "hook_403": {
+   "status": 403,
+   "body": {
+    "error": {
+     "message": "refused by a hook",
+     "type": "invalid_request_error",
+     "code": "hook_denied"
+    }
+   },
+   "want_status": 403,
+   "want_type": "permission_error",
+   "want_message": "refused by a hook"
+  },
+  "too_large_413": {
+   "status": 413,
+   "body": {
+    "error": {
+     "type": "too_large",
+     "message": "body too big"
+    }
+   },
+   "want_status": 413,
+   "want_type": "request_too_large",
+   "want_message": "body too big"
+  }
+ }
+}

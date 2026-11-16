@@ -98,6 +98,9 @@ def paid(backend: dict, price: dict | None) -> bool:
 def resolve(backend: dict, price: dict | None, settings_mode: str) -> tuple[str, str]:
     """(the writer's mode for this backend's model, why): the backend's switch (auto resolved),
     lowered by the settings document's writer mode."""
+    from proxy.config import NO_HARNESS
+    if backend.get("kind") in NO_HARNESS:
+        return "off", "kind"                 # SRV-879: the writer's request cannot reach it
     b = backend_cfg(backend)["writer"]
     why = "backend"
     if b == "auto":

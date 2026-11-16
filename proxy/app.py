@@ -6,10 +6,15 @@ serves on one port:
 
     POST /v1/chat/completions, /v1/completions, /v1/embeddings, /v1/responses
                                    relayed to the backend the model routes to (proxy/route.py)
+    POST /v1/messages, /v1/messages/count_tokens
+                                   the Messages API, translated to and from the chat shape the
+                                   pipeline runs on (proxy/messages.py, SRV-879), or passed
+                                   through to a Messages API backend (SRV-881)
     GET  /v1/models, /v1/models/{id}
                                    each fleet deployment once under its API id (SRV-731,
                                    proxy/deployments.py), then every backend's real models,
-                                   `owned_by` its id
+                                   `owned_by` its id; in the Messages API's shape with
+                                   `anthropic-version` (SRV-881)
     GET  /dashboard/               the dashboard (dashboard/dist, served from disk)
     GET  /v1/dashboard/*           summary, usage, requests, system, live, logs, metrics, session
     *    /v1/config/*              the Backends and Setup screens (proxy/config_api.py)
@@ -118,6 +123,11 @@ IDLE_TIMEOUT_S = 60.0
 from tandemapp import http_body  # noqa: E402
 
 BodyError = http_body.BodyError
+
+
+def messages_wants_models(headers) -> bool:
+    from proxy import messages as messages_mod
+    return messages_mod.wants_models(headers)
 
 
 def version() -> str:
@@ -437,6 +447,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._allowed("metrics"):
                 return
             return self._metrics()
+        if (path == "/v1/models" or path.startswith("/v1/models/")) and \
+                messages_wants_models(self.headers):
+            # SRV-881: a Messages API client's list, in its own shape (proxy/messages.py)
+            from proxy import messages as messages_mod
+            return messages_mod.models(self, STATE["svc"], path)
         if path == "/v1/models":
             ok, _ = STATE["svc"].authorize(self, (GATEWAY_HEADER,))
             if not ok:
@@ -533,12 +548,17 @@ class Handler(BaseHTTPRequestHandler):
         t_arrival = time.perf_counter()
         if self._fleet_too_big(path):
             return
+        from proxy import messages as messages_mod
         try:
             raw = self._read_raw()
         except BodyError as exc:
+            if messages_mod.is_messages(path):
+                return messages_mod.body_error(self, exc)
             return self._body_error(exc)
         if self._auth_api("POST", path, raw):
             return
+        if messages_mod.is_messages(path):          # SRV-879: the Messages API, its own shapes
+            return messages_mod.handle(self, STATE["svc"], path, raw, t_arrival)
         if path.startswith("/v1/collect/"):          # P6: a plugin's batch, its own token
             from proxy import collect_api
             return collect_api.handle(self, STATE["svc"], path, raw)

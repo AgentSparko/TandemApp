@@ -15,7 +15,7 @@ from proxy import hookcall
 REQUEST = {"request_id": "chatcmpl-px-0123456789abcdef01234567", "endpoint": "chat",
            "model": "example-model", "upstream_model": "example-model", "backend": "local",
            "profile": None, "user": "owner", "session": "s-1", "client_kind": "unknown",
-           "stream": False}
+           "stream": False, "protocol": {"inbound": "openai", "upstream": "openai"}}
 
 BODY = {"model": "example-model", "temperature": 0.2, "max_tokens": 256,
         "messages": [{"role": "system", "content": "Answer briefly."},

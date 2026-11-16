@@ -94,6 +94,7 @@ controller takes it from loopback only, and a proxy there connects from loopback
 | `/v1/completions` | both | always | the data plane |
 | `/v1/embeddings` | both | always | the data plane |
 | `/v1/responses` | both | always | the data plane |
+| `/v1/messages` and below | TandemApp | always | the data plane in the Messages API: a message, count_tokens; an engine answers 404 |
 | `/v1/models` and below | both | always | the data plane: the model list and one model's card |
 | `/v1/cache/peek` | both | when a deployment routes the cache | routed to the member of a Replicas deployment that holds the conversation |
 | `/v1/cache/prewarm` | both | when a deployment routes the cache | as peek |

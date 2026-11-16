@@ -1,0 +1,41 @@
+{
+  "hooks": "1.0",
+  "id": "hd-0123456789abcdef0123456789abcdef",
+  "hook": "example-hook",
+  "stage": "request.finished",
+  "ts": 1763200000.0,
+  "payload": "meta",
+  "mode": "on",
+  "request": {
+    "request_id": "chatcmpl-px-0123456789abcdef01234567",
+    "endpoint": "chat",
+    "model": "example-model",
+    "upstream_model": "example-model",
+    "backend": "local",
+    "profile": null,
+    "user": "owner",
+    "session": "s-1",
+    "client_kind": "unknown",
+    "stream": false
+  },
+  "event": {
+    "row": {
+      "status": 200,
+      "finish_reason": "stop",
+      "error_type": null,
+      "backend": "local",
+      "backend_model": "example-model",
+      "tokens": {
+        "prompt": 21,
+        "completion": 2,
+        "cached": null,
+        "reasoning": null
+      },
+      "cost_micros": null,
+      "ttft_ms": null,
+      "retries": 0,
+      "fallback_from": null
+    },
+    "labels": {}
+  }
+}

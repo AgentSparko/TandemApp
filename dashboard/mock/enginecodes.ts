@@ -65,6 +65,7 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   no_memory_cgroup: [409, "The kernel does not cap a container's memory here, so a sandbox has no memory limit.", "Turn the memory controller on: on a Raspberry Pi add cgroup_enable=memory cgroup_memory=1 to /boot/firmware/cmdline.txt and reboot."],
   disk_low: [507, "Only {free_gb} GB are free at {path}.", "Free some space there: TandemApp wants {need_gb} GB."],
   backend_down: [502, "The backend {backend} does not answer: {detail}", "Check that it runs and that its address and key are right; Backends tests it."],
+  harness_unsupported: [409, "The harness is switched on for {backend}, which cannot run it yet: {detail}", "Switch the harness and the memory writer off there, and point any role that names it at another backend; its requests are relayed without the harness meanwhile."],
   plugin_failed: [409, "The plugin {plugin} does not run: {detail}", "Its page's log says why; fix it, then enable or start it again."],
   plugin_no_sandbox: [409, "The plugin {plugin} waits for a sandbox: {detail}", "Give TandemApp the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env, or the Kubernetes sandbox), or set TANDEM_PLUGIN_SANDBOX."],
   plugin_tampered: [409, "The plugin {plugin} changed since its install: {detail}", "Install it again from its source; do not enable a plugin whose files changed under it."],

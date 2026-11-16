@@ -1,0 +1,2636 @@
+{
+ "_note": "Cell 3 of the SRV-877 plan: an OpenAI client, an Anthropic-compatible backend. Written from the Messages API's documented shapes, not recorded from paid calls. `created` is fixed at 1763280000.",
+ "created": 1763280000,
+ "requests": {
+  "system_and_developer": {
+   "row": "system prompts",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "system",
+      "content": "Be brief."
+     },
+     {
+      "role": "user",
+      "content": "hi"
+     },
+     {
+      "role": "developer",
+      "content": [
+       {
+        "type": "text",
+        "text": "Answer in English."
+       }
+      ]
+     },
+     {
+      "role": "assistant",
+      "content": "Hello."
+     },
+     {
+      "role": "user",
+      "content": "more"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "system": [
+     {
+      "type": "text",
+      "text": "Be brief."
+     },
+     {
+      "type": "text",
+      "text": "Answer in English."
+     }
+    ],
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     },
+     {
+      "role": "assistant",
+      "content": "Hello."
+     },
+     {
+      "role": "user",
+      "content": "more"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "max_tokens_client": {
+   "row": "max_tokens",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "max_completion_tokens": 300
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 300,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "max_tokens_default": {
+   "row": "max_tokens",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "max_tokens_default_stream_capped": {
+   "row": "max_tokens",
+   "max_output": 32000,
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stream": true
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 32000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "stream": true
+   },
+   "dropped": []
+  },
+  "max_tokens_backend_default": {
+   "row": "max_tokens",
+   "opts": {
+    "default_max_tokens": 4096
+   },
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 4096,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "sampling_dropped": {
+   "row": "sampling",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "temperature": 0.2,
+    "top_p": 0.9
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": [
+    "temperature",
+    "top_p"
+   ]
+  },
+  "sampling_pass": {
+   "row": "sampling",
+   "opts": {
+    "sampling": "pass"
+   },
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "temperature": 0.2,
+    "top_k": 40
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "temperature": 0.2,
+    "top_k": 40,
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "other_parameters": {
+   "row": "other parameters",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stop": [
+     "END",
+     "STOP"
+    ],
+    "n": 1,
+    "seed": 7,
+    "presence_penalty": 0.5,
+    "frequency_penalty": 0.1,
+    "logit_bias": {
+     "1": 2
+    },
+    "logprobs": true,
+    "user": "u1"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stop_sequences": [
+     "END",
+     "STOP"
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": [
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "seed",
+    "logprobs",
+    "user"
+   ]
+  },
+  "stop_string": {
+   "row": "other parameters",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stop": "END"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stop_sequences": [
+     "END"
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "n_above_one": {
+   "row": "other parameters",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "n": 2
+   },
+   "error": "n",
+   "want_error": {
+    "error": {
+     "message": "n above 1 has no equal in the Messages API",
+     "type": "invalid_request_error",
+     "param": "n",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "tools": {
+   "row": "tools",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "The weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "city"
+        ]
+       },
+       "strict": true
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "now"
+      }
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "name": "get_weather",
+      "description": "The weather",
+      "input_schema": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      },
+      "strict": true
+     },
+     {
+      "name": "now",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      }
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_not_function": {
+   "row": "tools",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tools": [
+     {
+      "type": "web_search"
+     }
+    ]
+   },
+   "error": "tools[0].type",
+   "want_error": {
+    "error": {
+     "message": "tools[0]: only function tools can be translated",
+     "type": "invalid_request_error",
+     "param": "tools[0].type",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "tool_choice_auto": {
+   "row": "tool choice",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": "auto"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "auto"
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_choice_none": {
+   "row": "tool choice",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": "none"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "none"
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_choice_required": {
+   "row": "tool choice",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": "required"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "any"
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_choice_named": {
+   "row": "tool choice",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "parallel_tool_calls": false,
+    "tool_choice": {
+     "type": "function",
+     "function": {
+      "name": "get_weather"
+     }
+    }
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "tool",
+     "name": "get_weather",
+     "disable_parallel_tool_use": true
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "parallel_off": {
+   "row": "tool choice",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "parallel_tool_calls": false
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "tool_choice": {
+     "type": "auto",
+     "disable_parallel_tool_use": true
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_calls_and_results": {
+   "row": "tool calls",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "weather in two cities"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "toolu_fixture_01",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"city\": \"Oslo\"}"
+        }
+       },
+       {
+        "id": "toolu_fixture_02",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"city\": \"Rome\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_fixture_01",
+      "content": "4 C"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_fixture_02",
+      "content": [
+       {
+        "type": "text",
+        "text": "19 C"
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": "and now?"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "weather in two cities"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "toolu_fixture_01",
+        "name": "get_weather",
+        "input": {
+         "city": "Oslo"
+        }
+       },
+       {
+        "type": "tool_use",
+        "id": "toolu_fixture_02",
+        "name": "get_weather",
+        "input": {
+         "city": "Rome"
+        }
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fixture_01",
+        "content": "4 C"
+       },
+       {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fixture_02",
+        "content": [
+         {
+          "type": "text",
+          "text": "19 C"
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": "and now?"
+       }
+      ]
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_arguments_not_json": {
+   "row": "tool calls",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "x"
+     },
+     {
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "id": "t1",
+        "type": "function",
+        "function": {
+         "name": "f",
+         "arguments": "{city: Oslo"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "messages[1].tool_calls[0].function.arguments",
+   "want_error": {
+    "error": {
+     "message": "messages[1].tool_calls[0].function.arguments is not JSON",
+     "type": "invalid_request_error",
+     "param": "messages[1].tool_calls[0].function.arguments",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "images": {
+   "row": "images",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "what is this?"
+       },
+       {
+        "type": "image_url",
+        "image_url": {
+         "url": "data:image/png;base64,iVBORw0KGgo="
+        }
+       },
+       {
+        "type": "image_url",
+        "image_url": {
+         "url": "https://img.example/cat.jpg",
+         "detail": "high"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "what is this?"
+       },
+       {
+        "type": "image",
+        "source": {
+         "type": "base64",
+         "media_type": "image/png",
+         "data": "iVBORw0KGgo="
+        }
+       },
+       {
+        "type": "image",
+        "source": {
+         "type": "url",
+         "url": "https://img.example/cat.jpg"
+        }
+       }
+      ]
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "tool_result_image": {
+   "row": "images",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "look"
+     },
+     {
+      "role": "assistant",
+      "tool_calls": [
+       {
+        "id": "toolu_fixture_05",
+        "type": "function",
+        "function": {
+         "name": "screenshot",
+         "arguments": ""
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "toolu_fixture_05",
+      "content": [
+       {
+        "type": "text",
+        "text": "the page"
+       },
+       {
+        "type": "image_url",
+        "image_url": {
+         "url": "data:image/jpeg;base64,/9j/4AAQ"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "look"
+     },
+     {
+      "role": "assistant",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "toolu_fixture_05",
+        "name": "screenshot",
+        "input": {}
+       }
+      ]
+     },
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "tool_result",
+        "tool_use_id": "toolu_fixture_05",
+        "content": [
+         {
+          "type": "text",
+          "text": "the page"
+         },
+         {
+          "type": "image",
+          "source": {
+           "type": "base64",
+           "media_type": "image/jpeg",
+           "data": "/9j/4AAQ"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "audio_part": {
+   "row": "images",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "input_audio",
+        "input_audio": {
+         "data": "AAA",
+         "format": "wav"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "messages[0].content[0]",
+   "want_error": {
+    "error": {
+     "message": "messages[0].content[0]: input_audio parts have no equal in the Messages API",
+     "type": "invalid_request_error",
+     "param": "messages[0].content[0]",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "file_part": {
+   "row": "images",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "file",
+        "file": {
+         "file_id": "f1"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "error": "messages[0].content[0]",
+   "want_error": {
+    "error": {
+     "message": "messages[0].content[0]: file parts have no equal in the Messages API",
+     "type": "invalid_request_error",
+     "param": "messages[0].content[0]",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "thinking_adaptive": {
+   "row": "thinking",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "reasoning_effort": "high"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "output_config": {
+     "effort": "high"
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "thinking_minimal_reads_low": {
+   "row": "thinking",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "reasoning_effort": "minimal"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "adaptive",
+     "display": "summarized"
+    },
+    "output_config": {
+     "effort": "low"
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "thinking_budget": {
+   "row": "thinking",
+   "opts": {
+    "thinking_shape": "budget"
+   },
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "reasoning_effort": "medium",
+    "max_tokens": 20000
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 20000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "thinking": {
+     "type": "enabled",
+     "budget_tokens": 8192
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "thinking_off_shape": {
+   "row": "thinking",
+   "opts": {
+    "thinking_shape": "off"
+   },
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "reasoning_effort": "high"
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": [
+    "reasoning_effort"
+   ]
+  },
+  "thinking_history_dropped": {
+   "row": "thinking",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     },
+     {
+      "role": "assistant",
+      "content": "b",
+      "reasoning_content": "I thought."
+     },
+     {
+      "role": "user",
+      "content": "c"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "a"
+     },
+     {
+      "role": "assistant",
+      "content": "b"
+     },
+     {
+      "role": "user",
+      "content": "c"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "cache_off": {
+   "row": "cache control",
+   "opts": {
+    "auto_cache": false
+   },
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ]
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ]
+   },
+   "dropped": []
+  },
+  "output_json_schema": {
+   "row": "output format",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "response_format": {
+     "type": "json_schema",
+     "json_schema": {
+      "name": "r",
+      "strict": true,
+      "schema": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 16000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "output_config": {
+     "format": {
+      "type": "json_schema",
+      "schema": {
+       "type": "object",
+       "properties": {
+        "a": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "a"
+       ],
+       "additionalProperties": false
+      }
+     }
+    },
+    "cache_control": {
+     "type": "ephemeral"
+    }
+   },
+   "dropped": []
+  },
+  "output_json_object": {
+   "row": "output format",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "response_format": {
+     "type": "json_object"
+    }
+   },
+   "error": "response_format",
+   "want_error": {
+    "error": {
+     "message": "response_format json_object has no equal in the Messages API; use json_schema",
+     "type": "invalid_request_error",
+     "param": "response_format",
+     "code": "unsupported_parameter"
+    }
+   }
+  },
+  "stream_flag": {
+   "row": "stream",
+   "body": {
+    "model": "x",
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "stream": true,
+    "stream_options": {
+     "include_usage": true
+    }
+   },
+   "want": {
+    "model": "model-a",
+    "max_tokens": 64000,
+    "messages": [
+     {
+      "role": "user",
+      "content": "hi"
+     }
+    ],
+    "cache_control": {
+     "type": "ephemeral"
+    },
+    "stream": true
+   },
+   "dropped": []
+  }
+ },
+ "answers": {
+  "text_and_thinking": {
+   "row": "thinking",
+   "message": {
+    "id": "msg_fixture_02",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "Short.",
+      "signature": "sig-fixture"
+     },
+     {
+      "type": "text",
+      "text": "Hello."
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 100,
+     "cache_creation_input_tokens": 500,
+     "cache_read_input_tokens": 2000,
+     "output_tokens": 40,
+     "output_tokens_details": {
+      "thinking_tokens": 12
+     }
+    }
+   },
+   "want": {
+    "id": "msg_fixture_02",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "Hello.",
+       "reasoning_content": "Short."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 2600,
+     "completion_tokens": 40,
+     "total_tokens": 2640,
+     "prompt_tokens_details": {
+      "cached_tokens": 2000
+     },
+     "completion_tokens_details": {
+      "reasoning_tokens": 12
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 2600,
+    "completion_tokens": 40,
+    "cached_tokens": 2000,
+    "cache_write_tokens": 500,
+    "reasoning_tokens": 12
+   }
+  },
+  "tool_use": {
+   "row": "tool calls",
+   "message": {
+    "id": "msg_fixture_03",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "Checking."
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_fixture_03",
+      "name": "get_weather",
+      "input": {
+       "city": "Oslo"
+      }
+     }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 20,
+     "output_tokens": 15
+    }
+   },
+   "want": {
+    "id": "msg_fixture_03",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "Checking.",
+       "tool_calls": [
+        {
+         "id": "toolu_fixture_03",
+         "type": "function",
+         "function": {
+          "name": "get_weather",
+          "arguments": "{\"city\":\"Oslo\"}"
+         }
+        }
+       ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 20,
+     "completion_tokens": 15,
+     "total_tokens": 35,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 20,
+    "completion_tokens": 15,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_end_turn": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_stop_sequence": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "stop_sequence",
+    "stop_sequence": "END",
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_pause_turn": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "pause_turn",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_max_tokens": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "max_tokens",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "length"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_model_context_window_exceeded": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "model_context_window_exceeded",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "length"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_tool_use": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  },
+  "stop_refusal": {
+   "row": "stop reasons",
+   "message": {
+    "id": "msg_fixture_04",
+    "type": "message",
+    "role": "assistant",
+    "model": "model-a",
+    "content": [
+     {
+      "type": "text",
+      "text": "x"
+     }
+    ],
+    "stop_reason": "refusal",
+    "stop_sequence": null,
+    "usage": {
+     "input_tokens": 3,
+     "output_tokens": 1
+    }
+   },
+   "want": {
+    "id": "msg_fixture_04",
+    "object": "chat.completion",
+    "created": 1763280000,
+    "model": "model-a",
+    "choices": [
+     {
+      "index": 0,
+      "message": {
+       "role": "assistant",
+       "content": "x"
+      },
+      "logprobs": null,
+      "finish_reason": "content_filter"
+     }
+    ],
+    "usage": {
+     "prompt_tokens": 3,
+     "completion_tokens": 1,
+     "total_tokens": 4,
+     "prompt_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   },
+   "ledger": {
+    "prompt_tokens": 3,
+    "completion_tokens": 1,
+    "cached_tokens": null,
+    "cache_write_tokens": null,
+    "reasoning_tokens": null
+   }
+  }
+ },
+ "streams": {
+  "text": {
+   "row": "stream",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: ping\ndata: {\"type\": \"ping\"}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Hel\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"lo.\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 5}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "Hel"
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "lo."
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "stop"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 5,
+      "total_tokens": 17,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 5,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  },
+  "thinking_then_text": {
+   "row": "thinking",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"thinking\", \"thinking\": \"\", \"signature\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"thinking_delta\", \"thinking\": \"Hmm.\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"signature_delta\", \"signature\": \"sig-fixture\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 1, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"text_delta\", \"text\": \"Yes.\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 1}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 9, \"output_tokens_details\": {\"thinking_tokens\": 4}}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "reasoning_content": "Hmm."
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "Yes."
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "stop"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 9,
+      "total_tokens": 21,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+       "reasoning_tokens": 4
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 9,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": 4
+   }
+  },
+  "tools": {
+   "row": "tool calls",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Let me check.\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 1, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_fixture_01\", \"name\": \"get_weather\", \"input\": {}}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"city\\\": \"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"\\\"Oslo\\\"}\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 1}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 2, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_fixture_02\", \"name\": \"now\", \"input\": {}}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 2, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{}\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 2}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 30}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "Let me check."
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "id": "toolu_fixture_01",
+          "type": "function",
+          "function": {
+           "name": "get_weather",
+           "arguments": ""
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "function": {
+           "arguments": "{\"city\": "
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "function": {
+           "arguments": "\"Oslo\"}"
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 1,
+          "id": "toolu_fixture_02",
+          "type": "function",
+          "function": {
+           "name": "now",
+           "arguments": ""
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 1,
+          "function": {
+           "arguments": "{}"
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "tool_calls"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 30,
+      "total_tokens": 42,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 30,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  },
+  "tool_without_input": {
+   "row": "tool calls",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_fixture_06\", \"name\": \"now\", \"input\": {}}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 3}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "id": "toolu_fixture_06",
+          "type": "function",
+          "function": {
+           "name": "now",
+           "arguments": ""
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "function": {
+           "arguments": "{}"
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "tool_calls"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 3,
+      "total_tokens": 15,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 3,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  },
+  "cache_usage": {
+   "row": "cache control",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 100, \"cache_creation_input_tokens\": 500, \"cache_read_input_tokens\": 2000, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"ok\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"max_tokens\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 7}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "ok"
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "length"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 2600,
+      "completion_tokens": 7,
+      "total_tokens": 2607,
+      "prompt_tokens_details": {
+       "cached_tokens": 2000
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 2600,
+    "completion_tokens": 7,
+    "cached_tokens": 2000,
+    "cache_write_tokens": 500,
+    "reasoning_tokens": null
+   }
+  },
+  "error_after_text": {
+   "row": "stream",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"par\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: error\ndata: {\"type\": \"error\", \"error\": {\"type\": \"overloaded_error\", \"message\": \"Overloaded\"}}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "par"
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "error": {
+      "message": "Overloaded",
+      "type": "overloaded_error",
+      "param": null,
+      "code": "overloaded_error"
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 1,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  },
+  "unknown_event": {
+   "row": "stop reasons",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: future_event\ndata: {\"type\": \"future_event\", \"x\": 1}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}",
+    "event: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"a\"}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"refusal\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 1}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "content": "a"
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "content_filter"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 1,
+      "total_tokens": 13,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 1,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  }
+ },
+ "errors": {
+  "invalid_request": {
+   "status": 400,
+   "body": {
+    "type": "error",
+    "error": {
+     "type": "invalid_request_error",
+     "message": "tool_choice any is not supported"
+    },
+    "request_id": "req_fixture_01"
+   },
+   "want_status": 400,
+   "want": {
+    "error": {
+     "message": "tool_choice any is not supported",
+     "type": "invalid_request_error",
+     "param": null,
+     "code": "invalid_request_error"
+    }
+   }
+  },
+  "overloaded": {
+   "status": 529,
+   "body": {
+    "type": "error",
+    "error": {
+     "type": "overloaded_error",
+     "message": "Overloaded"
+    }
+   },
+   "want_status": 503,
+   "want": {
+    "error": {
+     "message": "Overloaded",
+     "type": "overloaded_error",
+     "param": null,
+     "code": "overloaded_error"
+    }
+   }
+  },
+  "rate_limit": {
+   "status": 429,
+   "body": {
+    "type": "error",
+    "error": {
+     "type": "rate_limit_error",
+     "message": "slow down"
+    }
+   },
+   "want_status": 429,
+   "want": {
+    "error": {
+     "message": "slow down",
+     "type": "rate_limit_error",
+     "param": null,
+     "code": "rate_limit_error"
+    }
+   }
+  },
+  "not_json": {
+   "status": 502,
+   "body": null,
+   "want_status": 502,
+   "want": {
+    "error": {
+     "message": "the backend answered HTTP 502",
+     "type": "upstream_error",
+     "param": null,
+     "code": "upstream_error"
+    }
+   }
+  }
+ }
+}

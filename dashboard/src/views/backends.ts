@@ -25,6 +25,7 @@ const KIND_LABEL: Record<BackendKind, string> = {
   generic: 'OpenAI-compatible engine',
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
+  anthropic: 'Anthropic-compatible',
 };
 
 const FEATURE_NOTE: Record<string, string> = {
@@ -467,7 +468,7 @@ export class QseBackends extends LightElement {
         ${hint ? html`<span class="hint">${hint}</span>` : nothing}
       </label>`;
     };
-    const kinds: BackendKind[] = ['tandemllm', 'vllm', 'sglang', 'generic', 'openai', 'deepseek'];
+    const kinds: BackendKind[] = ['tandemllm', 'vllm', 'sglang', 'generic', 'openai', 'deepseek', 'anthropic'];
     const cloud = d.kinds[dr.kind]?.cloud;
     const keyHint = b?.key.key_set
       ? html`saved: ends in <b class="mono">${b.key.last4 ?? '????'}</b>, sha256 <span class="mono">${b.key.sha256_6}</span>${b.key.source === 'env' ? ' (from the environment)' : ''}${b.key.readable === false ? html` <b class="err-ink">unreadable: the master key changed, enter it again</b>` : nothing}. Leave empty to keep it.`

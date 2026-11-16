@@ -29,6 +29,41 @@
         }
       }
     },
+    "anthropic": {
+      "description": "SRV-877: a kind anthropic backend's own settings. auth: the key as x-api-key or as a bearer; api_version: the anthropic-version header; sampling: drop or pass temperature, top_p and top_k; default_max_tokens: max_tokens when the client names none (null: 16000, 64000 for a stream, capped by the model's limit); auto_cache: one top-level cache breakpoint; thinking_display and thinking_shape: how reasoning_effort asks for thinking",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "type": "string",
+          "enum": ["x-api-key", "bearer"]
+        },
+        "api_version": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "sampling": {
+          "type": "string",
+          "enum": ["drop", "pass"]
+        },
+        "default_max_tokens": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "auto_cache": {
+          "type": "boolean"
+        },
+        "thinking_display": {
+          "type": "string",
+          "enum": ["summarized", "omitted"]
+        },
+        "thinking_shape": {
+          "type": "string",
+          "enum": ["adaptive", "budget", "off"]
+        }
+      }
+    },
     "host": {
       "description": "P1.5: where the System view reads the backend's machine. auto: this machine when the backend's URL is (loopback or one of its addresses), nothing for a cloud kind; same: this machine always; collector: the remote collector at url (python -m proxy.hostcollect); exporter: a node_exporter page at url and a DCGM exporter page at dcgm_url; off: none",
       "type": "object",
@@ -118,7 +153,8 @@
             "vllm",
             "sglang",
             "openai",
-            "deepseek"
+            "deepseek",
+            "anthropic"
           ]
         },
         "label": {
@@ -177,6 +213,9 @@
         },
         "harness": {
           "$ref": "#/$defs/harness"
+        },
+        "anthropic": {
+          "$ref": "#/$defs/anthropic"
         },
         "key": {
           "type": [
@@ -199,7 +238,8 @@
             "vllm",
             "sglang",
             "openai",
-            "deepseek"
+            "deepseek",
+            "anthropic"
           ]
         },
         "label": {
@@ -258,6 +298,9 @@
         },
         "harness": {
           "$ref": "#/$defs/harness"
+        },
+        "anthropic": {
+          "$ref": "#/$defs/anthropic"
         },
         "key": {
           "type": [
@@ -289,6 +332,14 @@
           "maximum": 100000
         },
         "cache_write": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "cache_write_1h": {
           "type": [
             "number",
             "null"
@@ -375,6 +426,14 @@
               "maximum": 100000
             },
             "cache_write": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "cache_write_1h": {
               "type": [
                 "number",
                 "null"

@@ -58,17 +58,20 @@ On a streamed answer, `tool_call.detected` and `response.after_engine` run after
 TandemApp POSTs one JSON document per call (`call.schema.json`):
 
 ```json
-{"hooks": "1.0", "id": "hd-...", "hook": "temperature-cap", "stage": "request.before_engine",
+{"hooks": "1.1", "id": "hd-...", "hook": "temperature-cap", "stage": "request.before_engine",
  "ts": 1763200000.0, "payload": "meta", "mode": "on",
  "request": {"request_id": "chatcmpl-px-...", "endpoint": "chat", "model": "example-model",
              "upstream_model": "example-model", "backend": "local", "profile": null,
-             "user": "owner", "session": "s-1", "client_kind": "unknown", "stream": false},
+             "user": "owner", "session": "s-1", "client_kind": "unknown", "stream": false,
+             "protocol": {"inbound": "openai", "upstream": "openai"}},
  "event": {"sizes": {"body_bytes": 412, "messages": 2, "tools": 1,
                      "chars": {"system": 15, "user": 30, "assistant": 0, "tool": 0}},
            "params": {"temperature": 0.9, "max_tokens": 256}, "params_set": [],
            "tool_names": ["search"],
            "route": {"backend": "local", "model": "example-model", "attempt": 0}}}
 ```
+
+`request.protocol` (version 1.1) names the client's protocol and the backend's: `openai` or `messages` (the Messages API). A hook always sees the chat shape. When both are `messages` the request passes through as the client sent it: a patch of a parameter with a Messages API field still applies, a patch of the messages, the tools or the answer does not (journaled `refused`, `protocol_native`; the hook's failure policy applies). Calls from version 1.0 had no `protocol`; `contracts/hooks-v1/compat/1.0/` keeps them.
 
 and reads the answer (`result.schema.json`):
 

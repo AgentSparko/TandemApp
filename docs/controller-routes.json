@@ -104,6 +104,13 @@
       "probe": "POST /v1/responses"
     },
     {
+      "prefix": "/v1/messages",
+      "owner": "controller",
+      "match": "prefix",
+      "what": "the data plane in the Messages API: a message, count_tokens; an engine answers 404",
+      "probe": "POST /v1/messages"
+    },
+    {
       "prefix": "/v1/models",
       "owner": "both",
       "match": "prefix",
