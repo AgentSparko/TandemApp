@@ -55,10 +55,15 @@ ASKING: contextvars.ContextVar = contextvars.ContextVar("asking", default=None)
 # VIS-60: the request the router is planning; its question to the engine names it in
 # `X-Tandem-Parent`, so the ledger row of the question points at the turn it served
 PARENT: contextvars.ContextVar = contextvars.ContextVar("parent", default=None)
+# SRV-851: who a question is asked for, {request, session, user} (any may be None): set by the
+# router's plan, the judge and the memory writer's gate. Read only by the controller's decision
+# providers (proxy/providers.py: the A/B arm's sticky key, the journal); nothing else reads it
+CONTEXT: contextvars.ContextVar = contextvars.ContextVar("decision_context", default=None)
 
 
 class Answer:
-    __slots__ = ("label", "confidence", "probs", "ms", "error", "model", "stage", "guard")
+    __slots__ = ("label", "confidence", "probs", "ms", "error", "model", "stage", "guard",
+                 "provider")
 
     def __init__(self, stage: str, label=None, confidence=0.0, probs=None, ms=0.0, error=None,
                  model=None):
@@ -66,11 +71,17 @@ class Answer:
         self.probs = probs or {}
         self.ms, self.error, self.model = round(float(ms), 2), error, model
         self.guard = None                # SRV-189: the code guard's change (router._code_guard)
+        # SRV-851: the decision provider that answered in this stage's place (or fell back), or
+        # None; only then is it in the stage's row
+        self.provider = None
 
     def as_dict(self) -> dict:
-        return {"stage": self.stage, "label": self.label, "confidence": round(self.confidence, 4),
-                "probs": {k: round(float(v), 4) for k, v in self.probs.items()}, "ms": self.ms,
-                "error": self.error, "model": self.model}
+        d = {"stage": self.stage, "label": self.label, "confidence": round(self.confidence, 4),
+             "probs": {k: round(float(v), 4) for k, v in self.probs.items()}, "ms": self.ms,
+             "error": self.error, "model": self.model}
+        if self.provider is not None:
+            d["provider"] = self.provider
+        return d
 
 
 def _post(url: str, body: dict, timeout_s: float, headers: dict | None = None) -> dict:
@@ -87,8 +98,8 @@ def _post(url: str, body: dict, timeout_s: float, headers: dict | None = None) -
         return json.loads(r.read() or b"{}")
 
 
-def _get(url: str, timeout_s: float) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def _get(url: str, timeout_s: float, headers: dict | None = None) -> dict:
+    req = urllib.request.Request(url, headers=dict(headers or {}, **{"User-Agent": USER_AGENT}))
     with urllib.request.urlopen(req, timeout=timeout_s) as r:
         return json.loads(r.read() or b"{}")
 
@@ -166,7 +177,8 @@ class JevHttp(Decider):
         with self._lock:
             got = dict(DEFAULT_LIMITS)
             try:
-                data = _get(self.endpoint + "/v1/models", max(0.2, self.timeout_ms / 1000))
+                data = _get(self.endpoint + "/v1/models", max(0.2, self.timeout_ms / 1000),
+                            self._auth())
                 want = "jev-latest" if self.model in ("auto", "default", "jev", "") else self.model
                 # an engine lists its decision models beside its chat model; arbiter in `data`
                 for m in (data.get("data") or []) + (data.get("decision_models") or []):
@@ -179,16 +191,18 @@ class JevHttp(Decider):
             self._limits, self._limits_at = got, now
             return got
 
+    def _auth(self) -> dict | None:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else None
+
     def ask(self, state: str, questions: dict) -> dict:
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else None
         return _post(self.endpoint + "/v1/systemone",
                      {"state": state, "model": self.model, "questions": questions},
-                     self.timeout_ms / 1000, headers)
+                     self.timeout_ms / 1000, self._auth())
 
     def health(self) -> dict:
         t0 = time.perf_counter()
         try:
-            r = _get(self.endpoint + "/readyz", max(0.3, self.timeout_ms / 1000))
+            r = _get(self.endpoint + "/readyz", max(0.3, self.timeout_ms / 1000), self._auth())
             return {"up": r.get("status") == "ready",
                     "ms": round((time.perf_counter() - t0) * 1e3, 1),
                     "detail": {k: r.get(k) for k in ("engine", "models", "device", "version")},
@@ -242,9 +256,11 @@ def register_backend(name: str, factory) -> None:
     BACKENDS[name] = factory
 
 
-def decider_for(endpoint: str, model: str, timeout_ms: int) -> Decider | None:
+def decider_for(endpoint: str, model: str, timeout_ms: int,
+                api_key: str | None = None) -> Decider | None:
     """The decider a role's endpoint names: `self` or `engine:<name>` an in-process backend, an
-    http(s) URL the Jev contract over HTTP; None when nothing answers to it."""
+    http(s) URL the Jev contract over HTTP (with `api_key` as its bearer, SRV-851); None when
+    nothing answers to it."""
     if endpoint == "self":
         f = BACKENDS.get("self")
         return f(model, timeout_ms) if f is not None else None
@@ -252,7 +268,7 @@ def decider_for(endpoint: str, model: str, timeout_ms: int) -> Decider | None:
         f = BACKENDS.get(endpoint[7:])
         return f(model, timeout_ms) if f is not None else None
     if endpoint.startswith(("http://", "https://")):
-        return JevHttp(endpoint, model or "auto", timeout_ms)
+        return JevHttp(endpoint, model or "auto", timeout_ms, api_key=api_key)
     return None
 
 

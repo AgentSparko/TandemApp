@@ -32,7 +32,7 @@ import queue
 import threading
 import time
 
-from tandemapp.conductor.classify import decider_for
+from tandemapp.conductor.classify import CONTEXT, decider_for
 
 QUEUE_MAX = 64
 
@@ -48,6 +48,9 @@ class Judge:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self.stats = {"asked": 0, "answered": 0, "failed": 0, "dropped": 0}
+        # SRV-851: the controller's decision providers (proxy/providers.py), set by its harness;
+        # None everywhere else, and then nothing here changes
+        self.providers = None
 
     def submit(self, plan) -> bool:
         """Queue the plan's questions (`plan.judge`); False when there are none or the queue is
@@ -89,29 +92,51 @@ class Judge:
         role = (self.roles() or {}).get("tester") or {}
         named = ((self.deciders() or {}).get("questions") or {}).get("judge")
         model = named if named and named != "auto" else (role.get("model") or "auto")
+        prov = self.providers
+        if prov is not None:
+            CONTEXT.set({"request": request_id, "session": session_key, "user": None})
         for q in questions:
             detail = {"question": q["qid"], "twin": q.get("twin"), "call": q.get("call"),
                       "chars": len(q["digest"]), "deadline_ms": q["deadline_ms"]}
             label = "unknown"
             self.stats["asked"] += 1
+            client, why = None, None
             if role.get("mode", "off") == "off" or not role.get("endpoint"):
-                detail["error"] = "role_off" if role.get("mode", "off") == "off" else "no_endpoint"
+                why = "role_off" if role.get("mode", "off") == "off" else "no_endpoint"
             else:
                 client = self.factory(role["endpoint"], model, int(q["deadline_ms"]))
                 if client is None:
-                    detail["error"] = "no_client"
-                else:
-                    reads = getattr(client, "state_chars", None)
-                    digest = clip(q["digest"], reads()) if reads is not None else q["digest"]
-                    detail["read_chars"] = len(digest)
-                    ans = client.choice(digest, q["question"], q["options"])
-                    detail.update(ms=round(ans.ms, 1), model=ans.model, error=ans.error,
-                                  confidence=round(float(ans.confidence or 0.0), 4),
-                                  probs={k: round(float(v), 4) for k, v in
-                                         (ans.probs or {}).items()})
-                    if ans.error is None and ans.label in q["options"]:
-                        label = ans.label
-                        detail["agree"] = (label == q.get("twin")) if q.get("twin") else None
+                    why = "no_client"
+            if prov is not None:
+                # SRV-851: a provider in the judge's place, the role's client its fallback
+                got = prov.stage("judge", client, why, int(q["deadline_ms"]))
+                if got is not None:
+                    client, why = got, None
+            if client is None:
+                detail["error"] = why
+                if prov is not None:
+                    prov.after("judge", q["digest"], q["options"], q["question"], None,
+                               len(q["digest"]), (None, [{"stage": "decider", "error": why}]),
+                               state=q["digest"])
+            else:
+                reads = getattr(client, "state_chars", None)
+                digest = clip(q["digest"], reads()) if reads is not None else q["digest"]
+                detail["read_chars"] = len(digest)
+                ans = client.choice(digest, q["question"], q["options"])
+                detail.update(ms=round(ans.ms, 1), model=ans.model, error=ans.error,
+                              confidence=round(float(ans.confidence or 0.0), 4),
+                              probs={k: round(float(v), 4) for k, v in
+                                     (ans.probs or {}).items()})
+                if getattr(ans, "provider", None) is not None:
+                    detail["provider"] = ans.provider
+                if ans.error is None and ans.label in q["options"]:
+                    label = ans.label
+                    detail["agree"] = (label == q.get("twin")) if q.get("twin") else None
+                if prov is not None:
+                    prov.after("judge", digest, q["options"], q["question"], None, len(digest),
+                               (ans if label != "unknown" else None,
+                                [ans.as_dict()] if hasattr(ans, "as_dict") else []),
+                               state=digest)
             self.stats["answered" if label != "unknown" else "failed"] += 1
             rows.append(self.journal.note("outcome", "judge", decision=label, detail=detail,
                                           session_key=session_key, request_id=request_id))
