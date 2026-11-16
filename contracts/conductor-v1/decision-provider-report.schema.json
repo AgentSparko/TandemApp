@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "decision provider report",
-  "description": "GET /v1/fleet/decision-providers/report?hours=&provider= (SRV-851): from the conductor's journal (rows kind provider; this process's memory when the controller runs no conductor journal): providers -> question id -> bucket (on, shadow, ab_a, ab_b) -> calls, answered, failures, fallbacks, compared and agreed (shadow: the provider's answer against the conductor's decision), agreement_pct, p50_ms and p95_ms (the provider's time; arm a: the built-in decider's), labels (the answers used; shadow: the provider's)",
+  "description": "GET /v1/fleet/decision-providers/report?hours=&provider= (SRV-851): from the conductor's journal (rows kind provider; this process's memory when the controller runs no conductor journal): providers -> question id -> bucket (on, shadow, ab_a, ab_b) -> calls, answered, failures, fallbacks, fallback_reasons (each reason the built-in answered instead, counted: timeout, breaker_open, provider_down, unknown_label, http_<status>, ...), compared and agreed (shadow: the provider's answer against the conductor's decision), agreement_pct, p50_ms and p95_ms (the provider's time; arm a: the built-in decider's), labels (the answers used; shadow: the provider's)",
   "type": "object",
   "properties": {
     "contract_version": {
@@ -47,6 +47,13 @@
         "fallbacks": {
           "type": "integer"
         },
+        "fallback_reasons": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "reason -> how many fallbacks it caused; the counts add up to `fallbacks`"
+        },
         "compared": {
           "type": "integer"
         },
@@ -80,6 +87,7 @@
         "answered",
         "failures",
         "fallbacks",
+        "fallback_reasons",
         "compared",
         "agreed",
         "agreement_pct",

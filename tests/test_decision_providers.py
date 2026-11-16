@@ -24,7 +24,7 @@ through a controller-style conductor and the example systemone server.
   9  A/B: sticky per session (or user), the split near its share,
      arm b the provider's, arm a the built-in's, both journaled    test_ab_sticky_and_split
  10  the agreement report: per question calls, agreement, p50/p95,
-     failures and fallbacks, from the journal                     test_agreement_report
+     failures, fallbacks by reason, from the journal              test_agreement_report
  11  the systemone wire: the request the controller sends and every
      answer of the example server against the pinned schema       test_systemone_wire_schema
  12  the judge and the memory writer's gate ask through providers  test_judge_and_memory_gate
@@ -615,6 +615,16 @@ def test_agreement_report():
             assert rep["providers"]["watch"]["memory_gate"]["shadow"]["calls"] == 1
             j = rep["providers"]["slow"]["judge"]["on"]
             assert j["calls"] == 1 and j["failures"] == 1 and j["fallbacks"] == 1, j
+            # SRV-851: the fallbacks counted by reason, adding up to the fallbacks
+            assert j["fallback_reasons"] == {"timeout": 1}, j
+            assert s["fallback_reasons"] == {} and s["fallbacks"] == 0, s
+            bucket = contract_check.load("decision-provider-report.schema.json", _CV)
+            bucket = dict(bucket["$defs"]["bucket"], **{"$defs": bucket["$defs"]})
+            for qs in rep["providers"].values():
+                for arms in qs.values():
+                    for b in arms.values():
+                        assert not contract_check.validate(b, bucket, root=_CV), b
+                        assert sum(b["fallback_reasons"].values()) == b["fallbacks"], b
             one = rig.ps.report("watch")
             assert set(one["providers"]) == {"watch"}
             mem = dict(rig.ps.records(0)[0][0])
@@ -626,7 +636,7 @@ def test_agreement_report():
         base_srv.shutdown()
         other.shutdown()
         slow.shutdown()
-    return "report from the journal, agreement, p50/p95, failures"
+    return "report from the journal, agreement, p50/p95, failures, fallback reasons"
 
 
 # ---------------------------------------------------------------------------------- 11

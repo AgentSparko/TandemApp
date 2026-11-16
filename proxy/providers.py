@@ -668,8 +668,9 @@ class Providers:
 
     def report(self, provider: str | None = None, hours: float = 24.0) -> dict:
         """Per provider and question, per bucket (on, shadow, ab_a, ab_b): calls, answered,
-        failures, fallbacks, agreement (shadow: with the conductor's decision), p50/p95 of the
-        provider's time (arm a: the built-in decider's), the labels used."""
+        failures, fallbacks and their reasons counted (`fallback_reasons`: timeout,
+        breaker_open, provider_down, ...), agreement (shadow: with the conductor's decision),
+        p50/p95 of the provider's time (arm a: the built-in decider's), the labels used."""
         since = int(time.time() * 1000 - float(hours) * 3600 * 1000)
         recs, src = self.records(since, provider)
         out: dict = {}
@@ -679,7 +680,8 @@ class Providers:
                 bucket = f"ab_{r.get('arm') or 'b'}"
             b = out.setdefault(r.get("provider"), {}).setdefault(r.get("question"), {}) \
                 .setdefault(bucket, {"calls": 0, "answered": 0, "failures": 0, "fallbacks": 0,
-                                     "compared": 0, "agreed": 0, "labels": {}, "_ms": []})
+                                     "fallback_reasons": {}, "compared": 0, "agreed": 0,
+                                     "labels": {}, "_ms": []})
             b["calls"] += 1
             a = r.get("answer")
             if a is not None:
@@ -694,6 +696,8 @@ class Providers:
                     b["_ms"].append(float(dec["ms"]))
             if r.get("fallback"):
                 b["fallbacks"] += 1
+                why = str(r["fallback"])
+                b["fallback_reasons"][why] = b["fallback_reasons"].get(why, 0) + 1
             if r.get("agree") is not None:
                 b["compared"] += 1
                 b["agreed"] += int(bool(r["agree"]))

@@ -126,7 +126,7 @@ The stage's row in the conductor's journal names the provider (`provider: {id, m
 
 Every provider call, and every decision of an A/B arm `a`, is a row of the conductor's journal (`kind: provider`, the question id as its task): the provider, its mode and arm, which answer was used, the provider's answer (label, probabilities, model, time, error), the built-in decision, agreement, the fallback's reason, and a hash of the question's text. The text itself is never in the row.
 
-`GET /v1/fleet/decision-providers/report?hours=24` reads them back per provider, question and bucket (`on`, `shadow`, `ab_a`, `ab_b`): calls, answered, failures, fallbacks, agreement in % (shadow), p50 and p95 of the provider's time (the built-in decider's in arm `a`) and the answers given.
+`GET /v1/fleet/decision-providers/report?hours=24` reads them back per provider, question and bucket (`on`, `shadow`, `ab_a`, `ab_b`): calls, answered, failures, fallbacks and each fallback's reason counted (`fallback_reasons`, the reasons below), agreement in % (shadow), p50 and p95 of the provider's time (the built-in decider's in arm `a`) and the answers given.
 
 **Replay.** `tools/decision_replay.py --ledger <the usage ledger's file> > answers.json` collects the recorded answers by their hash; a controller started with `TANDEM_DECISION_REPLAY=answers.json` answers every provider question from it, with no call, so a run replayed decides the same every time.
 
