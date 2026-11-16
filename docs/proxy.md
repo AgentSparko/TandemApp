@@ -615,7 +615,7 @@ Measured or null, never estimated:
 | reasoning tokens | `completion_tokens_details.reasoning_tokens` (vLLM with `--reasoning-parser`), SGLang's `reasoning_tokens`; a reported 0 beside streamed reasoning is null |
 | TTFT | arrival at the proxy to the first frame with a token; the network and the backend's queue are inside it |
 | decode tok/s | (completion tokens - 1) / (last token frame - first token frame); null without `usage`, because a frame is not a token |
-| cost | the model's price when the row is written |
+| cost | the model's price when the row is written. One exception: a stream cut at its token's spend limit (finish `limit`) has no usage, so its row carries an estimate, computed from the frames sent so far (each frame one output token, at the output price; the prompt's part is not in it) |
 | proxy overhead | arrival to the upstream send, plus the first frame's delay through the proxy |
 
 Queue, prefill time, blocks, draft acceptance and the cache source come off an engine's loop and are null for a relayed row; the views say "not reported by this backend". The Usage view filters by backend (`engine` is the engine's own rows) and by user, and shows the cost of the priced models. With a relayed backend in the ledger, Usage has a table of the engine and each relayed backend side by side (requests, tokens, decode and TTFT p50, cost), and Performance draws them apart: relayed requests are red dots of their own on a log axis in Recent requests, and a line of their own beside the engine's in the decode and TTFT history. The cache sources table and the engine's history count the engine's own requests only; the Live panel names a relayed request's backend and says its tokens are counted at its end.
