@@ -14,6 +14,8 @@ Then start the engine with two variables, or let `tandem-app launch` do it (belo
 
 The token is `TANDEM_COLLECT_TOKEN` in the proxy's environment, or the one the proxy made and stored in its config database at the first need (`tandem-app launch` reads it from there).
 
+Each folder has a `plugin.json` of kind `engine-stats` (contracts/plugin-v1): the controller's plugin registry can check and record it (`python tools/plugin_check.py plugins/vllm`). Installing it into the engine stays the `pip install` above.
+
 ## What each one reads
 
 | | vLLM | SGLang |

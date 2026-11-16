@@ -1,0 +1,76 @@
+{
+ "$id": "plugin-v1/install-body",
+ "description": "the body of POST /v1/fleet/plugins (and of .../inspect: source only)",
+ "type": "object",
+ "properties": {
+  "source": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "folder"
+      },
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "path"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "wheel"
+      },
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "path"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "git"
+      },
+      "url": {
+       "type": "string"
+      },
+      "commit": {
+       "type": "string"
+      },
+      "subdir": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "url",
+      "commit"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  },
+  "upgrade": {
+   "type": "boolean"
+  },
+  "allow_downgrade": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "source"
+ ],
+ "additionalProperties": false
+}

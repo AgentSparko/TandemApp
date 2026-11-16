@@ -1,0 +1,22 @@
+{
+ "$id": "plugin-v1/removed",
+ "description": "DELETE /v1/fleet/plugins/{id}",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "removed": {
+   "type": "string"
+  },
+  "version": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "contract_version",
+  "removed",
+  "version"
+ ],
+ "additionalProperties": false
+}

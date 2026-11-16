@@ -1,0 +1,136 @@
+{
+ "$id": "plugin-v1/inspect",
+ "description": "POST /v1/fleet/plugins/inspect: every check on a source, nothing installed, nothing run",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "ok": {
+   "type": "boolean"
+  },
+  "source": {
+   "$ref": "common.schema.json#/$defs/source"
+  },
+  "manifest": {
+   "type": [
+    "object",
+    "null"
+   ]
+  },
+  "errors": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/error_item"
+   }
+  },
+  "warnings": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "sha256": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "signature": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/signature"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "files": {
+   "type": "integer"
+  },
+  "bytes": {
+   "type": "integer"
+  },
+  "manifest_dir": {
+   "type": "string"
+  },
+  "capabilities": {
+   "type": "object",
+   "properties": {
+    "requested": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "confirm": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "requested",
+    "confirm"
+   ],
+   "additionalProperties": false,
+   "description": "what it asks for, and which of those take the second confirm to grant"
+  },
+  "compat": {
+   "$ref": "common.schema.json#/$defs/compat"
+  },
+  "installed": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "version": {
+       "type": "string"
+      },
+      "sha256": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "version",
+      "sha256"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "settings_form": {
+   "anyOf": [
+    {
+     "$ref": "form.schema.json"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  }
+ },
+ "required": [
+  "contract_version",
+  "ok",
+  "source",
+  "manifest",
+  "errors",
+  "warnings",
+  "sha256",
+  "signature",
+  "files",
+  "bytes",
+  "manifest_dir",
+  "capabilities",
+  "compat",
+  "installed",
+  "settings_form"
+ ],
+ "additionalProperties": false
+}

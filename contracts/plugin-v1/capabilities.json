@@ -1,0 +1,48 @@
+{
+ "version": "1.0",
+ "rule": "deny by default: a plugin gets only what its manifest requests AND the settings interface granted (plugins scope, capabilities.<capability>); enabling a plugin and every grant take pairing's rights",
+ "capabilities": [
+  {
+   "pattern": "prompts:meta",
+   "means": "a hook or decision provider sees ids, model, sizes, counts, timings, the class and tool names; never a prompt or an answer",
+   "confirm": "never"
+  },
+  {
+   "pattern": "prompts:redacted",
+   "means": "as meta, plus the content after the conductor's redaction",
+   "confirm": "never"
+  },
+  {
+   "pattern": "prompts:full",
+   "means": "prompts and answers as they are",
+   "confirm": "always"
+  },
+  {
+   "pattern": "network:<host>[:<port>]",
+   "means": "the plugin may connect to this host (a DNS name or an IPv4 address); nothing else beyond the sandbox",
+   "confirm": "when the host is outside the LAN"
+  },
+  {
+   "pattern": "settings:read",
+   "means": "the plugin may read the settings interface's non-secret values",
+   "confirm": "never"
+  },
+  {
+   "pattern": "engine:control",
+   "means": "the plugin may call engine control (restart, mode) through the controller",
+   "confirm": "always"
+  },
+  {
+   "pattern": "secrets:<NAME>",
+   "means": "the secret NAME (declared in the manifest's secrets) is passed to the plugin's process",
+   "confirm": "never"
+  }
+ ],
+ "never": "a plugin never reads the config database, another plugin's secrets, pairing keys or backend keys, whatever it requests",
+ "levels": [
+  "meta",
+  "redacted",
+  "full"
+ ],
+ "hook_payload": "a contributed hook's payload level needs a requested prompts: capability at that level or above"
+}

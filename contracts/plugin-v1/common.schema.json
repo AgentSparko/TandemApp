@@ -1,0 +1,658 @@
+{
+ "$id": "plugin-v1/common",
+ "description": "Shapes the answers of /v1/fleet/plugins share.",
+ "$defs": {
+  "source": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "folder"
+      },
+      "path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "path"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "wheel"
+      },
+      "path": {
+       "type": "string"
+      },
+      "archive_sha256": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "path",
+      "archive_sha256"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "properties": {
+      "type": {
+       "const": "git"
+      },
+      "url": {
+       "type": "string"
+      },
+      "commit": {
+       "type": "string"
+      },
+      "subdir": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "url",
+      "commit"
+     ],
+     "additionalProperties": false
+    }
+   ],
+   "description": "where the plugin came from, as recorded"
+  },
+  "signature": {
+   "type": "object",
+   "properties": {
+    "present": {
+     "type": "boolean"
+    },
+    "verified": {
+     "type": "boolean"
+    },
+    "algorithm": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "key_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "trusted": {
+     "type": [
+      "boolean",
+      "null"
+     ],
+     "description": "null until F3 decides which keys are trusted"
+    },
+    "error": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "present",
+    "verified",
+    "algorithm",
+    "key_id",
+    "trusted",
+    "error"
+   ],
+   "additionalProperties": false
+  },
+  "error_item": {
+   "type": "object",
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "field": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "message": {
+     "type": "string"
+    },
+    "tool": {
+     "type": "string"
+    },
+    "annotation": {
+     "type": "string"
+    },
+    "stage": {
+     "type": "string"
+    },
+    "capability": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "needed": {
+     "type": "string"
+    },
+    "have": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "code",
+    "field",
+    "message"
+   ],
+   "additionalProperties": false,
+   "description": "one refusal of a check: `code` (README THE CHECKS), the manifest field it is about, a sentence and its facts"
+  },
+  "compat": {
+   "type": "object",
+   "properties": {
+    "tandemapp": {
+     "type": "string"
+    },
+    "hooks_api": {
+     "type": "string"
+    },
+    "plugin_api": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "tandemapp",
+    "hooks_api",
+    "plugin_api"
+   ],
+   "additionalProperties": false,
+   "description": "the versions this controller checks against"
+  },
+  "capabilities": {
+   "type": "object",
+   "properties": {
+    "requested": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "granted": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "grants": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "properties": {
+       "by": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "at": {
+        "type": "integer"
+       },
+       "confirmed_by": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "confirmed_at": {
+        "type": [
+         "integer",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "by",
+       "at",
+       "confirmed_by",
+       "confirmed_at"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "requested",
+    "granted",
+    "grants"
+   ],
+   "additionalProperties": false
+  },
+  "plugin": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "plugin",
+      "engine-stats"
+     ]
+    },
+    "title": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "description": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "source": {
+     "$ref": "common.schema.json#/$defs/source"
+    },
+    "sha256": {
+     "type": "string"
+    },
+    "signature": {
+     "anyOf": [
+      {
+       "$ref": "common.schema.json#/$defs/signature"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "trust": {
+     "type": "object",
+     "properties": {
+      "requested": {
+       "enum": [
+        "sandboxed",
+        "host",
+        "engine"
+       ]
+      },
+      "granted": {
+       "enum": [
+        "sandboxed",
+        "host",
+        "engine"
+       ]
+      }
+     },
+     "required": [
+      "requested",
+      "granted"
+     ],
+     "additionalProperties": false
+    },
+    "integrity": {
+     "enum": [
+      "ok",
+      "mismatch",
+      "missing"
+     ]
+    },
+    "checked_at": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "capabilities": {
+     "$ref": "common.schema.json#/$defs/capabilities"
+    },
+    "contributes": {
+     "type": "object",
+     "properties": {
+      "hooks": {
+       "type": "integer"
+      },
+      "tools": {
+       "type": "integer"
+      },
+      "decision_providers": {
+       "type": "integer"
+      },
+      "backends": {
+       "type": "integer"
+      },
+      "panels": {
+       "type": "integer"
+      },
+      "skills": {
+       "type": "integer"
+      },
+      "engine_hooks": {
+       "type": "integer"
+      }
+     },
+     "additionalProperties": false,
+     "description": "how many of each the manifest contributes"
+    },
+    "installed_at": {
+     "type": "integer"
+    },
+    "installed_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "updated_at": {
+     "type": "integer"
+    },
+    "updated_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "row_version": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "version",
+    "kind",
+    "title",
+    "description",
+    "source",
+    "sha256",
+    "signature",
+    "enabled",
+    "trust",
+    "integrity",
+    "checked_at",
+    "capabilities",
+    "contributes",
+    "installed_at",
+    "installed_by",
+    "updated_at",
+    "updated_by",
+    "row_version"
+   ],
+   "additionalProperties": false,
+   "description": "a plugin in the list"
+  },
+  "plugin_full": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "plugin",
+      "engine-stats"
+     ]
+    },
+    "title": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "description": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "source": {
+     "$ref": "common.schema.json#/$defs/source"
+    },
+    "sha256": {
+     "type": "string"
+    },
+    "signature": {
+     "anyOf": [
+      {
+       "$ref": "common.schema.json#/$defs/signature"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "trust": {
+     "type": "object",
+     "properties": {
+      "requested": {
+       "enum": [
+        "sandboxed",
+        "host",
+        "engine"
+       ]
+      },
+      "granted": {
+       "enum": [
+        "sandboxed",
+        "host",
+        "engine"
+       ]
+      }
+     },
+     "required": [
+      "requested",
+      "granted"
+     ],
+     "additionalProperties": false
+    },
+    "integrity": {
+     "enum": [
+      "ok",
+      "mismatch",
+      "missing"
+     ]
+    },
+    "checked_at": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "capabilities": {
+     "$ref": "common.schema.json#/$defs/capabilities"
+    },
+    "contributes": {
+     "type": "object",
+     "properties": {
+      "hooks": {
+       "type": "integer"
+      },
+      "tools": {
+       "type": "integer"
+      },
+      "decision_providers": {
+       "type": "integer"
+      },
+      "backends": {
+       "type": "integer"
+      },
+      "panels": {
+       "type": "integer"
+      },
+      "skills": {
+       "type": "integer"
+      },
+      "engine_hooks": {
+       "type": "integer"
+      }
+     },
+     "additionalProperties": false,
+     "description": "how many of each the manifest contributes"
+    },
+    "installed_at": {
+     "type": "integer"
+    },
+    "installed_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "updated_at": {
+     "type": "integer"
+    },
+    "updated_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "row_version": {
+     "type": "integer"
+    },
+    "manifest": {
+     "type": "object"
+    },
+    "settings_form": {
+     "anyOf": [
+      {
+       "$ref": "form.schema.json"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "settings": {
+     "type": "object",
+     "description": "the settings as they hold: the set values over the schema's defaults"
+    },
+    "secrets": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "properties": {
+       "set": {
+        "type": "boolean"
+       },
+       "last4": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "sha256_6": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "set_at": {
+        "type": [
+         "integer",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "set",
+       "last4",
+       "sha256_6",
+       "set_at"
+      ],
+      "additionalProperties": false
+     },
+     "description": "each declared secret: set or unset with its hint, never a value"
+    },
+    "references": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "enabled": {
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "id",
+       "name",
+       "enabled"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "path": {
+     "type": "string"
+    },
+    "manifest_dir": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "version",
+    "kind",
+    "title",
+    "description",
+    "source",
+    "sha256",
+    "signature",
+    "enabled",
+    "trust",
+    "integrity",
+    "checked_at",
+    "capabilities",
+    "contributes",
+    "installed_at",
+    "installed_by",
+    "updated_at",
+    "updated_by",
+    "row_version",
+    "manifest",
+    "settings_form",
+    "settings",
+    "secrets",
+    "references",
+    "path",
+    "manifest_dir"
+   ],
+   "additionalProperties": false,
+   "description": "one plugin with its manifest, settings' form, settings, secrets (hints) and the hooks that name it"
+  }
+ }
+}

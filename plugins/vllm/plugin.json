@@ -1,0 +1,23 @@
+{
+ "plugin_api": "1.0",
+ "name": "tandemllm-vllm-plugin",
+ "version": "0.1.0",
+ "kind": "engine-stats",
+ "title": "vLLM stats",
+ "description": "Per-request queue, prefill and decode times, cached tokens and preemptions from inside vLLM, pushed to the controller (layer L2)",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "engine_stats": {
+  "engine": "vllm",
+  "package": "tandemllm-vllm-plugin",
+  "entry_points": [
+   "vllm.stat_logger_plugins",
+   "vllm.endpoint_plugins"
+  ],
+  "install": "pip install plugins/vllm",
+  "env": [
+   "TANDEM_COLLECT_URL",
+   "TANDEM_COLLECT_TOKEN"
+  ]
+ }
+}

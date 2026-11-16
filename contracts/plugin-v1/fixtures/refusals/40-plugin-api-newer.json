@@ -1,0 +1,69 @@
+{
+ "why": "written for a newer plugin-v1",
+ "code": "incompatible_plugin_api",
+ "field": "plugin_api",
+ "manifest": {
+  "plugin_api": "1.7",
+  "name": "hello-tool",
+  "version": "0.1.0",
+  "title": "Hello tool",
+  "description": "The smallest tool plugin: one MCP tool that greets a name.",
+  "license": "AGPL-3.0-only",
+  "tandemapp": ">=0.15",
+  "hooks_api": "1.0",
+  "entry": {
+   "command": [
+    "python3",
+    "server.py"
+   ]
+  },
+  "contributes": {
+   "tools": [
+    {
+     "name": "greet",
+     "description": "Say hello to someone by name.",
+     "inputSchema": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "description": "who to greet"
+       }
+      },
+      "required": [
+       "name"
+      ],
+      "additionalProperties": false
+     },
+     "annotations": {
+      "title": "Greet",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+     }
+    }
+   ]
+  },
+  "settings": {
+   "type": "object",
+   "properties": {
+    "greeting": {
+     "type": "string",
+     "title": "Greeting",
+     "description": "the word before the name",
+     "default": "Hello",
+     "maxLength": 40
+    },
+    "excited": {
+     "type": "boolean",
+     "description": "end with an exclamation mark",
+     "default": false
+    }
+   },
+   "additionalProperties": false
+  }
+ }
+}

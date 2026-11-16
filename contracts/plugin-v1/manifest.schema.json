@@ -1,0 +1,517 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "plugin-v1/manifest",
+ "title": "plugin.json",
+ "description": "A TandemApp plugin's manifest, plugin-v1 (docs/plugins.md). Every field not listed here is refused.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "plugin_api",
+  "name",
+  "version",
+  "tandemapp"
+ ],
+ "properties": {
+  "$schema": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 200
+  },
+  "plugin_api": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 8,
+   "pattern": "^[1-9][0-9]{0,2}\\.(0|[1-9][0-9]{0,2})$",
+   "description": "the plugin-v1 version this manifest is written for, MAJOR.MINOR"
+  },
+  "name": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 48,
+   "pattern": "^[a-z0-9][a-z0-9-]{0,47}$",
+   "description": "the plugin's id: lowercase letters, digits and dashes; one plugin of a name"
+  },
+  "version": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 64,
+   "pattern": "^(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})(-[0-9A-Za-z.]{1,32})?$",
+   "description": "MAJOR.MINOR.PATCH[-pre]"
+  },
+  "kind": {
+   "enum": [
+    "plugin",
+    "engine-stats"
+   ],
+   "default": "plugin",
+   "description": "plugin: an MCP server the plugin host runs; engine-stats: a package an engine loads, recorded only"
+  },
+  "title": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 80
+  },
+  "description": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 500
+  },
+  "author": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 120
+  },
+  "license": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 64
+  },
+  "homepage": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 300,
+   "pattern": "^https://"
+  },
+  "tandemapp": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 120,
+   "pattern": "^\\s*(?:(?:>=|<=|==|!=|~=|>|<)\\s*[0-9][0-9A-Za-z.*-]{0,40}\\s*(?:,\\s*|$))+$",
+   "description": "the TandemApp versions it runs on, e.g. \">=0.15, <0.17\""
+  },
+  "hooks_api": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 8,
+   "pattern": "^[1-9][0-9]{0,2}\\.(0|[1-9][0-9]{0,2})$",
+   "description": "the hooks-v1 version it speaks (kind plugin)"
+  },
+  "entry": {
+   "type": "object",
+   "properties": {
+    "command": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+     },
+     "maxItems": 32,
+     "minItems": 1
+    },
+    "env": {
+     "type": "object",
+     "maxProperties": 32,
+     "propertyNames": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Z_][A-Z0-9_]{0,63}$"
+     },
+     "additionalProperties": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 1024
+     }
+    }
+   },
+   "additionalProperties": false,
+   "required": [
+    "command"
+   ],
+   "description": "the command the plugin host starts (argv, never a shell), from the manifest's folder"
+  },
+  "trust": {
+   "enum": [
+    "sandboxed",
+    "host",
+    "engine"
+   ],
+   "default": "sandboxed"
+  },
+  "contributes": {
+   "type": "object",
+   "properties": {
+    "hooks": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 48,
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+       },
+       "stages": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 64
+        },
+        "maxItems": 16,
+        "minItems": 1,
+        "uniqueItems": true
+       },
+       "role": {
+        "enum": [
+         "transform",
+         "guard",
+         "decider",
+         "observer"
+        ]
+       },
+       "payload": {
+        "enum": [
+         "meta",
+         "redacted",
+         "full"
+        ],
+        "default": "meta"
+       },
+       "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "stages",
+       "role"
+      ]
+     },
+     "maxItems": 32
+    },
+    "tools": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+       },
+       "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+       },
+       "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+       },
+       "inputSchema": {
+        "type": "object"
+       },
+       "outputSchema": {
+        "type": "object"
+       },
+       "annotations": {
+        "type": "object",
+        "properties": {
+         "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+         },
+         "readOnlyHint": {
+          "type": "boolean"
+         },
+         "destructiveHint": {
+          "type": "boolean"
+         },
+         "idempotentHint": {
+          "type": "boolean"
+         },
+         "openWorldHint": {
+          "type": "boolean"
+         }
+        },
+        "additionalProperties": false
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "description",
+       "inputSchema",
+       "annotations"
+      ]
+     },
+     "maxItems": 64
+    },
+    "decision_providers": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 48,
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+       },
+       "questions": {
+        "type": "array",
+        "items": {
+         "enum": [
+          "classify",
+          "packages",
+          "deliverable",
+          "memory_intent",
+          "memory_gate",
+          "judge"
+         ]
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "uniqueItems": true
+       },
+       "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "questions"
+      ]
+     },
+     "maxItems": 16
+    },
+    "backends": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 48,
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+       },
+       "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+       },
+       "models": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "minLength": 1,
+         "maxLength": 128
+        },
+        "maxItems": 64
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name"
+      ]
+     },
+     "maxItems": 16
+    },
+    "panels": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 48,
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+       },
+       "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+       },
+       "path": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "\\.html?$"
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "title",
+       "path"
+      ]
+     },
+     "maxItems": 16
+    },
+    "skills": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+     },
+     "maxItems": 16,
+     "uniqueItems": true
+    },
+    "engine_hooks": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 48,
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+       },
+       "wheel": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "\\.whl$"
+       },
+       "hooks": {
+        "type": "array",
+        "items": {
+         "enum": [
+          "plan",
+          "prompt",
+          "at_request",
+          "at_block",
+          "at_tool_call",
+          "check_answer",
+          "at_finish",
+          "extras",
+          "follow_ups",
+          "finish"
+         ]
+        },
+        "maxItems": 10,
+        "minItems": 1,
+        "uniqueItems": true
+       }
+      },
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "wheel",
+       "hooks"
+      ]
+     },
+     "maxItems": 4
+    }
+   },
+   "additionalProperties": false
+  },
+  "settings": {
+   "type": "object",
+   "description": "a JSON schema of type object: the plugin's settings, drawn as a form (proxy/schemaform.py STRICT)"
+  },
+  "secrets": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+     },
+     "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "name"
+    ]
+   },
+   "maxItems": 32
+  },
+  "capabilities": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 300,
+    "pattern": "^(?:prompts:(?:meta|redacted|full)|settings:read|engine:control|secrets:[A-Z][A-Z0-9_]{0,63}|network:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::[1-9][0-9]{0,4})?)$"
+   },
+   "maxItems": 32,
+   "uniqueItems": true
+  },
+  "engine_stats": {
+   "type": "object",
+   "properties": {
+    "engine": {
+     "enum": [
+      "vllm",
+      "sglang"
+     ]
+    },
+    "package": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 128
+    },
+    "entry_points": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+     },
+     "maxItems": 8,
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "install": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 300
+    },
+    "env": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Z_][A-Z0-9_]{0,63}$"
+     },
+     "maxItems": 16
+    }
+   },
+   "additionalProperties": false,
+   "required": [
+    "engine",
+    "package",
+    "entry_points"
+   ],
+   "description": "kind engine-stats: what the engine loads"
+  },
+  "git": {
+   "type": "object",
+   "properties": {
+    "submodules": {
+     "const": "ignore"
+    },
+    "lfs": {
+     "const": "ignore"
+    }
+   },
+   "additionalProperties": false,
+   "description": "a git source: leave its submodules or LFS pointer files as they are instead of refusing the install"
+  }
+ }
+}

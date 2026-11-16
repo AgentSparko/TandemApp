@@ -1,0 +1,22 @@
+{
+ "plugin_api": "1.0",
+ "name": "tandemllm-sglang-plugin",
+ "version": "0.1.0",
+ "kind": "engine-stats",
+ "title": "SGLang stats",
+ "description": "Per-request queue and prefill times, cached tokens and retractions from inside SGLang, pushed to the controller (layer L2)",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "engine_stats": {
+  "engine": "sglang",
+  "package": "tandemllm-sglang-plugin",
+  "entry_points": [
+   "sglang.srt.plugins"
+  ],
+  "install": "pip install plugins/sglang",
+  "env": [
+   "TANDEM_COLLECT_URL",
+   "TANDEM_COLLECT_TOKEN"
+  ]
+ }
+}

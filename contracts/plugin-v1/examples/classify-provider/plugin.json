@@ -1,0 +1,101 @@
+{
+ "plugin_api": "1.0",
+ "name": "classify-provider",
+ "version": "0.1.0",
+ "title": "Keyword classifier",
+ "description": "A decision provider that answers the conductor's classify question from keyword lists, with an optional remote model behind an API key.",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "hooks_api": "1.0",
+ "entry": {
+  "command": [
+   "python3",
+   "provider.py"
+  ]
+ },
+ "contributes": {
+  "decision_providers": [
+   {
+    "name": "keywords",
+    "questions": [
+     "classify"
+    ],
+    "description": "the first class whose keyword the message holds"
+   }
+  ]
+ },
+ "capabilities": [
+  "prompts:redacted",
+  "secrets:API_KEY",
+  "network:192.168.1.30:8720"
+ ],
+ "secrets": [
+  {
+   "name": "API_KEY",
+   "description": "the key of the model behind it, sent as the bearer"
+  }
+ ],
+ "settings": {
+  "type": "object",
+  "properties": {
+   "classes": {
+    "type": "object",
+    "title": "Keywords by class",
+    "properties": {
+     "code": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 40
+      },
+      "maxItems": 50,
+      "default": [
+       "traceback",
+       "compile",
+       "function"
+      ]
+     },
+     "chat": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 40
+      },
+      "maxItems": 50,
+      "default": [
+       "hello",
+       "thanks"
+      ]
+     }
+    },
+    "additionalProperties": false
+   },
+   "fallback": {
+    "enum": [
+     "code",
+     "chat",
+     "unclear"
+    ],
+    "default": "unclear"
+   },
+   "endpoint": {
+    "anyOf": [
+     {
+      "type": "string",
+      "pattern": "^https?://",
+      "maxLength": 300
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "description": "a model to ask when no keyword matches; null: answer the fallback",
+    "default": null
+   }
+  },
+  "required": [
+   "fallback"
+  ],
+  "additionalProperties": false
+ }
+}

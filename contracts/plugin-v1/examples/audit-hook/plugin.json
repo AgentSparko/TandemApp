@@ -1,0 +1,65 @@
+{
+ "plugin_api": "1.0",
+ "name": "audit-hook",
+ "version": "0.1.0",
+ "title": "Audit hook",
+ "description": "An observer hook: one line a finished request to a log the plugin keeps, meta payload only.",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "hooks_api": "1.0",
+ "entry": {
+  "command": [
+   "python3",
+   "hook.py"
+  ]
+ },
+ "contributes": {
+  "hooks": [
+   {
+    "name": "finished",
+    "stages": [
+     "request.finished"
+    ],
+    "role": "observer",
+    "payload": "meta",
+    "description": "writes the request's id, model, tokens and time"
+   }
+  ]
+ },
+ "capabilities": [
+  "prompts:meta"
+ ],
+ "settings": {
+  "type": "object",
+  "properties": {
+   "keep_days": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 365,
+    "default": 30,
+    "description": "how long a line is kept"
+   },
+   "fields": {
+    "type": "array",
+    "items": {
+     "enum": [
+      "id",
+      "model",
+      "tokens",
+      "ms",
+      "status"
+     ]
+    },
+    "uniqueItems": true,
+    "default": [
+     "id",
+     "model",
+     "tokens",
+     "ms"
+    ],
+    "description": "what each line holds"
+   }
+  },
+  "additionalProperties": false
+ }
+}
