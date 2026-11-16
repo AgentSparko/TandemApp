@@ -347,13 +347,21 @@ def test_off_and_disabled_idle():
 
 def test_registry_refusals():
     with Store() as (cfg, r):
-        for kind in ("plugin", "mcp", "inproc"):
+        for kind in ("mcp", "inproc"):
             try:
                 r.store.create({"name": kind, "kind": kind, "role": "observer",
                                 "stages": ["request.finished"]}, "test")
                 raise AssertionError(kind)
             except HookError as exc:
                 assert exc.code == "kind_unavailable" and "not available" in exc.message
+        # SRV-859: kind plugin names a hook an installed plugin declares; none here
+        for target in (None, "no-such/hook", "Bad/Target"):
+            try:
+                r.store.create({"name": "p", "kind": "plugin", "role": "observer",
+                                "stages": ["request.finished"], "target": target}, "test")
+                raise AssertionError(target)
+            except HookError as exc:
+                assert (exc.code, exc.field) == ("invalid", "target"), (exc.code, exc.field)
         for doc, field in (({"role": "guard", "stages": ["stream.chunk"]}, "stages"),
                            ({"role": "decider", "stages": ["request.received"]}, "stages"),
                            ({"role": "transform", "stages": ["nope"]}, "stages"),

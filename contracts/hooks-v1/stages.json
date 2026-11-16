@@ -13,7 +13,8 @@
   ],
   "kinds_available": [
     "http",
-    "builtin"
+    "builtin",
+    "plugin"
   ],
   "payloads": [
     "meta",

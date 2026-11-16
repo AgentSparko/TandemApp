@@ -181,11 +181,12 @@ def test_refusals_over_http():
             _j(px, "GET", BASE + "/nope", want=404)
             _j(px, "POST", BASE + "/hello-tool/explode", {}, 404)
             _j(px, "POST", BASE, ["not", "an", "object"], 400)
-            # a plugin hook stays refused at the hooks' API until the plugin host exists (F2)
+            # SRV-859: a plugin hook names a hook the plugin declares; hello-tool has none
             st, _, out = px.request("POST", "/v1/fleet/hooks", {
                 "name": "p", "kind": "plugin", "role": "observer",
                 "stages": ["request.finished"], "target": "hello-tool/x"})
-            assert st == 422 and json.loads(out)["error"]["type"] == "kind_unavailable"
+            err = json.loads(out)["error"]
+            assert st == 422 and (err["type"], err["field"]) == ("invalid", "target"), err
     finally:
         for s in srcs:
             shutil.rmtree(s)

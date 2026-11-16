@@ -11,6 +11,11 @@ stage's place, for the questions it maps:
                      a key, a model and a timeout per question, the provider's own for the rest
     hook             a `decision.ask` hook of the hooks' registry (proxy/hooks.py `Runner.ask`):
                      any other API shape behind an adapter the owner writes as a webhook
+    plugin           a running plugin's provider (SRV-859, proxy/pluginhost.py): `decision/ask`
+                     over its stdio, the question's text at the plugin's granted prompts: level.
+                     A running plugin's providers join the registry's in shadow (`contrib`, id
+                     `<plugin>/<provider>`); a registry provider of kind plugin naming the same
+                     `target` takes its place, with its own mode
 
 WHERE IT RUNS. Only the controller's conductor (proxy/app.py `conductor_of`, run by the harness
 around relayed requests, its judge and the controller's memory writer) asks through providers:
@@ -214,6 +219,11 @@ class Providers:
         self._dv = None
         self._checked = 0.0
         self._lock = threading.Lock()
+        # SRV-859: the plugin host's providers fn() -> (generation, rows), its ask and liveness
+        self.contrib = None
+        self.plugin_ask = None
+        self.plugin_up = lambda pid: False
+        self._cgen = None
 
     def attach(self, conductor) -> None:
         """The controller's conductor: its journal for the rows, its roles for `builtin`."""
@@ -237,7 +247,14 @@ class Providers:
         if now - self._checked >= RELOAD_CHECK_S:
             self._checked = now
             dv = self.store.data_version()
-        if self.store.gen == self._gen and (dv is None or dv == self._dv):
+        cgen, crows = (None, [])
+        if self.contrib is not None:
+            try:
+                cgen, crows = self.contrib()
+            except Exception:                                      # noqa: BLE001
+                cgen, crows = None, []
+        if self.store.gen == self._gen and (dv is None or dv == self._dv) and \
+                cgen == self._cgen:
             return self._rows
         with self._lock:
             try:
@@ -245,11 +262,25 @@ class Providers:
             except Exception as exc:                               # noqa: BLE001
                 self.log(f"[providers] the registry could not be read: {type(exc).__name__}")
                 rows = []
+            if crows:
+                named = {p.get("target") for p in rows if p["kind"] == "plugin"}
+                rows = rows + [p for p in crows if p["target"] not in named]
             self._rows = [p for p in rows if p["enabled"]]
             self._gen = self.store.gen
+            self._cgen = cgen
             if dv is not None:
                 self._dv = dv
         return self._rows
+
+    def row(self, pid: str) -> dict:
+        """A provider of the registry, or a running plugin's contributed one."""
+        p = self.store.get(pid)
+        if p is not None:
+            return p
+        for r in self.rows():
+            if r["id"] == pid:
+                return r
+        return self.store.need(pid)
 
     def idle(self) -> bool:
         return not self.rows()
@@ -403,6 +434,8 @@ class Providers:
             return spec.get("endpoint") or p["endpoint"]
         if p["kind"] == "hook":
             return f"hook:{p['hook_id']}"
+        if p["kind"] == "plugin":
+            return f"plugin:{p['target']}"
         return "builtin"
 
     def _key(self, p: dict, qid: str, spec: dict) -> str | None:
@@ -453,7 +486,7 @@ class Providers:
         if self.replay is not None:
             got = self.replay.limits.get(f"{p['id']}/{qid}")
             return dict(got) if got else None
-        if p["kind"] == "hook":
+        if p["kind"] in ("hook", "plugin"):
             return None
         try:
             spec, model, tmo = self._spec(p, qid, timeout_ms)
@@ -498,6 +531,8 @@ class Providers:
         try:
             if p["kind"] == "hook":
                 rep = self._ask_hook(p, qid, state, question, options, model, tmo)
+            elif p["kind"] == "plugin":
+                rep = self._ask_plugin(p, qid, state, question, options, model, tmo)
             else:
                 c = self._client(p, qid, spec, model, tmo)
                 if c is None:
@@ -519,7 +554,8 @@ class Providers:
         rep.endpoint = ep
         if count:
             br = self._breaker(bkey)
-            if rep.error in ("no_builtin", "hook_off", "out_of_scope", "no_runner"):
+            if rep.error in ("no_builtin", "hook_off", "out_of_scope", "no_runner",
+                             "no_host"):
                 if gate == "probe":
                     br.probing = False
             else:
@@ -573,6 +609,18 @@ class Providers:
         if label not in options:
             return Reply(error="unknown_label", ms=ms)
         return Reply(label, conf, probs, f"hook:{h['id']}", ms)
+
+    def _ask_plugin(self, p, qid, state, question, options, model, tmo) -> Reply:
+        if self.plugin_ask is None:
+            return Reply(error="no_host")
+        t0 = time.perf_counter()
+        got = self.plugin_ask(p["target"], qid, state, question, options, model, tmo)
+        ms = (time.perf_counter() - t0) * 1e3
+        if got.get("error"):
+            return Reply(error=got["error"], ms=ms)
+        if got["label"] not in options:
+            return Reply(error="unknown_label", ms=ms)
+        return Reply(got["label"], got["confidence"], got["probs"], f"plugin:{p['target']}", ms)
 
     # ------------------------------------------------------------------ the journal
     def record(self, p, qid, arm, used, label, rep: Reply | None, base, agree, fallback, ctx,
@@ -679,7 +727,13 @@ class Providers:
         spec = p["questions"].get(qid) or {}
         model = spec.get("model") or p["model"] or "auto"
         try:
-            if p["kind"] == "hook":
+            if p["kind"] == "plugin":
+                pl = str(p.get("target") or "").partition("/")[0]
+                up = bool(self.plugin_up(pl))
+                v = {"up": up, "ms": None, "detail": {"plugin": pl}}
+                if not up:
+                    v["error"] = "the plugin is not running"
+            elif p["kind"] == "hook":
                 hk = self.runner.store.get(p["hook_id"]) if self.runner is not None else None
                 if hk is None:
                     v = {"up": False, "ms": None, "error": "the hook is gone"}
@@ -711,7 +765,7 @@ class Providers:
         """The provider's endpoints with their probe (/readyz, /v1/models; cached 10 s), their
         breaker and the questions on each; `status` ok, failing (a breaker not closed, or the
         last call within a minute failed), down (a probe failed) or off."""
-        p = self.store.need(pid)
+        p = self.row(pid)
         eps = []
         for ep, qids in self._targets(p):
             eps.append({"endpoint": ep, "questions": qids,
@@ -748,6 +802,7 @@ class Providers:
         out = {k: p[k] for k in ("id", "name", "kind", "endpoint", "hook_id", "model",
                                  "timeout_ms", "mode", "ab_percent", "sticky", "enabled",
                                  "created_at", "updated_at", "updated_by", "version")}
+        out["target"] = p.get("target")
         out["questions"] = qs
         out["key"] = hints.get(DEFAULT_SCOPE) or no_key() if p["kind"] == "systemone-http" \
             else None
@@ -760,7 +815,7 @@ class Providers:
     def test(self, pid: str, qid: str | None = None, text: str | None = None) -> dict:
         """The provider asked once, on the wire, with a sample question (`qid`: one it maps, the
         first by default; `text`: the text it is about): nothing counted, nothing journaled."""
-        p = self.store.need(pid)
+        p = self.row(pid)
         qid = qid or sorted(p["questions"])[0]
         if qid not in p["questions"]:
             raise ProviderError(422, "invalid", f"question: the provider does not answer "

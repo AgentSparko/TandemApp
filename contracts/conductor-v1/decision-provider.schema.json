@@ -26,7 +26,8 @@
           "enum": [
             "builtin",
             "systemone-http",
-            "hook"
+            "hook",
+            "plugin"
           ]
         },
         "endpoint": {
@@ -40,6 +41,13 @@
             "string",
             "null"
           ]
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "kind plugin: <plugin>/<provider>, a provider a plugin declares (SRV-859)"
         },
         "model": {
           "type": "string"
@@ -103,6 +111,7 @@
         "kind",
         "endpoint",
         "hook_id",
+        "target",
         "model",
         "timeout_ms",
         "questions",

@@ -2,9 +2,12 @@
 
 A hook is a row of the registry (proxy/hookstore.py) that names its stages
 (proxy/hookstages.py, contracts/hooks-v1/stages.json), its role, priority, mode, scope, failure
-policy, timeout and payload level, and how it is called: `http` (a signed webhook) or `builtin`
-(code in this process, `BUILTINS`). `plugin`, `mcp` and `inproc` are typed in the contract and
-refused until the plugin host and the in-process chain exist.
+policy, timeout and payload level, and how it is called: `http` (a signed webhook), `builtin`
+(code in this process, `BUILTINS`) or `plugin` (SRV-859: `hooks/call` to a running plugin over
+its stdio, proxy/pluginhost.py; no HMAC, the payload level checked against the plugin's granted
+prompts: capability). A running plugin's own hooks join the registry's (`contrib`); a registry
+hook of kind plugin naming the same `<plugin>/<hook>` takes its place. `mcp` and `inproc` are
+typed in the contract and refused until they exist.
 
 THE RULES, per stage and request (`Runner.run`):
 
@@ -402,6 +405,10 @@ class Runner:
         self.breakers: dict[str, Breaker] = {}
         self.stats: dict[str, Stats] = {}
         self.redactor = None            # tests put a failing one here (SEC-16 redaction failure)
+        # SRV-859: the plugin host's hooks, fn() -> (generation, rows), and its call
+        self.contrib = None
+        self.plugin_call = None
+        self._cgen = None
 
     def stop(self) -> None:
         self.pool.shutdown(wait=False, cancel_futures=True)
@@ -415,7 +422,14 @@ class Runner:
         if now - self._checked >= RELOAD_CHECK_S:
             self._checked = now
             dv = self.store.data_version()
-        if self.store.gen == self._gen and (dv is None or dv == self._dv):
+        cgen, crows = (None, [])
+        if self.contrib is not None:
+            try:
+                cgen, crows = self.contrib()
+            except Exception:                                      # noqa: BLE001
+                cgen, crows = None, []
+        if self.store.gen == self._gen and (dv is None or dv == self._dv) and \
+                cgen == self._cgen:
             return self._hooks
         with self._lock:
             try:
@@ -423,9 +437,14 @@ class Runner:
             except Exception as exc:                               # noqa: BLE001
                 self.log(f"[hooks] the registry could not be read: {type(exc).__name__}")
                 rows = []
+            if crows:
+                named = {h["target"] for h in rows if h["kind"] == "plugin"}
+                rows = sorted(rows + [h for h in crows if h["target"] not in named],
+                              key=lambda h: (h["priority"], h["id"]))
             self._hooks = [h for h in rows if h["enabled"] and h["mode"] != "off"]
             self._secrets = {}
             self._gen = self.store.gen
+            self._cgen = cgen
             if dv is not None:
                 self._dv = dv
         return self._hooks
@@ -495,6 +514,10 @@ class Runner:
                 raise hookcall.CallError("error", f"no builtin {h['target']!r}")
             # a copy: code in this process changes the request only through its answer
             return fn(copy.deepcopy(env), copy.deepcopy(h.get("options") or {}))
+        if h["kind"] == "plugin":
+            if self.plugin_call is None:
+                raise hookcall.CallError("error", "no plugin host in this process")
+            return self.plugin_call(h, env, timeout_s)
         if h["kind"] != "http":
             raise hookcall.CallError("error", f"kind {h['kind']!r} is not available in this "
                                               f"version")
