@@ -250,7 +250,8 @@ export const asHookError = (e: unknown): HookError => (e instanceof HookError ? 
 export type ProviderKind = 'builtin' | 'systemone-http' | 'hook';
 export type ProviderMode = 'on' | 'shadow' | 'ab';
 export type Sticky = 'session' | 'user' | 'request';
-export type HealthStatus = 'ok' | 'failing' | 'down' | 'off';
+/** unknown: an endpoint was not probed yet (the list's view probes nothing) */
+export type HealthStatus = 'ok' | 'failing' | 'down' | 'off' | 'unknown';
 
 /** what is shown of an API key: never the key */
 export interface KeyHint {
@@ -280,7 +281,8 @@ export interface Health {
   provider: string;
   kind: ProviderKind;
   status: HealthStatus;
-  endpoints: { endpoint: string; questions: string[]; probe: Probe; breaker: Breaker }[];
+  /** `probe` null: not probed since the provider last changed (the list's view) */
+  endpoints: { endpoint: string; questions: string[]; probe: Probe | null; breaker: Breaker }[];
   last_call: { ts_ms: number; question: string; error: string | null; ms: number | null } | null;
 }
 
@@ -305,6 +307,7 @@ export interface Provider {
   updated_by: string | null;
   version: number;
   breakers: Record<string, Breaker>;
+  /** in the list: from the last probes, nothing probed; with ?health=1: probed */
   health?: Health;
 }
 

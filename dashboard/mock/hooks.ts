@@ -714,20 +714,21 @@ export class MockHooks {
   private needProvider(id: string): MockProvider {
     return this.providers[id] ?? no('not_found', `no decision provider '${id}'`);
   }
-  private healthOf(id: string, now: number, force: boolean): Health {
+  /** `cached` (the list's view, SRV-851): nothing is probed, each endpoint's last probe as it is or null */
+  private healthOf(id: string, now: number, force: boolean, cached = false): Health {
     const p = this.needProvider(id);
     const endpoints = this.targets(p).map(([endpoint, questions]) => {
-      if (force || p.probed[endpoint] == null || now - p.probed[endpoint] >= PROBE_TTL_MS) p.probed[endpoint] = now;
+      if (!cached && (force || p.probed[endpoint] == null || now - p.probed[endpoint] >= PROBE_TTL_MS)) p.probed[endpoint] = now;
       const up = p.kind === 'hook' ? !!this.hooks[p.hook_id ?? '']?.vals.enabled && this.hooks[p.hook_id ?? '']?.vals.mode === 'on' : p.behave !== 'down' && p.behave !== 'unreachable';
-      const probe: Probe = { up, ms: up ? round1(p.base_ms * 0.6) : null, error: up ? null : p.kind === 'hook' ? 'hook_off' : 'unreachable', age_s: round1((now - p.probed[endpoint]) / 1000) };
+      const probe: Probe | null = p.probed[endpoint] == null ? null : { up, ms: up ? round1(p.base_ms * 0.6) : null, error: up ? null : p.kind === 'hook' ? 'hook_off' : 'unreachable', age_s: round1((now - p.probed[endpoint]) / 1000) };
       return { endpoint, questions, probe, breaker: this.breaker(p, now) };
     });
     const last = [...this.ring].reverse().find((r) => r.provider === id && r.answer !== null);
     const last_call = last ? { ts_ms: last.ts_ms, question: last.question, error: last.answer!.error, ms: last.answer!.ms } : null;
-    const status = !p.vals.enabled ? 'off' : endpoints.some((e) => !e.probe.up) ? 'down' : endpoints.some((e) => e.breaker.state !== 'closed') || (last_call?.error && now - last_call.ts_ms < 60_000) ? 'failing' : 'ok';
+    const status = !p.vals.enabled ? 'off' : endpoints.some((e) => e.probe && !e.probe.up) ? 'down' : endpoints.some((e) => e.breaker.state !== 'closed') || (last_call?.error && now - last_call.ts_ms < 60_000) ? 'failing' : endpoints.some((e) => !e.probe) ? 'unknown' : 'ok';
     return { provider: id, kind: p.kind, status, endpoints, last_call };
   }
-  private providerView(id: string, now: number, health = false): Provider {
+  private providerView(id: string, now: number, health: boolean | 'cached' = false): Provider {
     const p = this.providers[id];
     const v = p.vals;
     const questions = Object.fromEntries(
@@ -739,7 +740,7 @@ export class MockHooks {
       id, name: p.name, kind: p.kind, endpoint: p.endpoint, hook_id: p.hook_id, target: null, model: p.model, timeout_ms: p.timeout_ms, questions, mode: v.mode as Provider['mode'], ab_percent: v.ab_percent as number, sticky: v.sticky as Provider['sticky'], enabled: !!v.enabled,
       key: p.kind === 'systemone-http' ? this.hint(p, '*') : null, created_at: p.created_at, updated_at: p.updated_at, updated_by: p.updated_by, version: p.version,
       breakers: Object.fromEntries(this.targets(p).map(([ep]) => [ep, this.breaker(p, now)])),
-      ...(health ? { health: this.healthOf(id, now, false) } : {}),
+      ...(health ? { health: this.healthOf(id, now, false, health === 'cached') } : {}),
     };
   }
 
@@ -966,7 +967,7 @@ export class MockHooks {
     if (!sub.length) {
       if (method === 'GET') {
         this.forced('p-list');
-        return [200, { contract_version: '1.0', providers: Object.keys(this.providers).sort().map((id) => this.providerView(id, now)), questions: Object.fromEntries(Object.entries(QUESTIONS).map(([k, what]) => [k, { what, asked_in: 'controller', engine: 'follow-up (docs)' }])), kinds: ['builtin', 'systemone-http', 'hook'], modes: ['on', 'shadow', 'ab'], sticky: ['session', 'user', 'request'], replay: this.replay }];
+        return [200, { contract_version: '1.0', providers: Object.keys(this.providers).sort().map((id) => this.providerView(id, now, 'cached')), questions: Object.fromEntries(Object.entries(QUESTIONS).map(([k, what]) => [k, { what, asked_in: 'controller', engine: 'follow-up (docs)' }])), kinds: ['builtin', 'systemone-http', 'hook'], modes: ['on', 'shadow', 'ab'], sticky: ['session', 'user', 'request'], replay: this.replay }];
       }
       if (method === 'POST') {
         this.forced('p-create');

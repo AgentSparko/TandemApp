@@ -218,12 +218,12 @@ function healthPanel(v: ProviderView, on: ProviderHandlers): TemplateResult {
     ${h
       ? html`<ol class="hk-eps">
             ${h.endpoints.map((e) => {
-              const p = probeWords(e.probe);
+              const p = e.probe ? probeWords(e.probe) : { tone: 'muted' as const, text: 'not probed yet' };
               const b = breakerWords(e.breaker);
-              return html`<li class="hk-ep" data-endpoint=${e.endpoint} data-up=${e.probe.up}>
+              return html`<li class="hk-ep" data-endpoint=${e.endpoint} data-up=${e.probe?.up ?? ''}>
                 <span class="num st-wrap">${e.endpoint}</span>
                 <span class="xs muted">${e.questions.join(', ')}</span>
-                <span class="hk-ep-s">${chip(p.tone, e.probe.up ? 'ready' : 'not ready', { data: 'probe' })}<span class="xs muted" data-probe-words>${p.text}</span>${chip(b.tone, b.label, { title: b.text, data: 'breaker' })}</span>
+                <span class="hk-ep-s">${chip(p.tone, !e.probe ? 'not probed' : e.probe.up ? 'ready' : 'not ready', { data: 'probe' })}<span class="xs muted" data-probe-words>${p.text}</span>${chip(b.tone, b.label, { title: b.text, data: 'breaker' })}</span>
               </li>`;
             })}
           </ol>

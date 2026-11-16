@@ -37,6 +37,7 @@ const HEALTH: Record<Health['status'], { tone: Tone; label: string; text: string
   failing: { tone: 'warn', label: 'failing', text: 'A breaker is not closed, or its last call within a minute failed. The built-in answers where it fails.' },
   down: { tone: 'err', label: 'down', text: 'A health probe failed. The built-in answers instead until a probe goes through.' },
   off: { tone: 'muted', label: 'off', text: 'Switched off: it is not asked.' },
+  unknown: { tone: 'muted', label: 'not probed', text: 'Not probed since it last changed.' },
 };
 
 export function healthWords(h: Pick<Health, 'status'> | null | undefined): { tone: Tone; label: string; text: string } {

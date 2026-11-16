@@ -605,7 +605,8 @@ export class ProvidersFlow {
     if (p.health) this.health[p.id] = p.health;
   }
 
-  /** The providers, then each one's health and the report beside them. */
+  /** The providers with their health from the last probes (SRV-851), then the report beside
+   *  them; a provider whose endpoints were not probed yet is probed once. */
   async load(): Promise<void> {
     try {
       this.info = await this.api.list();
@@ -615,8 +616,9 @@ export class ProvidersFlow {
       this.changed();
       return;
     }
+    for (const p of this.info.providers) if (p.health) this.health[p.id] = p.health;
     this.changed();
-    await Promise.all([...this.info.providers.map((p) => this.probe(p.id, false)), this.readReport()]);
+    await Promise.all([...this.info.providers.filter((p) => !p.health || p.health.status === 'unknown').map((p) => this.probe(p.id, false)), this.readReport()]);
   }
 
   /** One provider's health; `force`: probe its endpoints now. */

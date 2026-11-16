@@ -34,6 +34,8 @@ for (const dir of ['hooks-v1', 'conductor-v1']) {
   }
 }
 for (const f of names) schema[f.replace('.schema.json', '')] = ajv.getSchema(f)!;
+// the providers' refusals: conductor-v1's error schema, which names `code` and `field` (SRV-851)
+schema['conductor-error'] = ajv.compile(JSON.parse(readFileSync(join(CONTRACTS, 'conductor-v1', 'error.schema.json'), 'utf8')));
 
 export const STAGE_TABLE: StageTable = JSON.parse(readFileSync(join(CONTRACTS, 'hooks-v1', 'stages.json'), 'utf8'));
 export const EXAMPLES = join(CONTRACTS, 'hooks-v1', 'examples');
@@ -108,10 +110,8 @@ export function rig(o: { hooks?: boolean | 'demo' } = {}): HooksRig {
       if (name) valid(name, r.body);
     } else {
       const e = (r.body as { error: { type: string; message: string } }).error;
-      // the hooks' refusals have their schema; the providers' carry `code` and `field`, which
-      // conductor-v1's error schema does not know: held to the same shape here
-      if (p.startsWith('/v1/fleet/hooks')) valid('error', r.body);
-      else if (typeof e?.type !== 'string' || typeof e.message !== 'string') throw new Error(`not a refusal: ${JSON.stringify(r.body)}`);
+      // the hooks' refusals have their schema, the providers' conductor-v1's (SRV-851)
+      valid(p.startsWith('/v1/fleet/hooks') ? 'error' : 'conductor-error', r.body);
       if (HOOK_ERRORS[e.type] !== r.status) throw new Error(`${e.type} answered ${r.status}, the API says ${HOOK_ERRORS[e.type]}`);
     }
     // a copy, as JSON over the wire is: the page can never reach into the mock's state
