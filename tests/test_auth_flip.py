@@ -462,6 +462,24 @@ def test_no_switch():
     assert seen[0][:3] == (401, 401, 200), seen[0]
 
 
+# ---------------------------------------------------------------------------- local mode
+
+def test_local_mode_and_a_made_up_key():
+    """Local mode as SEC-26 built it: this machine with no credential is the owner `local`;
+    a request that carries a key is that key and nothing else, so a made-up one is 401 (an
+    OpenAI client on this machine sends none, or an API token)."""
+    srv, port = fake(models=["small-1"], cache=False)
+    try:
+        with Proxy(env=env_for(port)) as px:
+            px.sync()
+            assert accounts().local.on()
+            assert px.post("/v1/chat/completions", CHAT)[0] == 200
+            st, _, out = px.post("/v1/chat/completions", CHAT, bearer("sk-anything-at-all"))
+            assert st == 401 and b"the token is not known" in out, out
+    finally:
+        srv.shutdown()
+
+
 # ---------------------------------------------------------------------------- AC e
 
 def test_leftovers_never_stop():
