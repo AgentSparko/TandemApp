@@ -21,6 +21,12 @@ A stream is sent as the API sends it: `message_start`, a `ping`, each block's st
 in two pieces, tool input JSON in two `input_json_delta` pieces) and stop, `message_delta` with
 the stop reason and the output count, `message_stop`; chunked.
 
+SRV-881: `fake.think` starts each default answer with a thinking block signed for that turn
+(`sig-<n>-<random>`); every answer's content is kept by its turn (its call ids, or its text).
+`fake.strict_thinking` then refuses (the API's 400 `invalid_request_error`) a history whose
+assistant turn comes back without the thinking it was answered with, or with a signature this
+server never gave.
+
 `POST /v1/messages/count_tokens` answers `{input_tokens}` from `fake.count` (SRV-879; None: 404).
 
 `GET /v1/models` lists `fake.models` in pages of 2 (`has_more`, `first_id`, `last_id`,
@@ -33,6 +39,7 @@ import copy
 import json
 import sys
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -52,7 +59,49 @@ class Fake:
         self.count = None            # POST /v1/messages/count_tokens: an int or fn(body); None 404
         self.usage = {"input_tokens": 10, "cache_creation_input_tokens": 0,
                       "cache_read_input_tokens": 0}
+        self.think = False
+        self.strict_thinking = False
+        self.produced: dict = {}         # a turn's key -> the content this server answered
+        self.answers: list = []          # each /v1/messages answer's body bytes as sent
+        self.signatures: set = set()
         self.lock = threading.Lock()
+
+    @staticmethod
+    def turn(content) -> tuple:
+        blocks = [content] if isinstance(content, str) else content or []
+        ids = tuple(b.get("id") for b in blocks if isinstance(b, dict)
+                    and b.get("type") == "tool_use")
+        if ids:
+            return ("calls",) + ids
+        if isinstance(content, str):
+            return ("text", content)
+        return ("text", "".join(b.get("text") or "" for b in blocks
+                                if isinstance(b, dict) and b.get("type") == "text"))
+
+    def keep(self, content: list) -> None:
+        with self.lock:
+            self.produced[self.turn(content)] = copy.deepcopy(content)
+            for b in content:
+                if b.get("type") == "thinking":
+                    self.signatures.add(b.get("signature"))
+
+    def refusal(self, body: dict) -> str | None:
+        """Why the history fails the thinking check, or None."""
+        for i, m in enumerate(body.get("messages") or []):
+            if not isinstance(m, dict) or m.get("role") != "assistant":
+                continue
+            c = m.get("content")
+            blocks = c if isinstance(c, list) else []
+            mine = [b for b in blocks if isinstance(b, dict) and b.get("type") == "thinking"]
+            for b in mine:
+                if b.get("signature") not in self.signatures:
+                    return f"messages.{i}.content.0: Invalid `signature` in `thinking` block"
+            had = [b for b in self.produced.get(self.turn(c), [])
+                   if b.get("type") == "thinking"]
+            if had and mine != had:
+                return (f"messages.{i}.content.0: Invalid `signature` in `thinking` block. The "
+                        f"block is bound to a different conversation.")
+        return None
 
     @property
     def last(self) -> dict:
@@ -63,13 +112,16 @@ class Fake:
                       for b in m["content"] if isinstance(b, dict)
                       and b.get("type") == "tool_result")
         usage = dict(self.usage, output_tokens=5)
+        think = [{"type": "thinking", "thinking": f"Plan {results + 1}.",
+                  "signature": f"sig-{results + 1}-{uuid.uuid4().hex[:12]}"}] \
+            if self.think else []
         if body.get("tools") and results < self.tool_turns:
             n = results + 1
-            return {"content": [{"type": "text", "text": f"Call {n}."},
-                                {"type": "tool_use", "id": f"toolu_fake_{n}",
-                                 "name": "get_weather", "input": {"city": f"City {n}"}}],
+            return {"content": think + [{"type": "text", "text": f"Call {n}."},
+                                        {"type": "tool_use", "id": f"toolu_fake_{n}",
+                                         "name": "get_weather", "input": {"city": f"City {n}"}}],
                     "stop_reason": "tool_use", "usage": usage}
-        return {"content": [{"type": "text", "text": f"done after {results} results"}],
+        return {"content": think + [{"type": "text", "text": f"done after {results} results"}],
                 "stop_reason": "end_turn", "usage": usage}
 
 
@@ -80,13 +132,15 @@ def _message(m: dict, model: str, n: int) -> dict:
     return out
 
 
-def _events(msg: dict, error_after=None):
+def _events(msg: dict, error_after=None, extra=None):
     usage = dict(msg.get("usage") or {})
     start = dict(msg, content=[], stop_reason=None,
                  usage={k: v for k, v in usage.items() if k != "output_tokens"} | {
                      "output_tokens": 1})
     yield "message_start", {"type": "message_start", "message": start}
     yield "ping", {"type": "ping"}
+    for name, obj in extra or []:           # events a client must pass on unknown (SRV-881)
+        yield name, obj
     sent = 0
     for i, b in enumerate(msg.get("content") or []):
         if b["type"] == "text":
@@ -110,7 +164,8 @@ def _events(msg: dict, error_after=None):
                                                     "thinking": b["thinking"]}}
             yield "content_block_delta", {"type": "content_block_delta", "index": i,
                                           "delta": {"type": "signature_delta",
-                                                    "signature": "sig-fake"}}
+                                                    "signature": b.get("signature",
+                                                                       "sig-fake")}}
         elif b["type"] == "tool_use":
             yield "content_block_start", {"type": "content_block_start", "index": i,
                                           "content_block": {"type": "tool_use", "id": b["id"],
@@ -120,6 +175,9 @@ def _events(msg: dict, error_after=None):
                 yield "content_block_delta", {"type": "content_block_delta", "index": i,
                                               "delta": {"type": "input_json_delta",
                                                         "partial_json": piece}}
+        else:                                # redacted thinking and the rest: whole at start
+            yield "content_block_start", {"type": "content_block_start", "index": i,
+                                          "content_block": b}
         yield "content_block_stop", {"type": "content_block_stop", "index": i}
     if error_after is not None:
         yield "error", {"type": "error", "error": {"type": "overloaded_error",
@@ -200,7 +258,7 @@ def make_handler(fake: Fake):
             body = json.loads(raw or b"{}")
             with fake.lock:
                 fake.requests.append({"path": self.path, "headers": dict(self.headers.items()),
-                                      "body": body})
+                                      "body": body, "raw": raw})
             if not self._authorized():
                 return self._error(401, "authentication_error", "invalid x-api-key")
             if fake.count is None:
@@ -221,7 +279,7 @@ def make_handler(fake: Fake):
                 return self._error(400, "invalid_request_error", "the body is not JSON")
             with fake.lock:
                 fake.requests.append({"path": self.path, "headers": dict(self.headers.items()),
-                                      "body": body})
+                                      "body": body, "raw": raw})
                 item = fake.queue.pop(0) if fake.queue else None
                 count = len(fake.requests)
             if not self._authorized():
@@ -231,20 +289,30 @@ def make_handler(fake: Fake):
                                    "anthropic-version: header is required")
             if not isinstance(body.get("max_tokens"), int):
                 return self._error(400, "invalid_request_error", "max_tokens: Field required")
+            why = fake.refusal(body) if fake.strict_thinking else None
+            if why is not None:
+                return self._error(400, "invalid_request_error", why)
             if item is not None and "status" in item:
                 extra = [("retry-after", "0")] if item["status"] in (429, 529) else []
                 return self._json(item["status"], item.get("body") or {}, extra)
             m = item["message"] if item is not None else fake.default_message(body)
             msg = _message(m, body.get("model"), count)
+            fake.keep(msg["content"])
             if not body.get("stream"):
-                return self._json(200, msg)
+                data = json.dumps(msg).encode()
+                fake.answers.append(data)
+                return self._json(200, data)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Transfer-Encoding", "chunked")
             self.send_header("request-id", "req_fake_1")
             self.end_headers()
-            for name, obj in _events(msg, (item or {}).get("error_after")):
+            sent = bytearray()
+            fake.answers.append(sent)
+            for name, obj in _events(msg, (item or {}).get("error_after"),
+                                     (item or {}).get("extra_events")):
                 data = f"event: {name}\ndata: {json.dumps(obj)}\n\n".encode()
+                sent += data
                 self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
                 self.wfile.flush()
             self.wfile.write(b"0\r\n\r\n")

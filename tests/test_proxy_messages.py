@@ -674,11 +674,18 @@ def test_a_client_that_leaves_closes_the_upstream():
 
 
 def test_a_model_on_a_messages_api_backend_is_translated_twice():
+    """A route with a backend of another kind in it (here a generic fallback) is translated,
+    twice on the Messages API backend; a route of Messages API backends only passes through
+    (SRV-881, tests/test_proxy_passthrough.py)."""
     srv, port = fake_anthropic.start(key=BACKEND_KEY)
     srv.fake.count = 42
-    env = {"TANDEM_BACKENDS": "anth", "TANDEM_BACKEND_ANTH_KIND": "anthropic",
+    gen, gport = fake_backend.start(models=["model-a"])
+    env = {"TANDEM_BACKENDS": "anth,gen", "TANDEM_BACKEND_ANTH_KIND": "anthropic",
            "TANDEM_BACKEND_ANTH_URL": f"http://127.0.0.1:{port}",
-           "TANDEM_BACKEND_ANTH_KEY": BACKEND_KEY, "TANDEM_API_KEYS": f"alice:{KEY}"}
+           "TANDEM_BACKEND_ANTH_KEY": BACKEND_KEY, "TANDEM_API_KEYS": f"alice:{KEY}",
+           "TANDEM_BACKEND_ANTH_FALLBACK": "gen", "TANDEM_BACKEND_GEN_KIND": "generic",
+           "TANDEM_BACKEND_GEN_URL": f"http://127.0.0.1:{gport}/v1",
+           "TANDEM_ROUTE_1": "model-a=anth"}
     with Proxy(env) as px:
         px.sync()
         for stream in (False, True):
@@ -703,6 +710,7 @@ def test_a_model_on_a_messages_api_backend_is_translated_twice():
             "model": "model-a", "messages": [{"role": "user", "content": "x"}]}, headers=_hdr())
         assert st == 404 and json.loads(data)["error"]["type"] == "not_found_error"
     srv.shutdown()
+    gen.shutdown()
 
 
 def test_a_whole_answer_to_a_stream_request_and_a_late_error():

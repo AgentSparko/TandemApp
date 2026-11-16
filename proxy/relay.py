@@ -82,7 +82,8 @@ import socket
 import threading
 import time
 
-from proxy import http1
+from proxy import http1, passthrough
+from proxy import stash as stash_mod
 from proxy.adapters import ENDPOINTS, Stamps
 from proxy.adapters.base import CHAT, COMPLETIONS
 from proxy.measure import RelayRecord
@@ -90,6 +91,7 @@ from proxy.translate.anthropic import TranslateError
 from tandemapp.parallel import _fetch_json
 
 RETRYABLE = (429, 502, 503)      # the default; an adapter may add its own (`retryable`)
+MESSAGES_PATHS = ("/v1/messages",)  # SRV-881: a stream that passes through
 MAX_RETRIES = 2
 RETRY_AFTER_CAP = 30.0
 DRAIN_RETRY_S = 30
@@ -178,6 +180,8 @@ class Relay:
         self._lock = threading.Lock()
         self.sleep = time.sleep
         self.fetch = _fetch_json
+        # SRV-881: each translated answer's own blocks, so a tool loop keeps its thinking
+        self.stash = stash_mod.Stash()
 
     def engine_holds(self, backend: dict, rid: str) -> bool:
         """Our engine still holds the request the relay filed under `rid` (a lane of its board,
@@ -351,18 +355,27 @@ class Relay:
                 return ("done",)
             if changed:
                 body, raw = body2, json.dumps(body2, ensure_ascii=False).encode()
+        native = passthrough.native(adapter, path)
         try:
             up_body, injected = adapter.prepare(path, raw, body, upstream_model,
                                                 max_output=self._max_output(backend["id"],
-                                                                            upstream_model))
+                                                                            upstream_model),
+                                                **self._stash_arg(handler, adapter, path,
+                                                                  backend, upstream_model, rec))
         except TranslateError as exc:
             # SRV-877: a field with no equal upstream; nothing went out
             rec.error_type = "untranslatable"
             rec.finish_reason = "error"
             self._write_plain(handler, 400, [], json.dumps(exc.body()).encode(), rec)
             return ("done",)
-        rec.dropped = adapter.dropped(body) if adapter.translates else None
-        headers = adapter.headers(key) + adapter.forward(handler.headers, key)
+        rec.dropped = adapter.dropped(body) if _translating(adapter, path) else None
+        if getattr(rec, "thinking_dropped", 0):
+            rec.dropped = list(rec.dropped or []) + ["thinking"]
+        if native:
+            # SRV-881: the client's own headers that go on, the backend's key for its own
+            headers = passthrough.headers(key, handler.headers, adapter.opts())
+        else:
+            headers = adapter.headers(key) + adapter.forward(handler.headers, key)
         if hx is not None:
             headers = hx.headers(adapter, headers)
         ours = backend.get("kind") == "tandemllm"
@@ -439,7 +452,7 @@ class Relay:
             keep = [(k, v) for k, v in uh if adapter.passes(k)]
             ctype = hmap.get("content-type")
             out_status = status
-            if adapter.translates:
+            if _translating(adapter, path):
                 # the client's protocol: an OpenAI error, 529 read as 503
                 out_status, data, _ = adapter.answer(status, data, int(time.time()))
                 ctype = "application/json"
@@ -521,13 +534,13 @@ class Relay:
             rec.finish_reason = "timeout"
             rec.error_type = f"timeout_{t.which}"
             self._stream_error(w, f"backend '{backend['id']}' sent nothing for {to['idle']} s",
-                               rec.error_type)
+                               rec.error_type, path)
         except (http1.Closed, http1.UpstreamError):
             conn.close()
             rec.finish_reason = "error"
             rec.error_type = "upstream_closed"
             self._stream_error(w, f"backend '{backend['id']}' closed the stream early",
-                               "upstream_closed")
+                               "upstream_closed", path)
         self._finish(st, adapter, path, backend, rec)
         rec.thinking = st.reasoning
         rec.tool_calls = len(st.tools)
@@ -548,7 +561,8 @@ class Relay:
             hk = None
         # SRV-877: a translating kind's events become the client's protocol here, before the
         # ledger's reader, the hooks, the harness and the client see them
-        trs = adapter.stream_translator(int(time.time())) if adapter.translates else None
+        trs = adapter.stream_translator(int(time.time()), self._keeper(rec)) \
+            if _translating(adapter, path) else None
         for piece in conn.body(float(to["idle"]), poll):
             t_arr = time.perf_counter()
             buf += piece
@@ -686,10 +700,16 @@ class Relay:
             pool.put(conn)
         return True
 
-    def _stream_error(self, w, message: str, code: str) -> None:
+    def _stream_error(self, w, message: str, code: str, path: str = CHAT) -> None:
         try:
-            w.write(("data: " + json.dumps(_error_body(message, "upstream_error", code))
-                     + "\n\ndata: [DONE]\n\n").encode())
+            if path in MESSAGES_PATHS:
+                # SRV-881: a stream that passes through ends as the Messages API ends one
+                w.write(("event: error\ndata: " + json.dumps(
+                    {"type": "error", "error": {"type": "api_error", "message": message}})
+                    + "\n\n").encode())
+            else:
+                w.write(("data: " + json.dumps(_error_body(message, "upstream_error", code))
+                         + "\n\ndata: [DONE]\n\n").encode())
             w.flush()
         except OSError:
             pass
@@ -720,9 +740,10 @@ class Relay:
                 "upstream_closed")).encode(), rec)
             return
         ctype = next((v for k, v in uh if k.lower() == "content-type"), "")
-        if adapter.translates:
+        if _translating(adapter, path):
             # SRV-877: the answer (or the error) in the client's protocol before anyone reads it
-            status, data, st.native = adapter.answer(status, data, int(time.time()))
+            status, data, st.native = adapter.answer(status, data, int(time.time()),
+                                                     self._keeper(rec))
             ctype = "application/json"
             uh = [(k, v) for k, v in uh if k.lower() not in ("content-type", "content-length")] \
                 + [("Content-Type", ctype)]
@@ -797,6 +818,28 @@ class Relay:
         return (": tandem-cost " + json.dumps({"cost_micros": cost, "backend": backend["id"]})
                 + "\n\n").encode()
 
+    def _stash_arg(self, handler, adapter, path, backend, upstream_model, rec) -> dict:
+        """The thinking stash's restore for a translated chat request (SRV-881); none
+        otherwise. Each try has its own: the blocks go to their own backend and model only."""
+        rec.stash_scope = None
+        rec.thinking_dropped = 0
+        if not (_translating(adapter, path) and path == CHAT):
+            return {}
+        scope = (stash_mod.token_of(handler.headers), backend["id"], upstream_model)
+
+        def restore(msgs):
+            out, n = self.stash.restore(scope, msgs)
+            rec.stash_scope, rec.stash_at, rec.thinking_dropped = scope, len(out), n
+            return out
+        return {"stash": restore}
+
+    def _keeper(self, rec):
+        scope = getattr(rec, "stash_scope", None)
+        if scope is None:
+            return None
+        at = rec.stash_at
+        return lambda content: self.stash.keep(scope, content, at)
+
     def _max_output(self, bid: str, model: str | None) -> int | None:
         """The model's output limit: the operator's, else the provider's list (None unknown)."""
         try:
@@ -867,9 +910,16 @@ def _finish(st) -> str:
 
 
 def _cut_short(path: str, st) -> bool:
-    """A chat or completion stream that ended without `[DONE]`, a finish reason or an error."""
-    return path in (CHAT, COMPLETIONS) and not st.done and st.finish_reason is None and \
-        st.error is None
+    """A chat or completion stream that ended without `[DONE]`, a finish reason or an error;
+    a Messages stream (SRV-881) without `message_stop`, a stop reason or an error."""
+    return path in (CHAT, COMPLETIONS) + MESSAGES_PATHS and not st.done and \
+        st.finish_reason is None and st.error is None
+
+
+def _translating(adapter, path: str) -> bool:
+    """The adapter translates this request (SRV-877); a Messages API request to a Messages API
+    backend passes through instead (SRV-881)."""
+    return adapter.translates and not passthrough.native(adapter, path)
 
 
 def _event_end(buf: bytearray) -> tuple[int, int]:

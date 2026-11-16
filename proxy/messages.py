@@ -6,17 +6,19 @@ local engine included.
     POST /v1/messages/...          404 not_found_error (batches are not served)
 
 WHO MAY CALL: the rule of /v1/chat/completions (`Service.authorize`), with the key in `x-api-key`
-or in `Authorization: Bearer`. Neither header goes on to a backend, nor do `anthropic-version`
-(accepted, never required) and `anthropic-beta` (ignored: the backend speaks the OpenAI chat
-shape). The key's hash names the client in the ledger as it does for the OpenAI routes.
+or in `Authorization: Bearer`. Neither header goes on to a backend. `anthropic-version`
+(accepted, never required) and `anthropic-beta` go on only when the request passes through
+(SRV-881); a translated request goes without them. The key's hash names the client in the ledger as it does for the OpenAI routes.
 
 THE PIPELINE sees the OpenAI chat shape (the design's 4.5): the request is translated
 (proxy/translate/anthropic.py, cell 4) and goes through `Service.serve` as a chat completion, so
 the route table, the deployments, the hooks, the harness, the relay and the ledger work as for
 an OpenAI client. The ledger row's endpoint is `messages` (`count_tokens` for a count); the
 inbound protocol's own column (`api`) comes with the token schema (SRV-867), and `rec.api` is
-its seam. A request whose model routes to a backend of kind `anthropic` is translated twice
-(cell 4, then that adapter's cell 3); passing it through as sent is SRV-881.
+its seam. A request whose route is all backends of kind `anthropic` passes through instead (SRV-881,
+proxy/passthrough.py): no translation, the client's bytes upstream and the backend's back; a
+route with any other backend in it is translated, twice where it reaches a backend of kind
+`anthropic` (cell 4, then that adapter's cell 3).
 
 THE ANSWER. `Out` is the handler the pipeline writes to: what it writes in the OpenAI shape (a
 completion, a stream, an error, a 401, a hook's refusal, the relay's own 503) reaches the client
@@ -45,6 +47,7 @@ import threading
 import time
 import uuid
 
+from proxy import passthrough
 from proxy import route as route_mod
 from proxy.adapters.base import CHAT
 from proxy.translate import anthropic as tr
@@ -171,6 +174,9 @@ def handle(h, svc, path: str, raw: bytes, t_arrival: float | None = None) -> Non
         return refuse(h, 401, AUTH_MESSAGE, rid,
                       (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
     client = ledger_mod.client_of(view.headers, None)
+    native = _native_route(svc, body, h.headers)
+    if native is not None:
+        return _pass(h, svc, path, raw, body, native, user, view, client, rid, t_arrival)
     plain = _copy(h.headers, auth=False)
     try:
         chat, dropped, meta = tr.from_messages(body, need_max=path == MESSAGES)
@@ -206,6 +212,299 @@ def handle(h, svc, path: str, raw: bytes, t_arrival: float | None = None) -> Non
         out.end()
 
 
+# ----------------------------------------------------------------------------- pass-through
+def _native_route(svc, body: dict, headers):
+    """SRV-881: the route when every candidate is a backend a Messages API request passes
+    through to, else None (the request is translated, and its route resolved there)."""
+    model = body.get("model")
+    if not isinstance(model, str) or not model:
+        return None
+    try:
+        if not svc.all_native(svc.table.resolve(model)):
+            return None
+        r = svc.resolve(body, _creds_off(headers))
+        return r if svc.all_native(r) else None
+    except Exception:                                              # noqa: BLE001
+        return None
+
+
+def _creds_off(headers):
+    """The client's headers without its credentials; the Messages API's own stay."""
+    out = http.client.HTTPMessage()
+    try:
+        items = list(headers.items())
+    except Exception:                                              # noqa: BLE001
+        items = []
+    for k, v in items:
+        if k.lower() not in ("authorization", "x-api-key"):
+            out[k] = v
+    return out
+
+
+def _pass(h, svc, path, raw, body, route, user, view, client, rid, t_arrival) -> None:
+    """A request that passes through: its bytes to the backend, the answer's back."""
+    hdrs = _creds_off(h.headers)
+    if path == COUNT:
+        return _count_native(h, svc, raw, body, route, user, view, hdrs, rid)
+    out = Native(h, hdrs, rid)
+    try:
+        svc.serve(out, MESSAGES, raw, body, route, user, t_arrival=t_arrival,
+                  endpoint="messages", client=client, native=True)
+    finally:
+        out.end()
+
+
+def _count_native(h, svc, raw, body, route, user, view, hdrs, rid) -> None:
+    backend = svc.table.backend_for(route.backend)
+    adapter = svc.adapter(backend)
+    try:
+        up = adapter.prepare(COUNT, raw, body, route.model)[0]
+        key = svc.cfg.key_for(backend["id"])
+    except Exception as exc:                                       # noqa: BLE001
+        svc.account_refusal(view, COUNT, body, 400, user=user, error_type="count_tokens",
+                            model=route.public)
+        return refuse(h, 400, f"the request cannot go on: {type(exc).__name__}", rid)
+    st, uh, data = _send_upstream(svc, backend, adapter, COUNT, up,
+                                  passthrough.headers(key, hdrs, adapter.opts()))
+    svc.account_refusal(view, COUNT, body, st or 502, user=user,
+                        finish="stop" if st == 200 else "error",
+                        error_type=None if st == 200 else "count_tokens", model=route.public)
+    if st == 0:
+        return refuse(h, 502, f"backend '{backend['id']}' does not answer", rid)
+    got = {k.lower(): v for k, v in uh}
+    try:
+        h.send_response(st)
+        h.send_header("Content-Type", got.get("content-type") or "application/json")
+        h.send_header("request-id", got.get("request-id") or rid)
+        for k, v in uh:
+            if k.lower() == "retry-after" or k.lower().startswith(KEEP_PREFIXES):
+                h.send_header(k, v)
+        h.send_header("X-Tandem-Backend", route.backend)
+        h.send_header("Content-Length", str(len(data)))
+        h.end_headers()
+        h.wfile.write(data)
+    except OSError:
+        h.close_connection = True
+
+
+class Native:
+    """The handler a request that passes through writes to: what the backend sent goes to the
+    client as it is (a `request-id` added when it sent none); an answer of our own (a drained
+    node, a timeout, a hook's refusal, the relay's 503) is an OpenAI-shaped error, which reaches
+    the client in the Messages API's shape, 503 as 529."""
+
+    def __init__(self, h, headers, rid: str):
+        self._h = h
+        self.headers = headers
+        self.client_address = getattr(h, "client_address", None)
+        self.connection = getattr(h, "connection", None)
+        self._px_written = False
+        self.rid = rid
+        self.status = None
+        self.hdrs: list = []
+        self.mode = None                    # None | "raw" | "error" | "done"
+        self.buf = bytearray()
+        self.want = None
+        self.wfile = _Writer(self)
+
+    @property
+    def close_connection(self):
+        return getattr(self._h, "close_connection", False)
+
+    @close_connection.setter
+    def close_connection(self, v):
+        self._h.close_connection = v
+
+    def send_response(self, code, message=None) -> None:
+        self.status, self.hdrs, self.mode = int(code), [], None
+
+    def send_header(self, k, v) -> None:
+        self.hdrs.append((str(k), str(v)))
+
+    def end_headers(self) -> None:
+        names = {k.lower() for k, _ in self.hdrs}
+        if self.status < 400:
+            h = self._h
+            h.send_response(self.status)
+            for k, v in self.hdrs:
+                h.send_header(k, v)
+            if "request-id" not in names:
+                h.send_header("request-id", self.rid)
+            h.end_headers()
+            self.mode = "raw"
+            return
+        self.mode, self.buf = "error", bytearray()
+        try:
+            self.want = int({k.lower(): v for k, v in self.hdrs}.get("content-length"))
+        except (TypeError, ValueError):
+            self.want = None
+        if self.want == 0:
+            self._error()
+
+    def _write(self, data: bytes) -> None:
+        if self.mode == "raw":
+            self._h.wfile.write(data)
+            self._h.wfile.flush()
+        elif self.mode == "error":
+            self.buf += data
+            if self.want is not None and len(self.buf) >= self.want:
+                self._error()
+
+    def _error(self) -> None:
+        self.mode = "done"
+        data, hdrs = bytes(self.buf), self.hdrs
+        if _json(data).get("type") == "error":
+            # the backend's own error: as it sent it
+            h = self._h
+            try:
+                h.send_response(self.status)
+                for k, v in hdrs:
+                    if k.lower() != "content-length":
+                        h.send_header(k, v)
+                if "request-id" not in {k.lower() for k, _ in hdrs}:
+                    h.send_header("request-id", self.rid)
+                h.send_header("Content-Length", str(len(data)))
+                h.end_headers()
+                h.wfile.write(data)
+            except OSError:
+                h.close_connection = True
+            return
+        st, et, m = tr.error_in(self.status, data)
+        keep = [(k, v) for k, v in hdrs if k.lower() == "retry-after"
+                or k.lower().startswith(KEEP_PREFIXES)]
+        refuse(self._h, st, m, self.rid, keep, et)
+
+    def end(self) -> None:
+        if self.mode == "error":
+            self._error()
+
+
+# ----------------------------------------------------------------------------- /v1/models
+# SRV-881: one path for two protocols. A request with `anthropic-version`, or with `x-api-key` and
+# no `Authorization`, gets the Messages API's shape: {data: [{type: "model", id, display_name,
+# created_at, ...}], has_more, first_id, last_id}, paged by `limit` (20, 1 to 1000), `after_id`
+# and `before_id`. The models are the OpenAI list's, under the same ids. `capabilities` has every
+# leaf the API names; only what a card states is true (image input, thinking, effort levels).
+MODEL_LIMIT = (20, 1, 1000)
+EPOCH = "1970-01-01T00:00:00Z"
+
+
+def wants_models(headers) -> bool:
+    try:
+        if headers.get("anthropic-version"):
+            return True
+        return bool(headers.get("x-api-key")) and not headers.get("Authorization")
+    except Exception:                                              # noqa: BLE001
+        return False
+
+
+def _iso(ts) -> str:
+    if not isinstance(ts, (int, float)) or isinstance(ts, bool) or ts <= 0:
+        return EPOCH
+    if ts > 1e11:                                        # milliseconds
+        ts = ts / 1000.0
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(ts)))
+
+
+def _no(*names) -> dict:
+    return {n: {"supported": False} for n in names}
+
+
+def model_info(card: dict, first_seen=None) -> dict:
+    """One OpenAI-shaped card of /v1/models as the Messages API's ModelInfo."""
+    t = card.get("tandem") if isinstance(card.get("tandem"), dict) else {}
+    caps = t.get("capabilities") if isinstance(t.get("capabilities"), dict) else {}
+    levels = set(caps.get("effort_levels") or [])
+    thinking = bool(caps.get("thinking"))
+    ctx = t.get("context_length") or card.get("context_length") or card.get("max_model_len")
+    mo = t.get("max_output")
+    return {
+        "type": "model", "id": card["id"],
+        "display_name": t.get("name") or card.get("name") or card["id"],
+        "created_at": _iso(first_seen if first_seen is not None else card.get("created")),
+        "max_input_tokens": ctx if isinstance(ctx, int) and ctx > 0 else None,
+        "max_tokens": mo if isinstance(mo, int) and mo > 0 else None,
+        "lifecycle": "active", "deprecated_at": None, "retires_at": None, "line": None,
+        "capabilities": {
+            **_no("batch", "citations", "code_execution", "pdf_input", "structured_outputs"),
+            "context_management": dict(_no("clear_thinking_20251015",
+                                           "clear_tool_uses_20250919", "compact_20260112"),
+                                       supported=False),
+            "effort": dict({lv: {"supported": lv in levels}
+                            for lv in ("low", "medium", "high", "xhigh", "max")},
+                           supported=bool(levels)),
+            "image_input": {"supported": bool(caps.get("vision"))},
+            "server_tools": dict(_no("code_execution", "web_search"), supported=False),
+            "thinking": {"supported": thinking,
+                         "types": _no("adaptive", "between_tools", "disabled", "enabled")}}}
+
+
+def _infos(svc) -> list[dict]:
+    snap = svc.table.snapshot()["by_backend"]
+    out = []
+    for card in svc.models(int(svc.started)):
+        t = card.get("tandem") if isinstance(card.get("tandem"), dict) else {}
+        row = (snap.get(t.get("backend")) or {}).get(t.get("upstream_id")) or {}
+        out.append(model_info(card, row.get("discovered_at")))
+    return out
+
+
+def models(h, svc, path: str) -> None:
+    """GET /v1/models or /v1/models/{id} in the Messages API's shape."""
+    from urllib.parse import parse_qs, unquote, urlsplit
+    rid = new_id("req_")
+    view = _Sink(h, _copy(h.headers, auth=True))
+    ok, _ = svc.authorize(view)
+    if not ok:
+        return refuse(h, 401, AUTH_MESSAGE, rid,
+                      (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
+    infos = _infos(svc)
+    if path.startswith("/v1/models/"):
+        name = unquote(path[len("/v1/models/"):])
+        got = next((m for m in infos if m["id"] == name), None)
+        if got is None:
+            return refuse(h, 404, f"model: {name}", rid)
+        return _send_json(h, got, rid)
+    q = {k: v[-1] for k, v in parse_qs(urlsplit(h.path).query).items()}
+    limit = MODEL_LIMIT[0]
+    if "limit" in q:
+        try:
+            limit = int(q["limit"])
+        except ValueError:
+            limit = 0
+        if not MODEL_LIMIT[1] <= limit <= MODEL_LIMIT[2]:
+            return refuse(h, 400, "limit: a number from 1 to 1000", rid)
+    ids = [m["id"] for m in infos]
+    if q.get("after_id") is not None or q.get("before_id") is not None:
+        which = "after_id" if q.get("after_id") is not None else "before_id"
+        if q[which] not in ids:
+            return refuse(h, 400, f"{which}: no model {q[which]!r} in this list", rid)
+        i = ids.index(q[which])
+        if which == "after_id":
+            page, more = infos[i + 1:i + 1 + limit], i + 1 + limit < len(infos)
+        else:
+            page, more = infos[max(0, i - limit):i], i - limit > 0
+    else:
+        page, more = infos[:limit], limit < len(infos)
+    return _send_json(h, {"data": page, "has_more": more,
+                          "first_id": page[0]["id"] if page else None,
+                          "last_id": page[-1]["id"] if page else None}, rid)
+
+
+def _send_json(h, obj, rid: str) -> None:
+    data = json.dumps(obj, ensure_ascii=False).encode()
+    try:
+        h.send_response(200)
+        h.send_header("Content-Type", "application/json")
+        h.send_header("request-id", rid)
+        h.send_header("X-Tandem-Gateway", "tandem-app")
+        h.send_header("Content-Length", str(len(data)))
+        h.end_headers()
+        h.wfile.write(data)
+    except OSError:
+        h.close_connection = True
+
+
 # ----------------------------------------------------------------------------- count_tokens
 def _count(h, svc, body, chat, route, backend, adapter, user, view, rid) -> None:
     status, n, msg, etype = _counted(svc, chat, route, backend, adapter)
@@ -239,7 +538,12 @@ def _counted(svc, chat, route, backend, adapter) -> tuple[int, int | None, str, 
         except tr.TranslateError as exc:
             return 400, None, exc.message, None
         req = {k: v for k, v in req.items() if k in COUNT_KEYS}
-        st, raw = _post_upstream(svc, backend, adapter, COUNT, req)
+        try:
+            hdrs = adapter.headers(svc.cfg.key_for(bid))
+        except Exception:                                          # noqa: BLE001
+            return 502, None, f"backend '{bid}': its key cannot be read", None
+        st, _, raw = _send_upstream(svc, backend, adapter, COUNT,
+                                    json.dumps(req, ensure_ascii=False).encode(), hdrs)
         if st == 200:
             n = _json(raw).get("input_tokens")
             if isinstance(n, int) and not isinstance(n, bool) and n >= 0:
@@ -270,26 +574,25 @@ def _counted(svc, chat, route, backend, adapter) -> tuple[int, int | None, str, 
                        f"this server gives no estimate"), None
 
 
-def _post_upstream(svc, backend, adapter, path: str, doc: dict) -> tuple[int, bytes]:
-    """One request to a backend through its pool: (status, body); (0, b"") when it does not
-    answer."""
+def _send_upstream(svc, backend, adapter, path: str, data: bytes, headers
+                   ) -> tuple[int, list, bytes]:
+    """One request to a backend through its pool: (status, headers, body); (0, [], b"") when
+    it does not answer."""
     to = float((backend.get("timeouts") or {}).get("first_byte") or COUNT_TIMEOUT_S)
     try:
-        key = svc.cfg.key_for(backend["id"])
         pool = svc.relay.pool(backend)
         conn = pool.get()
         try:
-            conn.send("POST", adapter.upstream_path(pool, path), adapter.headers(key),
-                      json.dumps(doc, ensure_ascii=False).encode())
-            st, _, _ = conn.read_head(to)
+            conn.send("POST", adapter.upstream_path(pool, path), headers, data)
+            st, _, uh = conn.read_head(to)
             raw = conn.read_all(to)
             pool.put(conn)
         except Exception:
             conn.close()
             raise
-        return st, raw
+        return st, list(uh), raw
     except Exception:                                              # noqa: BLE001
-        return 0, b""
+        return 0, [], b""
 
 
 def _json(raw) -> dict:

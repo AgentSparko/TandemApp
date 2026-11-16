@@ -339,6 +339,14 @@
           "minimum": 0,
           "maximum": 100000
         },
+        "cache_write_1h": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100000
+        },
         "output": {
           "type": [
             "number",

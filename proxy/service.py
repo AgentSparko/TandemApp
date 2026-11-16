@@ -380,10 +380,11 @@ class Service:
 
     def serve(self, handler, path: str, raw: bytes, body: dict, route, user: str | None,
               t_arrival: float | None = None, endpoint: str | None = None,
-              client: tuple | None = None) -> RelayRecord:
+              client: tuple | None = None, native: bool = False) -> RelayRecord:
         """`endpoint` and `client` (SRV-879): the ledger's endpoint and (client id, kind) of a
         request that came in another protocol (the Messages API: `messages`, its key's hash),
-        when the path and the handler's headers would say otherwise."""
+        when the path and the handler's headers would say otherwise. `native` (SRV-881): the
+        request passes through in the Messages API's shape (proxy/passthrough.py)."""
         rid = ("chatcmpl-px-" if path.endswith("chat/completions") else "px-") + \
             uuid.uuid4().hex[:24]
         rec = RelayRecord(rid, endpoint or relay_mod.endpoint_of(path),
@@ -391,6 +392,7 @@ class Service:
                           t_arrival=t_arrival)
         # the inbound protocol: the ledger's `api` column comes with the token schema (SRV-867)
         rec.api = "messages" if endpoint == "messages" else "openai"
+        rec.native = native
         rec.model = route.public
         rec.model_served = route.public
         rec.user = user
@@ -416,6 +418,9 @@ class Service:
             except Exception as exc:                               # noqa: BLE001
                 self.log(f"[hooks] turn failed, relayed as is: {type(exc).__name__}: {exc}")
                 rec.hk = None
+            if rec.hk is not None and native:
+                from proxy import passthrough
+                rec.hk.native = passthrough.HookView
             if rec.hk is not None:
                 try:
                     body, raw, route, deny = self._hooks_front(handler, path, raw, body, route,
@@ -476,7 +481,10 @@ class Service:
         return {"request_id": rec.request_id, "endpoint": relay_mod.endpoint_of(path),
                 "model": route.public, "upstream_model": route.model, "backend": route.backend,
                 "profile": prof or None, "user": rec.user or "owner", "session": rec.conv,
-                "client_kind": rec.client_kind, "stream": bool(rec.stream)}
+                "client_kind": rec.client_kind, "stream": bool(rec.stream),
+                # hooks-v1 1.1 (SRV-881): the client's protocol and the backend's
+                "protocol": {"inbound": getattr(rec, "api", None) or "openai",
+                             "upstream": _protocol_of(backend)}}
 
     def _hooks_front(self, handler, path, raw, body, route, rec):
         """request.received and route.select: (body, raw, route, a deny or None)."""
@@ -506,8 +514,29 @@ class Service:
             rec.backend = route.backend
             b = self.table.backend_for(route.backend)
             rec.backend_kind = b["kind"] if b else None
-        hk.ctx.update(model=route.public, upstream_model=route.model, backend=route.backend)
+        hk.ctx.update(model=route.public, upstream_model=route.model, backend=route.backend,
+                      protocol=dict(hk.ctx.get("protocol") or {}, upstream=_protocol_of(
+                          self.table.backend_for(route.backend))))
+        if getattr(rec, "native", False) and not self.all_native(route):
+            # SRV-881: a request that passes through goes to a Messages API backend only
+            return body, raw, route, {"hook": None,
+                                      "status": 409, "code": "protocol_native",
+                                      "message": f"a hook moved the request to "
+                                                 f"'{route.backend}', which does not speak the "
+                                                 f"Messages API; a request that passes through "
+                                                 f"stays on Messages API backends"}
         return body, raw, route, None
+
+    def all_native(self, route) -> bool:
+        """SRV-881: every candidate of `route` is a backend a Messages API request passes
+        through to (proxy/passthrough.py)."""
+        from proxy import passthrough
+        from proxy.messages import MESSAGES
+        for bid, _ in route.candidates():
+            b = self.table.backend_for(bid)
+            if b is None or not passthrough.native(self.adapter(b), MESSAGES):
+                return False
+        return True
 
     def _decided(self, handler, route, d: dict):
         """route.select's decision as a route: a backend (and its model), a model, a profile (the
@@ -577,6 +606,14 @@ class Service:
                 handler.end_headers()
                 handler.wfile.write(data)
                 handler._px_written = True
+            elif rec.stream and getattr(rec, "native", False):
+                # SRV-881: a Messages stream that passes through ends with an `error` event
+                handler.wfile.write(("event: error\ndata: " + json.dumps(
+                    {"type": "error", "error": {"type": "api_error",
+                                                "message": msg["error"]["message"]}})
+                    + "\n\n").encode())
+                handler.wfile.flush()
+                handler.close_connection = True
             elif rec.stream:
                 handler.wfile.write(("data: " + json.dumps(msg) + "\n\ndata: [DONE]\n\n")
                                     .encode())
@@ -587,6 +624,9 @@ class Service:
 
     def account(self, rec) -> None:
         """One ledger row and the proxy's metrics. Never fails a request."""
+        if getattr(rec, "thinking_dropped", 0) and rec.error_type is None:
+            # SRV-881: earlier turns went without their thinking (the stash had lost them)
+            rec.error_type = "thinking_evicted"
         try:
             row = rec.row(self.engine_version, self.code_sha)
         except Exception as exc:                                   # noqa: BLE001
@@ -745,6 +785,11 @@ class Service:
         e["plugin"] = p
         e["layer"] = "L2" if p is not None and p["state"] == "l2" else "L1"
         return e
+
+
+def _protocol_of(backend) -> str:
+    """hooks-v1 1.1: the protocol a backend speaks (`messages` for kind anthropic)."""
+    return "messages" if backend and backend.get("kind") == "anthropic" else "openai"
 
 
 def _f(x):

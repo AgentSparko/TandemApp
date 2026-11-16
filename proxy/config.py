@@ -95,7 +95,8 @@ same code path.
     TANDEM_ROUTE_<n>="gpt-*=openai"                 routing rules, ordered by n
     TANDEM_PRICE_<n>="deepseek/deepseek-flash=0.30,0.006,1.2"
                                                     USD per million: input, cached input, output,
-                                                    and optionally cache write
+                                                    and optionally cache write, then the 1-hour
+                                                    cache write (SRV-881)
     TANDEM_PRICE_<n>_OFFPEAK="0.15,0.003,0.6"       the same model outside the provider's peak
                                                     hours (DeepSeek)
     TANDEM_API_KEYS="laptop:tdm-...,ci:tdm-..."     the proxy's own keys, in memory only
@@ -277,7 +278,9 @@ ADDED = (("models", "price_offpeak", "TEXT"),
          # SRV-845: the settings change set an audit row belongs to
          ("audit", "change_set", "TEXT"),
          # SRV-877: a kind's own settings (kind anthropic: auth, api_version, sampling, ...)
-         ("backends", "anthropic", "TEXT NOT NULL DEFAULT '{}'"))
+         ("backends", "anthropic", "TEXT NOT NULL DEFAULT '{}'"),
+         # SRV-881: the price of a cache write kept for 1 hour (the cache write price without)
+         ("models", "price_cache_write_1h", "REAL"))
 
 
 def _inflight_col(v) -> int:
@@ -488,14 +491,17 @@ def parse_env(env) -> dict:
             ref, sep, nums = env[var].partition("=")
             bid, slash, mid = ref.strip().partition("/")
             vals = [x.strip() for x in nums.split(",")]
-            if not sep or not slash or len(vals) not in (3, 4):
+            if not sep or not slash or len(vals) not in (3, 4, 5):
                 raise ConfigError(f"{var}: write it as <backend>/<model>=<input>,<cached input>,"
-                                  f"<output>[,<cache write>] in USD per million tokens", var=var)
+                                  f"<output>[,<cache write>[,<cache write 1 h>]] in USD per "
+                                  f"million tokens", var=var)
             p = [_num(x, var) for x in vals]
             out["prices"].append({"backend": bid, "model": mid, "var": var,
                                   "price": {"input": p[0], "cached_input": p[1], "output": p[2],
                                             "cache_write": p[3] if len(p) > 3 else None,
                                             "currency": "USD"}})
+            if len(p) > 4:
+                out["prices"][-1]["price"]["cache_write_1h"] = p[4]
             if m.group(1) in offpeak:
                 out["prices"][-1]["price"]["offpeak"] = offpeak.pop(m.group(1))
     for n in offpeak:
@@ -1068,12 +1074,13 @@ class ConfigDB:
         p = price or {}
         self._conn.execute("UPDATE models SET price_input = ?, price_cached_input = ?, "
                            "price_cache_write = ?, price_output = ?, currency = ?, "
-                           "price_updated_at = ?, price_offpeak = ? WHERE backend_id = ? AND "
-                           "model_id = ?",
+                           "price_updated_at = ?, price_offpeak = ?, price_cache_write_1h = ? "
+                           "WHERE backend_id = ? AND model_id = ?",
                            (p.get("input"), p.get("cached_input"), p.get("cache_write"),
                             p.get("output"), p.get("currency", "USD") if price else None,
                             _now_ms() if price else None,
-                            json.dumps(p["offpeak"]) if p.get("offpeak") else None, bid, mid))
+                            json.dumps(p["offpeak"]) if p.get("offpeak") else None,
+                            p.get("cache_write_1h"), bid, mid))
 
     def sync_models(self, bid: str, found: list[dict] | None, listed: list[str],
                     mode: str, trust_new: bool = False) -> list[str]:
@@ -1134,7 +1141,8 @@ class ConfigDB:
         sql = ("SELECT backend_id, model_id, public_id, enabled, present, source, discovered_at, "
                "context_length, price_input, price_cached_input, price_cache_write, "
                "price_output, currency, price_updated_at, fallback, price_offpeak, name, "
-               "max_output, input_modalities, effort, max_output_set FROM models")
+               "max_output, input_modalities, effort, max_output_set, price_cache_write_1h "
+               "FROM models")
         args: tuple = ()
         if bid is not None:
             sql += " WHERE backend_id = ?"
@@ -1147,11 +1155,13 @@ class ConfigDB:
                 feats.setdefault((b, m), {})[f] = v
         out = []
         for (b, m, pub, en, present, src, disc, ctx, pi, pci, pcw, po, cur, pat, fb,
-             off, name, mout, mods, eff, mset) in rows:
+             off, name, mout, mods, eff, mset, pcw1h) in rows:
             price = None
             if pat is not None:
                 price = {"input": pi, "cached_input": pci, "cache_write": pcw, "output": po,
                          "currency": cur or "USD", "updated_at": pat}
+                if pcw1h is not None:
+                    price["cache_write_1h"] = pcw1h
                 if off:
                     price["offpeak"] = json.loads(off)
             f = {g: "inherit" for g in FEATURE_GROUPS}

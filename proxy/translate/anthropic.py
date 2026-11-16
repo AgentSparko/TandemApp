@@ -470,10 +470,14 @@ def _event(event: bytes) -> tuple[str | None, dict | None]:
 
 class StreamToChat:
     """One Messages stream as OpenAI chunks. `usage` is the merged Messages usage, `done` true
-    once `[DONE]` went out."""
+    once `[DONE]` went out. `keep(content)` (SRV-881, the thinking stash) gets the answer's own
+    content blocks, signatures included, when it ends with `message_stop`."""
 
-    def __init__(self, created: int):
+    def __init__(self, created: int, keep=None):
         self.created = created
+        self.keep = keep
+        self.content: list = []          # the answer's blocks as the backend sent them
+        self._open: dict = {}            # block index -> (its block, the input JSON so far)
         self.id = None
         self.model = None
         self.usage: dict | None = None
@@ -494,12 +498,47 @@ class StreamToChat:
     def _tool(self, n: int, **fn) -> dict:
         return {"tool_calls": [dict({"index": n}, **fn)]}
 
+    def _collect(self, kind, obj) -> None:
+        """The answer's own blocks, for the stash (only while it has someone to give them)."""
+        if kind == "content_block_start" and isinstance(obj.get("content_block"), dict):
+            b = json.loads(json.dumps(obj["content_block"]))
+            self._open[obj.get("index")] = (b, [])
+            self.content.append(b)
+        elif kind == "content_block_delta" and obj.get("index") in self._open:
+            b, parts = self._open[obj["index"]]
+            d = obj.get("delta") if isinstance(obj.get("delta"), dict) else {}
+            dt = d.get("type")
+            if dt == "text_delta":
+                b["text"] = (b.get("text") or "") + (d.get("text") or "")
+            elif dt == "thinking_delta":
+                b["thinking"] = (b.get("thinking") or "") + (d.get("thinking") or "")
+            elif dt == "signature_delta":
+                b["signature"] = d.get("signature") or ""
+            elif dt == "input_json_delta":
+                parts.append(d.get("partial_json") or "")
+            elif dt == "citations_delta" and d.get("citation") is not None:
+                b.setdefault("citations", []).append(d["citation"])
+        elif kind == "content_block_stop" and obj.get("index") in self._open:
+            b, parts = self._open.pop(obj["index"])
+            if b.get("type") in ("tool_use", "server_tool_use") and "".join(parts).strip():
+                try:
+                    b["input"] = json.loads("".join(parts))
+                except ValueError:
+                    self.keep = None             # a call cut short: nothing to keep
+        elif kind == "message_stop" and self.keep is not None:
+            keep, self.keep = self.keep, None
+            keep(self.content)
+        elif kind == "error":
+            self.keep = None
+
     def feed(self, event: bytes) -> bytes:
         if self.done:
             return b""
         kind, obj = _event(event)
         if obj is None:
             return b""
+        if self.keep is not None:
+            self._collect(kind, obj)
         if kind == "message_start":
             m = obj.get("message") or {}
             self.id, self.model = m.get("id"), m.get("model")

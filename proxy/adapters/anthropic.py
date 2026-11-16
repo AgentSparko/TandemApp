@@ -15,7 +15,14 @@ USAGE arrives in every answer unasked (`message_start`, `message_delta`), so no 
 asked for. A client that asked for `stream_options.include_usage` gets the usage chunk; for any
 other it is dropped like an injected one. The ledger reads the Messages usage itself:
 `prompt_tokens` = input + cache read + cache write, `cached_tokens` = cache read,
-`cache_write_tokens` = cache write, `reasoning_tokens` = the thinking tokens when counted.
+`cache_write_tokens` = cache write, `reasoning_tokens` = the thinking tokens when counted; the
+1-hour writes (`cache_creation.ephemeral_1h_input_tokens`) are priced at `cache_write_1h`.
+
+PASS-THROUGH (SRV-881): a Messages API client's request (`/v1/messages`, its `count_tokens`) is
+not translated: `prepare` sends the client's bytes, the model value set to the upstream id when
+it differs (proxy/passthrough.py), and the answer goes back as sent; `read_frame` and `read_body`
+read the Messages events and message for the ledger (usage, stop reason, tool calls, thinking,
+an `error` event).
 
 MODELS. `GET <base>/v1/models?limit=1000`, then each next page by `after_id` while `has_more`:
 the id, `display_name`, `max_input_tokens`, `max_tokens`, image input and the effort levels its
@@ -30,10 +37,12 @@ from __future__ import annotations
 
 import json
 
-from proxy.adapters.base import CHAT, PASS_HEADERS, PASS_PREFIXES, Adapter, _int
+from proxy.adapters.base import CHAT, PASS_HEADERS, PASS_PREFIXES, Adapter, _int, sse_data
 from proxy.translate import anthropic as tr
 
 MESSAGES = "/v1/messages"
+COUNT = "/v1/messages/count_tokens"
+NATIVE = (MESSAGES, COUNT)
 RETRYABLE = (429, 502, 503, 529)
 PASS = PASS_HEADERS + ("request-id",)
 PREFIXES = PASS_PREFIXES + ("anthropic-ratelimit-",)
@@ -49,7 +58,11 @@ class Anthropic(Adapter):
         return tr.options(self.backend)
 
     def routes(self) -> tuple[str, ...]:
-        return (CHAT,)
+        return (CHAT, MESSAGES, COUNT)
+
+    def passes_through(self, path: str) -> bool:
+        """SRV-881: a Messages API request on this path goes on as the client sent it."""
+        return path in NATIVE
 
     def capabilities(self) -> dict:
         return {"continue_final_message": False, "choice": "text",
@@ -107,20 +120,31 @@ class Anthropic(Adapter):
         return tr.dropped(body, self.opts())
 
     def prepare(self, path: str, raw: bytes, body: dict, upstream_model: str,
-                max_output: int | None = None) -> tuple[bytes, bool]:
+                max_output: int | None = None, stash=None) -> tuple[bytes, bool]:
         """(the Messages request, whether the usage chunk is the client's to drop). Raises
-        tr.TranslateError for a field with no equal."""
+        tr.TranslateError for a field with no equal. A Messages API request passes through:
+        the client's bytes, the model value set when it differs (SRV-881). `stash(messages)`:
+        the thinking stash's restore of a translated history (proxy/stash.py)."""
+        if path in NATIVE:
+            if body.get("model") == upstream_model:
+                return raw, False
+            from proxy import passthrough
+            return passthrough.set_model(raw, upstream_model), False
         out = tr.to_messages(body, upstream_model, self.opts(), max_output)
+        if stash is not None:
+            out["messages"] = stash(out["messages"])
         opts = body.get("stream_options")
         asked = isinstance(opts, dict) and opts.get("include_usage") is True
         return json.dumps(out, ensure_ascii=False).encode(), bool(out.get("stream")) and not asked
 
     # ----------------------------------------------------------------- the answer
-    def stream_translator(self, created: int):
-        return tr.StreamToChat(created)
+    def stream_translator(self, created: int, keep=None):
+        return tr.StreamToChat(created, keep)
 
-    def answer(self, status: int, data: bytes, created: int) -> tuple[int, bytes, dict | None]:
-        """A whole answer in the OpenAI shape: (status, bytes, the Messages usage)."""
+    def answer(self, status: int, data: bytes, created: int, keep=None
+               ) -> tuple[int, bytes, dict | None]:
+        """A whole answer in the OpenAI shape: (status, bytes, the Messages usage). `keep`:
+        the thinking stash's, given the answer's own content blocks (SRV-881)."""
         if status >= 400:
             st, body = tr.error_out(status, data)
             return st, body, None
@@ -131,8 +155,82 @@ class Anthropic(Adapter):
         if not isinstance(obj, dict) or obj.get("type") == "error":
             st, body = tr.error_out(502 if not isinstance(obj, dict) else status, data)
             return st, body, None
+        if keep is not None and status == 200 and isinstance(obj.get("content"), list):
+            keep(obj["content"])
         out, usage = tr.from_message(obj, created)
         return status, json.dumps(out, ensure_ascii=False).encode(), usage
+
+    # ----------------------------------------------------------------- pass-through (SRV-881)
+    def read_frame(self, path: str, event: bytes, st, injected: bool) -> tuple[bool, bool]:
+        if path not in NATIVE:
+            return super().read_frame(path, event, st, injected)
+        data = sse_data(event)
+        try:
+            obj = json.loads(data) if data else None
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            return False, False
+        t = obj.get("type")
+        if t == "message_start":
+            m = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+            if st.response_id is None and isinstance(m.get("id"), str):
+                st.response_id = m["id"][:80]
+            st.model = st.model or m.get("model")
+            if isinstance(m.get("usage"), dict):
+                st.native = dict(m["usage"])
+        elif t == "content_block_start":
+            b = obj.get("content_block") if isinstance(obj.get("content_block"), dict) else {}
+            if b.get("type") == "tool_use":
+                st.tools.add(obj.get("index"))
+                st.tool_name = b.get("name") if isinstance(b.get("name"), str) else None
+            elif b.get("type") in ("thinking", "redacted_thinking"):
+                st.reasoning = True
+        elif t == "content_block_delta":
+            d = obj.get("delta") if isinstance(obj.get("delta"), dict) else {}
+            kind = {"text_delta": "content", "thinking_delta": "reasoning",
+                    "input_json_delta": "tool"}.get(d.get("type"))
+            if kind is None:
+                return False, False
+            if kind == "tool":
+                st.tool_chars += len(d.get("partial_json") or "")
+            elif kind == "reasoning":
+                st.reasoning = True
+            st.kind = kind
+            st.tokens_seen += 1
+            return True, False
+        elif t == "message_delta":
+            u = obj.get("usage")
+            if isinstance(u, dict):
+                st.native = dict(st.native or {})
+                st.native.update({k: v for k, v in u.items() if v is not None})
+            stop = (obj.get("delta") or {}).get("stop_reason") \
+                if isinstance(obj.get("delta"), dict) else None
+            if stop:
+                st.finish_reason = tr.FINISH.get(stop, "stop")
+        elif t == "message_stop":
+            st.done = True
+        elif t == "error":
+            st.error = obj.get("error") if isinstance(obj.get("error"), dict) else {"type": t}
+            st.finish_reason = "error"
+        return False, False
+
+    def read_body(self, path: str, obj, st) -> None:
+        if path not in NATIVE:
+            return super().read_body(path, obj, st)
+        if not isinstance(obj, dict) or obj.get("type") == "error":
+            return
+        if st.response_id is None and isinstance(obj.get("id"), str):
+            st.response_id = obj["id"][:80]
+        if isinstance(obj.get("usage"), dict):
+            st.native = dict(obj["usage"])
+        if obj.get("stop_reason"):
+            st.finish_reason = tr.FINISH.get(obj["stop_reason"], "stop")
+        for i, b in enumerate(obj.get("content") or []):
+            if isinstance(b, dict) and b.get("type") == "tool_use":
+                st.tools.add(i)
+            elif isinstance(b, dict) and b.get("type") in ("thinking", "redacted_thinking"):
+                st.reasoning = True
 
     def read_usage(self, obj, path: str = CHAT) -> dict:
         if isinstance(obj, dict) and "prompt_tokens" not in obj and \
@@ -140,11 +238,15 @@ class Anthropic(Adapter):
             parts = [_int(obj.get(k)) for k in ("input_tokens", "cache_read_input_tokens",
                                                  "cache_creation_input_tokens")]
             details = obj.get("output_tokens_details")
+            cc = obj.get("cache_creation")
             return {"prompt_tokens": None if parts[0] is None else sum(p or 0 for p in parts),
                     "completion_tokens": _int(obj.get("output_tokens")),
                     "cached_tokens": parts[1], "cache_write_tokens": parts[2],
                     "reasoning_tokens": _int(details.get("thinking_tokens"))
-                    if isinstance(details, dict) else None}
+                    if isinstance(details, dict) else None,
+                    # SRV-881: the writes kept for 1 hour, priced apart (`cache_write_1h`)
+                    "cache_write_1h_tokens": _int(cc.get("ephemeral_1h_input_tokens"))
+                    if isinstance(cc, dict) else None}
         return super().read_usage(obj, path)
 
     # ----------------------------------------------------------------- discovery

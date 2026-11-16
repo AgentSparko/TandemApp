@@ -518,7 +518,8 @@ class Adapter:
     @staticmethod
     def cost(usage: dict, price: dict | None) -> int | None:
         """Micro-dollars: (prompt - cached - written) x input + cached x cached input + written x
-        the cache write price + completion x output, prices in USD per million tokens (so USD per
+        the cache write price (the 1-hour writes at `cache_write_1h` when the row has one) +
+        completion x output, prices in USD per million tokens (so USD per
         million x tokens is micro-dollars). `prompt_tokens` counts the cache writes too (SRV-877),
         so each written token is paid once, at the write price (the input price without one).
         None without a price, without the counts, or without a price a non-zero count needs."""
@@ -535,7 +536,13 @@ class Adapter:
         pcw = price.get("cache_write")
         if cw and pcw is None:
             pcw = pin
-        cost = ((usage["prompt_tokens"] - cached - cw) * pin + cached * pc + cw * (pcw or 0)
+        # SRV-881: the writes kept for 1 hour at their own price (`cache_write_1h`), the
+        # write price without one
+        w1h = min(usage.get("cache_write_1h_tokens") or 0, cw)
+        p1h = price.get("cache_write_1h")
+        p1h = pcw if p1h is None else p1h
+        cost = ((usage["prompt_tokens"] - cached - cw) * pin + cached * pc
+                + (cw - w1h) * (pcw or 0) + w1h * (p1h or 0)
                 + usage["completion_tokens"] * pout)
         return int(round(cost))
 

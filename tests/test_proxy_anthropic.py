@@ -163,7 +163,8 @@ def test_adapter_headers_path_and_what_it_never_forwards():
     assert not A.make({"kind": "openai"}).retryable(529), "the other kinds keep their set"
     assert a.passes("request-id") and a.passes("anthropic-ratelimit-requests-remaining")
     assert a.passes("retry-after") and not a.passes("set-cookie")
-    assert a.routes() == (CHAT,) and a.inject_usage() is False and a.cloud
+    assert a.routes() == (CHAT, "/v1/messages", "/v1/messages/count_tokens") and \
+        a.inject_usage() is False and a.cloud
 
 
 def test_prepare_drops_the_usage_chunk_unless_the_client_asked():
