@@ -25,7 +25,7 @@
 // code until {"engineFail": "<route>:"} clears it, and {"engineJob": "fail"} stops the next model
 // install in its download.
 // The settings interface (/v1/settings/*, mock/settings.ts, VIS-280) lives with the fleet's scenario:
-// POST /__mock/settings {restart, busy_s, fail, busy, move, hooks, unreachable, wheel} sets what no
+// POST /__mock/settings {restart, busy_s, fail, busy, move, hooks, trust, unreachable, wheel} sets what no
 // click produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
 // registry plugged in, no wheel for the chat extension); while one of its restarts drains the engine host, the gateway answers 503
 // with Retry-After.

@@ -23,7 +23,7 @@ const valueOf = async (r: Rig, scope: string, key: string, target?: string) => o
 /** plan a change set and apply it with the plan's confirms */
 async function change(r: Rig, changes: unknown[], extra: Record<string, unknown> = {}): Promise<Result> {
   const plan = ok<Plan>(await post(r, '/plan', { changes }));
-  return ok<Result>(await post(r, '/apply', { changes, confirm: plan.confirm, ...(plan.confirm_fingerprint ? { confirm_fingerprint: plan.confirm_fingerprint } : {}), ...extra }));
+  return ok<Result>(await post(r, '/apply', { changes, confirm: plan.confirm, ...(plan.confirm_fingerprint ? { confirm_fingerprint: plan.confirm_fingerprint } : {}), ...(plan.confirm_grant ? { confirm_grant: plan.confirm_grant } : {}), ...extra }));
 }
 const QUEUE = [{ scope: 'engine', target: 'eh-desk', set: { MAX_QUEUE: '32' } }];
 
@@ -164,13 +164,70 @@ describe('the mock answers the contract', () => {
   });
 });
 
+describe('the hooks scope: the hook registry and the decision providers', () => {
+  it('each hook’s and provider’s switches, checked as the registry checks them', async () => {
+    const r = rig();
+    r.mock.control({ hooks: true });
+    const sch = ok<SchemaView>(await get(r, '/hooks/schema'));
+    const keys = Object.fromEntries(sch.keys.map((k) => [k.key, k]));
+    expect(Object.keys(keys).filter((k) => k.startsWith('hooks.audit.'))).toEqual(['hooks.audit.enabled', 'hooks.audit.mode', 'hooks.audit.payload', 'hooks.audit.policy', 'hooks.audit.priority', 'hooks.audit.scope', 'hooks.audit.secret', 'hooks.audit.timeout_ms']);
+    expect([keys['hooks.audit.secret'].secret, keys['hooks.audit.secret'].writable, keys['providers.classes.api_key'].writable, keys['providers.own.api_key']]).toEqual([true, false, true, undefined]);
+    const v = await valueOf(r, 'hooks', 'hooks.guard.scope');
+    expect([v.value, v.set, v.label, v.source]).toEqual([{ models: ['big-*'], users: ['guest*'] }, true, 'No big model for guests', 'hooks']);
+    expect((await valueOf(r, 'hooks', 'hooks.audit.scope')).set).toBe(false);
+    expect((await valueOf(r, 'hooks', 'providers.classes.mode')).source).toBe('providers');
+    // refusals on their key
+    for (const [k, val] of [['hooks.audit.mode', 'loud'], ['hooks.audit.timeout_ms', 99999], ['hooks.audit.scope', { colours: [] }], ['providers.classes.ab_percent', 150], ['providers.classes.questions', { weather: {} }]] as const) {
+      const s = await post(r, '/plan', { changes: [{ scope: 'hooks', set: { [k]: val } }] });
+      expect([...refused(s), (s.body as { error: { key?: string } }).error.key], k).toEqual([422, 'bad_value', k]);
+    }
+    // one enabled provider a question on or ab
+    const taken = await post(r, '/plan', { changes: [{ scope: 'hooks', set: { 'providers.own.questions': { classify: {} }, 'providers.own.mode': 'on' } }] });
+    expect([...refused(taken), (taken.body as { error: { key?: string } }).error.key]).toEqual([422, 'bad_value', 'providers.own.mode']);
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'hooks', unset: ['hooks.audit.mode'] }] }))).toEqual([422, 'bad_value']);
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'hooks', set: { 'hooks.audit.secret': 'x' } }] }))).toEqual([422, 'locked']);
+    // a question moves between two providers in one change set
+    const res = await change(r, [{ scope: 'hooks', set: { 'providers.classes.mode': 'shadow', 'providers.own.mode': 'on', 'providers.own.questions': { classify: {}, memory_gate: {} } } }]);
+    expect(res.state).toBe('applied');
+    // a provider's question no longer answered takes its key with it
+    await change(r, [{ scope: 'hooks', set: { 'providers.classes.questions.judge.api_key': SECRETS[1] } }]);
+    await change(r, [{ scope: 'hooks', set: { 'providers.classes.questions': { classify: {} } } }]);
+    expect(ok<SchemaView>(await get(r, '/hooks/schema')).keys.map((k) => k.key)).not.toContain('providers.classes.questions.judge.api_key');
+    for (const seen of r.seen) expect(seen).not.toContain(SECRETS[1]);
+  });
+
+  it('a hook’s full payload: pairing’s rights, and outside the LAN a second confirm', async () => {
+    const r = rig();
+    r.mock.control({ hooks: true, trust: false });
+    const away = [{ scope: 'hooks', set: { 'hooks.export.payload': 'full' } }];
+    const no = await post(r, '/plan', { changes: away });
+    expect([...refused(no), (no.body as { error: { key: string } }).error.key]).toEqual([403, 'trust_required', 'hooks.export.payload']);
+    r.mock.control({ trust: true });
+    const plan = ok<Plan>(await post(r, '/plan', { changes: away }));
+    expect([plan.grant_keys, plan.parts[0].grant_keys, typeof plan.confirm_grant, plan.confirm_fingerprint]).toEqual([['hooks/controller:hooks.export.payload'], ['hooks.export.payload'], 'string', null]);
+    expect(plan.parts[0].warnings.some((w) => w.includes('archive.example.com, outside the LAN'))).toBe(true);
+    expect(refused(await post(r, '/apply', { changes: away, confirm: plan.confirm }))).toEqual([428, 'grant_confirm_required']);
+    expect(refused(await post(r, '/apply', { changes: away, confirm: plan.confirm, confirm_grant: 'g'.repeat(32) }))).toEqual([409, 'stale_plan']);
+    expect(ok<Result>(await post(r, '/apply', { changes: away, confirm: plan.confirm, confirm_grant: plan.confirm_grant })).state).toBe('applied');
+    expect((await valueOf(r, 'hooks', 'hooks.export.payload')).value).toBe('full');
+    // on the LAN, one confirm; full already, nothing to grant
+    const near = ok<Plan>(await post(r, '/plan', { changes: [{ scope: 'hooks', set: { 'hooks.audit.payload': 'full', 'hooks.export.payload': 'full' } }] }));
+    expect([near.grant_keys, near.confirm_grant, near.parts[0].changes.map((c) => c.key)]).toEqual([[], null, ['hooks.audit.payload']]);
+    // the one-scope route takes confirm_grant too
+    const back = ok<Result>(await post(r, '/hooks/apply', { set: { 'hooks.export.payload': 'meta' }, confirm: ok<Plan>(await post(r, '/hooks/plan', { set: { 'hooks.export.payload': 'meta' } })).confirm }));
+    const again = ok<Plan>(await post(r, '/hooks/plan', { set: { 'hooks.export.payload': 'full' } }));
+    expect(ok<Result>(await post(r, '/hooks/apply', { set: { 'hooks.export.payload': 'full' }, confirm: again.confirm, confirm_grant: again.confirm_grant })).state).toBe('applied');
+    expect(back.state).toBe('applied');
+  });
+});
+
 describe('secrets', () => {
   it('a key is set and unset, and no answer, version or audit row holds it', async () => {
     const r = rig();
     r.mock.control({ hooks: true });
     const changes = [
       { scope: 'backends', set: { 'backends.cloud.key': SECRETS[0], 'backends.cloud.max_inflight': 4 } },
-      { scope: 'hooks', set: { 'hooks.audit.token': SECRETS[1] } },
+      { scope: 'hooks', set: { 'providers.classes.questions.classify.api_key': SECRETS[1] } },
     ];
     const plan = ok<Plan>(await post(r, '/plan', { changes }));
     const key = plan.parts[0].changes.find((c) => c.key === 'backends.cloud.key')!;
@@ -179,7 +236,7 @@ describe('secrets', () => {
     expect(res.parts.map((p) => p.state)).toEqual(['applied', 'applied']);
     const stored = await valueOf(r, 'backends', 'backends.cloud.key');
     expect([stored.value, stored.set, typeof stored.hint]).toEqual([null, true, 'string']);
-    expect((await valueOf(r, 'hooks', 'hooks.audit.token')).set).toBe(true);
+    expect((await valueOf(r, 'hooks', 'providers.classes.questions.classify.api_key')).set).toBe(true);
     // versions keep every key but the secrets; a restore says they stay as they are
     const vers = ok<VersionsView>(await get(r, '/backends/versions'));
     expect(vers.versions[0].keys).toContain('backends.cloud.key');
@@ -267,7 +324,7 @@ describe('a change set', () => {
   it('the first failure stops the set: what was applied stays and says how to restore it, the rest is not run', async () => {
     const r = rig();
     r.mock.control({ hooks: true, fail: 'apply-engine:engine_unreachable' });
-    const changes = [{ scope: 'app', set: { chat: 'on' } }, ...QUEUE, { scope: 'hooks', set: { 'hooks.audit.mode': 'enforce' } }];
+    const changes = [{ scope: 'app', set: { chat: 'on' } }, ...QUEUE, { scope: 'hooks', set: { 'hooks.audit.mode': 'shadow' } }];
     const res = await change(r, changes);
     expect([res.state, res.applied, res.failed, res.not_run]).toEqual(['partial', ['app/controller'], 'engine/eh-desk', ['hooks/controller']]);
     expect(res.parts.map((p) => p.state)).toEqual(['applied', 'failed', 'not_run']);
@@ -280,7 +337,7 @@ describe('a change set', () => {
     expect(plan.parts.map((p) => p.changed)).toEqual([false, true, true]);
     // a set whose first part fails applies nothing
     r.mock.control({ fail: 'apply-app:store_refused' });
-    const none = await change(r, [{ scope: 'app', set: { chat: 'off' } }, { scope: 'hooks', set: { 'hooks.audit.mode': 'enforce' } }]);
+    const none = await change(r, [{ scope: 'app', set: { chat: 'off' } }, { scope: 'hooks', set: { 'hooks.audit.mode': 'shadow' } }]);
     expect([none.state, none.applied, none.parts.map((p) => p.state)]).toEqual(['failed', [], ['failed', 'not_run']]);
   });
 
@@ -471,7 +528,12 @@ describe('the mock in its fleet', () => {
     expect((call('GET', '/v1/settings/app').body as ValuesView).values.find((v) => v.key === 'chat')).toEqual({ key: 'chat', value: 'off', set: false, source: 'install' });
     // the hooks scope answers an empty schema and why, not an error
     const hooks = call('GET', '/v1/settings/hooks/schema');
-    expect([hooks.status, (hooks.body as SchemaView).keys, (hooks.body as SchemaView).why]).toEqual([200, [], 'no hook is registered yet: the hooks scope has no key']);
-    expect((call('POST', '/v1/settings/plan', { changes: [{ scope: 'hooks', set: { 'hooks.audit.mode': 'observe' } }] }).body as { error: { type: string } }).error.type).toBe('unknown_key');
+    expect([hooks.status, (hooks.body as SchemaView).keys, (hooks.body as SchemaView).why?.startsWith('no hook and no decision provider yet')]).toEqual([200, [], true]);
+    expect((call('POST', '/v1/settings/plan', { changes: [{ scope: 'hooks', set: { 'hooks.audit.mode': 'shadow' } }] }).body as { error: { type: string } }).error.type).toBe('unknown_key');
+    // the seeded fleet's registry holds the sample hooks and providers
+    const seeded = new MockFleet({ now: T0 / 1000 });
+    const keys = (seeded.settings.handle('GET', '/v1/settings/hooks/schema', new URLSearchParams(), null, T0).body as SchemaView).keys.map((k) => k.key);
+    expect(keys).toContain('hooks.audit.payload');
+    expect(keys).toContain('providers.classes.questions.judge.api_key');
   });
 });

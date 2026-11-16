@@ -609,7 +609,7 @@ export class MockFleet {
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
-    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', now: this.t0 * 1000 });
+    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', hooks: this.scenario !== 'empty', now: this.t0 * 1000 });
     if (this.scenario === 'mixed') this.ops.seed('r3', '0.15.1');
     const seed = o.seed ?? 42;
     this.ph = (key) => hash(`${seed}:${key}`);

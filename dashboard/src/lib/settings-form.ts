@@ -2,8 +2,9 @@
 // asks for, what it holds now or what is staged for it, why it is locked when it is, what changing
 // it costs (a restart, the disk cache's fingerprint) and whether it can go back to what stands
 // below it. The same generator serves every scope: the page's switches, the backends' fields, the
-// conductor's documents, an engine host's keys and, once a hook registers, the hooks'. Kept free of
-// the DOM; views/settings/form.ts draws the fields.
+// conductor's documents, an engine host's keys, and each hook's and decision provider's switches
+// (the hooks scope, proxy/hooksettings.py). Kept free of the DOM; views/settings/form.ts draws the
+// fields.
 
 import type { KeySpec, KeyValue, SchemaView, Scope, ValuesView, Version } from '../api/settings';
 import { same, type DraftPart } from './settings-draft';
@@ -100,6 +101,29 @@ export const MODE_WORDS: Record<string, { label: string; text: string }> = {
   chat: { label: 'Chat mode', text: 'The engine runs its own conductor and chat extension in front of its model.' },
 };
 
+/** A key of the hooks scope: a hook's (`hooks.<id>.<field>`) or a decision provider's
+ *  (`providers.<id>.<field>`, `providers.<id>.questions.<question>.api_key`). */
+export interface HookKey {
+  kind: 'hook' | 'provider';
+  id: string;
+  field: string;
+  /** a question's own API key */
+  question: string | null;
+}
+
+export function hookKey(key: string): HookKey | null {
+  const q = /^providers\.(.+)\.questions\.([a-z_]+)\.api_key$/.exec(key);
+  if (q) return { kind: 'provider', id: q[1], field: 'api_key', question: q[2] };
+  const m = /^(hooks|providers)\.(.+)\.([a-z_]+)$/.exec(key);
+  return m ? { kind: m[1] === 'hooks' ? 'hook' : 'provider', id: m[2], field: m[3], question: null } : null;
+}
+
+const HOOK_LABEL: Record<string, string> = { enabled: 'On', mode: 'Mode', priority: 'Priority', scope: 'Runs on', policy: 'When it fails', timeout_ms: 'Time limit (ms)', payload: 'What it sees', secret: 'Signing secret' };
+const PROVIDER_LABEL: Record<string, string> = { enabled: 'On', mode: 'Mode', ab_percent: 'A/B share (%)', sticky: 'A/B sticks to', questions: 'Questions', api_key: 'API key' };
+/** the order of a hook's and a provider's fields in their group */
+const HOOK_ORDER = ['enabled', 'mode', 'priority', 'payload', 'scope', 'policy', 'timeout_ms', 'secret'];
+const PROVIDER_ORDER = ['enabled', 'mode', 'ab_percent', 'sticky', 'questions', 'api_key'];
+
 export function labelOf(scope: Scope, key: string, held: KeyValue | null = null): { label: string; mono: boolean } {
   if (scope === 'app') return { label: key === 'chat' ? 'Chat' : key === 'conductor' ? 'Conductor' : humanize(key), mono: false };
   if (scope === 'engine') return key === MODE_KEY ? { label: 'Mode', mono: false } : key === EXT_KEY ? { label: 'Chat extension', mono: false } : { label: key, mono: true };
@@ -109,7 +133,10 @@ export function labelOf(scope: Scope, key: string, held: KeyValue | null = null)
     if (key.startsWith('users.')) return { label: held?.label ? `Key of ${held.label}` : `Key ${key.split('.')[1]}`, mono: false };
     return { label: humanize(key.split('.').slice(2).join('.')), mono: false };
   }
-  return { label: humanize(key.replace(/^hooks\./, '')), mono: false };
+  const h = hookKey(key);
+  if (h?.question) return { label: `API key for ${h.question}`, mono: false };
+  const own = h && (h.kind === 'hook' ? HOOK_LABEL : PROVIDER_LABEL)[h.field];
+  return { label: own ?? humanize(h ? h.field : key.replace(/^hooks\./, '')), mono: false };
 }
 
 /** A value in a few words, for a plan's line or a hint. */
@@ -140,7 +167,7 @@ const RESET: Record<Scope, string> = {
   backends: 'Clear',
   conductor: 'Back to the built-in one',
   engine: 'Use the engine’s own value',
-  hooks: 'Clear',
+  hooks: 'Use the default',
 };
 
 function resetOf(scope: Scope, spec: KeySpec, held: KeyValue | null): string | null {
@@ -253,7 +280,39 @@ export function groupsOf(scope: Scope, fields: Field[]): Group[] {
       { id: 'host', title: 'Set on the engine host', sub: 'Shown for reference. These are not changed from TandemApp.', fields: rest.filter((f) => !f.spec.writable) },
     ].filter((g) => g.fields.length);
   }
-  return fields.length ? [{ id: scope, title: scope === 'conductor' ? 'Documents' : scope === 'hooks' ? 'Hook settings' : '', sub: null, fields }] : [];
+  if (scope === 'hooks') {
+    // a group a hook, then a group a decision provider, each named after it
+    const out: Group[] = [];
+    const rest: Field[] = [];
+    const by = new Map<string, Group>();
+    for (const f of fields) {
+      const h = hookKey(f.key);
+      if (!h) {
+        rest.push(f);
+        continue;
+      }
+      const id = `${h.kind}:${h.id}`;
+      let g = by.get(id);
+      if (!g) {
+        g = { id, title: h.id, sub: h.kind === 'hook' ? `Hook ${h.id}` : `Decision provider ${h.id}`, fields: [] };
+        by.set(id, g);
+        out.push(g);
+      }
+      if (typeof f.held?.label === 'string' && f.held.label) g.title = f.held.label;
+      g.fields.push(f);
+    }
+    const rank = (f: Field): string => {
+      const h = hookKey(f.key)!;
+      const order = h.kind === 'hook' ? HOOK_ORDER : PROVIDER_ORDER;
+      const i = order.indexOf(h.field);
+      return `${i >= 0 ? String(i).padStart(2, '0') : '99'}${h.question ?? ''}`;
+    };
+    for (const g of out) g.fields.sort((a, b) => (rank(a) < rank(b) ? -1 : rank(a) > rank(b) ? 1 : 0));
+    out.sort((a, b) => (a.id.startsWith('hook:') === b.id.startsWith('hook:') ? 0 : a.id.startsWith('hook:') ? -1 : 1));
+    if (rest.length) out.push({ id: 'hooks', title: 'Other settings', sub: null, fields: rest });
+    return out;
+  }
+  return fields.length ? [{ id: scope, title: scope === 'conductor' ? 'Documents' : '', sub: null, fields }] : [];
 }
 
 export type Parsed = { ok: true; value: unknown } | { ok: true; unset: true } | { ok: false; error: string };

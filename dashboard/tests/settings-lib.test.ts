@@ -9,8 +9,8 @@ import { RESTART_ENDED, SettingsError, type KeySpec, type KeyValue, type Plan, t
 import { SETTINGS_TABS, crumb, sectionOf, settingsHref, subPages } from '../src/lib/menu.ts';
 import { parseHash } from '../src/lib/router.ts';
 import { Draft, refusedField, same } from '../src/lib/settings-draft.ts';
-import { EXT_KEY, MODE_KEY, asText, controlOf, fieldsOf, groupsOf, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
-import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, fingerprintWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
+import { EXT_KEY, MODE_KEY, asText, controlOf, fieldsOf, groupsOf, hookKey, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
+import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, fingerprintWords, grantWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
 import { ERRORS } from './settings-rig.ts';
 
 const key = (k: string, type: KeySpec['type'], o: Partial<KeySpec> = {}): KeySpec => ({ key: k, type, restart: 'none', fingerprint: false, secret: false, write_only: false, writable: true, nullable: false, default: null, ...o });
@@ -173,7 +173,15 @@ describe('a form from a schema', () => {
     // a scope that is read-only says why once; its rows are locked without a reason of their own
     const ro = fieldsOf({ ...s, writable: false, why: 'read-only' }, values, undefined);
     expect(ro.every((x) => x.locked && x.why === null)).toBe(true);
-    expect([humanize('max_inflight'), humanize('host.dcgm_url'), labelOf('conductor', 'profiles.default').label, labelOf('app', 'chat').label, labelOf('hooks', 'hooks.audit.mode').label]).toEqual(['Max inflight', 'Host: DCGM URL', 'Profile default', 'Chat', 'Audit: mode']);
+    expect([humanize('max_inflight'), humanize('host.dcgm_url'), labelOf('conductor', 'profiles.default').label, labelOf('app', 'chat').label, labelOf('hooks', 'hooks.audit.mode').label]).toEqual(['Max inflight', 'Host: DCGM URL', 'Profile default', 'Chat', 'Mode']);
+    // the hooks scope's keys: a hook's (an id may hold dots), a provider's, a question's own key
+    expect([hookKey('hooks.a.b.payload'), hookKey('providers.s1.ab_percent'), hookKey('providers.s1.questions.judge.api_key'), hookKey('routes')]).toEqual([
+      { kind: 'hook', id: 'a.b', field: 'payload', question: null },
+      { kind: 'provider', id: 's1', field: 'ab_percent', question: null },
+      { kind: 'provider', id: 's1', field: 'api_key', question: 'judge' },
+      null,
+    ]);
+    expect(['hooks.a.timeout_ms', 'hooks.a.secret', 'providers.s1.sticky', 'providers.s1.questions.judge.api_key', 'hooks.a.colour'].map((k) => labelOf('hooks', k).label)).toEqual(['Time limit (ms)', 'Signing secret', 'A/B sticks to', 'API key for judge', 'Colour']);
     expect(sentence('the conductor in front of the backends')).toBe('The conductor in front of the backends.');
   });
 
@@ -212,10 +220,10 @@ describe('a form from a schema', () => {
 });
 
 const PLAN: Plan = {
-  contract_version: '1.0', change_set: 'cs-0123456789ab', changed: true, restart: 'engine', restart_needed: true, fingerprint_keys: [], needs_confirm: true, confirm: 'c'.repeat(32), confirm_fingerprint: null,
+  contract_version: '1.0', change_set: 'cs-0123456789ab', changed: true, restart: 'engine', restart_needed: true, fingerprint_keys: [], grant_keys: [], needs_confirm: true, confirm: 'c'.repeat(32), confirm_fingerprint: null, confirm_grant: null,
   parts: [
-    { scope: 'app', target: 'controller', kind: 'set', version: null, changed: true, restart: 'none', restart_needed: false, fingerprint_keys: [], warnings: [], changes: [{ key: 'conductor', from: 'off', to: 'on', was_set: false, is_set: true, secret: false, restart: 'none', fingerprint: false }] },
-    { scope: 'engine', target: 'eh-desk', kind: 'set', version: null, changed: true, restart: 'engine', restart_needed: true, fingerprint_keys: [], warnings: [], changes: [{ key: 'MAX_QUEUE', from: '16', to: '32', was_set: true, is_set: true, secret: false, restart: 'engine', fingerprint: false }] },
+    { scope: 'app', target: 'controller', kind: 'set', version: null, changed: true, restart: 'none', restart_needed: false, fingerprint_keys: [], grant_keys: [], warnings: [], changes: [{ key: 'conductor', from: 'off', to: 'on', was_set: false, is_set: true, secret: false, restart: 'none', fingerprint: false }] },
+    { scope: 'engine', target: 'eh-desk', kind: 'set', version: null, changed: true, restart: 'engine', restart_needed: true, fingerprint_keys: [], grant_keys: [], warnings: [], changes: [{ key: 'MAX_QUEUE', from: '16', to: '32', was_set: true, is_set: true, secret: false, restart: 'engine', fingerprint: false }] },
   ],
 };
 const OVERVIEW = { contract_version: '1.0', order: [], operations: [], scopes: [{ scope: 'engine' as const, order: 3, why: null, targets: [{ id: 'eh-desk', label: 'spark-desk', writable: true, why: null }] }] };
@@ -329,6 +337,10 @@ describe('refusals and the audit', () => {
     expect(errorWords(new SettingsError('too_late', 'x', 409, '')).title).toBe('The restart has begun: it can no longer be cancelled.');
     expect(errorWords(new SettingsError('engine_unreachable', 'ssh: timed out', 502, ''))).toEqual({ title: 'TandemApp could not reach the engine host.', fix: 'Check that the machine is on and answers over SSH, then try again. Nothing was changed there.', detail: 'ssh: timed out' });
     expect(errorWords(new SettingsError('busy', 'x', 409, '')).title).toBe('Another change set is being applied right now.');
+    expect(errorWords(new SettingsError('trust_required', 'hooks.x.payload: the full payload takes pairing’s rights', 403, '', { key: 'hooks.x.payload' }))).toEqual({ title: 'Granting a hook the full payload needs pairing’s rights.', fix: 'Set an admin password under App and sign in, or make this change on the controller’s own machine. Nothing was changed.', detail: 'hooks.x.payload: the full payload takes pairing’s rights' });
+    // a grant's second confirm: the hooks and the plan's own words for where it goes
+    const grant = grantWords({ grant_keys: ['hooks/controller:hooks.ex.port.payload'], parts: [{ ...PLAN.parts[0], scope: 'hooks', warnings: ['hooks.ex.port.payload: the hook ex.port gets the full payload (prompts and answers as they are) at archive.example.com, outside the LAN: apply asks a second time', 'another warning'] }] });
+    expect([grant.keys, grant.hooks, grant.where.length]).toEqual([['hooks.ex.port.payload'], ['ex.port'], 1]);
     expect(errorWords(new SettingsError('unauthorized', 'x', 401, '')).fix).toContain('Sign in');
     expect(errorWords(new SettingsError('weird', 'something else', 500, '')).title).toBe('something else');
     // the chat extension: what to do is the controller's own sentence

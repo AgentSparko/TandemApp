@@ -114,6 +114,14 @@ export function fingerprintWords(keys: string[], o: Overview | null = null): { k
   return { keys: names, hosts: [...new Set(rows.map((r) => r.host))], verb: names.length === 1 ? 'feeds' : 'feed' };
 }
 
+/** The keys of a plan's grants (a hook's full payload outside the LAN): the keys and the hooks'
+ *  ids, and the plan's own warnings that name each destination. */
+export function grantWords(plan: Pick<Plan, 'grant_keys' | 'parts'>): { keys: string[]; hooks: string[]; where: string[] } {
+  const keys = [...new Set((plan.grant_keys ?? []).map((k) => k.split(':').slice(1).join(':')))];
+  const where = plan.parts.flatMap((p) => p.warnings.filter((w) => keys.some((k) => w.startsWith(`${k}:`))));
+  return { keys, hooks: keys.map((k) => k.replace(/^hooks\./, '').replace(/\.payload$/, '')), where };
+}
+
 export const changeCount = (plan: Pick<Plan, 'parts'>): number => plan.parts.reduce((n, p) => n + p.changes.length, 0);
 
 /** The plan's head: how much changes and what restarts. */
@@ -276,7 +284,10 @@ export function errorWords(e: Pick<SettingsError, 'type' | 'message' | 'facts'>)
       return { title: 'Another change set is being applied right now.', fix: 'Wait a moment, then apply again. Nothing of this one was written.', detail: null };
     case 'confirm_required':
     case 'fingerprint_confirm_required':
+    case 'grant_confirm_required':
       return { title: 'This change needs its confirm.', fix: 'Review the changes again.', detail: null };
+    case 'trust_required':
+      return { title: 'Granting a hook the full payload needs pairing’s rights.', fix: 'Set an admin password under App and sign in, or make this change on the controller’s own machine. Nothing was changed.', detail: m || null };
     case 'locked':
       return { title: `${f.key ?? 'This setting'} cannot be changed here.`, fix: f.variable ? `${f.variable} sets it in the environment: change it there.` : 'Take it out of the change set.', detail: f.variable ? null : m };
     case 'unknown_key':

@@ -7,7 +7,9 @@
 //                                and the controller's own conductor switch beside it
 //   Scheduled restart is cancelled   "Scheduled restart is cancelled: ..."
 //   Toggle off keeps data        "Toggle off keeps data: ..."
-// and the states around them: a plan before every apply, the second confirm for a fingerprint key,
+// and the states around them: a plan before every apply, the second confirm for a fingerprint key
+// and for a hook's full payload outside the LAN (SEC-16), the hooks and decision providers in the
+// generic form (SRV-845, SRV-851),
 // a stale plan, another change set applying, a part that fails, the restore of an applied part,
 // a refused plan, the sign-in, every restart end, the forms of each scope, versions and the audit.
 
@@ -273,7 +275,7 @@ describe('from the plan to the result', () => {
     p.r.mock.control({ hooks: true, fail: 'apply-engine:engine_unreachable' });
     p.draft.set('app', 'controller', 'chat', 'on', { value: 'off', set: false });
     p.draft.set('engine', 'eh-desk', 'MAX_QUEUE', '32', await held(p, 'MAX_QUEUE'));
-    p.draft.set('hooks', 'controller', 'hooks.audit.mode', 'enforce', { value: 'observe', set: true });
+    p.draft.set('hooks', 'controller', 'hooks.audit.mode', 'shadow', { value: 'on', set: true });
     await applyDraft(p);
     const res = p.flow.state.result!;
     expect([res.state, res.parts.map((x) => x.state)]).toEqual(['partial', ['applied', 'failed', 'not_run']]);
@@ -429,16 +431,73 @@ describe('each scope’s form', () => {
     expect(text(fieldRow(token, view(), FORM))).not.toContain('data-act="secret-set"');
   });
 
-  it('hooks: no key until a hook registers, then the same form', async () => {
+  it('hooks: no key until a hook or a provider is there, then a group each in the same form', async () => {
     const p = await page();
     const none = await p.r.api.schema('hooks');
-    expect([none.keys, none.why, none.writable]).toEqual([[], 'no hook is registered yet: the hooks scope has no key', true]);
+    expect([none.keys, none.why?.startsWith('no hook and no decision provider yet'), none.writable]).toEqual([[], true, true]);
     expect(await fields(p, 'hooks')).toEqual([]);
     p.r.mock.control({ hooks: true });
     const f = await fields(p, 'hooks');
-    expect(f.map((x) => [x.label, x.control])).toEqual([['Audit: mode', 'choice'], ['Audit: priority', 'number'], ['Audit: token', 'secret'], ['Guard: on failure', 'choice']]);
-    expect(f[3].chips.map((c) => c.text)).toEqual(['restarts the engine']);
-    expect(groupsOf('hooks', f).map((g) => g.title)).toEqual(['Hook settings']);
+    const groups = groupsOf('hooks', f);
+    expect(groups.map((g) => [g.title, g.sub])).toEqual([
+      ['Audit log', 'Hook audit'], ['Export to the archive', 'Hook export'], ['No big model for guests', 'Hook guard'],
+      ['Classes', 'Decision provider classes'], ['Own decider', 'Decision provider own'],
+    ]);
+    expect(groups[0].fields.map((x) => [x.label, x.control, x.locked])).toEqual([
+      ['On', 'switch', false], ['Mode', 'choice', false], ['Priority', 'number', false], ['What it sees', 'choice', false],
+      ['Runs on', 'json', false], ['When it fails', 'choice', false], ['Time limit (ms)', 'number', false], ['Signing secret', 'secret', true],
+    ]);
+    // a builtin hook has no secret; the guard's scope and policy are held, its timeout is not
+    const guard = groups[2].fields;
+    expect(guard.map((x) => x.key)).not.toContain('hooks.guard.secret');
+    expect(guard.find((x) => x.key === 'hooks.guard.scope')!.value).toEqual({ models: ['big-*'], users: ['guest*'] });
+    expect([guard.find((x) => x.key === 'hooks.guard.policy')!.reset, guard.find((x) => x.key === 'hooks.guard.timeout_ms')!.held!.set]).toEqual(['Use the default', false]);
+    // a provider: its switches, its questions as a document, its keys write-only
+    expect(groups[3].fields.map((x) => [x.label, x.control])).toEqual([
+      ['On', 'switch'], ['Mode', 'choice'], ['A/B share (%)', 'number'], ['A/B sticks to', 'choice'], ['Questions', 'json'],
+      ['API key', 'secret'], ['API key for classify', 'secret'], ['API key for judge', 'secret'],
+    ]);
+    const key = groups[3].fields.find((x) => x.key === 'providers.classes.api_key')!;
+    expect([key.value, key.held!.set, key.reset, key.locked]).toEqual([null, true, 'Remove the key', false]);
+    expect(groups[4].fields.map((x) => x.key)).not.toContain('providers.own.api_key');
+    // a provider's change goes through the same plan: a question moved between two in one set
+    p.draft.set('hooks', 'controller', 'providers.classes.mode', 'shadow', { value: 'on', set: true });
+    p.draft.set('hooks', 'controller', 'providers.own.mode', 'on', { value: 'shadow', set: true });
+    p.draft.set('hooks', 'controller', 'providers.own.questions', { classify: {}, memory_gate: {} }, { value: { memory_gate: {} }, set: true });
+    await applyDraft(p);
+    expect(p.flow.state.result!.state).toBe('applied');
+    expect([(await field(p, 'hooks', 'providers.own.mode')).held!.value, (await field(p, 'hooks', 'providers.classes.mode')).held!.value]).toEqual(['on', 'shadow']);
+  });
+
+  it('a hook’s full payload: pairing’s rights, and outside the LAN a second confirm before anything is sent', async () => {
+    const p = await page();
+    p.r.mock.control({ hooks: true, trust: false });
+    p.draft.set('hooks', 'controller', 'hooks.export.payload', 'full', { value: 'redacted', set: true });
+    await p.flow.review(p.draft.changes());
+    expect([p.flow.state.plan, p.flow.state.error!.type, p.flow.state.error!.facts.key]).toEqual([null, 'trust_required', 'hooks.export.payload']);
+    expect(sheet(p)).toContain('Granting a hook the full payload needs pairing’s rights.');
+    p.r.mock.control({ trust: true });
+    await p.flow.again();
+    const plan = p.flow.state.plan!;
+    expect([plan.grant_keys, !!plan.confirm_grant, plan.confirm_fingerprint]).toEqual([['hooks/controller:hooks.export.payload'], true, null]);
+    expect(sheet(p)).toContain('>Continue<');
+    await p.flow.apply();
+    expect([p.flow.state.phase, p.flow.state.second]).toEqual(['plan', true]);
+    expect((await field(p, 'hooks', 'hooks.export.payload')).held!.value).toBe('redacted');
+    const second = sheet(p);
+    for (const s of ['One more confirm', 'Prompts and answers leave the LAN', '>export<', 'archive.example.com, outside the LAN', 'Apply, and send the full payload']) expect(second).toContain(s);
+    expect(second).not.toContain('Saved caches on');
+    await p.flow.apply();
+    expect([p.flow.state.phase, p.flow.state.result!.state]).toEqual(['result', 'applied']);
+    expect((await field(p, 'hooks', 'hooks.export.payload')).held!.value).toBe('full');
+    // on the LAN: one confirm only, the plan's warning names where it goes
+    p.flow.close();
+    p.draft.clear();
+    p.draft.set('hooks', 'controller', 'hooks.audit.payload', 'full', { value: 'meta', set: true });
+    await p.flow.review(p.draft.changes());
+    expect([p.flow.state.plan!.grant_keys, p.flow.state.plan!.confirm_grant]).toEqual([[], null]);
+    expect(sheet(p)).toContain('at audit.lan');
+    expect(sheet(p)).toContain('Apply 1 change');
   });
 });
 

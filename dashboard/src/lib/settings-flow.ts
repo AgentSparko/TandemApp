@@ -2,7 +2,8 @@
 //
 // ChangeSetFlow: the staged changes are planned first (nothing is written), the plan is shown, and
 // Apply sends it back with the plan's confirm. A plan with a key that feeds an engine's disk-cache
-// fingerprint asks a second time before it sends the second confirm. When the settings moved since
+// fingerprint, or one that grants a hook the full payload outside the LAN (SEC-16), asks a second
+// time before it sends the second confirm. When the settings moved since
 // the plan (409 stale_plan), the controller's new plan takes its place and is shown to be checked
 // again: nothing is applied on a plan the user did not see. The result lists each part.
 //
@@ -24,7 +25,7 @@ export interface FlowState {
   error: SettingsError | null;
   /** the plan shown replaced the one read first: the settings moved under it */
   moved: boolean;
-  /** the second confirm shows (the plan has fingerprint keys) */
+  /** the second confirm shows (the plan has fingerprint keys or grant keys) */
   second: boolean;
   when: When;
   note: string;
@@ -34,6 +35,9 @@ export interface FlowState {
 const START: FlowState = { phase: 'closed', changes: [], plan: null, error: null, moved: false, second: false, when: WHEN_DEFAULT, note: '', result: null };
 
 export const asError = (e: unknown): SettingsError => (e instanceof SettingsError ? e : new SettingsError('error', (e as Error)?.message ?? String(e), 0, ''));
+
+/** the plan asks a second time: a fingerprint key, a full payload outside the LAN */
+export const needsSecond = (plan: Plan | null): boolean => !!(plan?.confirm_fingerprint || plan?.confirm_grant);
 
 /** the plan restarts an engine: the apply says when */
 export const restartsEngine = (plan: Plan | null): boolean => !!plan?.parts.some((p) => p.changed && p.restart === 'engine');
@@ -85,12 +89,12 @@ export class ChangeSetFlow {
     return restartsEngine(plan) ? whenError(when, this.clock()) : null;
   }
 
-  /** Apply the plan shown. With fingerprint keys the first call opens the second confirm and the
-   *  next one applies. */
+  /** Apply the plan shown. With fingerprint or grant keys the first call opens the second confirm
+   *  and the next one applies. */
   async apply(): Promise<void> {
     const { plan, changes, second, when, note } = this.state;
     if (this.blocked() || !plan?.confirm) return;
-    if (plan.confirm_fingerprint && !second) {
+    if (needsSecond(plan) && !second) {
       this.set({ second: true, error: null });
       return;
     }
@@ -99,6 +103,7 @@ export class ChangeSetFlow {
       const result = await this.api.apply(changes, {
         confirm: plan.confirm,
         ...(plan.confirm_fingerprint ? { confirm_fingerprint: plan.confirm_fingerprint } : {}),
+        ...(plan.confirm_grant ? { confirm_grant: plan.confirm_grant } : {}),
         ...(restartsEngine(plan) ? whenParam(when) : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       });
@@ -106,7 +111,7 @@ export class ChangeSetFlow {
     } catch (e) {
       const err = asError(e);
       // the settings moved since the plan: the new plan stands in, to be checked again
-      if (err.facts.plan && (err.type === 'stale_plan' || err.type === 'confirm_required' || err.type === 'fingerprint_confirm_required')) this.set({ phase: 'plan', plan: err.facts.plan, moved: true, second: false, error: err.type === 'stale_plan' ? err : null });
+      if (err.facts.plan && (err.type === 'stale_plan' || err.type === 'confirm_required' || err.type === 'fingerprint_confirm_required' || err.type === 'grant_confirm_required')) this.set({ phase: 'plan', plan: err.facts.plan, moved: true, second: false, error: err.type === 'stale_plan' ? err : null });
       else this.set({ phase: 'plan', second: false, error: err });
     }
   }

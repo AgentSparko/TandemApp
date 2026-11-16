@@ -2,7 +2,7 @@
 // backends, conductor, engine, hooks: the first failure stops the set, so the order is told). The
 // same sheet goes from plan to result: before the apply each stop lists its changes, what it costs
 // (a restart or none) and its warnings; a plan that restarts an engine asks when, and one with a
-// fingerprint key asks a second time. After the apply each stop shows how it ended, with Restore on
+// fingerprint key or a hook's full payload outside the LAN asks a second time. After the apply each stop shows how it ended, with Restore on
 // what was applied and the restart's card on what waits for one. The restart card (state, the
 // countdown while it waits for idle, the engine's job, Cancel while it can still be cancelled, the
 // version restored after a failed start) is the same on every page that shows a restart. Templates
@@ -11,8 +11,8 @@
 import { html, nothing, type TemplateResult } from 'lit';
 import type { Change, Overview, PartChange, PartPlan, PartResult, Restart, SettingsError } from '../../api/settings';
 import { FINGERPRINT_NOTE, shown } from '../../lib/settings-form';
-import { restartsEngine, restoreOf, type FlowState } from '../../lib/settings-flow';
-import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, fingerprintWords, partStateWords, placeOf, planSummary, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
+import { needsSecond, restartsEngine, restoreOf, type FlowState } from '../../lib/settings-flow';
+import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, fingerprintWords, grantWords, partStateWords, placeOf, planSummary, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
 import { icon } from '../../ui/bits';
 
 export interface SheetHandlers {
@@ -125,14 +125,34 @@ function whenBlock(s: FlowState, names: string[], h: SheetHandlers, blocked: str
   </fieldset>`;
 }
 
-/** The second confirm: the keys that feed a disk cache's fingerprint, and what that costs. */
+/** The second confirm: the keys that feed a disk cache's fingerprint, and what that costs; the
+ *  hooks that get the full payload at a destination outside the LAN, and where it goes. */
 function secondConfirm(s: FlowState, o: Overview | null): TemplateResult {
-  const { keys, hosts, verb } = fingerprintWords(s.plan!.fingerprint_keys, o);
-  return html`<section class="rs-second" role="alert" data-second>
-    <h3>${icon('warn')} Saved caches on ${hosts.join(' and ')} start cold</h3>
-    <p class="small">${keys.map((k, i) => html`${i ? ', ' : ''}<span class="num">${k}</span>`)} ${verb} the disk cache’s fingerprint. After the restart every saved prefix and every parked chat there misses once: the first turn of each chat reads its whole context again.</p>
-    <p class="small">Nothing is lost for good, and nothing else changes. Apply only if that is what you want now.</p>
-  </section>`;
+  const plan = s.plan!;
+  const fp = plan.fingerprint_keys.length ? fingerprintWords(plan.fingerprint_keys, o) : null;
+  const g = plan.grant_keys?.length ? grantWords(plan) : null;
+  return html`${fp
+    ? html`<section class="rs-second" role="alert" data-second>
+        <h3>${icon('warn')} Saved caches on ${fp.hosts.join(' and ')} start cold</h3>
+        <p class="small">${fp.keys.map((k, i) => html`${i ? ', ' : ''}<span class="num">${k}</span>`)} ${fp.verb} the disk cache’s fingerprint. After the restart every saved prefix and every parked chat there misses once: the first turn of each chat reads its whole context again.</p>
+        <p class="small">Nothing is lost for good, and nothing else changes. Apply only if that is what you want now.</p>
+      </section>`
+    : nothing}${g
+    ? html`<section class="rs-second" role="alert" data-second-grant>
+        <h3>${icon('warn')} Prompts and answers leave the LAN</h3>
+        <p class="small">${g.hooks.length === 1 ? 'The hook' : 'The hooks'} ${g.hooks.map((k, i) => html`${i ? ', ' : ''}<span class="num">${k}</span>`)} would get the full payload: every prompt and answer as it is, sent to a destination outside the LAN.</p>
+        ${g.where.length ? html`<ul class="small" data-grant-where>${g.where.map((w) => html`<li>${w.charAt(0).toUpperCase()}${w.slice(1)}.</li>`)}</ul>` : nothing}
+        <p class="small">TandemApp keeps who granted it and when. Apply only if that destination may read them.</p>
+      </section>`
+    : nothing}`;
+}
+
+/** the second confirm's button: what applying costs */
+function secondLabel(plan: FlowState['plan']): string {
+  const fp = !!plan?.confirm_fingerprint;
+  const grant = !!plan?.confirm_grant;
+  if (fp && grant) return 'Apply anyway';
+  return grant ? 'Apply, and send the full payload' : 'Apply, and let the caches start cold';
 }
 
 const sheetHead = (title: string, id: string | null, sub: TemplateResult | string | typeof nothing = nothing) =>
@@ -162,9 +182,9 @@ function planSheet(s: FlowState, o: Overview | null, blocked: string | null, h: 
     <footer class="act-foot">
       ${s.second
         ? html`<button type="button" class="btn btn-ghost" data-act="sheet-back" ?disabled=${applying} @click=${h.back}>Back to the plan</button>
-            <button type="button" class="btn rs-go-warn" data-act="sheet-apply-second" ?disabled=${applying} @click=${h.apply}>${applying ? 'Applying…' : 'Apply, and let the caches start cold'}</button>`
+            <button type="button" class="btn rs-go-warn" data-act="sheet-apply-second" ?disabled=${applying} @click=${h.apply}>${applying ? 'Applying…' : secondLabel(plan)}</button>`
         : html`<button type="button" class="btn btn-ghost" data-act="sheet-close" ?disabled=${applying} @click=${h.close}>${plan.changed ? 'Not now' : 'Close'}</button>
-            ${plan.changed ? html`<button type="button" class="btn btn-primary" data-act="sheet-apply" ?disabled=${applying || !!blocked} @click=${h.apply}>${applying ? 'Applying…' : plan.confirm_fingerprint ? 'Continue' : `Apply ${n} ${n === 1 ? 'change' : 'changes'}`}</button>` : nothing}`}
+            ${plan.changed ? html`<button type="button" class="btn btn-primary" data-act="sheet-apply" ?disabled=${applying || !!blocked} @click=${h.apply}>${applying ? 'Applying…' : needsSecond(plan) ? 'Continue' : `Apply ${n} ${n === 1 ? 'change' : 'changes'}`}</button>` : nothing}`}
     </footer>`;
 }
 

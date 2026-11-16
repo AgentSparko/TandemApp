@@ -1,8 +1,9 @@
 // The settings interface in the mock (`/v1/settings/*`, contracts/settings-v1; VIS-280, SRV-845), as
 // the controller answers it (proxy/settings.py, settingscopes.py, settingsengine.py): five scopes
 // with the same six operations, a change set planned and applied with one confirm (a second one for
-// a key that feeds an engine's disk-cache fingerprint), versions, restore, the engine restarts a
-// change scheduled and the audit rows. No answer holds a secret.
+// a key that feeds an engine's disk-cache fingerprint, and one for a hook's full payload outside the
+// LAN), versions, restore, the engine restarts a change scheduled and the audit rows. No answer
+// holds a secret.
 //
 // What it holds:
 //   app        chat and conductor, on or off: the same switches as What runs here (mock/appsettings.ts)
@@ -16,7 +17,10 @@
 //              `http:bench` (HTTP only: read-only, its hot keys); plus every engine host paired in
 //              this mock. The `empty` fleet starts with no engine target. Chat mode installs this
 //              controller's wheel first when the host lacks the extension (a warning in the plan)
-//   hooks      no key until `control({hooks: true})` plugs a sample registry in
+//   hooks      the hook registry and the decision providers (proxy/hooksettings.py): no key until
+//              `control({hooks: true})` fills it (the mock fleet does unless it is `empty`) with
+//              three hooks (`audit` http on the LAN, `export` http outside it, `guard` builtin) and
+//              two providers (`classes` systemone-http with its key set, `own` builtin)
 //
 // A restart follows the clock: scheduled (an `at=` time ahead), draining (the engine is busy for
 // `busy_s`, 6 s by default; the gateway answers 503 with Retry-After meanwhile), restarting (4 s),
@@ -30,7 +34,8 @@
 //                                          scope's part fail inside an apply)
 //   {busy: true | false}                   an apply answers 409 busy
 //   {move: true}                           the settings move under every plan read so far (409 stale_plan)
-//   {hooks: true | false}                  the hook registry is plugged in
+//   {hooks: true | false}                  the hook registry holds its samples, or nothing
+//   {trust: true | false}                  the caller has pairing's rights (the full payload)
 //   {unreachable: "<engine target>" | null} that engine host does not answer over SSH
 //   {wheel: false | true}                  this controller has no wheel of its own to install the
 //                                          chat extension from (409 extension_missing)
@@ -50,10 +55,10 @@ const WARM_MS = 3000;
 /** every error type with its HTTP status (contracts/settings-v1/scopes.json `errors`) */
 export const SETTINGS_ERRORS: Record<string, number> = {
   bad_request: 400, target_required: 400, unknown_field: 400, not_found: 404, no_scope: 404, no_target: 404, no_version: 404, no_restart: 404,
-  confirm_required: 428, fingerprint_confirm_required: 428, stale_plan: 409, busy: 409, read_only: 409, too_late: 409, ended: 409, engine_busy: 409,
+  confirm_required: 428, fingerprint_confirm_required: 428, grant_confirm_required: 428, stale_plan: 409, busy: 409, read_only: 409, too_late: 409, ended: 409, engine_busy: 409,
   engine_refused: 409, host_key_changed: 409, no_http: 409, extension_missing: 409, unknown_key: 422, locked: 422, bad_value: 422, invalid_document: 422, restore_invalid: 422,
   store_refused: 422, engine_unreachable: 502, engine_failed: 502, engine_too_old: 502, engine_timeout: 504, unauthorized: 401, cross_site: 403,
-  cross_origin: 403, json_only: 415,
+  cross_origin: 403, trust_required: 403, json_only: 415,
 };
 const SENTENCE: Record<string, string> = {
   busy: 'another change set is being applied: plan again when it is done',
@@ -129,6 +134,8 @@ interface ScopePlan {
   changes: Change[];
   restart: RestartClass;
   fingerprint_keys: string[];
+  /** a hook's full payload outside the LAN: the second confirm */
+  grant_keys?: string[];
   warnings: string[];
   state: string;
   native: Record<string, unknown>;
@@ -139,6 +146,7 @@ const planOf = (changes: Change[], state: unknown, o: Partial<ScopePlan> = {}): 
   changes,
   restart: o.restart ?? maxRestart(changes.map((c) => c.restart)),
   fingerprint_keys: (o.fingerprint_keys ?? changes.filter((c) => c.fingerprint).map((c) => c.key)).sort(),
+  grant_keys: o.grant_keys ?? [],
   warnings: o.warnings ?? [],
   state: digest(state),
   native: o.native ?? {},
@@ -439,44 +447,202 @@ class BackendsScope extends KeyValueScope {
 }
 
 // ---- hooks ----------------------------------------------------------------------------------------
+// The hook registry's adapter (proxy/hooksettings.py): each hook's switches and each decision
+// provider's, a provider's API keys write-only, an http hook's secret only as set. Setting a hook's
+// payload to `full` is a grant (SEC-16): planned only with pairing's rights (`trust`), and a
+// destination outside the LAN adds the second confirm (grant_keys, confirm_grant).
+type MockHook = { name: string; kind: 'http' | 'builtin'; host: string | null; lan: boolean; vals: Record<string, unknown>; secret: string | null };
+type MockProvider = { name: string; kind: 'systemone-http' | 'builtin' | 'hook'; vals: Record<string, unknown>; keys: Record<string, string> };
+const HOOK_FIELDS: Record<string, { type: KeyType; values?: string[]; nullable?: boolean; default: unknown; text: string }> = {
+  enabled: { type: 'boolean', default: true, text: 'called at all' },
+  mode: { type: 'enum', values: ['off', 'shadow', 'on'], default: 'on', text: 'off: never called; shadow: called on a copy, nothing applied; on: as its role says' },
+  priority: { type: 'integer', default: 100, text: 'the order among the hooks of a stage, low first; ties by id' },
+  scope: { type: 'object', nullable: true, default: {}, text: 'the requests it runs on: lists of patterns under models, backends, profiles, users, sessions or client_kinds; unset: every request' },
+  policy: { type: 'enum', values: ['open', 'closed'], nullable: true, default: null, text: 'when it fails: open (as if absent) or closed (the request is refused); unset: the stage’s default' },
+  timeout_ms: { type: 'integer', nullable: true, default: null, text: 'its own time limit in milliseconds, at most the stage’s budget; unset: the stage’s budget' },
+  payload: { type: 'enum', values: ['meta', 'redacted', 'full'], default: 'meta', text: 'what it sees: meta, redacted, or full (prompts and answers as they are: pairing’s rights, and a second confirm outside the LAN)' },
+};
+const QUESTIONS = ['classify', 'packages', 'deliverable', 'memory_intent', 'memory_gate', 'judge'];
+const PROVIDER_FIELDS: Record<string, { type: KeyType; values?: string[]; default: unknown; text: string }> = {
+  enabled: { type: 'boolean', default: true, text: 'asked at all' },
+  mode: { type: 'enum', values: ['on', 'shadow', 'ab'], default: 'shadow', text: 'on: it answers its questions; shadow: asked beside the conductor, nothing it says is used; ab: it answers for a share' },
+  ab_percent: { type: 'integer', default: 0, text: 'in ab, the share (0..100) it answers' },
+  sticky: { type: 'enum', values: ['session', 'user', 'request'], default: 'session', text: 'in ab, what the share sticks to' },
+  questions: { type: 'object', default: null, text: `the questions it answers (${QUESTIONS.join(', ')}), each {model?, endpoint?, timeout_ms?}` },
+};
+const SCOPE_KEYS = ['models', 'backends', 'profiles', 'users', 'sessions', 'client_kinds'];
+const hint6 = (v: string): string => digest(v).slice(0, 6);
+
+function sampleHooks(): Record<string, MockHook> {
+  return {
+    audit: { name: 'Audit log', kind: 'http', host: 'audit.lan', lan: true, vals: { enabled: true, mode: 'on', priority: 50, scope: {}, policy: null, timeout_ms: null, payload: 'meta' }, secret: 'whsec-mock-audit-0001' },
+    export: { name: 'Export to the archive', kind: 'http', host: 'archive.example.com', lan: false, vals: { enabled: true, mode: 'shadow', priority: 200, scope: {}, policy: 'open', timeout_ms: 500, payload: 'redacted' }, secret: 'whsec-mock-export-0002' },
+    guard: { name: 'No big model for guests', kind: 'builtin', host: null, lan: true, vals: { enabled: true, mode: 'on', priority: 10, scope: { models: ['big-*'], users: ['guest*'] }, policy: 'closed', timeout_ms: null, payload: 'meta' }, secret: null },
+  };
+}
+function sampleProviders(): Record<string, MockProvider> {
+  return {
+    classes: { name: 'Classes', kind: 'systemone-http', vals: { enabled: true, mode: 'on', ab_percent: 0, sticky: 'session', questions: { classify: {}, judge: { model: 'judge-v2' } } }, keys: { '*': 'sk-mock-classes-0003' } },
+    own: { name: 'Own decider', kind: 'builtin', vals: { enabled: true, mode: 'shadow', ab_percent: 0, sticky: 'session', questions: { memory_gate: {} } }, keys: {} },
+  };
+}
+
 class HooksScope extends KeyValueScope {
-  plugged = false;
-  private vals: Record<string, unknown> = { 'hooks.audit.mode': 'observe', 'hooks.audit.priority': 50, 'hooks.guard.on_failure': 'open' };
-  private token = false;
+  private hooks: Record<string, MockHook> = {};
+  private providers: Record<string, MockProvider> = {};
+  /** the caller has pairing's rights (this machine, or the admin) */
+  trust = true;
   constructor() {
     super('hooks');
   }
+  /** the registry holds the sample hooks and providers, or none */
+  get plugged(): boolean {
+    return Object.keys(this.hooks).length + Object.keys(this.providers).length > 0;
+  }
+  set plugged(on: boolean) {
+    this.hooks = on ? sampleHooks() : {};
+    this.providers = on ? sampleProviders() : {};
+  }
   writable(): [boolean, string | null] {
-    return [true, this.plugged ? null : 'no hook is registered yet: the hooks scope has no key'];
+    return [true, this.plugged ? null : 'no hook and no decision provider yet: they are added on the hooks’ API (/v1/fleet/hooks, /v1/fleet/decision-providers); their switches show here once there is one'];
+  }
+  /** key -> where it lands */
+  private index(): Record<string, { kind: 'hook' | 'provider'; id: string; field: string; question?: string }> {
+    const out: Record<string, { kind: 'hook' | 'provider'; id: string; field: string; question?: string }> = {};
+    for (const [id, h] of Object.entries(this.hooks)) {
+      for (const f of Object.keys(HOOK_FIELDS)) out[`hooks.${id}.${f}`] = { kind: 'hook', id, field: f };
+      if (h.kind === 'http') out[`hooks.${id}.secret`] = { kind: 'hook', id, field: 'secret' };
+    }
+    for (const [id, p] of Object.entries(this.providers)) {
+      for (const f of Object.keys(PROVIDER_FIELDS)) out[`providers.${id}.${f}`] = { kind: 'provider', id, field: f };
+      if (p.kind === 'systemone-http') {
+        out[`providers.${id}.api_key`] = { kind: 'provider', id, field: 'api_key', question: '*' };
+        for (const q of Object.keys(p.vals.questions as object)) out[`providers.${id}.questions.${q}.api_key`] = { kind: 'provider', id, field: 'api_key', question: q };
+      }
+    }
+    return out;
   }
   spec(): Record<string, KeySpec> {
-    if (!this.plugged) return {};
-    return {
-      'hooks.audit.mode': spec('hooks.audit.mode', 'enum', { values: ['off', 'observe', 'enforce'], default: 'off', text: 'what the audit hook does with a request' }),
-      'hooks.audit.priority': spec('hooks.audit.priority', 'integer', { default: 50, text: 'hooks with a lower number run first' }),
-      'hooks.audit.token': spec('hooks.audit.token', 'string', { secret: true, nullable: true, text: 'the token the audit hook sends with each record' }),
-      'hooks.guard.on_failure': spec('hooks.guard.on_failure', 'enum', { values: ['open', 'closed'], default: 'open', restart: 'engine', text: 'an in-process hook: what happens to a request when the guard itself fails' }),
-    };
+    const out: Record<string, KeySpec> = {};
+    for (const [k, w] of Object.entries(this.index())) {
+      if (w.kind === 'hook') {
+        if (w.field === 'secret') out[k] = spec(k, 'string', { secret: true, writable: false, why: 'made by the hooks’ API and answered there once: rotate it there', text: 'the secret that signs its calls' });
+        else {
+          const d = HOOK_FIELDS[w.field];
+          out[k] = spec(k, d.type, { values: d.values, nullable: !!d.nullable, default: d.default, text: d.text });
+        }
+      } else if (w.field === 'api_key') out[k] = spec(k, 'string', { secret: true, nullable: true, text: w.question === '*' ? 'its API key, sent as the bearer' : `the API key for ${w.question} alone` });
+      else {
+        const d = PROVIDER_FIELDS[w.field];
+        out[k] = spec(k, d.type, { values: d.values, default: d.default, text: d.text });
+      }
+    }
+    return out;
   }
   values() {
     const out: Record<string, Val> = {};
-    for (const k of Object.keys(this.spec())) out[k] = k === 'hooks.audit.token' ? { value: null, set: this.token, source: 'hooks' } : { value: this.vals[k], set: k in this.vals, source: 'hooks' };
+    for (const [k, w] of Object.entries(this.index())) {
+      if (w.kind === 'hook') {
+        const h = this.hooks[w.id];
+        const extra = { label: h.name };
+        if (w.field === 'secret') out[k] = { value: null, set: !!h.secret, source: 'hooks', extra: { ...extra, hint: h.secret ? hint6(h.secret) : null } };
+        else {
+          const v = h.vals[w.field];
+          const empty = v === null || (w.field === 'scope' && !Object.keys(v as object).length);
+          out[k] = { value: empty ? null : copy(v), set: !empty, source: 'hooks', extra };
+        }
+      } else {
+        const p = this.providers[w.id];
+        const extra = { label: p.name };
+        if (w.field === 'api_key') out[k] = { value: null, set: w.question! in p.keys, source: 'providers', extra: { ...extra, hint: w.question! in p.keys ? hint6(p.keys[w.question!]) : null } };
+        else out[k] = { value: copy(p.vals[w.field]), set: true, source: 'providers', extra };
+      }
+    }
     return out;
   }
-  check(sets: Record<string, unknown>, _u: string[], s: Record<string, KeySpec>) {
+  check(sets: Record<string, unknown>, unsets: string[], s: Record<string, KeySpec>) {
+    const idx = this.index();
+    const bad = (k: string, why: string): never => no('bad_value', `${k}: ${why}`, { key: k });
+    for (const k of unsets) if (!s[k].nullable) no('bad_value', `${k} has no unset: set a value`, { key: k });
+    const next: Record<string, Record<string, unknown>> = {};
     for (const [k, v] of Object.entries(sets)) {
-      if (s[k].values && !s[k].values!.includes(v as string)) no('bad_value', `${k} is one of ${s[k].values!.join(', ')}`, { errors: [`${k} is one of ${s[k].values!.join(', ')}`] });
-      if (s[k].type === 'integer' && !Number.isInteger(v)) no('bad_value', `${k} is a whole number`, { errors: [`${k} is a whole number`] });
+      const w = idx[k];
+      if (s[k].secret) {
+        if (v !== null && (typeof v !== 'string' || !v || /\s/.test(v))) bad(k, '1..4096 characters, no spaces');
+        if (w.question && w.question !== '*') {
+          const qs = (sets[`providers.${w.id}.questions`] ?? this.providers[w.id].vals.questions) as Record<string, unknown>;
+          if (!(w.question in qs)) bad(k, `${w.id} does not answer ${w.question}`);
+        }
+        continue;
+      }
+      if (v === null && s[k].nullable) continue;
+      if (s[k].values && !s[k].values!.includes(v as string)) bad(k, `one of ${s[k].values!.join(', ')}`);
+      if (s[k].type === 'integer' && !Number.isInteger(v)) bad(k, 'a whole number');
+      if (s[k].type === 'boolean' && typeof v !== 'boolean') bad(k, 'true or false');
+      if (w.field === 'priority' && Math.abs(v as number) > 100000) bad(k, 'an integer -100000..100000');
+      if (w.field === 'timeout_ms' && ((v as number) < 1 || (v as number) > 30000)) bad(k, '1..30000 or unset (the stage’s budget)');
+      if (w.field === 'ab_percent' && ((v as number) < 0 || (v as number) > 100)) bad(k, '0..100, the share of sessions the provider answers in ab');
+      if (w.field === 'scope' && (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some((x) => !SCOPE_KEYS.includes(x)))) bad(k, `an object of ${SCOPE_KEYS.join(', ')}`);
+      if (w.field === 'questions') {
+        if (!v || typeof v !== 'object' || Array.isArray(v) || !Object.keys(v).length) bad(k, `an object of the question ids it answers (${QUESTIONS.join(', ')})`);
+        for (const [q, spec_] of Object.entries(v as Record<string, unknown>)) {
+          if (!QUESTIONS.includes(q)) bad(k, `no question '${q}' (one of ${QUESTIONS.join(', ')})`);
+          if (spec_ && typeof spec_ === 'object' && 'api_key' in spec_) bad(k, `a question’s API key is a key of its own (providers.${w.id}.questions.${q}.api_key)`);
+        }
+      }
+      if (w.kind === 'provider') (next[w.id] ??= {})[w.field] = v;
+    }
+    // one enabled provider a question on or ab, across the providers as they would be
+    const serving: Record<string, string> = {};
+    for (const id of Object.keys(this.providers).sort()) {
+      const p = { ...this.providers[id].vals, ...(next[id] ?? {}) };
+      if (!p.enabled || p.mode === 'shadow') continue;
+      for (const q of Object.keys(p.questions as object)) {
+        if (serving[q]) {
+          const who = next[id] ? id : serving[q];
+          no('bad_value', `providers.${who}: ${q} is served ${p.mode} by ${serving[q]} and ${id}; one provider a question on or ab (any number in shadow)`, { key: `providers.${who}.mode` });
+        }
+        serving[q] = id;
+      }
     }
   }
-  write(sets: Record<string, unknown>, unsets: string[]) {
+  /** the grants the changed sets make: a hook's payload to full that is not full yet */
+  grants(sets: Record<string, unknown>): { key: string; hook: string; destination: string | null; lan: boolean }[] {
+    const out: { key: string; hook: string; destination: string | null; lan: boolean }[] = [];
     for (const [k, v] of Object.entries(sets)) {
-      if (k === 'hooks.audit.token') this.token = v !== null;
-      else this.vals[k] = v;
+      const m = /^hooks\.(.+)\.payload$/.exec(k);
+      if (!m || v !== 'full' || this.hooks[m[1]].vals.payload === 'full') continue;
+      const h = this.hooks[m[1]];
+      out.push({ key: k, hook: m[1], destination: h.host, lan: h.lan });
     }
-    for (const k of unsets) {
-      if (k === 'hooks.audit.token') this.token = false;
-      else delete this.vals[k];
+    return out;
+  }
+  plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
+    const p = super.plan(t, sets, unsets);
+    const changed = new Set(p.changes.map((c) => c.key));
+    const grants = this.grants(Object.fromEntries(Object.entries(sets).filter(([k]) => changed.has(k))));
+    if (!grants.length) return p;
+    if (!this.trust) no('trust_required', `${grants[0].key}: the full payload takes pairing’s rights: set an admin password (App settings) to grant it from another machine, or grant it from this one`, { key: grants[0].key });
+    for (const g of grants) p.warnings.push(`${g.key}: the hook ${g.hook} gets the full payload (prompts and answers as they are) at ${g.destination ?? 'this controller'}${g.lan ? '' : ', outside the LAN: apply asks a second time'}`);
+    p.grant_keys = grants.filter((g) => !g.lan).map((g) => g.key).sort();
+    p.state = digest([p.state, grants]);
+    return p;
+  }
+  write(sets: Record<string, unknown>, unsets: string[]) {
+    const idx = this.index();
+    for (const k of [...Object.keys(sets), ...unsets]) {
+      const w = idx[k];
+      const v = k in sets ? sets[k] : null;
+      if (w.kind === 'hook') this.hooks[w.id].vals[w.field] = w.field === 'scope' && v === null ? {} : copy(v);
+      else if (w.field === 'api_key') {
+        const keys = this.providers[w.id].keys;
+        if (typeof v === 'string') keys[w.question!] = v;
+        else delete keys[w.question!];
+      } else {
+        this.providers[w.id].vals[w.field] = copy(v);
+        // a question no longer answered takes its key with it
+        if (w.field === 'questions') for (const q of Object.keys(this.providers[w.id].keys)) if (q !== '*' && !(q in (v as object))) delete this.providers[w.id].keys[q];
+      }
     }
   }
 }
@@ -940,6 +1106,8 @@ export interface MockSettingsOptions {
   engines?: () => { id: string; alias: string }[];
   /** false: no engine target until one is paired (the first run) */
   seeded?: boolean;
+  /** the hook registry holds its sample hooks and providers (control({hooks}) changes it) */
+  hooks?: boolean;
   now?: number;
 }
 
@@ -958,6 +1126,7 @@ export class MockSettings {
     const t0 = o.now ?? Date.now();
     this.engine = new EngineScope(o.engines ?? (() => []), o.seeded ?? true, t0);
     this.hooks = new HooksScope();
+    if (o.hooks) this.hooks.plugged = true;
     this.scopes = { app: new AppScope(o.parts), backends: new BackendsScope(), conductor: new ConductorScope(o.parts, t0), engine: this.engine, hooks: this.hooks };
     this.engine.onEnd = (r, state) => {
       this.audit(r.end!.at, r.who, 'settings.restart', `engine/${r.host.id}`, [], r.change_set, state);
@@ -967,7 +1136,7 @@ export class MockSettings {
   }
 
   /** What no click produces (POST /__mock/settings); see the head of this file. */
-  control(b: { restart?: string; busy_s?: number; fail?: string | null; busy?: boolean; move?: boolean; hooks?: boolean; unreachable?: string | null; wheel?: boolean }): Record<string, unknown> {
+  control(b: { restart?: string; busy_s?: number; fail?: string | null; busy?: boolean; move?: boolean; hooks?: boolean; trust?: boolean; unreachable?: string | null; wheel?: boolean }): Record<string, unknown> {
     if (b.restart === 'ok' || b.restart === 'fail' || b.restart === 'timeout') this.engine.outcome = b.restart;
     if (typeof b.busy_s === 'number') this.engine.busyS = b.busy_s;
     if (b.fail === null) this.fails.clear();
@@ -979,9 +1148,10 @@ export class MockSettings {
     if (typeof b.busy === 'boolean') this.busy = b.busy;
     if (b.move) this.epoch++;
     if (typeof b.hooks === 'boolean') this.hooks.plugged = b.hooks;
+    if (typeof b.trust === 'boolean') this.hooks.trust = b.trust;
     if ('unreachable' in b) this.engine.unreachable = b.unreachable ?? null;
     if (typeof b.wheel === 'boolean') this.engine.wheel = b.wheel;
-    return { fails: Object.fromEntries(this.fails), busy: this.busy, hooks: this.hooks.plugged, wheel: this.engine.wheel };
+    return { fails: Object.fromEntries(this.fails), busy: this.busy, hooks: this.hooks.plugged, trust: this.hooks.trust, wheel: this.engine.wheel };
   }
 
   /** The gateway's answer for a backend while its engine host drains: 503 with Retry-After; null
@@ -1056,16 +1226,19 @@ export class MockSettings {
     const msg = [this.epoch, ...parts.map((p) => [p.scope, p.target, p.kind, p.version, digest(p.sets), [...p.unsets].sort(), p.plan!.state, p.plan!.changes.map((c) => c.key)])];
     const confirm = digest(['confirm', msg]).slice(0, 32);
     const fp = parts.some((p) => p.plan!.fingerprint_keys.length) ? digest(['fingerprint', msg]).slice(0, 32) : null;
+    const cg = parts.some((p) => p.plan!.grant_keys?.length) ? digest(['grant', msg]).slice(0, 32) : null;
     const views: PartPlan[] = parts.map((p) => ({
       scope: p.scope, target: p.target, kind: p.kind, version: p.version, changed: p.plan!.changes.length > 0, changes: p.plan!.changes,
       restart: p.plan!.changes.length ? p.plan!.restart : 'none', restart_needed: p.plan!.changes.length > 0 && (p.plan!.restart === 'app' || p.plan!.restart === 'engine'),
       restart_estimate: p.plan!.changes.length && p.plan!.restart === 'engine' ? (p.plan!.estimate ?? null) : null,
-      fingerprint_keys: p.plan!.fingerprint_keys, warnings: p.plan!.warnings,
+      fingerprint_keys: p.plan!.fingerprint_keys, grant_keys: p.plan!.grant_keys ?? [], warnings: p.plan!.warnings,
     }));
     const changed = views.some((v) => v.changed);
     return {
       contract_version: CONTRACT, change_set: `cs-${confirm.slice(0, 12)}`, parts: views, changed, restart: maxRestart(views.map((v) => v.restart)), restart_needed: views.some((v) => v.restart_needed),
-      fingerprint_keys: views.flatMap((v) => v.fingerprint_keys.map((k) => `${v.scope}/${v.target}:${k}`)).sort(), needs_confirm: changed, confirm: changed ? confirm : null, confirm_fingerprint: changed ? fp : null,
+      fingerprint_keys: views.flatMap((v) => v.fingerprint_keys.map((k) => `${v.scope}/${v.target}:${k}`)).sort(),
+      grant_keys: views.flatMap((v) => v.grant_keys.map((k) => `${v.scope}/${v.target}:${k}`)).sort(),
+      needs_confirm: changed, confirm: changed ? confirm : null, confirm_fingerprint: changed ? fp : null, confirm_grant: changed ? cg : null,
     };
   }
 
@@ -1076,7 +1249,7 @@ export class MockSettings {
   private apply(body: unknown, who: string, now: number): Result {
     const b = body as Record<string, unknown>;
     const parts = this.parts(body);
-    const extra = Object.keys(b).filter((k) => !['changes', 'confirm', 'confirm_fingerprint', 'when', 'deadline_s', 'note'].includes(k)).sort();
+    const extra = Object.keys(b).filter((k) => !['changes', 'confirm', 'confirm_fingerprint', 'confirm_grant', 'when', 'deadline_s', 'note'].includes(k)).sort();
     if (extra.length) no('bad_request', `unknown field '${extra[0]}'`);
     const when = (b.when ?? null) as string | null;
     if (when !== null && (typeof when !== 'string' || !(when === 'now' || when === 'idle' || (when.startsWith('at=') && !Number.isNaN(Date.parse(when.slice(3))) && /(Z|[+-]\d\d:\d\d)$/.test(when))))) no('bad_request', 'when is now, idle or at=<ISO 8601 time with a zone>');
@@ -1098,6 +1271,10 @@ export class MockSettings {
     if (plan.confirm_fingerprint) {
       if (!b.confirm_fingerprint) no('fingerprint_confirm_required', `${feeds(plan.fingerprint_keys)} the disk cache’s fingerprint: every saved prefix misses after the restart; apply needs confirm_fingerprint as well`, { plan });
       if (b.confirm_fingerprint !== plan.confirm_fingerprint) no('stale_plan', 'confirm_fingerprint is not this plan’s: plan again', { plan });
+    }
+    if (plan.confirm_grant) {
+      if (!b.confirm_grant) no('grant_confirm_required', `${plan.grant_keys.join(', ')}: the full payload (prompts and answers as they are) would go to a destination outside the LAN; apply needs confirm_grant as well`, { plan });
+      if (b.confirm_grant !== plan.confirm_grant) no('stale_plan', 'confirm_grant is not this plan’s: plan again', { plan });
     }
     const cs = plan.change_set;
     const ctx: Ctx = { who, change_set: cs, when, deadline_s: deadline, note, now };
@@ -1136,13 +1313,13 @@ export class MockSettings {
   private one(scope: string, body: unknown, restore = false): Record<string, unknown> {
     const b = (body ?? {}) as Record<string, unknown>;
     if (typeof b !== 'object' || Array.isArray(b)) no('bad_request', 'the body is an object');
-    const known = ['target', 'confirm', 'confirm_fingerprint', 'when', 'deadline_s', 'note', ...(restore ? ['version'] : ['set', 'unset'])];
+    const known = ['target', 'confirm', 'confirm_fingerprint', 'confirm_grant', 'when', 'deadline_s', 'note', ...(restore ? ['version'] : ['set', 'unset'])];
     const extra = Object.keys(b).filter((k) => !known.includes(k)).sort();
     if (extra.length) no('bad_request', `unknown field '${extra[0]}'`);
     if (restore && !('version' in b)) no('bad_request', 'version is the id of the version to restore');
     const c: Record<string, unknown> = { scope, ...(b.target != null ? { target: b.target } : {}), ...(restore ? { restore: b.version } : { ...('set' in b ? { set: b.set } : {}), ...('unset' in b ? { unset: b.unset } : {}) }) };
     const out: Record<string, unknown> = { changes: [c] };
-    for (const k of ['confirm', 'confirm_fingerprint', 'when', 'deadline_s', 'note']) if (k in b) out[k] = b[k];
+    for (const k of ['confirm', 'confirm_fingerprint', 'confirm_grant', 'when', 'deadline_s', 'note']) if (k in b) out[k] = b[k];
     return out;
   }
 

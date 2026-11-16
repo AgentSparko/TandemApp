@@ -430,7 +430,7 @@ export class QseSettings extends LightElement {
     return html`<section class="panel st-empty" data-hooks-none>
       <h2 class="panel-title">No hooks yet</h2>
       <p class="small">${why ? `${why.charAt(0).toUpperCase()}${why.slice(1)}.` : 'No hook is registered on this TandemApp.'}</p>
-      <p class="small muted">A hook brings its own settings when it registers: whether it only watches or acts, its place in the order, what happens when it fails, a plugin’s own options. They show on this page then, with the same plan, versions and history as every other one. There is nothing to set up before that.</p>
+      <p class="small muted">Each hook shows here with its switches: whether it runs, only watches or acts, its place in the order, the requests it runs on, what happens when it fails and what it may see. A decision provider shows with its mode, its A/B share, the questions it answers and its keys. They get the same plan, versions and history as every other page. There is nothing to set up before that.</p>
       <p class="small muted">Until then the pieces that shape a request are set under <a href=${settingsHref('conductor')}>Conductor</a> and <a href=${settingsHref('backends')}>Backends</a>.</p>
     </section>`;
   }
@@ -452,7 +452,11 @@ export class QseSettings extends LightElement {
         return this.enginesPage();
       case 'hooks': {
         const d = this.data.get(dkey('hooks', HERE));
-        return this.scopePage('hooks', HERE, { empty: this.hooksEmpty(d?.schema?.why ?? null) });
+        return this.scopePage('hooks', HERE, {
+          fold: (id) => id.startsWith('hook:') || id.startsWith('provider:'),
+          before: d?.schema?.keys.length ? html`<p class="small muted st-lead" data-hooks-lead>A hook or a decision provider is added and removed through the controller’s API (<span class="num">/v1/fleet/hooks</span>, <span class="num">/v1/fleet/decision-providers</span>). Here: what each one is set to. Granting a hook the full payload asks for pairing’s rights, and a second time when it leaves the LAN.</p>` : nothing,
+          empty: this.hooksEmpty(d?.schema?.why ?? null),
+        });
       }
       default:
         return this.historyPage();

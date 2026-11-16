@@ -136,6 +136,8 @@ export interface PartPlan {
    *  saw that engine's last restart; engine: the engine's own last start; default: not known yet */
   restart_estimate?: RestartEstimate | null;
   fingerprint_keys: string[];
+  /** the keys that grant a hook the full payload to a destination outside the LAN */
+  grant_keys: string[];
   warnings: string[];
 }
 
@@ -153,9 +155,13 @@ export interface Plan {
   restart_needed: boolean;
   /** `<scope>/<target>:<key>` */
   fingerprint_keys: string[];
+  /** `<scope>/<target>:<key>`: a hook's full payload to a destination outside the LAN */
+  grant_keys: string[];
   needs_confirm: boolean;
   confirm: string | null;
   confirm_fingerprint: string | null;
+  /** the second confirm of a full payload outside the LAN (SEC-16) */
+  confirm_grant: string | null;
 }
 
 export type RestartState = 'scheduled' | 'draining' | 'restarting' | 'warming' | 'done' | 'failed' | 'timeout' | 'cancelled';
@@ -242,6 +248,7 @@ export type PartChange = { scope: Scope; target?: string; set?: Record<string, u
 export interface ApplyOptions {
   confirm: string;
   confirm_fingerprint?: string;
+  confirm_grant?: string;
   /** engine parts: `idle` (the default), `now`, or `at=<ISO time with a zone>` */
   when?: string;
   deadline_s?: number;
