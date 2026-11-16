@@ -126,6 +126,10 @@ class LocalProvider(IdentityProvider):
         row = self.store.by_username(username) if isinstance(username, str) else None
         doc = row.get("pw") if row is not None else None
         usable = row is not None and bool(row.get("enabled")) and isinstance(doc, dict)
+        # SEC-26: a one-time code (users add, reset-password) ends after its day
+        if usable and doc.get("expires_at") is not None and \
+                not int(self.clock() * 1000) < doc["expires_at"]:
+            usable = False
         with self._lock:
             if self._held_locked(self.clock()):
                 return Denied("held")

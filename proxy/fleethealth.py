@@ -189,6 +189,14 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "plugin_no_sandbox": ("warning", None),
     "plugin_tampered": ("error", None),                             # SEC-18
     "plugin_untrusted": ("warning", None),
+    # the sign-in (SEC-26, SRV-865)
+    "auth_setup_pending": ("error", None),
+    "auth_owner_no_password": ("info", None),
+    "local_mode_proxy_seen": ("error", None),
+    "legacy_env_set": ("warning", None),
+    "legacy_env_invalid": ("error", None),
+    "legacy_users_from_unreadable": ("warning", None),
+    "bootstrap_secret_left": ("info", None),
 }
 
 ERR = enginecodes.error
@@ -232,9 +240,9 @@ def route_for(method: str, parts: list[str], body) -> str:
 
 def instance_of(f: dict) -> str | None:
     """Which one of its code a finding is, where a target has several: the backend or plugin it
-    names; None for the others."""
+    names (or the legacy variable, SRV-865); None for the others."""
     facts = f.get("facts") or {}
-    got = facts.get("backend") or facts.get("plugin")
+    got = facts.get("backend") or facts.get("plugin") or facts.get("variable")
     return str(got) if got is not None else None
 
 
@@ -751,6 +759,11 @@ class Health:
         worst = min(probs, key=lambda pr: SEVERITIES.index(
             FINDINGS.get(pr["code"], ("error", None))[0])) if probs else None
         checks.append(_check("plugins", not probs, worst["code"] if worst else None))
+        # the sign-in (SEC-26, SRV-865), with TANDEM_AUTH=accounts only
+        auth = getattr(self.fleet.svc, "auth", None)
+        if getattr(auth, "accounts", False) and hasattr(auth, "findings"):
+            for f in auth.findings():
+                found.append(finding(f["code"], f.get("detail"), **f.get("facts", {})))
         # the first run
         setup = setup_state(self.fleet)
         if setup["needs_setup"]:

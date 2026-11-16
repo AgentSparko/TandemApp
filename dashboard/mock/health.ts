@@ -106,6 +106,13 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   plugin_no_sandbox: ['warning', null],
   plugin_tampered: ['error', null],
   plugin_untrusted: ['warning', null],
+  auth_setup_pending: ['error', null],
+  auth_owner_no_password: ['info', null],
+  local_mode_proxy_seen: ['error', null],
+  legacy_env_set: ['warning', null],
+  legacy_env_invalid: ['error', null],
+  legacy_users_from_unreadable: ['warning', null],
+  bootstrap_secret_left: ['info', null],
 };
 
 export const actionView = (a: ActionId | null): HealthAction | null => (a === null ? null : { id: a, label: HEALTH_ACTIONS[a][0], changes: HEALTH_ACTIONS[a][1], confirm: HEALTH_ACTIONS[a][2] });

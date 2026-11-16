@@ -429,7 +429,10 @@ class Handler(BaseHTTPRequestHandler):
                 out["version"] = STATE.get("version")
                 # OPS-246: the page's bundle this server serves (its content hash and manifest)
                 out["dashboard"] = static.bundle_info(STATE.get("dashboard_dir"))
-            return self._json(code, out)
+            # SEC-26: the page shows its sign-in when the accounts are on (a header: the body of
+            # /health keeps its keys)
+            return self._json(code, out, extra_headers=(("X-Tandem-Auth", "accounts"),) if
+                              STATE.get("accounts") is not None else ())
         if path == "/metrics":
             if not self._allowed("metrics"):
                 return
@@ -1055,7 +1058,7 @@ class Handler(BaseHTTPRequestHandler):
         a = STATE["auth"]
         if STATE.get("accounts") is not None:
             from proxy import authapi           # SEC-24: over the accounts' sessions
-            return authapi.legacy_session(self, STATE["accounts"], method, fleet)
+            return authapi.legacy_session(self, STATE["accounts"], method, fleet, body)
         if fleet:
             return self._fleet_session(method, body)
         # AU1: no admin password set, or the login off -- nothing to sign in to. GET says so
@@ -1284,6 +1287,14 @@ def build(args, env=None) -> Service:
     from tandemapp import ledger as ledger_mod
     env = os.environ if env is None else env
     Handler.timeout = getattr(args, "idle_timeout", IDLE_TIMEOUT_S) or None
+    mode = (env.get("TANDEM_AUTH") or "").strip().lower()
+    legacy = []
+    if mode == "accounts":
+        # SRV-865: a legacy variable that does not read is a health finding, never a stop
+        from proxy import authlegacy
+        env_file = getattr(args, "env_file", None)
+        env, legacy = authlegacy.scan(env, {v: env_file for v in
+                                            authlegacy.env_file_vars(env_file)})
     cfg = config_mod.ConfigDB(args.config_db, env=env,
                               use_keychain=not getattr(args, "no_keychain", False)).open()
     cfg.apply_env()
@@ -1302,14 +1313,23 @@ def build(args, env=None) -> Service:
         led = ledger_mod.Ledger(args.usage_ledger, retention_days=args.usage_retention_days).open()
     # SEC-22: TANDEM_AUTH=accounts turns on the accounts, their sessions and one permission
     # table (proxy/accounts.py); anything else keeps the rule below, unchanged
-    mode = (env.get("TANDEM_AUTH") or "").strip().lower()
     accounts = None
     if mode == "accounts":
         from proxy import accounts as accounts_mod
+        from proxy import authlegacy
         a = accounts = accounts_mod.AccountsAuth(
             cfg, trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
-            log=lambda m: STATE["svc"].log(m))
+            log=lambda m: STATE["svc"].log(m), env=env)
         accounts.session_tokens = lambda: STATE.get("session_tokens")
+        accounts.legacy = legacy
+        # SRV-865: admin.json's password becomes the owner; the admin token alone, the setup code
+        did = authlegacy.migrate(accounts, os.path.dirname(cfg.path))
+        if did["owner"]:
+            print(f"[auth] admin.json's password signs in as the owner account {did['owner']!r}",
+                  flush=True)
+        for f in legacy:
+            print(f"[auth] {f['variable']} ({f['file']}): {f['code']}; sign-in and API tokens "
+                  f"replace it", flush=True)
     else:
         if mode not in ("", "legacy", "off"):
             print(f"[auth] TANDEM_AUTH={mode[:40]!r} is not a mode (accounts, legacy); the admin "
@@ -1698,6 +1718,10 @@ def serve(args) -> None:
     logbuf.install()
     svc = build(args)
     srv = Server((args.host, args.port), Handler)
+    if STATE.get("accounts") is not None:
+        # SEC-26: the bound address decides local mode; no owner: a setup code in the log
+        STATE["accounts"].listen(args.host, srv.server_address[1],
+                                 say=lambda m: print(m, flush=True))
     svc.plugin_host.own_url = gateway_url(args.host, srv.server_address[1])
     svc.start()
     STATE["fleet"].start()

@@ -47,8 +47,15 @@ exists, so the answer does not tell. Over every address: proxy/identity.py's cap
 
 SEAMS for the changes after this one: `token_resolver(headers) -> Principal | None` (API tokens;
 None until then: an API credential is a 401 here), `service_resolver` (service identities),
-`local_mode` (the bare loopback install without a password), `on_account_removed(account_id)`
-(tokens of a removed or disabled account).
+`on_account_removed(account_id)` (tokens of a removed or disabled account).
+
+SEC-26 adds local mode and the setup code (proxy/authlocal.py), the tables `setup_codes` and
+`auth_state`, and one-time codes: `users add` and `users reset-password` (proxy/userscli.py)
+give an account a code of 20 characters in place of a password, valid 24 hours; signed in with
+it, the account may only set its password (403 `password_change_required` elsewhere). A
+local-mode write passes the same-origin rule of a cookie write, without the CSRF header.
+SRV-865 adds the first owner (`auth_state.first_owner`): admin.json follows its password in the
+old format (proxy/authlegacy.py).
 """
 
 from __future__ import annotations
@@ -85,6 +92,9 @@ UNMAPPED_LOGGED = 1000
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._@-]{0,63}$")
 BINARY_WRITES = ("/v1/fleet/plugins/upload", "/v1/chat-app")
 SESSION_CONTRACT = "auth-v1"
+# what an account signed in with a one-time code may do: see itself, set its password, sign out
+MUST_CHANGE_OK = {("GET", "/v1/auth/session"), ("DELETE", "/v1/auth/session"),
+                  ("PUT", "/v1/auth/password")}
 
 DDL = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -101,6 +111,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   idle_until INTEGER NOT NULL, expires_at INTEGER NOT NULL, address TEXT, agent TEXT,
   revoked_at INTEGER);
 CREATE INDEX IF NOT EXISTS sessions_account ON sessions(account_id);
+CREATE TABLE IF NOT EXISTS setup_codes (
+  hash TEXT PRIMARY KEY, source TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER,
+  tries INTEGER NOT NULL DEFAULT 0, spent_at INTEGER);
+CREATE TABLE IF NOT EXISTS auth_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 ACCOUNT_COLS = ("id", "provider", "subject", "username", "display_name", "role", "enabled", "pw",
                 "must_change", "created_at", "last_login_at")
@@ -129,6 +143,7 @@ class Principal:
     session: str | None = None      # the session's id_hash (cookie)
     csrf: str | None = None         # the session's CSRF token (cookie)
     expires_at: int | None = None   # ms
+    must_change: bool = False       # signed in with a one-time code: only a new password
 
 
 def _sha(text: str) -> str:
@@ -331,6 +346,50 @@ class AccountStore:
             self.cfg._audit(actor, action, "account", account_id,
                             detail={"text": "password changed"})
             self._c.commit()
+        self._password_changed(account_id, doc)
+
+    # ------------------------------------------------------------------ one-time codes (SEC-26)
+    def set_code(self, account_id: str, *, actor: str, action: str = "reset") -> str:
+        """A one-time code in place of the password (valid CODE_TTL_MS): the old password stops
+        at once and every session ends. The code is returned once; only its hash is kept."""
+        from proxy import authlocal
+        code = authlocal.new_code()
+        doc = adminpw.make_doc(code, self.clock())
+        doc["expires_at"] = self.now_ms() + authlocal.CODE_TTL_MS
+        with self.cfg._lock:
+            if self.get(account_id) is None:
+                raise AccountError(404, "not_found", "no such account")
+            self._c.execute("UPDATE accounts SET pw = ?, must_change = 1 WHERE id = ?",
+                            (json.dumps(doc), account_id))
+            self.cfg._audit(actor, action, "account", account_id,
+                            detail={"text": "one-time code made"})
+            self._c.commit()
+        self.revoke_account(account_id, actor=actor, why="password reset")
+        self._password_changed(account_id, doc)
+        return code
+
+    # ------------------------------------------------------------------ auth_state
+    def state(self, key: str):
+        with self.cfg._lock:
+            r = self._c.execute("SELECT value FROM auth_state WHERE key = ?", (key,)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def set_state(self, key: str, value) -> None:
+        with self.cfg._lock:
+            self._c.execute("INSERT OR REPLACE INTO auth_state(key, value) VALUES (?, ?)",
+                            (key, json.dumps(value)))
+            self._c.commit()
+
+    def first_owner(self) -> dict | None:
+        """The owner admin.json follows (SRV-865): made from it, or by the first-run setup."""
+        aid = self.state("first_owner")
+        return self.get(aid) if isinstance(aid, str) else None
+
+    on_password = None                      # (account_id, pw doc) -> None (proxy/authlegacy.py)
+
+    def _password_changed(self, account_id: str, doc: dict) -> None:
+        if self.on_password is not None:
+            self.on_password(account_id, doc)
 
     def mark_login(self, account_id: str) -> None:
         with self.cfg._lock:
@@ -619,7 +678,7 @@ class AccountsAuth:
     password_set = True                 # "sign-in is needed" for every old reader of the flag
 
     def __init__(self, cfg, *, trusted_proxies=(), clock=time.time, listener_tls: bool = False,
-                 log=None):
+                 log=None, env=None):
         self.cfg = cfg
         self.clock = clock
         self.policy = authz.Policy(cfg)
@@ -638,6 +697,58 @@ class AccountsAuth:
         self.service_resolver = None        # (headers, peer) -> Principal | None
         self.local_mode = None              # (peer, headers) -> Principal | None
         self.on_account_removed = None      # (account_id) -> None: its tokens
+        # SEC-26: local mode and the setup codes; SRV-865: the legacy variables' findings
+        from proxy import authlocal
+        self.env = dict(env) if env is not None else {}
+        self.local = authlocal.LocalMode(self.store, self.env, clock=clock, log=self.log)
+        self.local_mode = self.local
+        self.codes = authlocal.SetupCodes(self.store, self.env)
+        self.legacy: list[dict] = []        # proxy/authlegacy.py scan(): {code, variable, file}
+
+    def listen(self, host: str, port=None, say=None) -> str | None:
+        """SEC-26: where the process listens decides local mode (never the peer). Without local
+        mode and with no owner, a fresh setup code goes to the log (returned for the caller)."""
+        from proxy import authlocal
+        say = say or self.log
+        self.local.bind = host
+        if not self.store.setup_required():
+            return None
+        if self.local.on():
+            say("[auth] local mode: this machine's browser acts as the owner until a password is "
+                "set; every other device needs a sign-in")
+            return None
+        self.codes.sync_secret()
+        if self.codes.secret_text():
+            say(f"[auth] no owner yet: the setup code is in {self.codes.secret_path()} (single "
+                f"use; it opens only the first-run setup)")
+            return None
+        code = self.codes.new("log")
+        where = f"http://{'<this host>' if not authlocal.loopback_bind(host) else host}" \
+                f"{':' + str(port) if port else ''}/"
+        say(f"[auth] no owner yet. Setup code: {code} (single use, {authlocal.TRIES} tries, valid "
+            f"24 h or until the next start; it opens only the first-run setup). Open {where} and "
+            f"enter it; `tandem-app users setup-code` prints a new one")
+        return code
+
+    def findings(self) -> list[dict]:
+        """The health page's controller findings of the sign-in (codes of proxy/enginecodes.py):
+        {code, detail?, facts}."""
+        out: list[dict] = []
+        need = self.store.setup_required()
+        local = self.local.on()
+        if need and not local:
+            out.append({"code": "auth_setup_pending", "facts": {}})
+        if local:
+            out.append({"code": "auth_owner_no_password", "facts": {}})
+            if self.local.seen is not None:
+                out.append({"code": "local_mode_proxy_seen", "facts": {}})
+        if not need and self.codes.secret_text():
+            out.append({"code": "bootstrap_secret_left",
+                        "facts": {"path": self.codes.secret_path()}})
+        for f in self.legacy:
+            out.append({"code": f["code"], "facts": {"variable": f["variable"],
+                                                     "file": f["file"]}})
+        return out
 
     def describe(self) -> str:
         accts = self.store.all()
@@ -687,7 +798,8 @@ class AccountsAuth:
                 return Principal(kind="account", id=acc["id"], name=acc["username"],
                                  role=acc["role"], via="cookie", session=row["id_hash"],
                                  csrf=csrf_of(sid),
-                                 expires_at=min(row["expires_at"], row["idle_until"]))
+                                 expires_at=min(row["expires_at"], row["idle_until"]),
+                                 must_change=bool(acc["must_change"]))
         if self.service_resolver is not None:
             got = self.service_resolver(headers, peer)
             if got is not None:
@@ -836,6 +948,10 @@ class AccountsAuth:
         p = self.resolve(handler.headers, peer, raw)
         handler._principal = p
         self._tls.principal, self._tls.conn = p, getattr(handler, "connection", None)
+        if p is not None and p.via == "local":
+            bad = self._local_csrf(handler, method, path)
+            if bad is not None:
+                return self._refuse(handler, method, *bad)
         if p is not None and p.via == "cookie":
             bad = self._csrf(handler, method, path, p)
             if bad is not None:
@@ -854,10 +970,37 @@ class AccountsAuth:
             return self._refuse(handler, method, 401, "sign_in_required",
                                 "sign in, or send an API token",
                                 extra=(("WWW-Authenticate", 'Bearer realm="TandemLLM"'),))
+        if p.must_change and (method, path) not in MUST_CHANGE_OK:
+            return self._refuse(handler, method, 403, "password_change_required",
+                                "set a new password first (PUT /v1/auth/password)")
         if not authz.allow(p, perm, self.policy):
             return self._refuse(handler, method, 403, "permission_denied",
                                 f"this needs the permission {perm}", permission=perm)
         return False
+
+    def _local_csrf(self, handler, method: str, path: str):
+        """SEC-26: a local-mode request has no cookie and no token, so a page of another site
+        open in this machine's browser could post as the owner: every write comes from this
+        origin and declares JSON (a file upload excepted), and a WebSocket names this host."""
+        h = handler.headers
+        if method in ("GET", "HEAD"):
+            if self._h(h, "Upgrade").lower() == "websocket":
+                if not self._h(h, "Origin"):
+                    return 403, "cross_origin", "a WebSocket needs an Origin naming this server"
+                bad = auth_mod.same_origin(h)
+                return bad[:2] + ("a WebSocket from another origin is refused",) if bad else None
+            return None
+        bad = auth_mod.same_origin(h)
+        if bad is not None:
+            return bad[0], bad[1], "a write from another site or origin is refused"
+        has_body = (self._h(h, "Content-Length") not in ("", "0")
+                    or "chunked" in self._h(h, "Transfer-Encoding").lower())
+        if has_body and not path.startswith(BINARY_WRITES):
+            ctype = self._h(h, "Content-Type").split(";")[0].strip().lower()
+            if ctype != "application/json":
+                return 415, "json_only", "a write takes a JSON body (Content-Type: " \
+                                         "application/json)"
+        return None
 
     def done(self, handler) -> None:
         """The request's end: its connection no longer counts as the session's stream."""

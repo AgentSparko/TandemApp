@@ -40,7 +40,14 @@
         "plugin_failed",
         "plugin_no_sandbox",
         "plugin_tampered",
-        "plugin_untrusted"
+        "plugin_untrusted",
+        "auth_setup_pending",
+        "auth_owner_no_password",
+        "local_mode_proxy_seen",
+        "legacy_env_set",
+        "legacy_env_invalid",
+        "legacy_users_from_unreadable",
+        "bootstrap_secret_left"
       ]
     },
     "severity": {

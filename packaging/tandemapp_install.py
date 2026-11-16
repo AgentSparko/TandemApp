@@ -22,8 +22,11 @@ WHAT IT DOES, in order (each step says what it did; `--dry-run` says what it wou
      agent; Chat and the conductor are switched on in Settings, App, What runs here, or with
      --chat own); later runs change only the address, port and --chat they are given. An address that is not loopback (--listen) gets an admin
      token (TANDEM_ADMIN_TOKEN, never printed) and the page's sign-in, unless an admin password or
-     token is set already. chatd.env (2 GiB and 2 running sandboxes) when there is none: read
-     only once Chat is on.
+     token is set already. With TANDEM_AUTH=accounts (app.env or the environment; SEC-26) no
+     token is written: the summary prints a one-time setup code that makes the first owner. An
+     address that is not loopback, and --behind-proxy, write TANDEM_LOCAL_MODE=off, so this
+     machine's browser is never trusted without a password. chatd.env (2 GiB and 2 running
+     sandboxes) when there is none: read only once Chat is on.
   5  --with-sandbox (Linux, with sudo): ops/sandbox/install.sh, rootless Podman under its own user
      with its socket, egress table and the ACLs on chatd's folders; chatd.env gets its socket.
      It switches nothing on: the sandboxes are used once Chat is on.
@@ -53,6 +56,7 @@ A re-run with the same release changes nothing that runs while it answers health
 unit or plist, the same release): idempotent. Old releases stay; the summary says how many.
 
     bash packaging/install.sh [--prefix DIR] [--state-dir DIR] [--listen ADDR] [--port N]
+        [--behind-proxy]
         [--service auto|systemd|launchd|process|none] [--unit NAME] [--launchd-label LABEL]
         [--chat off|own|external]
         [--with-sandbox] [--venv DIR]
@@ -412,11 +416,15 @@ def ensure_state(state: str, a, dry: bool) -> dict:
     lan = not loopback(host)
     has_admin = bool(cur.get("TANDEM_ADMIN_TOKEN") or cur.get("QSE_ADMIN_TOKEN")) or \
         os.path.exists(os.path.join(state, "admin.json"))
+    accounts = accounts_on(cur)
+    no_local = lan or bool(getattr(a, "behind_proxy", False))
     if dry:
         say(f"would keep the state in {state}: " + ("a new app.env" if new else "app.env there")
-            + f", {host}:{port}" + (", a new admin token" if lan and not has_admin else ""))
+            + f", {host}:{port}"
+            + (", a new admin token" if lan and not has_admin and not accounts else "")
+            + (", TANDEM_LOCAL_MODE=off" if no_local and cur.get(LOCAL_ENV) != "off" else ""))
         return {"host": host, "port": port, "token": cur.get("TANDEM_ADMIN_TOKEN"),
-                "changed": new, "new": new, "lan": lan}
+                "changed": new, "new": new, "lan": lan, "accounts": accounts}
     os.makedirs(state, mode=0o700, exist_ok=True)
     os.chmod(state, 0o700)
     os.makedirs(os.path.join(state, "logs"), mode=0o700, exist_ok=True)
@@ -437,7 +445,16 @@ def ensure_state(state: str, a, dry: bool) -> dict:
             changed = True
             say(f"app.env: {', '.join(f'{k}={v}' for k, v in want.items())}")
     token = read_env(envf).get("TANDEM_ADMIN_TOKEN")
-    if lan and not has_admin:
+    if accounts and read_env(envf).get("TANDEM_AUTH") != "accounts":
+        set_env(envf, {"TANDEM_AUTH": "accounts"})          # the service starts with it too
+        changed = True
+    # SEC-26: an address beyond loopback, or a proxy in front, never gets local mode
+    if no_local and read_env(envf).get(LOCAL_ENV) != "off":
+        set_env(envf, {LOCAL_ENV: "off"})
+        changed = True
+        say(f"app.env: {LOCAL_ENV}=off (" + ("a proxy is in front" if not lan else
+                                              f"{host} is not loopback") + ")")
+    if lan and not has_admin and not accounts:
         token = secrets.token_urlsafe(32)
         set_env(envf, {"TANDEM_ADMIN_TOKEN": token, "TANDEM_DASHBOARD_LOGIN": "on"})
         changed = True
@@ -454,7 +471,30 @@ def ensure_state(state: str, a, dry: bool) -> dict:
     if not os.path.exists(chatf):
         write_private(chatf, CHATD_ENV)
     return {"host": host, "port": port, "token": token, "changed": changed, "new": new,
-            "lan": lan}
+            "lan": lan, "accounts": accounts}
+
+
+LOCAL_ENV = "TANDEM_LOCAL_MODE"
+
+
+def accounts_on(cur: dict) -> bool:
+    """TANDEM_AUTH=accounts in app.env or this run's environment (the new sign-in, SEC-26)."""
+    v = os.environ.get("TANDEM_AUTH") or cur.get("TANDEM_AUTH") or ""
+    return v.strip().lower() == "accounts"
+
+
+def setup_code(rel: str, state: str) -> str | None:
+    """A one-time setup code from the release's own CLI while no owner exists, else None."""
+    py = os.path.join(rel, "venv", "bin", "python")
+    r = subprocess.run([py, os.path.join(rel, "proxy", "__main__.py"), "users", "setup-code",
+                        "--config-db", os.path.join(state, "config.sqlite3")],
+                       capture_output=True, text=True, check=False, timeout=60)
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.splitlines():
+        if line.startswith("setup code: "):
+            return line.split(": ", 1)[1].strip()
+    return None
 
 
 # ======================================================================================== the sandbox
@@ -830,8 +870,10 @@ def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry:
 
 
 def health(host: str, port: int, token: str | None, version: str, bundle: str | None,
-           wait: float) -> tuple[bool, str]:
-    """(answers as this release, what it said): /health, then /dashboard/'s bundle."""
+           wait: float, accounts: bool = False) -> tuple[bool, str]:
+    """(answers as this release, what it said): /health, then /dashboard/'s bundle. With the
+    accounts on (SEC-26) /health tells its version only to someone signed in: an answer without
+    it counts when it says `ok` and the page's bundle is this release's."""
     h = "127.0.0.1" if host in ("0.0.0.0", "") else "::1" if host == "::" else host
     base = f"http://[{h}]:{port}" if ":" in h else f"http://{h}:{port}"
     t_end = time.monotonic() + wait
@@ -845,6 +887,8 @@ def health(host: str, port: int, token: str | None, version: str, bundle: str | 
                 doc = json.loads(r.read() or b"{}")
             got_v = doc.get("version")
             got_b = (doc.get("dashboard") or {}).get("sha256")
+            if accounts and got_v is None and doc.get("status") == "ok":
+                got_v, got_b = version, bundle
             if got_v == version and (bundle is None or got_b == bundle):
                 with urllib.request.urlopen(base + "/dashboard/", timeout=3) as r:
                     tag = r.headers.get("X-Tandem-Bundle") or ""
@@ -901,6 +945,10 @@ def parser() -> argparse.ArgumentParser:
                     help="the address it listens on (default 127.0.0.1, or app.env's); not "
                          "loopback makes an admin token")
     ap.add_argument("--port", type=int, default=None, help=f"default {DEFAULT_PORT}, or app.env's")
+    ap.add_argument("--behind-proxy", action="store_true",
+                    help="a reverse proxy or tunnel on this machine sends other devices here: "
+                         "this machine's browser is never trusted without a password "
+                         "(TANDEM_LOCAL_MODE=off)")
     ap.add_argument("--service", choices=MANAGERS, default="auto")
     ap.add_argument("--unit", default=UNIT,
                     help="the systemd user unit's name (default: %(default)s); a unit of this "
@@ -1006,7 +1054,8 @@ def install(a) -> int:
     svc = service(mgr, prefix, rel, state, changed, dry=False, unit=unit, label=label)
     bundle = manifest.get("sha256")
     if svc["started"]:
-        ok, said = health(st["host"], st["port"], st["token"], version, bundle, a.wait)
+        ok, said = health(st["host"], st["port"], st["token"], version, bundle, a.wait,
+                          accounts=st.get("accounts", False))
         if not ok:
             tail = log_tail(state, mgr, unit=unit)
             if before and before != rid and os.path.isdir(os.path.join(prefix, "releases", before)):
@@ -1026,7 +1075,13 @@ def install(a) -> int:
           + f" ({svc['manager']}).")
     if url:
         print(f"  Open {url}  (the first page sets up an engine)")
-        if st["lan"]:
+        code = setup_code(rel, state) if st.get("accounts") else None
+        if code:
+            where = "http://<this host's address>" if st["lan"] else url.rstrip("/")
+            print(f"  Setup code: {code}  (single use, valid 24 hours: open {where}"
+                  f"{':' + str(st['port']) if st['lan'] else ''}/ and make the owner with it; "
+                  f"`tandem-app users setup-code` prints a new one)")
+        elif st["lan"] and not st.get("accounts"):
             print(f"  From another machine: http://<this host's address>:{st['port']}/; sign in "
                   f"with TANDEM_ADMIN_TOKEN from {os.path.join(state, 'app.env')}")
     if (read_env(os.path.join(state, "app.env")).get("TANDEM_CHAT") or "external") == "off":

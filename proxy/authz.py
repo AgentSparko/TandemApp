@@ -27,7 +27,8 @@ refuse everyone while accounts are on.
 
 THE ROUTE TABLE (ROUTES) names every route family the server dispatches: an exact path or a
 prefix (the path itself, or anything under it), the methods, and the permission the caller needs
-at least. OPEN routes need no credential (the page shell, /health's status, the sign-in). A family
+at least. OPEN routes need no credential (the page shell, /health's status, the sign-in, the
+first-run setup, which checks its own setup code). A family
 whose handler checks a finer route kind (tandemapp/auth.py's `decide`: the fleet, the settings,
 the configuration, the conductor) is listed with `read` here; the kind then asks for its own
 permission through KIND_PERMISSION. A path with no entry is refused with 403 and logged once;
@@ -76,6 +77,7 @@ ROUTES: tuple = (
     (GET, "exact", "/health", OPEN), (GET, "exact", "/healthz", OPEN),
     (GET, "exact", "/v1/health", OPEN),
     (("GET", "POST", "DELETE"), "exact", "/v1/auth/session", OPEN),
+    (POST, "exact", "/v1/auth/setup", OPEN),
     (("GET", "POST", "DELETE"), "exact", "/v1/dashboard/session", OPEN),
     (("GET", "POST", "DELETE"), "exact", "/v1/fleet/session", OPEN),
     (("GET", "POST", "DELETE"), "exact", "/v1/chat-app/session", OPEN),
@@ -212,7 +214,8 @@ def allow(principal, permission: str | None, policy: Policy | None = None) -> bo
         return True
     if principal is None or permission is None:
         return False
-    if principal.kind == "account":
+    if principal.kind in ("account", "local"):
+        # SEC-26: local mode's request acts as the owner `local` (proxy/authlocal.py)
         return permission in role_permissions(principal.role, policy)
     if principal.kind == SESSION_ADDRESS:
         return permission == SESSION_ADDRESS

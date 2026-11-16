@@ -22,7 +22,11 @@
     tandem-app password set|remove|status [--state-dir D]
                                                      the controller's admin password on this
                                                      machine, without the current one (the way
-                                                     back from a lost one; proxy/adminpw.py)
+                                                     back from a lost one; proxy/adminpw.py);
+                                                     with accounts, the first owner's
+    tandem-app users list|add|disable|enable|role|reset-password|remove|setup-code
+                                                     the accounts on this machine, no password
+                                                     asked (proxy/userscli.py, SEC-26)
     tandem-app chat-move --from USER@HOST:PATH [--plan] [--replace]
                                                      chatd's data folder from another host to this
                                                      controller's chatd (proxy/chatmove.py, SRV-843)
@@ -150,7 +154,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = ("serve", "check", "secrets", "backends", "import-backends", "hostcollect", "launch", "service",
-            "package", "password", "chat-move", "version")
+            "package", "password", "users", "chat-move", "version")
 
 
 def main(argv=None) -> None:
@@ -173,8 +177,11 @@ def main(argv=None) -> None:
         from proxy import appservice
         raise SystemExit(appservice.main(argv))
     if cmd == "password":
-        from proxy import adminpw
-        raise SystemExit(adminpw.main(argv))
+        from proxy import userscli              # SEC-26: the first owner's, once accounts exist
+        raise SystemExit(userscli.password_main(argv))
+    if cmd == "users":
+        from proxy import userscli
+        raise SystemExit(userscli.main(argv))
     if cmd == "package":
         from proxy import nodeinstall
         raise SystemExit(nodeinstall.package_main(argv))

@@ -4,6 +4,9 @@
                                        provider and its capabilities, setup_required, local_mode
     POST   /v1/auth/session            {username, password} -> the session cookie
     DELETE /v1/auth/session            sign out
+    POST   /v1/auth/setup              {code, username, password}: the first owner, signed in
+                                       (SEC-26); 404 once an owner exists. In local mode no code:
+                                       the owner `local` sets the password, which ends local mode
     PUT    /v1/auth/password           {current, password}: every session of the account ends;
                                        this browser gets a new one
     GET    /v1/auth/sessions[?user=]   the live sessions (another account's: permission `users`)
@@ -21,9 +24,13 @@ one hash. No answer, log line or audit row holds a password, a hash, a salt, a s
 CSRF token.
 
 The old sign-in routes answer over the accounts while the switch is on: GET
-/v1/dashboard/session and /v1/fleet/session say whether this browser is signed in, their POST
-and /v1/chat-app/session's send a person to /v1/auth/session, their DELETE signs out, and
-/v1/fleet/app/password's writes send a person to /v1/auth/password.
+/v1/dashboard/session and /v1/fleet/session say whether this browser is signed in, their DELETE
+signs out, /v1/chat-app/session's POST sends a person to /v1/auth/session, and
+/v1/fleet/app/password's writes send a person to /v1/auth/password. SRV-865: the old page's
+sign-in form (POST /v1/dashboard/session or /v1/fleet/session {token}) signs in as the first
+owner (the one made from admin.json or by the setup) with that owner's password; with no first
+owner it answers 404. GET /v1/dashboard/session without a session then says
+`authenticated: false` (else 401, as before).
 """
 
 from __future__ import annotations
@@ -70,12 +77,15 @@ def _account_view(row: dict) -> dict:
 
 def _session_answer(handler, a, p) -> dict:
     acc = a.store.get(p.id) if p is not None and p.kind == "account" else None
+    perms = a.permissions(p) if p is None or p.kind != "local" else \
+        sorted(authz.role_permissions("owner", a.policy))
     return {"contract_version": CONTRACT, "authenticated": p is not None,
             "account": _account_view(acc) if acc else None,
             "principal": None if p is None else {"kind": p.kind, "name": p.name},
-            "permissions": a.permissions(p), "csrf": p.csrf if p is not None else None,
+            "permissions": perms, "csrf": p.csrf if p is not None else None,
             "provider": {"kind": a.provider.kind, "capabilities": a.provider.capabilities()},
-            "setup_required": a.store.setup_required(), "local_mode": False,
+            "setup_required": a.store.setup_required(),
+            "local_mode": p is not None and p.kind == "local",
             "expires_at": _iso(p.expires_at) if p is not None else None}
 
 
@@ -84,7 +94,7 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
     parts = [unquote(x) for x in path.rstrip("/").split("/")[3:]]
     q = {k: v[-1] for k, v in parse_qs(urlsplit(handler.path).query).items()}
     try:
-        if parts == ["session"] and method == "POST":
+        if parts in (["session"], ["setup"]) and method == "POST":
             # the sign-in comes from this server's own page, as JSON (before its body is read)
             bad = auth_mod.same_origin_json(handler.headers)
             if bad is not None:
@@ -93,6 +103,8 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
         body = _body(raw)
         if parts == ["session"]:
             return _session(handler, a, method, body)
+        if parts == ["setup"] and method == "POST":
+            return _setup(handler, a, body)
         if parts[:1] == ["sessions"]:
             return _sessions(handler, a, method, parts[1:], q)
         if parts == ["password"] and method == "PUT":
@@ -151,6 +163,73 @@ def _sign_out(handler, a, p) -> None:
         a.store.revoke([p.session], actor=p.name, why="signed out")
         a.cfg.log_audit(p.name, "sign_out", "session", acc_mod.public_id(p.session))
     return handler._send_empty(204, NOSTORE + (("Set-Cookie", clear),))
+
+
+def _signed_in(handler, a, row: dict, address: str, status: int = 200) -> None:
+    peer = handler._peer()
+    sid, srow = a.store.open_session(row["id"], address, handler.headers.get("User-Agent") or "")
+    a.store.mark_login(row["id"])
+    a.cfg.log_audit(row["username"], "sign_in", "session", acc_mod.public_id(srow["id_hash"]),
+                    detail={"address": acc_mod._clean(address, 64)})
+    cookie = a.cookie(sid, peer, handler.headers)
+    return handler._json(status, {"contract_version": CONTRACT,
+                                  "account": _account_view(a.store.get(row["id"])),
+                                  "csrf": acc_mod.csrf_of(sid),
+                                  "expires_at": _iso(min(srow["idle_until"], srow["expires_at"]))},
+                         extra_headers=NOSTORE + (("Set-Cookie", cookie),))
+
+
+# ------------------------------------------------------------------------------ setup (SEC-26)
+SETUP_GONE = "an owner exists: sign in"
+
+
+def _setup(handler, a, body) -> None:
+    """The first owner: with a setup code, or from local mode without one."""
+    st = a.store
+    if not st.setup_required():
+        return _err(handler, 404, "not_found", SETUP_GONE)
+    p = handler._principal
+    local = p is not None and p.kind == "local"
+    if not isinstance(body, dict) or set(body) - {"code", "username", "password"} or \
+            not isinstance(body.get("username"), str) or "password" not in body or \
+            (not local and not isinstance(body.get("code"), str)):
+        return _err(handler, 400, "bad_request", "the body is {code, username, password}")
+    name = body["username"].strip().lower()
+    if not acc_mod.USERNAME.match(name):
+        return _err(handler, 400, "bad_request", "a username is 1 to 64 characters: letters, "
+                    "digits and . _ @ -, starting with a letter or a digit")
+    if st.by_username(name) is not None:
+        return _err(handler, 409, "conflict", f"the username {name!r} is taken")
+    st.check_password(body["password"])
+    peer = handler._peer()
+    address = a.limits.key(peer, handler.headers)
+    if not local:
+        # the address's limit (a code has its own 5 tries over every address)
+        if a.limits.by_address.login_blocked(address):
+            return _err(handler, 429, "too_many", "too many wrong setup codes; wait and try "
+                        "again", extra=(("Retry-After", str(int(auth_mod.LOGIN_WINDOW_S))),))
+        got, left = a.codes.use(body["code"])
+        if got == "none":
+            return _err(handler, 410, "setup_code_spent", "no setup code is valid now: print a "
+                        "new one with `tandem-app users setup-code` on the machine, or restart")
+        if got != "ok":
+            a.limits.by_address.login_failed(address)
+            a.cfg.log_audit("anonymous", "setup_failed", "setup_code", None,
+                            detail={"address": acc_mod._clean(address, 64)})
+            return _err(handler, 401, "wrong_setup_code", "the setup code is not right",
+                        tries_left=left)
+    with a.cfg._lock:                       # two setups at once make one owner
+        if not st.setup_required():
+            return _err(handler, 404, "not_found", SETUP_GONE)
+        row = st.create(name, "owner", body["password"], actor="local" if local else "setup")
+        st.set_state("first_owner", row["id"])
+        a.cfg.log_audit(name, "setup", "account", row["id"],
+                        detail={"from": "local mode" if local else "setup code"})
+    a.codes.spend_all()
+    doc = st.get(row["id"])["pw"]
+    st._password_changed(row["id"], doc)    # admin.json follows the first owner (SRV-865)
+    a.local.seen = None
+    return _signed_in(handler, a, row, address, 201)
 
 
 # ------------------------------------------------------------------------------ sessions
@@ -256,6 +335,10 @@ def _users(handler, a, method: str, rest: list, body) -> None:
             # the one-time set-password code comes with the first-run setup
             return _err(handler, 400, "bad_request", "the body is {username, role, password, "
                                                      "display_name?}")
+        if p is not None and p.kind == "local":
+            # SEC-26: a second user lets another device in: the owner's password first
+            return _err(handler, 409, "password_first", "set the owner's password first: local "
+                        "mode trusts this machine only")
         if body.get("role") == "owner" and not owner:
             return _err(handler, 403, "permission_denied", "only an owner makes an owner",
                         permission="owner")
@@ -300,9 +383,18 @@ def _users(handler, a, method: str, rest: list, body) -> None:
 
 
 # ------------------------------------------------------------------------------ the old routes
-def legacy_session(handler, a, method: str, fleet: bool) -> None:
+def legacy_session(handler, a, method: str, fleet: bool, body=None) -> None:
     """/v1/dashboard/session (fleet False) and /v1/fleet/session over the accounts."""
     p = handler._principal
+    first = a.store.first_owner()
+    if method == "GET" and not fleet and p is None and first is not None:
+        # SRV-865: an old page shows its sign-in form, which signs in as the first owner
+        from tandemapp import dashboard_api
+        return handler._json(200, {"contract_version": dashboard_api.SESSION_CONTRACT,
+                                   "authenticated": False, "login": True, "password_set": True,
+                                   "expires_at": None}, extra_headers=NOSTORE)
+    if method == "POST" and first is not None and first["enabled"]:
+        return _legacy_sign_in(handler, a, first, body)
     if method == "GET":
         if fleet:
             from proxy import fleet as fleet_mod
@@ -321,6 +413,39 @@ def legacy_session(handler, a, method: str, fleet: bool) -> None:
         return _sign_out(handler, a, p)
     return _err(handler, 404, "not_found", "sign in at /v1/auth/session with a username and "
                                            "a password")
+
+
+def _legacy_sign_in(handler, a, first: dict, body) -> None:
+    """The old form's {token}: the first owner's password, the sign-in's limits and answer
+    (204 and the new cookie, as the old route answered)."""
+    bad = auth_mod.same_origin_json(handler.headers)
+    if bad is not None:
+        return _err(handler, bad[0], bad[1], "a sign-in comes from this server's own page, as "
+                                             "JSON")
+    secret = body.get("token", body.get("password")) if isinstance(body, dict) else None
+    address = a.limits.key(handler._peer(), handler.headers)
+    key = first["username"]
+    wait = a.limits.wait(address, key)
+    if wait:
+        return _err(handler, 429, "too_many", "too many failed sign-ins; wait and try again",
+                    extra=(("Retry-After", str(wait)),))
+    got = a.provider.authenticate(key, secret)
+    if isinstance(got, identity_mod.Denied) and got.reason in ("held", "busy"):
+        return _err(handler, 429, "too_many", "too many sign-ins at once; wait and try again",
+                    extra=(("Retry-After", "60" if got.reason == "held" else "1"),))
+    if not isinstance(got, identity_mod.Identity):
+        a.limits.failed(address, key)
+        a.cfg.log_audit(key, "sign_in_failed", "session", None,
+                        detail={"address": acc_mod._clean(address, 64), "via": "old form"})
+        return handler._json(401, WRONG, extra_headers=NOSTORE)
+    a.limits.succeeded(key)
+    sid, srow = a.store.open_session(first["id"], address,
+                                     handler.headers.get("User-Agent") or "")
+    a.store.mark_login(first["id"])
+    a.cfg.log_audit(key, "sign_in", "session", acc_mod.public_id(srow["id_hash"]),
+                    detail={"address": acc_mod._clean(address, 64), "via": "old form"})
+    return handler._send_empty(204, NOSTORE + (("Set-Cookie", a.cookie(
+        sid, handler._peer(), handler.headers)),))
 
 
 def legacy_password(handler) -> None:

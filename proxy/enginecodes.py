@@ -177,6 +177,21 @@ CATALOG: dict[str, tuple[int, str, str]] = {
     "plugin_untrusted": (409, "The plugin {plugin} is not trusted to run as it asks: {detail}",
                          "Its trust page says what a grant takes: a trusted publisher key or its "
                          "id typed."),
+    # the sign-in (SEC-26, SRV-865)
+    "auth_setup_pending": (401, "This TandemApp is reachable from other devices and has no owner. Nobody can sign in until one is created with the setup code.",
+        "The setup code is in the service log; `tandem-app users setup-code` on the machine prints a new one. Open the page and enter it."),
+    "auth_owner_no_password": (409, "No password is set. That is fine while only this machine can reach TandemApp.",
+        "Set one on the page at #/account before other devices or a proxy reach it."),
+    "local_mode_proxy_seen": (401, "A request came through a proxy while TandemApp trusts everything on this machine. Set a password now.",
+        "Set it on the page at #/account from this machine; until then requests through the proxy are refused."),
+    "legacy_env_set": (409, "{variable} in {file} is no longer used. Sign-in and API tokens replace it. Remove the line when you no longer need to go back to an older version.",
+        "Remove {variable} from {file} once the way back to the release before is no longer needed."),
+    "legacy_env_invalid": (409, "{variable} in {file} has a value TandemApp cannot read. It is ignored.",
+        "Remove the line, or correct it while an older version still needs it."),
+    "legacy_users_from_unreadable": (409, "{variable} in {file} names a database TandemApp cannot read.",
+        "Correct the path or remove the line: sign-in and API tokens replace it."),
+    "bootstrap_secret_left": (409, "An owner exists and the setup code's Secret is still mounted at {path}.",
+        "Delete the Secret; it opens nothing now."),
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
     "job_not_found": (404, "{node} has no job {job} any more.",
@@ -192,14 +207,17 @@ FACTS = ("address", "port", "host", "user", "dir", "tries_left", "state", "retry
          # the health page (SRV-835)
          "path", "image", "free_gb", "need_gb", "backend", "engine_api", "speaks",
          # the plugin host (SRV-859)
-         "plugin")
+         "plugin",
+         # the sign-in's legacy variables (SRV-865)
+         "variable", "file")
 _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "address": "the address",
             "host": "the engine host", "user": "the user", "dir": "the engine's folder",
             "detail": "no reason given", "expected": "one", "offered": "another",
             "pinned": "another", "model": "asked for", "node": "This node",
             "state": "starting", "path": "its folder", "image": "tandem-sandbox:1", "free_gb": "a few", "need_gb": "5",
             "backend": "named", "engine_api": "another version", "speaks": "another",
-            "plugin": "named", "job": "by that id"}
+            "plugin": "named", "job": "by that id", "variable": "A variable",
+            "file": "the environment"}
 
 
 class _Facts(dict):

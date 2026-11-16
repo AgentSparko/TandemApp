@@ -77,6 +77,7 @@ ENV TANDEM_CONFIG_DB=/data/config.sqlite3 \
     TANDEM_PORT=8080 \
     TANDEM_CONDUCTOR=off \
     TANDEM_NODE_AGENT=off \
+    TANDEM_DEPLOY=container \
     PYTHONUNBUFFERED=1
 VOLUME ["/data"]
 EXPOSE 8080
