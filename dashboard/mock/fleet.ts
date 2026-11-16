@@ -92,6 +92,7 @@ import { MockDeploy, mockSplitPlan } from './deploy.ts';
 import { MockSetupRelay } from './setup-relay.ts';
 import { MockOps } from './fleetops.ts';
 import { MockApp } from './appsettings.ts';
+import { MockSettings } from './settings.ts';
 import { MockDiscovery, MOCK_LAN } from './discovery.ts';
 
 export const FLEET_SCENARIOS = ['fleet1', 'fleet4', 'fleet2-split', 'node-down', 'alert-thermal', 'mixed', 'empty', 'gold3', 'quad'] as const;
@@ -586,6 +587,9 @@ export class MockFleet {
   readonly setup = new MockSetupRelay();
   /** App settings: permissions, the service, the configuration file (mock/appsettings.ts, 6.3b) */
   readonly app: MockApp;
+  /** the settings interface (/v1/settings/*, mock/settings.ts, VIS-280): the app scope is What runs
+   *  here's switches, the engine scope's targets the engine hosts paired here */
+  readonly settings: MockSettings;
 
   /** `now` in Unix seconds: the scenario's start */
   /** SRV-749: the backends on no node (mock/backends.ts members), as the controller lists them */
@@ -605,6 +609,7 @@ export class MockFleet {
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
+    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', now: this.t0 * 1000 });
     if (this.scenario === 'mixed') this.ops.seed('r3', '0.15.1');
     const seed = o.seed ?? 42;
     this.ph = (key) => hash(`${seed}:${key}`);

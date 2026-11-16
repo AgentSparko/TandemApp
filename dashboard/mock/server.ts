@@ -24,6 +24,11 @@
 // answer; POST /__mock/fleet {"engineFail": "<route>:<code>"} makes one of its routes answer that
 // code until {"engineFail": "<route>:"} clears it, and {"engineJob": "fail"} stops the next model
 // install in its download.
+// The settings interface (/v1/settings/*, mock/settings.ts, VIS-280) lives with the fleet's scenario:
+// POST /__mock/settings {restart, busy_s, fail, busy, move, hooks, unreachable} sets what no click
+// produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
+// registry plugged in); while one of its restarts drains the engine host, the gateway answers 503
+// with Retry-After.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.
 
@@ -905,6 +910,9 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
           return error(res, 400, 'invalid_request_error', 'bad json');
         }
         const oai = (status: number, code: string, message: string) => json(res, status, { error: { message, type: status === 503 ? 'server_busy' : 'invalid_request_error', code } });
+        // VIS-280: while a settings change drains the engine host, its backends answer 503 with Retry-After
+        const drained = fleetFor(req).settings.gateway('engine');
+        if (drained) return json(res, drained.status, drained.body, drained.headers);
         const d = fleetFor(req).deployments(Date.now() / 1000).find((x) => x.api_id === body.model || x.id === body.model);
         if (!d) return oai(404, 'model_not_found', `no model ${JSON.stringify(body.model)}`);
         if (d.type === 'split' && d.state !== 'stopped' && !(d.member_states ?? []).some((x) => x.routable)) return oai(503, 'stage_down', `${d.name}: ${d.status_text}`);
@@ -964,6 +972,29 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
           cookie = `qse_dash=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200`;
         }
         return json(res, 200, view(), { 'Set-Cookie': cookie });
+      }
+      // ---- the settings interface (VIS-280, mock/settings.ts): reads under the dashboard's rule,
+      // plans, applies, restores and a cancel with the admin's rights and a JSON body
+      if (path === '/__mock/settings' && req.method === 'POST') {
+        try {
+          return json(res, 200, fleetFor(req).settings.control(JSON.parse((await readBody(req)) || '{}')));
+        } catch (e) {
+          return error(res, 400, 'bad_request', (e as Error).message);
+        }
+      }
+      if (path === '/v1/settings' || path.startsWith('/v1/settings/')) {
+        const write = req.method !== 'GET';
+        if (ctlPassword() && write && !authed(req)) return error(res, 401, 'unauthorized', 'a session or an admin token is required');
+        if (write && !String(req.headers['content-type'] ?? '').includes('application/json')) return error(res, 415, 'json_only', 'the body must be JSON (Content-Type: application/json)');
+        let body: unknown = null;
+        try {
+          const raw = write ? await readBody(req) : '';
+          body = raw ? JSON.parse(raw) : null;
+        } catch {
+          return error(res, 400, 'bad_request', 'the body is not JSON');
+        }
+        const r = fleetFor(req).settings.handle(req.method ?? 'GET', path, q, body);
+        return json(res, r.status, r.body);
       }
       if (path.startsWith('/v1/fleet/')) {
         const raw = req.method === 'PUT' || req.method === 'POST' || req.method === 'PATCH' ? await readBody(req) : '';

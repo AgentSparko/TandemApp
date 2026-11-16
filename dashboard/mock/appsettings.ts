@@ -6,7 +6,8 @@
 // a deployment record the file has and this fleet not is a conflict (the mock makes no records
 // from a file), and the export's member engines are null. What runs here (/v1/fleet/app/parts,
 // OPS-288) starts bare as a new install does: Chat and the conductor off, no backend, no engine host
-// over SSH; a switch takes its plan's confirm (409 stale_plan for one that no longer matches).
+// over SSH until one is paired; a switch takes its plan's confirm (409 stale_plan for one that no
+// longer matches). The same switches are the app scope of the settings interface (mock/settings.ts).
 
 import type { AppParts, AppPermission, AppService, AppSetup, AppView, FleetConfigFile, ImportItem, ImportMode, ImportPlan, ImportResult, Layout, PartId, PartPlan } from '../src/api/fleet.ts';
 import { FLEET_CONTRACT } from '../src/api/fleet.ts';
@@ -268,7 +269,7 @@ export class MockApp {
       contract_version: FLEET_CONTRACT,
       chat: { on, switched: this.switched.chat, install: 'off', runner: on ? 'own' : null, running: on ? true : null, sandbox: on ? 'none' : null, note: on ? 'No sandbox runtime on this host: chats run without their sandbox tools (files, shell, browser).' : 'Chat is off: no chatd runs here and the Chat tab says so.' },
       conductor: { on: this.on.conductor, switched: this.switched.conductor, install: 'off', dir: this.on.conductor ? '~/.tandemllm/conductor' : null },
-      engines: [],
+      engines: this.fleet.engines.paired(),
       backends: [],
       mcp: { where: 'chat', available: on },
     };

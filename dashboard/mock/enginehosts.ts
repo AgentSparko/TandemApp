@@ -253,6 +253,11 @@ export class MockEngineHosts {
 
   constructor(private fleet: FleetHooks) {}
 
+  /** the engine hosts paired so far: each one a target of the settings interface's engine scope */
+  paired(): { id: string; alias: string }[] {
+    return [...this.hosts.values()].map((h) => ({ id: h.id, alias: h.alias }));
+  }
+
   /** A route answers `code` until it is cleared with null. */
   fail(route: FailRoute, code: string | null): void {
     if (code === null) this.fails.delete(route);
