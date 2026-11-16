@@ -548,7 +548,9 @@ class Relay:
         hk = getattr(rec, "hk", None)
         if hk is not None:
             try:
-                hk.stream_done(200, rec.finish_reason, st.usage)
+                # a stream that passed through (SRV-881) has only its Messages usage
+                hk.stream_done(200, rec.finish_reason,
+                               st.usage if st.usage is not None else st.native)
             except Exception:                                      # noqa: BLE001
                 pass
 
