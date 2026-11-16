@@ -16,6 +16,7 @@
     POST   /v1/auth/users              {username, role, password, display_name?}
     PATCH  /v1/auth/users/{id}         {role?, enabled?, display_name?}
     DELETE /v1/auth/users/{id}
+    /v1/auth/tokens[/...]              API tokens (SRV-867, proxy/tokenapi.py)
 
 Only an owner makes, changes or removes an owner. The last enabled owner cannot be disabled,
 demoted or removed (409 `last_owner`, checked first). A disable, a lower role and a removal end
@@ -111,6 +112,9 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
             return _password(handler, a, body)
         if parts[:1] == ["users"]:
             return _users(handler, a, method, parts[1:], body)
+        if parts[:1] == ["tokens"]:
+            from proxy import tokenapi
+            return tokenapi.handle(handler, a, method, parts[1:], body)
     except acc_mod.AccountError as exc:
         return handler._json(exc.status, exc.body(), extra_headers=NOSTORE)
     return _err(handler, 404, "not_found", f"no route {method} {path}")
