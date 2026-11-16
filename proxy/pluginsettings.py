@@ -19,10 +19,14 @@ THE KEYS of a plugin `<id>` (target `<id>`):
     secrets.<NAME>           secret, write-only: a manifest `secrets` name; sealed in the registry
     capabilities.<cap>       boolean   a requested capability granted (true) or not (false, the
                                        default: deny by default)
+    trust                    sandboxed | host   only for a manifest that asks `trust: host`: host
+                                       lets the plugin host run it as a process of the app's user
+                                       (SRV-859); sandboxed, the default, keeps it from starting
 
 A GRANT (a capability set true that is not granted yet) and enabling a plugin are planned only for
 a caller with pairing's rights (403 trust_required; the hooks' full payload's rule, SEC-16).
-prompts:full, engine:control and network:<host> outside the LAN also take the plan's second confirm
+prompts:full, engine:control, network:<host> outside the LAN and trust host also take the plan's
+second confirm
 (`grant_keys`, `confirm_grant`): without it the apply is 428 grant_confirm_required, and the grant
 records who confirmed it. A restore that brings a grant back is planned the same way. Unsetting a
 capability revokes it. Restart class none: the plugin host reads the registry again (F2).
@@ -106,6 +110,12 @@ class PluginsScope(KeyValueScope):
                 text += "; granting it takes a second confirm"
             out[f"capabilities.{c}"] = key_spec(f"capabilities.{c}", "boolean", default=False,
                                                 text=text)
+        if p["manifest"].get("trust") == "host":
+            out["trust"] = key_spec("trust", "enum", values=["sandboxed", "host"],
+                                    default="sandboxed",
+                                    text="host: the plugin runs as a process of the app's user, "
+                                         "outside any sandbox (granting it takes a second "
+                                         "confirm); sandboxed: it does not start")
         return out
 
     def values(self, target: str) -> dict:
@@ -123,6 +133,9 @@ class PluginsScope(KeyValueScope):
         for c in self.store.requested(p):
             on = c in p["granted"]
             out[f"capabilities.{c}"] = (on, on, "plugin", label)
+        if p["manifest"].get("trust") == "host":
+            t = p.get("trust_granted") or "sandboxed"
+            out["trust"] = (t, t != "sandboxed", "plugin", label)
         return out
 
     # ------------------------------------------------------------------ checks
@@ -154,6 +167,9 @@ class PluginsScope(KeyValueScope):
             elif k.startswith("capabilities."):
                 if not isinstance(v, bool):
                     raise SettingsError(422, "bad_value", f"{k}: true or false", key=k)
+            elif k == "trust":
+                if v not in ("sandboxed", "host"):
+                    raise SettingsError(422, "bad_value", "trust: sandboxed or host", key=k)
         for k in unsets:
             if k.startswith("settings."):
                 prop = k.split(".", 1)[1]
@@ -172,6 +188,9 @@ class PluginsScope(KeyValueScope):
                 if cap not in p["granted"]:
                     out.append({"key": k, "capability": cap, "confirm": _confirm(cap),
                                 "row_version": p["row_version"]})
+            elif k == "trust" and v == "host" and p.get("trust_granted") != "host":
+                out.append({"key": k, "capability": "trust", "confirm": True,
+                            "row_version": p["row_version"]})
         return out
 
     def plan(self, target, sets, unsets):
@@ -225,6 +244,8 @@ class PluginsScope(KeyValueScope):
                     kw["secrets_set"][k.split(".", 1)[1]] = v
             elif k.startswith("capabilities."):
                 (kw["grant"] if v else kw["revoke"]).append(k.split(".", 1)[1])
+            elif k == "trust":
+                kw["trust"] = v
         for k in unsets:
             if k == "enabled":
                 enabled = False
@@ -234,6 +255,8 @@ class PluginsScope(KeyValueScope):
                 kw["secrets_unset"].append(k.split(".", 1)[1])
             elif k.startswith("capabilities."):
                 kw["revoke"].append(k.split(".", 1)[1])
+            elif k == "trust":
+                kw["trust"] = "sandboxed"
         try:
             self.store.write(target, enabled=enabled, confirmed=self._confirmed, who=who, **kw)
         except PluginError as exc:

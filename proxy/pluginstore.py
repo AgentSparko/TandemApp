@@ -6,7 +6,8 @@ folder a plugin version under the controller's state dir.
                      source (JSON: folder path, wheel path and the archive's sha256, or git URL,
                      commit and subdir), sha256 (the tree's, proxy/pluginmanifest.py THE DIGEST),
                      signature (JSON), manifest (JSON), manifest_dir, path (the installed tree),
-                     enabled, trust (requested; granted trust levels are F3's), granted (JSON:
+                     enabled, trust (requested), trust_granted (sandboxed, or host once the
+                     admin granted it: SRV-859), granted (JSON:
                      capability -> {by, at, confirmed_by, confirmed_at}), settings (JSON: the set
                      values; a key not here holds its schema's default), integrity (ok, mismatch,
                      missing) and when it was checked, installed and updated (when, by whom),
@@ -34,15 +35,21 @@ requested; the rest is dropped and listed in the answer (`kept`, `dropped`). It 
 was. The old version's folder is removed after the row is written.
 
 ENABLE checks the tree again (its sha256 against the row's) and the compatibility with this
-TandemApp; DISABLE always works. REMOVE is refused while a hook names the plugin (kind plugin or
+TandemApp; DISABLE always works. The plugin host (proxy/pluginhost.py, SRV-859) listens to every
+change (`listeners`) and stops a plugin before its removal (`before_remove`). REMOVE is refused while a hook names the plugin (kind plugin or
 mcp, target `<id>` or `<id>/<hook>`): 409 referenced with the hooks. `load(id)` is what the plugin
 host (F2) calls before it starts a plugin: enabled, the tree checked, the settings with their
 defaults, the granted capabilities; secrets only through `secret_for`.
 
 CAPABILITIES are deny by default: the manifest requests, the settings interface grants
 (proxy/pluginsettings.py: pairing's rights, and a second confirm for prompts:full, engine:control
-and a network host outside the LAN). Granted is always a subset of requested. Enforcement is F2's
-and F3's.
+and a network host outside the LAN). Granted is always a subset of requested. The plugin host
+enforces them (SRV-859); signatures and trusted keys are F3's.
+
+TRUST. A manifest asks `sandboxed` (the default), `host` or `engine`. `host` runs only once the
+admin granted it (`trust_granted`, the plugins scope's `trust` key: pairing's rights and the second
+confirm); `engine` is refused until the in-process chain exists. An upgrade keeps a host grant
+while the new manifest still asks host.
 
 Every write is audited (field names and capability names, never a value or a secret).
 """
@@ -68,7 +75,7 @@ CREATE TABLE IF NOT EXISTS plugins (
   trust TEXT NOT NULL DEFAULT 'sandboxed', granted TEXT NOT NULL DEFAULT '{}',
   settings TEXT NOT NULL DEFAULT '{}', integrity TEXT NOT NULL DEFAULT 'ok', checked_at INTEGER,
   installed_at INTEGER NOT NULL, installed_by TEXT, updated_at INTEGER NOT NULL, updated_by TEXT,
-  row_version INTEGER NOT NULL DEFAULT 1);
+  row_version INTEGER NOT NULL DEFAULT 1, trust_granted TEXT NOT NULL DEFAULT 'sandboxed');
 CREATE TABLE IF NOT EXISTS plugin_secrets (
   plugin_id TEXT NOT NULL, name TEXT NOT NULL, ciphertext BLOB NOT NULL, nonce BLOB NOT NULL,
   master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT, set_at INTEGER NOT NULL, set_by TEXT,
@@ -77,7 +84,9 @@ CREATE TABLE IF NOT EXISTS plugin_secrets (
 SECRET_MAX = 8192
 _COLS = ("id", "name", "version", "kind", "title", "source", "sha256", "signature", "manifest",
          "manifest_dir", "path", "enabled", "trust", "granted", "settings", "integrity",
-         "checked_at", "installed_at", "installed_by", "updated_at", "updated_by", "row_version")
+         "checked_at", "installed_at", "installed_by", "updated_at", "updated_by", "row_version",
+         "trust_granted")
+TRUST_GRANTS = ("sandboxed", "host")
 
 
 class PluginError(Exception):
@@ -114,6 +123,16 @@ class PluginStore:
         self.log = log or (lambda m: None)
         self.gen = 0
         self._ready = False
+        self.listeners: list = []           # fn(plugin id or None), after every change
+        self.before_remove = None           # fn(plugin id): the plugin host stops it first
+
+    def _changed(self, pid: str | None) -> None:
+        self.gen += 1
+        for fn in list(self.listeners):
+            try:
+                fn(pid)
+            except Exception as exc:                               # noqa: BLE001
+                self.log(f"plugins: a listener failed: {type(exc).__name__}")
 
     # ------------------------------------------------------------------ places
     def root(self) -> str:
@@ -140,6 +159,10 @@ class PluginStore:
         with self.cfg._lock:
             if not self._ready:
                 conn.executescript(DDL)
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(plugins)").fetchall()}
+                if "trust_granted" not in cols:              # a table made before SRV-859
+                    conn.execute("ALTER TABLE plugins ADD COLUMN trust_granted TEXT NOT NULL "
+                                 "DEFAULT 'sandboxed'")
                 conn.commit()
                 self._ready = True
         self._sweep()
@@ -338,6 +361,11 @@ class PluginStore:
                 note["kept"].append(f"capabilities.{c}")
             else:
                 note["dropped"].append(f"capabilities.{c}")
+        if old.get("trust_granted") == "host":
+            if m.get("trust") == "host":
+                note["kept"].append("trust")
+            else:
+                note["dropped"].append("trust")
         names = {s["name"] for s in m.get("secrets") or []}
         drop = []
         for n in self._secret_rows(old["id"]):
@@ -370,6 +398,8 @@ class PluginStore:
                         json.dumps(m, sort_keys=True), st.manifest_dir, dst,
                         m.get("trust", "sandboxed"), json.dumps(granted, sort_keys=True),
                         json.dumps(settings, sort_keys=True))
+                tgrant = "host" if old is not None and old.get("trust_granted") == "host" \
+                    and m.get("trust") == "host" else "sandboxed"
                 if old is None:
                     c.execute("INSERT INTO plugins(id, name, version, kind, title, source, sha256, "
                               "signature, manifest, manifest_dir, path, trust, granted, settings, "
@@ -384,9 +414,9 @@ class PluginStore:
                     c.execute("UPDATE plugins SET version = ?, kind = ?, title = ?, source = ?, "
                               "sha256 = ?, signature = ?, manifest = ?, manifest_dir = ?, "
                               "path = ?, trust = ?, granted = ?, settings = ?, integrity = 'ok', "
-                              "checked_at = ?, updated_at = ?, updated_by = ?, "
+                              "checked_at = ?, updated_at = ?, updated_by = ?, trust_granted = ?, "
                               "row_version = row_version + 1 WHERE id = ?",
-                              (*vals, now, now, who, pid))
+                              (*vals, now, now, who, tgrant, pid))
                     for n in drop:
                         c.execute("DELETE FROM plugin_secrets WHERE plugin_id = ? AND name = ?",
                                   (pid, n))
@@ -396,7 +426,7 @@ class PluginStore:
                                             "sha256": rep["sha256"][:16],
                                             "dropped": note["dropped"][:50]})
                 c.commit()
-                self.gen += 1
+                self._changed(pid)
         except BaseException:
             c.rollback()
             shutil.rmtree(dst, ignore_errors=True)
@@ -446,7 +476,8 @@ class PluginStore:
         return {"id": pid, "version": p["version"], "kind": p["kind"], "path": p["path"],
                 "manifest_dir": p["manifest_dir"], "manifest": p["manifest"],
                 "settings": self.effective_settings(p), "granted": sorted(p["granted"]),
-                "trust": p["trust"], "secrets": sorted(self._secret_rows(pid))}
+                "trust": p["trust"], "trust_granted": p["trust_granted"] or "sandboxed",
+                "row_version": p["row_version"], "secrets": sorted(self._secret_rows(pid))}
 
     def _compatible(self, p: dict) -> None:
         ta, ha = self._versions()
@@ -479,7 +510,7 @@ class PluginStore:
                               (int(bool(on)), _now_ms(), who, pid))
             self.cfg._audit(who, "enable" if on else "disable", "plugin", pid, ["enabled"])
             self._c().commit()
-            self.gen += 1
+        self._changed(pid)
         return self.need(pid)
 
     def remove(self, pid: str, who: str = "gui") -> dict:
@@ -489,6 +520,8 @@ class PluginStore:
             raise PluginError(409, "referenced", (
                 f"{pid} is named by {len(refs)} hook(s): {', '.join(r['id'] for r in refs[:8])}. "
                 f"Remove those hooks first"), extra={"hooks": refs})
+        if self.before_remove is not None:
+            self.before_remove(pid)              # its process ends before its folder goes
         with self.cfg._lock:
             c = self._c()
             c.execute("DELETE FROM plugins WHERE id = ?", (pid,))
@@ -496,8 +529,8 @@ class PluginStore:
             self.cfg._audit(who, "remove", "plugin", pid, ["version"],
                             detail={"version": p["version"]})
             c.commit()
-            self.gen += 1
         shutil.rmtree(os.path.join(self.root(), pid), ignore_errors=True)
+        self._changed(pid)
         return {"removed": pid, "version": p["version"]}
 
     # ------------------------------------------------------------------ secrets
@@ -533,7 +566,7 @@ class PluginStore:
     # ------------------------------------------------------------------ a settings change
     def write(self, pid: str, *, enabled=None, settings_set=None, settings_unset=(),
               secrets_set=None, secrets_unset=(), grant=(), revoke=(), confirmed=(),
-              who: str = "gui") -> dict:
+              trust: str | None = None, who: str = "gui") -> dict:
         """One change of the plugins scope (proxy/pluginsettings.py), in one transaction; the
         scope has checked the values. `confirmed`: the grants whose second confirm was given."""
         p = self.need(pid)
@@ -561,6 +594,17 @@ class PluginStore:
                             "confirmed_at": now if cap in confirmed else None}
         for cap in revoke:
             granted.pop(cap, None)
+        tgrant = p["trust_granted"] or "sandboxed"
+        if trust is not None:
+            if trust not in TRUST_GRANTS:
+                raise PluginError(422, "bad_value", "trust: sandboxed or host", "trust")
+            if trust == "host" and p["trust"] != "host":
+                raise PluginError(422, "not_requested", f"{pid} does not ask to run as the "
+                                                        f"app's user (trust host)", "trust")
+            if trust == "host" and tgrant != "host" and "trust" not in confirmed:
+                raise PluginError(409, "confirm_needed", "trust host takes the second confirm",
+                                  "trust")
+            tgrant = trust
         names = set(self.secret_names(p))
         vault = None
         with self.cfg._lock:
@@ -586,9 +630,10 @@ class PluginStore:
                 fields.append(f"secrets.{n}")
             on = p["enabled"] if enabled is None else bool(enabled)
             c.execute("UPDATE plugins SET enabled = ?, settings = ?, granted = ?, updated_at = ?, "
-                      "updated_by = ?, row_version = row_version + 1 WHERE id = ?",
+                      "updated_by = ?, trust_granted = ?, row_version = row_version + 1 "
+                      "WHERE id = ?",
                       (int(on), json.dumps(settings, sort_keys=True),
-                       json.dumps(granted, sort_keys=True), now, who, pid))
+                       json.dumps(granted, sort_keys=True), now, who, tgrant, pid))
             fields += [f"settings.{k}" for k in sorted(set(settings_set or {}) |
                                                         set(settings_unset))]
             if enabled is not None and on != p["enabled"]:
@@ -596,12 +641,18 @@ class PluginStore:
             added = sorted(set(granted) - set(p["granted"]))
             gone = sorted(set(p["granted"]) - set(granted))
             fields += [f"capabilities.{x}" for x in added + gone]
+            if tgrant != (p["trust_granted"] or "sandboxed"):
+                fields.append("trust")
+                added = added + ([f"trust:{tgrant}"] if tgrant == "host" else [])
+                gone = gone + (["trust:host"] if tgrant != "host" else [])
             self.cfg._audit(who, "settings", "plugin", pid, fields or ["settings"],
                             detail={"granted": added, "revoked": gone,
-                                    "confirmed": sorted(x for x in added if x in confirmed)}
+                                    "confirmed": sorted(x for x in added if x in confirmed or
+                                                        (x == "trust:host" and
+                                                         "trust" in confirmed))}
                             if added or gone else None)
             c.commit()
-            self.gen += 1
+        self._changed(pid)
         return self.need(pid)
 
 
