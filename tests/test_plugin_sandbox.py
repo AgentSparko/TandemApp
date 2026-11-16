@@ -184,13 +184,15 @@ def test_docker_sandbox_gate():
         st = r.running(pid, 120)
         r.running(oid, 120)
         r.running(hid, 120)
-        assert st["runtime"] == "docker" and st["where"] == "tandem-plugin-kitchen-sink", st
+        name = rt.boxes.name(pid)
+        assert st["runtime"] == "docker" and st["where"] == name, st
+        assert name.startswith("tandem-plugin-kitchen-sink-"), name
         # 3: an example answers from its container
         got = r.host.tool_call(hid, "greet", {"name": "Ada"})
         assert got["content"][0]["text"] == "Hello, Ada.", got
         # the container: locked down as a chat sandbox, no network, the tree read-only
         from chatd.sandbox import Engine
-        st_, info = Engine(SOCK).call("GET", "/containers/tandem-plugin-kitchen-sink/json")
+        st_, info = Engine(SOCK).call("GET", f"/containers/{name}/json")
         hc = info["HostConfig"]
         assert st_ == 200 and hc["NetworkMode"] == "none" and hc["ReadonlyRootfs"] is True
         assert hc["CapDrop"] == ["ALL"] and "no-new-privileges" in hc["SecurityOpt"]
@@ -238,7 +240,7 @@ def test_docker_sandbox_gate():
         assert r.host.status(pid)["refusals"][-1]["capability"] == "secrets:other-sink/TOKEN"
         # stopped: the container is gone
         r.host.stop_plugin(pid)
-        st_, _ = Engine(SOCK).call("GET", "/containers/tandem-plugin-kitchen-sink/json")
+        st_, _ = Engine(SOCK).call("GET", f"/containers/{name}/json")
         assert st_ == 404, st_
     finally:
         r.close()

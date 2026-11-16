@@ -10,7 +10,8 @@
 THE SANDBOX is the chat sandbox's class: the sandbox image, uid 1000, every capability dropped,
 no-new-privileges, a read-only root, an in-memory /tmp, no devices, `--network none` (a pod: the
 chart's NetworkPolicy), a memory limit (TANDEM_PLUGIN_MEM_MB, 512 by default), one CPU and 128
-processes. Mounts: the plugin's installed tree at /plugin, read-only; its own data folder at
+processes. A container is `tandem-plugin-<id>-<instance>`, the instance this TandemApp's (two
+installs never share one). Mounts: the plugin's installed tree at /plugin, read-only; its own data folder at
 /workspace and a home at /home/agent (both under `<state dir>/plugin-sandboxes/`, nothing else of
 the controller's); /run/tandem holds the egress proxy's socket. The way out is chatd/egress.py's
 proxy with an `Allow`: only the hosts of the plugin's granted `network:` capabilities, so no LAN
@@ -229,6 +230,7 @@ def _boxes_mixin():
             self.policies: dict = {}                 # plugin id -> egress.Allow
             self.mem_bytes = mem_bytes
             self.network_mode = lambda cid: self.policies.get(cid) or "off"
+            _ = self.instance               # made now, once: two plugins' starts never race on it
 
         def paths(self, cid: str) -> tuple[str, str, str]:
             eg = os.path.join(self.data, "egress", cid)
@@ -278,7 +280,8 @@ def _docker_boxes():
             self._plugin_init(root, mem_bytes)
 
         def name(self, cid: str) -> str:
-            return "tandem-plugin-" + cid.lower()
+            # this TandemApp's own: two installs on one container engine never share a name
+            return f"tandem-plugin-{cid.lower()}-{self.instance[:8]}"
 
         def owns(self, labels, cid: str) -> bool:
             return (labels or {}).get(INSTANCE_LABEL) == self.instance
