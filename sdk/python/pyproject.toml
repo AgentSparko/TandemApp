@@ -1,0 +1,19 @@
+# The plugin SDK for TandemApp (SRV-861): the standard library only. docs/plugins-sdk.md.
+#   pip install sdk/python        the `tandemapp-plugin` command and `import tandemapp_plugin`
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tandemapp-plugin"
+version = "0.1.0"
+description = "Write TandemApp plugins in Python: tools, hooks, decision providers and backends"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-only"}
+dependencies = []
+
+[project.scripts]
+tandemapp-plugin = "tandemapp_plugin.cli:main"
+
+[tool.setuptools]
+packages = ["tandemapp_plugin"]
