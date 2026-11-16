@@ -85,10 +85,16 @@ def state(d: str) -> dict:
 
 
 def set_state(d: str, **kw) -> dict:
+    """The state with `kw` merged in, written whole into a new file that replaces the old one: a
+    call that reads it meanwhile (the restart watch's `status` beside a cancel's `start`) sees
+    the old state or the new one, never half a file."""
     s = state(d)
     s.update(kw)
-    with open(os.path.join(d, "fake-state.json"), "w") as f:
+    path = os.path.join(d, "fake-state.json")
+    tmp = f"{path}.{os.getpid()}.{time.monotonic_ns()}.tmp"
+    with open(tmp, "w") as f:
         json.dump(s, f)
+    os.replace(tmp, path)
     return s
 
 
