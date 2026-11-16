@@ -27,9 +27,12 @@
     tandem-app users list|add|disable|enable|role|reset-password|remove|setup-code
                                                      the accounts on this machine, no password
                                                      asked (proxy/userscli.py, SEC-26)
-    tandem-app tokens list|create|revoke|rotate|confirm
+    tandem-app tokens list|create|revoke|rotate|confirm|chatd-key
                                                      the API tokens on this machine, no password
                                                      asked (proxy/tokenscli.py, SRV-867)
+    tandem-app doctor                                the running controller's health; the full
+                                                     answer with <state>/run/cli.token, which
+                                                     only the state dir's user reads (SRV-869)
     tandem-app chat-move --from USER@HOST:PATH [--plan] [--replace]
                                                      chatd's data folder from another host to this
                                                      controller's chatd (proxy/chatmove.py, SRV-843)
@@ -157,7 +160,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = ("serve", "check", "secrets", "backends", "import-backends", "hostcollect", "launch", "service",
-            "package", "password", "users", "tokens", "chat-move", "version")
+            "package", "password", "users", "tokens", "chat-move", "version", "doctor")
 
 
 def main(argv=None) -> None:

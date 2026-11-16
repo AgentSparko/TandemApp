@@ -12,7 +12,9 @@
                                                       sealed to the taker's certificate
     POST /v1/fleet/controller/handover/{id}/commit    the giver re-pins its nodes to the taker
     POST /v1/fleet/controller/take {url, password}    the taker's half: a fleet taken from the
-                                                      controller at `url` (This Mac takes it back)
+                                                      controller at `url` (This Mac takes it back);
+                                                      {url, token}: a trust token made there
+                                                      (SRV-869), sent as the bearer, no sign-in
 
 THE EXPORT (`kind: tandemapp-export`): the config database without the secrets, the wizard's
 sessions and the jobs (backends, models, routes, the proxy's own keys as hashes, the settings,
@@ -982,27 +984,32 @@ class Mover:
 
     # ------------------------------------------------------------------ pull: the taker
     def take(self, body, who: str, now: float) -> dict:
-        if not isinstance(body, dict) or set(body) - {"url", "password"} or \
+        if not isinstance(body, dict) or set(body) - {"url", "password", "token"} or \
                 not isinstance(body.get("url"), str) or \
-                not body["url"].startswith(("http://", "https://")):
-            raise MoveError(400, "bad_request", "the body is {url, password}: the controller "
-                                                "that runs the fleet now, and its admin password")
+                not body["url"].startswith(("http://", "https://")) or \
+                ("token" in body and (not isinstance(body["token"], str) or "password" in body)):
+            raise MoveError(400, "bad_request", "the body is {url, password} or {url, token}: the "
+                                                "controller that runs the fleet now, and its "
+                                                "admin password or a trust token made there")
         if any(n["endpoint"] != "local" for n in self.cfg.nodes()):
             raise MoveError(409, "not_empty", "this controller has a fleet of its own: it takes "
                                               "another only while it has none")
         job = self._new_job("pull", who, url=body["url"], api_url=self.api_url(), nodes=[],
                             alias=body["url"], **{"from": body["url"]})
-        self.spawn(lambda: self._pull(job, body["url"].rstrip("/"), body.get("password")))
+        self.spawn(lambda: self._pull(job, body["url"].rstrip("/"), body.get("password"),
+                                      token=body.get("token")))
         return job
 
-    def _pull(self, job: dict, url: str, password: str | None) -> None:
+    def _pull(self, job: dict, url: str, password: str | None, token: str | None = None) -> None:
+        """SRV-869: with `token` (a trust token made on the giver, TANDEM_AUTH=accounts there)
+        every call carries it as the bearer, and nothing signs in: no password, no cookie."""
         f = self.fleet
         sid = "check"
         try:
             self._step(job, sid, "running")
-            auth = {"token": password}
+            auth = {"token": token or password}
             st, doc = self.call(url, "GET", "/v1/fleet/controller", **auth)
-            if st == 401 and password:
+            if st == 401 and password and not token:
                 # a password set in its App settings signs in; the admin token is a bearer too
                 c = self.sign_in(url, password)
                 if c:

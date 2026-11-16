@@ -873,10 +873,12 @@ def service(mgr: str, prefix: str, release: str, state: str, restart: bool, dry:
 
 
 def health(host: str, port: int, token: str | None, version: str, bundle: str | None,
-           wait: float, accounts: bool = False) -> tuple[bool, str]:
+           wait: float, accounts: bool = False, state: str | None = None) -> tuple[bool, str]:
     """(answers as this release, what it said): /health, then /dashboard/'s bundle. With the
-    accounts on (SEC-26) /health tells its version only to someone signed in: an answer without
-    it counts when it says `ok` and the page's bundle is this release's."""
+    accounts on (SEC-26) /health tells its version only to someone signed in: SRV-869 reads the
+    CLI's token the controller writes at each start (<state>/run/cli.token) and checks the
+    version with it; until that file is there, an answer without the version counts when it
+    says `ok` and the page's bundle is this release's."""
     h = "127.0.0.1" if host in ("0.0.0.0", "") else "::1" if host == "::" else host
     base = f"http://[{h}]:{port}" if ":" in h else f"http://{h}:{port}"
     t_end = time.monotonic() + wait
@@ -884,6 +886,8 @@ def health(host: str, port: int, token: str | None, version: str, bundle: str | 
     while True:
         try:
             rq = urllib.request.Request(base + "/health")
+            if accounts and state:
+                token = _cli_token(state) or token
             if token:
                 rq.add_header("Authorization", f"Bearer {token}")
             with urllib.request.urlopen(rq, timeout=3) as r:
@@ -905,6 +909,16 @@ def health(host: str, port: int, token: str | None, version: str, bundle: str | 
         if time.monotonic() >= t_end:
             return False, last
         time.sleep(0.5)
+
+
+def _cli_token(state: str) -> str | None:
+    """SRV-869: the CLI's token of the controller's start, when it is there (never printed)."""
+    try:
+        with open(os.path.join(state, "run", "cli.token")) as f:
+            got = f.read(512).strip()
+    except OSError:
+        return None
+    return got if got.startswith("tdm-") else None
 
 
 def log_tail(state: str, mgr: str, n: int = 20, unit: str = UNIT) -> str:
@@ -1058,7 +1072,7 @@ def install(a) -> int:
     bundle = manifest.get("sha256")
     if svc["started"]:
         ok, said = health(st["host"], st["port"], st["token"], version, bundle, a.wait,
-                          accounts=st.get("accounts", False))
+                          accounts=st.get("accounts", False), state=state)
         if not ok:
             tail = log_tail(state, mgr, unit=unit)
             if before and before != rid and os.path.isdir(os.path.join(prefix, "releases", before)):

@@ -6,6 +6,10 @@
     tandem-app tokens revoke ID
     tandem-app tokens rotate ID [--grace SECONDS]
     tandem-app tokens confirm ID                  an imported key, kept (it leaves Review)
+    tandem-app tokens chatd-key FILE              SRV-869: a fresh secret of chatd's identity
+                                                  svc:chatd into FILE (0600), for a chatd this
+                                                  controller does not start (QSE_CHAT_ENGINE_KEY,
+                                                  its engine.key); the one before stops
         [--state-dir D] [--config-db F]
 
 It works on the config database as `tandem-app users` does (proxy/userscli.py): whoever can read
@@ -20,7 +24,7 @@ import argparse
 import os
 import sys
 
-ACTIONS = ("list", "create", "revoke", "rotate", "confirm")
+ACTIONS = ("list", "create", "revoke", "rotate", "confirm", "chatd-key")
 
 
 def _say(*parts) -> None:
@@ -53,7 +57,8 @@ def run(a) -> int:
                      + ("  REVIEW" if v["needs_review"] else ""))
             return 0
         if not a.target:
-            _say(f"tandem-app tokens {a.action} needs {'a NAME' if a.action == 'create' else 'an ID'}")
+            _say(f"tandem-app tokens {a.action} needs "
+                 f"{'a NAME' if a.action == 'create' else 'a FILE' if a.action == 'chatd-key' else 'an ID'}")
             return 2
         if a.action == "create":
             owner = userscli._find(store, a.target)
@@ -86,6 +91,21 @@ def run(a) -> int:
             v = ts.confirm(a.target, actor=who)
             _say(f"{v['id']} ({v['label']}): confirmed")
             return 0
+        if a.action == "chatd-key":
+            out = os.path.expanduser(a.target)
+            token = ts.mint_service(tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES,
+                                    memory_user=tokens_mod.CHATD_LABEL, actor=who)
+            tmp = f"{out}.tmp-{os.getpid()}"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+                os.write(fd, (token + "\n").encode())
+            finally:
+                os.close(fd)
+            os.replace(tmp, out)
+            _say(f"{tokens_mod.CHATD_SERVICE}: a fresh secret in {out} (0600); the one before "
+                 f"stopped. Give that chatd QSE_CHAT_ENGINE_KEY from it.")
+            return 0
     except (acc_mod.AccountError, tokens_mod.TokenError) as exc:
         _say(exc.message)
         return 1
@@ -99,7 +119,7 @@ def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="tandem-app tokens",
                                  description="The API tokens on this machine (no password asked).")
     ap.add_argument("action", choices=ACTIONS)
-    ap.add_argument("target", nargs="?", default=None, metavar="NAME|ID")
+    ap.add_argument("target", nargs="?", default=None, metavar="NAME|ID|FILE")
     ap.add_argument("--label", default=None)
     ap.add_argument("--scope", action="append", default=None)
     ap.add_argument("--model", action="append", default=None)

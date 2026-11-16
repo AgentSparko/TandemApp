@@ -1,4 +1,5 @@
-"""The `tandem-app` commands other than `serve` (proxy/__main__.py): check, secrets, backends.
+"""The `tandem-app` commands other than `serve` (proxy/__main__.py): check, secrets, backends,
+doctor.
 
 Each returns the process's exit code. `check` and `backends list` read a copy of the config
 database (SQLite's backup API), so they never write to the real one; `secrets init` is the one
@@ -181,3 +182,35 @@ def backends(args) -> int:
     for line in lines:
         _say(line.strip())
     return 0
+
+
+def doctor(args) -> int:
+    """SRV-869: the running controller's /health at --host and --port, as this machine's CLI sees
+    it. The user who owns the state dir reads <state>/run/cli.token (svc:cli, minted at each
+    start, the file 0600) and gets the full health; anyone else gets the open answer, the status
+    only. Exit 0 when it says ok."""
+    import json
+    import urllib.error
+    import urllib.request
+    from proxy import tokens as tokens_mod
+    state = os.path.dirname(os.path.realpath(os.path.expanduser(args.config_db)))
+    token = tokens_mod.read_cli_token(state)
+    host = "127.0.0.1" if args.host in ("0.0.0.0", "") else "::1" if args.host == "::" \
+        else args.host
+    base = f"http://[{host}]:{args.port}" if ":" in host else f"http://{host}:{args.port}"
+    req = urllib.request.Request(base + "/health")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            doc = json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        _say(f"{base}/health answered HTTP {exc.code}")
+        return 1
+    except (OSError, ValueError) as exc:
+        _say(f"{base}/health does not answer: {type(exc).__name__}")
+        return 1
+    _say(f"health: {base}/health "
+         f"({'full, with ' + _tilde(tokens_mod.cli_token_path(state)) if token else 'open: the status only; the full answer needs the CLI token, which this user cannot read'})")
+    _say(json.dumps(doc, indent=1, sort_keys=True))
+    return 0 if doc.get("status") == "ok" else 1

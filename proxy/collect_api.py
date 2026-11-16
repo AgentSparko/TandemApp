@@ -11,6 +11,11 @@ the first need and kept in the config database's settings (`collect_token`); `ta
 hands the same one to the engine. Every batch needs it, from loopback too; a wrong one is a 401.
 It only lets its holder post numbers for a backend that exists.
 
+SRV-869, with TANDEM_AUTH=accounts: each backend has a collect identity of its own,
+`svc:collect:<id>` (scope collect:write), which `tandem-app launch` mints afresh for the engine it
+starts. The request gate checks it; a batch for another backend is 403. The shared token of the
+release before is imported once as `svc:collect` (any backend, under Review).
+
 THE JOIN. The relay tags each request it sends to a `vllm` or `sglang` backend with an id the
 engine reports back: vLLM takes `X-Request-Id: px-<hex>` and reports `chatcmpl-px-<hex>` (the
 proxy's own id for the row) on the chat route, `cmpl-px-<hex>` on completions; SGLang takes the
@@ -579,6 +584,38 @@ class Collector:
         return out
 
 
+SERVICE_PREFIX = "svc:collect:"
+
+
+def collect_identity(auth, p, bid: str):
+    """None when the principal `p` may post a batch for backend `bid`, else (status, body)."""
+    from proxy import authz
+    if p is None or not authz.allow(p, "collect:write", auth.policy):
+        return 403, {"error": {"message": "a collect identity is needed", "type": "forbidden"}}
+    row = auth.tokens.get(p.id)
+    label = (row or {}).get("label") or ""
+    if label.startswith(SERVICE_PREFIX) and label[len(SERVICE_PREFIX):] != bid:
+        return 403, {"error": {"message": "this collect token is for another backend",
+                               "type": "forbidden"}}
+    if row is None or not (label.startswith(SERVICE_PREFIX) or label == "svc:collect"):
+        return 403, {"error": {"message": "a collect identity is needed", "type": "forbidden"}}
+    return None
+
+
+def token_for(cfg, env, bid: str, mint: bool = True) -> str:
+    """The token a launched engine's plugin posts with: with TANDEM_AUTH=accounts a fresh
+    secret of the backend's own collect identity svc:collect:<id> (SRV-869), else the proxy's
+    shared one (token_of)."""
+    if (env.get("TANDEM_AUTH") or "").strip().lower() != "accounts":
+        return token_of(cfg, env)
+    if not mint:
+        return "(minted at the launch)"
+    from proxy import accounts as accounts_mod
+    store = accounts_mod.AccountStore(cfg)
+    return store.tokens.mint_service(SERVICE_PREFIX + bid, ("collect:write",),
+                                     memory_user=f"collect-{bid}"[:64])
+
+
 def handle(handler, svc, path: str, payload) -> None:
     """`POST /v1/collect/<backend>` on either server (proxy/app.py, server/app.py). `payload` is
     the raw body, or the body already parsed by the server."""
@@ -601,7 +638,14 @@ def handle(handler, svc, path: str, payload) -> None:
         return send(404, {"error": {"message": "no collector on this server",
                                     "type": "not_found"}})
     bid = path[len("/v1/collect/"):].strip("/") if path.startswith("/v1/collect/") else ""
-    if not col.check_token(handler.headers.get("Authorization")):
+    auth = getattr(svc, "auth", None)
+    if getattr(auth, "accounts", False):
+        # SRV-869: the gate checked the caller and took the header away; a collect identity
+        # posts for its own backend only (svc:collect:<id>); the imported shared one for any
+        bad = collect_identity(auth, svc.principal(handler), bid)
+        if bad is not None:
+            return send(*bad)
+    elif not col.check_token(handler.headers.get("Authorization")):
         return send(401, {"error": {"message": "the collect token is needed (Authorization: "
                                                "Bearer <TANDEM_COLLECT_TOKEN>)",
                                     "type": "unauthorized"}})
