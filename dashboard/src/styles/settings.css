@@ -80,6 +80,22 @@ qse-settings {
 .st-empty p {
   max-width: 72ch;
 }
+/* the Hooks page: the same switches as the plain form, in a fold under the hooks pages */
+.st-keys > summary {
+  min-height: 32px;
+  color: var(--cobalt-hi);
+  cursor: pointer;
+}
+.st-keys[open] > summary {
+  margin-bottom: 8px;
+}
+.st-keys-b {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+  min-width: 0;
+}
 .st-find input {
   width: min(320px, 100%);
 }

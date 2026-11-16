@@ -4,6 +4,10 @@
 // configuration file), Backends, Conductor, Engines (one page an engine host), Hooks and History.
 // A chunk of its own, loaded when the area opens.
 //
+// Hooks holds the hooks pages (VIS-282, views/hooks/area.ts, a chunk of their own): the pipeline,
+// a hook's page, the trace and the decision providers. They stage their switches into this area's
+// draft, so the bar, the run sheet and the versions below serve them too.
+//
 // Every page but History is a scope of the settings interface, drawn from its schema
 // (lib/settings-form.ts): nothing here knows a key by name but the engine's mode. A change is
 // staged, not written: the bar at the bottom carries the staged changes across the pages, and
@@ -53,10 +57,14 @@ const HEAD: Record<SettingsTab, string> = {
   backends: 'The servers behind the one API: each backend’s address, limits and key, the routing rules, and which users’ keys are on.',
   conductor: 'The conductor’s documents as this controller keeps them, each edited whole and versioned.',
   engines: 'Each engine host’s own settings. Some apply at once; the others restart the engine once, when it is idle.',
-  hooks: 'The settings of the hooks that run on requests.',
+  hooks: 'Your code on a request’s way through TandemApp, and who answers the conductor’s questions.',
   history: 'Every change made through these settings, and the engine restarts they caused.',
 };
 const dkey = (scope: Scope, target: string): string => `${scope}|${target}`;
+/** The hooks pages (VIS-282): the pipeline, a hook's page, the trace and the decision providers,
+ *  a chunk of their own that loads when the Hooks page opens; the element upgrades in place. */
+let hooksChunk: Promise<unknown> | null = null;
+const loadHooks = () => (hooksChunk ??= import('../hooks/area'));
 
 @customElement('qse-settings')
 export class QseSettings extends LightElement {
@@ -426,13 +434,24 @@ export class QseSettings extends LightElement {
           })}`;
   }
 
-  private hooksEmpty(why: string | null): TemplateResult {
-    return html`<section class="panel st-empty" data-hooks-none>
-      <h2 class="panel-title">No hooks yet</h2>
-      <p class="small">${why ? `${why.charAt(0).toUpperCase()}${why.slice(1)}.` : 'No hook is registered on this TandemApp.'}</p>
-      <p class="small muted">Each hook shows here with its switches: whether it runs, only watches or acts, its place in the order, the requests it runs on, what happens when it fails and what it may see. A decision provider shows with its mode, its A/B share, the questions it answers and its keys. They get the same plan, versions and history as every other page. There is nothing to set up before that.</p>
-      <p class="small muted">Until then the pieces that shape a request are set under <a href=${settingsHref('conductor')}>Conductor</a> and <a href=${settingsHref('backends')}>Backends</a>.</p>
-    </section>`;
+  /** The Hooks page: the hooks pages themselves (their own chunk), which stage every switch into
+   *  this area's draft; under the two lists, the scope's versions, and under the pipeline the same
+   *  switches as the plain form of settings keys, a fold a hook and a provider. */
+  private hooksPage(): TemplateResult {
+    void loadHooks();
+    const d = this.data.get(dkey('hooks', HERE));
+    const sub = this.path.slice(1);
+    const keys = !!d?.schema?.keys.length;
+    return html`<qse-hooks .path=${sub} .writable=${!!d?.schema?.writable} .stamp=${d?.values ?? null} @qse-hooks-changed=${() => void this.reload('hooks', HERE)}></qse-hooks>
+      ${d?.error && !d.schema ? html`<section class="panel" data-unread="hooks">${refusal(d.error, { quiet: true })}<div class="st-acts"><button type="button" class="btn btn-sm" data-act="reload" @click=${() => void this.reload('hooks', HERE)}>${icon('refresh')} Try again</button></div></section>` : nothing}
+      ${!sub.length && keys
+        ? html`<details class="st-keys" data-hooks-keys>
+            <summary class="small">The same switches as settings keys</summary>
+            <p class="small muted st-lead" data-hooks-lead>A fold a hook and a decision provider. A change here and a change above are one and the same: both are staged, planned and versioned.</p>
+            <div class="st-keys-b">${groupsOf('hooks', fieldsOf(d!.schema!, d!.values, draft.part('hooks', HERE))).map((g) => groupPanel(g, this.form, this.handlers, { fold: true }))}</div>
+          </details>`
+        : nothing}
+      ${(!sub.length || (sub.length === 1 && sub[0] === 'providers')) && keys && d?.schema?.writable ? this.versions('hooks', HERE, d!) : nothing}`;
   }
 
   private page(): TemplateResult {
@@ -450,14 +469,8 @@ export class QseSettings extends LightElement {
         });
       case 'engines':
         return this.enginesPage();
-      case 'hooks': {
-        const d = this.data.get(dkey('hooks', HERE));
-        return this.scopePage('hooks', HERE, {
-          fold: (id) => id.startsWith('hook:') || id.startsWith('provider:'),
-          before: d?.schema?.keys.length ? html`<p class="small muted st-lead" data-hooks-lead>A hook or a decision provider is added and removed through the controller’s API (<span class="num">/v1/fleet/hooks</span>, <span class="num">/v1/fleet/decision-providers</span>). Here: what each one is set to. Granting a hook the full payload asks for pairing’s rights, and a second time when it leaves the LAN.</p>` : nothing,
-          empty: this.hooksEmpty(d?.schema?.why ?? null),
-        });
-      }
+      case 'hooks':
+        return this.hooksPage();
       default:
         return this.historyPage();
     }

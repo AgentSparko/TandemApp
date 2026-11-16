@@ -100,6 +100,14 @@
 // chunk with the App page it now holds (47.3 KB js, 3.1 KB css), loaded when Settings opens;
 // What runs here lost its own plan dialog for the two switches; the tab strip is styled in the chunk, so the
 // Conductor's stylesheet stays out of it.
+// 715 KB with the hooks pages (VIS-282, 2026-11-16: 714.5 KB, 731,617 bytes, from 670.9 KB): the pipeline of a
+// request's stages with its time budgets, add a hook with the secret shown once, a hook's page with its playground
+// and journal, the trace, and the decision providers with their health, question mapping, test and agreement
+// report, with both APIs' client, the two flows and every refusal's words. They are a chunk of their own (39.6 KB
+// js, 3.7 KB css) that loads when Settings → Hooks opens. The entry chunk stays at 106.0 KB; the settings area's
+// chunk grows by 0.2 KB for the import and the page that holds them. Room looked for first: the pages use the
+// settings area's draft, run sheet, refusals and row styles, not copies of their own, and read the stage table
+// from the controller; the budget counts every file, so a further split saves nothing.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';
