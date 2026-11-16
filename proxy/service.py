@@ -328,7 +328,9 @@ class Service:
         p = self.principal(handler)
         if p is not None and (authz.allow(p, "inference", self.auth.policy)
                               or authz.allow(p, "chat-engine", self.auth.policy)):
-            return True, p.name
+            # local mode is this machine as before the accounts: no user, so its memory and its
+            # rows stay the default owner's (`owner`), as they were with no key
+            return True, (None if p.kind == "local" else p.name)
         body = (b'{"error": {"message": "an API token is needed (Authorization: Bearer '
                 b'<token>); `tandem-app tokens create` makes one", "type": '
                 b'"invalid_request_error", "code": "invalid_api_key"}}')

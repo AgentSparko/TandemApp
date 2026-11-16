@@ -453,14 +453,19 @@ def unseal(sealed: dict, key_path: str) -> dict:
 # ---------------------------------------------------------------------- another controller
 
 def call(url: str, method: str, path: str, body=None, token: str | None = None,
-         timeout: float = 20.0, cookie: str | None = None) -> tuple[int, dict]:
+         timeout: float = 20.0, cookie=None) -> tuple[int, dict]:
     """A JSON call to another TandemApp controller: (status, body); 502 when it does not answer.
-    `token` goes as the bearer, `cookie` as its session (a sign-in with its password)."""
+    `token` goes as the bearer, `cookie` as its session: a sign-in's (sign_in, owner_session):
+    {cookie, csrf} of a controller with accounts, or an older one's `qse_dash` value."""
     data = None if body is None else json.dumps(body).encode()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    if cookie:
+    if isinstance(cookie, dict):
+        headers["Cookie"] = cookie["cookie"]
+        if cookie.get("csrf"):
+            headers["X-Tandem-CSRF"] = cookie["csrf"]
+    elif cookie:
         headers["Cookie"] = f"qse_dash={cookie}"
     req = urllib.request.Request(url.rstrip("/") + path, data=data, method=method,
                                  headers=headers)
@@ -477,9 +482,11 @@ def call(url: str, method: str, path: str, body=None, token: str | None = None,
                                                                  f"{type(exc).__name__}: {exc}"}}
 
 
-def sign_in(url: str, password: str, timeout: float = 20.0) -> str | None:
-    """A session at an older controller (before SEC-28) with its admin password: the cookie's
-    value, or None. A controller of now is taken with a trust token made there."""
+def sign_in(url: str, password: str, timeout: float = 20.0):
+    """A session at another controller with its first owner's password (the old sign-in route,
+    kept one release; on an older controller its admin password): {cookie, csrf} for one with
+    accounts, the `qse_dash` value for an older one, or None. A trust token made there needs
+    none of this."""
     req = urllib.request.Request(url.rstrip("/") + "/v1/fleet/session",
                                  data=json.dumps({"token": password}).encode(), method="POST",
                                  headers={"Content-Type": "application/json"})
@@ -492,7 +499,36 @@ def sign_in(url: str, password: str, timeout: float = 20.0) -> str | None:
         k, _, v = c.split(";", 1)[0].strip().partition("=")
         if k == "qse_dash" and v:
             return v
+        if k in ("tandem_session", "__Host-tandem_session") and v:
+            return _with_csrf(url, f"{k}={v}", timeout)
     return None
+
+
+def owner_session(url: str, password: str, timeout: float = 20.0):
+    """SEC-28: a controller a move started (no account yet, the move's password its admin token,
+    which counts once as the setup code): its first owner `owner` with that password, signed in:
+    {cookie, csrf}; None when it has an owner already or does not answer."""
+    req = urllib.request.Request(url.rstrip("/") + "/v1/auth/setup", data=json.dumps(
+        {"code": password, "username": "owner", "password": password}).encode(),
+        method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            doc = json.loads(r.read() or b"{}")
+            c = (r.headers.get("Set-Cookie") or "").split(";", 1)[0].strip()
+    except (OSError, ValueError):
+        return None
+    return {"cookie": c, "csrf": doc.get("csrf")} if c else None
+
+
+def _with_csrf(url: str, cookie: str, timeout: float):
+    """{cookie, csrf}: the session's CSRF token, which every write of that session carries."""
+    req = urllib.request.Request(url.rstrip("/") + "/v1/auth/session",
+                                 headers={"Cookie": cookie})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return {"cookie": cookie, "csrf": json.loads(r.read() or b"{}").get("csrf")}
+    except (OSError, ValueError):
+        return {"cookie": cookie, "csrf": None}
 
 
 def _err(doc: dict, fallback: str) -> str:
@@ -503,9 +539,10 @@ def _err(doc: dict, fallback: str) -> str:
 
 class Mover:
     def __init__(self, fleet, *, clock=time.time, spawn=None, sleep=time.sleep, call=call,
-                 sign_in=sign_in):
+                 sign_in=sign_in, owner_session=owner_session):
         self.fleet = fleet
         self.clock, self.sleep, self.call, self.sign_in = clock, sleep, call, sign_in
+        self.owner_session = owner_session
         self.spawn = spawn or (lambda fn: threading.Thread(target=fn, daemon=True).start())
         self._tokens: dict[str, tuple] = {}
         self._handovers: dict[str, dict] = {}
@@ -659,7 +696,9 @@ class Mover:
                        "moved nodes"]
         if p["needs_password"]:
             p["impact"].append(f"the new controller listens on the LAN: give it an admin "
-                               f"password ({MIN_PASSWORD} or more characters)")
+                               f"password ({MIN_PASSWORD} or more characters); its account "
+                               f"`owner` signs in with it, and the accounts and API tokens "
+                               f"of this controller stay here")
         if why:
             p.update(allowed=False, blocked=why)
         if p["allowed"] and mint:
@@ -787,7 +826,11 @@ class Mover:
                                          f"handed over")
             sid = "verify"
             self._step(job, sid, "running")
-            up = self._verify(job, job["api_url"], password, done)
+            # SEC-28: the new controller's first owner, from the move's password (its setup
+            # code); an older one takes the password as its admin token
+            session = self.owner_session(job["api_url"], password)
+            up = self._verify(job, job["api_url"], {"cookie": session} if session else
+                              {"token": password}, done)
             self._step(job, sid, "done", f"{len(up)} of {len(done)} up at the new controller; "
                                          f"this one refused")
             sid = "done"
@@ -862,13 +905,13 @@ class Mover:
             self.cfg.put_job(job)
         return done
 
-    def _verify(self, job: dict, url: str, token: str | None, ids: list[str]) -> list[str]:
+    def _verify(self, job: dict, url: str, auth: dict, ids: list[str]) -> list[str]:
         """The new controller lists each handed node up (VERIFY_S at most); this controller's own
-        call to one of them is refused."""
+        call to one of them is refused. `auth`: call's token= or cookie=."""
         end = time.monotonic() + VERIFY_S
         up: set = set()
         while True:
-            st, doc = self.call(url, "GET", "/v1/fleet/nodes", token=token, timeout=10.0)
+            st, doc = self.call(url, "GET", "/v1/fleet/nodes", timeout=10.0, **auth)
             if st == 200:
                 up = {n["id"] for n in doc.get("nodes") or [] if n["id"] in ids
                       and n["status"] in ("up", "draining", "alert")}
@@ -1016,7 +1059,7 @@ class Mover:
             auth = {"token": token or password}
             st, doc = self.call(url, "GET", "/v1/fleet/controller", **auth)
             if st == 401 and password and not token:
-                # a password set in its App settings signs in; the admin token is a bearer too
+                # its first owner's password signs in (an older one's admin password too)
                 c = self.sign_in(url, password)
                 if c:
                     auth = {"cookie": c}

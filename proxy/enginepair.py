@@ -238,7 +238,8 @@ def _refusal(status: int, doc: dict, headers: dict, address: str, port: int):
         return enginecodes.error("no_window", msg, **f)
     if kind == "code_spent":
         return enginecodes.error("code_spent", msg, **f)
-    if kind in ("no_pairing", "not_found") or status == 404:
+    if kind in ("no_pairing", "not_found") or status == 404 or e.get("code") == "unmapped_route":
+        # unmapped_route: a TandemApp controller's sign-in gate, which has no such route
         return enginecodes.error("pairing_unsupported", msg, **f)
     if kind == "rate_limited" or status == 429:
         try:

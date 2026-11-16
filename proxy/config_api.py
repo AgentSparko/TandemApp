@@ -27,9 +27,7 @@ characters and a 6-hex-digit hash prefix. A user's key is in the answer to its c
                                                       (creates a manual model)
     DELETE /v1/config/backends/{id}/models/{model}
     PUT    /v1/config/rules                           {rules: [{id?, pattern, backend, enabled}]}
-    POST   /v1/config/users                           {label}: the answer holds the key, once
-    PATCH  /v1/config/users/{id}                      {enabled}
-    DELETE /v1/config/users/{id}
+    POST, PATCH, DELETE /v1/config/users[/{id}]       410 gone (SEC-28): API tokens replace them
     GET    /v1/config/prices/seed                     the public list prices shipped with this
                                                       release, applied only by a click
     GET    /v1/config/audit                           the last 50 changes (field names only)
@@ -297,16 +295,20 @@ def free_id(cfg, doc: dict) -> str:
     return bid
 
 
+GONE = ("API tokens replace these keys (SEC-28): make one under Access, or with `tandem-app "
+        "tokens create`; the keys of before came in as tokens with the same key, and are "
+        "confirmed or revoked there")
+
+
 def _users(handler, svc, method, parts, body, who):
+    """The keys of before, read only (SEC-28): the import made each an API token with the same
+    hash; a change here would no longer reach the sign-in, so every write is 410 gone."""
     cfg = svc.cfg
+    if method in ("POST", "PATCH", "DELETE"):
+        return _send(handler, 410, {"error": {"type": "gone", "message": GONE}})
     if not parts:
         if method == "GET":
             return _send(handler, 200, {"users": cfg.users(), "active": cfg.users_active()})
-        if method == "POST":
-            user, key = cfg.create_user(body, who)
-            return _send(handler, 201, {"user": user, "key": key,
-                                        "note": "the key is shown this once; it is stored as "
-                                                "its sha256 only"})
     try:
         uid = int(parts[0])
     except ValueError:
