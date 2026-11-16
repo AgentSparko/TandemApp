@@ -31,7 +31,7 @@ These files are the truth for `/v1/conductor/*` (app/tandemapp/conductor/routes.
 | `memory-disk.schema.json`, `memory-disk-clear.schema.json` | C1: `GET /v1/conductor/memory/disk` (the disk tier: whether it runs, its settings and their version, its bytes against the budget and the free space against the 50 GB floor, the hit rate, the 20 most-hit entries -- a preview only for opencode heads and packages -- and its last events) and `POST /v1/conductor/memory/disk/clear` (what was on disk before, and the tier after; 409 when it does not run). Admin token, like every memory route |
 | `scan.schema.json` | `GET /v1/conductor/packages/scan` |
 | `packages-catalog.schema.json`, `packages-item.schema.json`, `packages-tokens.schema.json`, `packages-usage.schema.json` | G2, the Packages and Skills screen's reads: `GET /v1/conductor/packages/catalog` (every package: category, source and path, the tokens of the text that goes in on the engine's tokenizer or the 3.5-character estimate, its limit and whether it is over, the classes of the router and of each profile that list it, INDEX.md's fit, each profile's library switch), `GET /v1/conductor/packages/item/{name}` (frontmatter, body, reference, the text that goes in, their tokens, a library skill's BM25 neighbours; 404 for an unknown name), `POST /v1/conductor/packages/tokens {texts}` (a read: the tokens of 1 to 20 texts; 400 otherwise), `GET /v1/conductor/packages/usage?name=&limit=` (the journal's 7 days: per package its injections, shadow notes and library picks in 24 h and 7 d, one package's newest rows, the library's newest retrieval rows; 400 for a limit outside 1 to 200) |
-| `error.schema.json` | every 4xx body; a 422 adds `errors` with one line per violation and its JSON path |
+| `error.schema.json` | every 4xx body; a 422 adds `errors` with one line per violation and its JSON path; the decision providers' refusals carry `code` (as `type`) and `field`, a 409 `confirm_needed` its `confirm`, `destination` and `lan` |
 | `<kind>.config.schema.json` | the documents themselves; written from app/tandemapp/conductor/schema.py by `tools/conductor_contract.py --write` |
 | `seeds.json` | the built-in version 0 of every document and the meta; the mock engine serves it |
 
@@ -48,7 +48,7 @@ TandemApp's controller lets another decision model answer its conductor's questi
 
 | file | endpoint |
 |-|-|
-| `decision-providers.schema.json` | `GET /v1/fleet/decision-providers`: every provider, the question ids, the kinds, modes and sticky keys |
+| `decision-providers.schema.json` | `GET /v1/fleet/decision-providers`: every provider with its health from the last probes (nothing probed: an endpoint never probed is null, the status `unknown`), the question ids, the kinds, modes and sticky keys |
 | `decision-provider.schema.json` | `POST` (201), `GET`, `PATCH /v1/fleet/decision-providers[/{id}]`, `.../enable`, `.../disable`, `PUT .../mode`; its `$defs` hold a provider, a question's mapping, a key's hint, a breaker, a probe and the health view |
 | `decision-provider-health.schema.json` | `GET .../{id}/health[?force=1]` |
 | `decision-provider-test.schema.json` | `POST .../{id}/test {question?, text?}` |

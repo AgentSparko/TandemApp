@@ -89,9 +89,10 @@ curl -X POST http://127.0.0.1:8080/v1/fleet/decision-providers \
 - A key is write-only: a string sets it, `null` clears it, and every answer shows only whether it is set, its last 4 characters and a sha256 prefix. Keys are stored sealed under the master key, never logged, journaled or exported; a controller move leaves them behind (type them again on the new controller).
 - The provider's own key goes only to its own endpoint's origin: a question with an endpoint on another host gets its own key or none.
 - One enabled provider may answer a question `on` or `ab`; any number may watch it in `shadow`.
-- `POST .../{id}/test` asks it once with a sample question; `GET .../{id}/health` probes it; `GET .../report` has the numbers below.
+- `POST .../{id}/test` asks it once with a sample question; `GET .../{id}/health` probes it; `GET .../report` has the numbers below. The list (`GET /v1/fleet/decision-providers`) carries each provider's health from its last probes and probes nothing: an endpoint not probed since the provider last changed shows no probe, and the status `unknown`.
+- A refusal is `{error: {type, code, message, field?}}` (contracts/conductor-v1 `error.schema.json`); `field` names the value it is about.
 
-A provider's switches and keys are also keys of the settings interface's `hooks` scope (`providers.<id>.<field>`, [settings](settings.md#decision-providers)). There a change is planned, versioned and can be restored with the other settings. Its keys stay write-only there.
+A provider's switches and keys are also keys of the settings interface's `hooks` scope (`providers.<id>.<field>`, [settings](settings.md#decision-providers)). There a change is planned, versioned and can be restored with the other settings. Its keys stay write-only there; a change set that adds a question may set that question's key (`providers.<id>.questions.<question>.api_key`) in the same change.
 
 ## The Decision providers pages
 
@@ -119,7 +120,7 @@ A provider is not used for a call, and the built-in answer is, when:
 | `hook_off`, `no_answer`, `out_of_scope` | a hook provider's hook is off or in shadow, answered no decision, or its scope does not take the request |
 | `replay_miss` | replaying recorded answers, and none recorded for this question |
 
-The stage's row in the conductor's journal names the provider (`provider: {id, mode, arm?, fallback?}`) whenever one answered or fell back; without a provider the row is as it was. The health view (`GET .../{id}/health`) gives each endpoint's probe, its breaker and its questions, and a status: `ok`, `failing` (a breaker not closed, or the last call within a minute failed), `down` (a probe failed) or `off`.
+The stage's row in the conductor's journal names the provider (`provider: {id, mode, arm?, fallback?}`) whenever one answered or fell back; without a provider the row is as it was. The health view (`GET .../{id}/health`) gives each endpoint's probe, its breaker and its questions, and a status: `ok`, `failing` (a breaker not closed, or the last call within a minute failed), `down` (a probe failed) or `off`; in the list's view also `unknown` (an endpoint not probed yet).
 
 ## The journal and the report
 

@@ -2,8 +2,10 @@
 the conductor's harness, keys, the byte gate.
 
   1  the admin API: list, create, change, mode, enable, test, health,
-     calls, report, delete; its answers validate against
-     contracts/conductor-v1; the rights are the configuration's     test_api_routes_and_rights
+     calls, report, delete; its answers, refusals included, validate
+     against contracts/conductor-v1; the list carries each
+     provider's health from its last probes, probing nothing; the
+     rights are the configuration's                                 test_api_routes_and_rights
   2  a provider on for classify: a relayed chat's class is its answer
      (with its key, at its endpoint); in shadow the class is the
      conductor's and the report counts the shadow calls; down: the
@@ -51,6 +53,9 @@ def _j(px, method, path, body=None, want=200, headers=None):
     st, _, out = px.request(method, path, body, headers)
     doc = json.loads(out or b"{}")
     assert st == want, (method, path, st, doc)
+    if want >= 400 and path.startswith(BASE):
+        _ok(doc, "error")                     # SRV-851: the refusals hold to the contract
+        assert doc["error"]["code"] == doc["error"]["type"], doc
     return doc
 
 
@@ -116,7 +121,20 @@ def test_api_routes_and_rights():
             p = made["provider"]
             assert p["id"] == "jev" and p["key"]["last4"] == KEYS[0][-4:]
             assert KEYS[0] not in json.dumps(made)
+            # the list carries each provider's health from its last probes: none yet, so
+            # unknown, and the endpoint saw no probe for it
+            seen = len(ex.calls) if hasattr(ex, "calls") else None
+            doc = _j(px, "GET", BASE, headers=h)
+            _ok(doc, "decision-providers")
+            hl = doc["providers"][0]["health"]
+            assert hl["status"] == "unknown" and all(e["probe"] is None
+                                                     for e in hl["endpoints"]), hl
+            if seen is not None:
+                assert len(ex.calls) == seen
             _ok(_j(px, "GET", BASE + "/jev?health=1", headers=h), "decision-provider")
+            hl = _j(px, "GET", BASE, headers=h)["providers"][0]["health"]
+            assert hl["status"] == "ok" and hl["endpoints"][0]["probe"]["up"] and \
+                hl["endpoints"][0]["probe"]["age_s"] >= 0, hl
             got = _j(px, "PATCH", BASE + "/jev", {"name": "Jev 2"}, headers=h)
             assert got["provider"]["name"] == "Jev 2" and got["provider"]["version"] == 2
             got = _j(px, "PUT", BASE + "/jev/mode", {"mode": "ab", "ab_percent": 20,

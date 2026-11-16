@@ -17,6 +17,25 @@
           "items": {
             "type": "string"
           }
+        },
+        "code": {
+          "type": "string",
+          "description": "the decision providers' refusals: the same as `type`"
+        },
+        "field": {
+          "type": "string",
+          "description": "the field a refusal is about (`questions.classify.endpoint`)"
+        },
+        "confirm": {
+          "type": "string",
+          "description": "409 confirm_needed (a decision provider's destination outside the LAN, SEC-16): send the same request again with it"
+        },
+        "destination": {
+          "type": "string",
+          "description": "409 confirm_needed: the host outside the LAN"
+        },
+        "lan": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -29,5 +48,6 @@
   "required": [
     "error"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "description": "every 4xx body of the conductor's routes and the decision providers' (`/v1/fleet/decision-providers/*`); a refusal about one field names it in `field`, the providers' carry their `code` (the same as `type`), and a 409 confirm_needed its `confirm`, `destination` and `lan`"
 }
