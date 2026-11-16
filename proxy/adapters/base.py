@@ -87,7 +87,7 @@ class Stamps:
 
     __slots__ = ("usage", "finish_reason", "reasoning", "tools", "tokens_seen", "error",
                  "model", "think_open", "kind", "tool_name", "tool_chars", "fingerprint",
-                 "response_id", "done")
+                 "response_id", "done", "native")
 
     def __init__(self):
         self.usage = None              # the provider's usage object, as sent
@@ -109,6 +109,9 @@ class Stamps:
         # engine's is its ledger row's request_id (SRV-733, the row of record)
         self.response_id = None
         self.done = False              # the stream's `data: [DONE]` seen
+        # a translated answer (SRV-877): the upstream's own usage object, which the ledger reads
+        # in place of the OpenAI-shaped one the client got
+        self.native = None
 
 
 def _answer_id(obj: dict, st: Stamps) -> None:
@@ -125,9 +128,15 @@ def sse_data(event: bytes) -> bytes | None:
     return b"\n".join(parts) if parts else None
 
 
+RETRYABLE = (429, 502, 503)
+
+
 class Adapter:
     kind = "generic"
     cloud = False
+    # SRV-877: a kind whose server speaks another protocol than the client (the relay then asks
+    # `stream_translator`, `answer` and `dropped`); every other kind copies the bytes
+    translates = False
     names: dict[str, str] = {}      # the provider's own name of a model, by upstream id
     max_output: dict[str, int] = {}     # the provider's largest max_tokens, by upstream id
 
@@ -263,8 +272,26 @@ class Adapter:
             v = KINDS.get(self.kind, KINDS["generic"])["inject_usage"]
         return bool(v)
 
-    def prepare(self, path: str, raw: bytes, body: dict, upstream_model: str
-                ) -> tuple[bytes, bool]:
+    def upstream_path(self, pool, route: str) -> str:
+        """The path a client route goes to on the backend (the base URL's path + the route)."""
+        return pool.path(route)
+
+    def retryable(self, status: int) -> bool:
+        """A status the relay may try again before any byte went to the client."""
+        return status in RETRYABLE
+
+    def dropped(self, body: dict) -> list[str]:
+        """The client's fields the upstream request goes without (a translating kind)."""
+        return []
+
+    def stream_translator(self, created: int):
+        return None
+
+    def answer(self, status: int, data: bytes, created: int):
+        return status, data, None
+
+    def prepare(self, path: str, raw: bytes, body: dict, upstream_model: str,
+                max_output: int | None = None) -> tuple[bytes, bool]:
         """(the upstream body, whether the stream was asked for a usage frame the client did not
         ask for). The client's bytes go out unchanged when nothing needs to change."""
         changed = False
@@ -514,6 +541,13 @@ class Adapter:
 
     # ----------------------------------------------------------------- discovery
     models_path = "/models"
+
+    def models_query(self, after: str | None = None) -> str:
+        return ""
+
+    def next_page(self, doc) -> str | None:
+        """The cursor of the model list's next page; None: the list is whole."""
+        return None
 
     def parse_models(self, obj) -> list[dict]:
         """`GET /models` into [{id, context_length, name, max_output, input_modalities,

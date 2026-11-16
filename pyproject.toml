@@ -66,6 +66,7 @@ packages = [
   "proxy.dashboard",
   "proxy.dashboard.assets",
   "proxy.packages",
+  "proxy.translate",
   "tandemapp",
   "tandemapp.conductor",
   "tandemapp.conductor.monitor",

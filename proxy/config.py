@@ -54,7 +54,7 @@ same code path.
 
     TANDEM_BACKENDS=deepseek,vllm1                  the backends the environment declares
     TANDEM_BACKEND_<ID>_KIND=deepseek               generic | tandemllm | vllm | sglang |
-                                                    openai | deepseek
+                                                    openai | deepseek | anthropic
     TANDEM_BACKEND_<ID>_URL=https://api.deepseek.com/v1
     TANDEM_BACKEND_<ID>_KEY=sk-...                  held in memory, never stored
     TANDEM_BACKEND_<ID>_LABEL=DeepSeek
@@ -75,6 +75,14 @@ same code path.
     TANDEM_BACKEND_<ID>_WRITER_RUNS_DAY=48          its runs a day
     TANDEM_BACKEND_<ID>_WRITER_PROMPT_TOKENS=32000  its prompt at most (older messages dropped)
     TANDEM_BACKEND_<ID>_TIMEOUT_CONNECT=10          seconds; also _TIMEOUT_FIRST_BYTE, _TIMEOUT_IDLE
+    TANDEM_BACKEND_<ID>_ANTHROPIC_AUTH=x-api-key    kind anthropic (SRV-877): x-api-key | bearer;
+                                                    also _ANTHROPIC_API_VERSION,
+                                                    _ANTHROPIC_SAMPLING (drop | pass),
+                                                    _ANTHROPIC_DEFAULT_MAX_TOKENS,
+                                                    _ANTHROPIC_AUTO_CACHE,
+                                                    _ANTHROPIC_THINKING_DISPLAY (summarized |
+                                                    omitted), _ANTHROPIC_THINKING_SHAPE
+                                                    (adaptive | budget | off)
     TANDEM_BACKEND_<ID>_HOST=auto                   where the System view reads the backend's
                                                     machine: auto (this machine when the URL is),
                                                     same, collector, exporter, off
@@ -121,6 +129,7 @@ import time
 
 from proxy import schema
 from proxy import secrets as vault_mod
+from proxy.translate import anthropic as anthropic_tr
 
 SCHEMA_VERSION = 2
 DEFAULT_PATH = "~/.tandemllm/config.sqlite3"
@@ -134,7 +143,13 @@ KINDS = {
     "sglang": {"cloud": False, "url": None, "inject_usage": True},
     "openai": {"cloud": True, "url": "https://api.openai.com/v1", "inject_usage": True},
     "deepseek": {"cloud": True, "url": "https://api.deepseek.com/v1", "inject_usage": True},
+    # SRV-877: any Messages API server; the base URL with or without its /v1
+    "anthropic": {"cloud": True, "url": "https://api.anthropic.com", "inject_usage": False},
 }
+# the defaults of a kind anthropic backend's own settings
+ANTHROPIC = anthropic_tr.DEFAULTS
+# the backend fields that are objects, stored as JSON and patched field by field
+JSON_GROUPS = ("timeouts", "harness", "host", "anthropic")
 TIMEOUTS = {False: {"connect": 5.0, "first_byte": 600.0, "idle": 120.0},
             True: {"connect": 10.0, "first_byte": 120.0, "idle": 60.0}}
 # A backend's requests at once: None, the default, is no limit from the proxy (a cloud API, vLLM or
@@ -240,7 +255,9 @@ ADDED = (("models", "price_offpeak", "TEXT"),
          # VIS-250: a node in maintenance (drained): {since, by} as JSON, NULL when it serves
          ("nodes", "drain", "TEXT"),
          # SRV-845: the settings change set an audit row belongs to
-         ("audit", "change_set", "TEXT"))
+         ("audit", "change_set", "TEXT"),
+         # SRV-877: a kind's own settings (kind anthropic: auth, api_version, sampling, ...)
+         ("backends", "anthropic", "TEXT NOT NULL DEFAULT '{}'"))
 
 
 def _inflight_col(v) -> int:
@@ -343,6 +360,14 @@ def _env_fields():
         "TIMEOUT_CONNECT": ("timeouts.connect", lambda v, var: _num(v, var)),
         "TIMEOUT_FIRST_BYTE": ("timeouts.first_byte", lambda v, var: _num(v, var)),
         "TIMEOUT_IDLE": ("timeouts.idle", lambda v, var: _num(v, var)),
+        "ANTHROPIC_AUTH": ("anthropic.auth", lambda v, var: v.strip()),
+        "ANTHROPIC_API_VERSION": ("anthropic.api_version", lambda v, var: v.strip()),
+        "ANTHROPIC_SAMPLING": ("anthropic.sampling", lambda v, var: v.strip()),
+        "ANTHROPIC_DEFAULT_MAX_TOKENS": ("anthropic.default_max_tokens",
+                                         lambda v, var: _int(v, var)),
+        "ANTHROPIC_AUTO_CACHE": ("anthropic.auto_cache", _bool),
+        "ANTHROPIC_THINKING_DISPLAY": ("anthropic.thinking_display", lambda v, var: v.strip()),
+        "ANTHROPIC_THINKING_SHAPE": ("anthropic.thinking_shape", lambda v, var: v.strip()),
         "HOST": ("host.mode", lambda v, var: v.strip()),
         "HOST_URL": ("host.url", lambda v, var: v.strip()),
         "HOST_DCGM_URL": ("host.dcgm_url", lambda v, var: v.strip()),
@@ -713,14 +738,15 @@ class ConfigDB:
         self._conn.execute(
             "INSERT INTO backends(id, kind, label, url, enabled, models_mode, models, fallback, "
             "max_inflight, timeouts, inject_usage, harness, created_at, updated_at, updated_by, "
-            "host) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "host, anthropic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (doc["id"], kind, doc.get("label"), norm_url(doc["url"]),
              int(doc.get("enabled", True)), doc.get("models_mode", "discover"),
              json.dumps(doc.get("models", [])), json.dumps(doc.get("fallback", [])),
              _inflight_col(doc.get("max_inflight", MAX_INFLIGHT)),
              json.dumps(doc.get("timeouts", {})),
              None if doc.get("inject_usage") is None else int(doc["inject_usage"]),
-             json.dumps(doc.get("harness", {})), now, now, who, json.dumps(doc.get("host", {}))))
+             json.dumps(doc.get("harness", {})), now, now, who, json.dumps(doc.get("host", {})),
+             json.dumps(doc.get("anthropic", {}))))
         self._audit(who, "create", "backend", doc["id"], [k for k in doc if k != "key"])
 
     def _update_backend_fields(self, bid: str, fields: dict, who: str) -> None:
@@ -728,7 +754,7 @@ class ConfigDB:
         for k, v in fields.items():
             if k == "key":
                 continue
-            if k in ("timeouts", "harness", "host"):
+            if k in JSON_GROUPS:
                 old = json.loads(self._conn.execute(f"SELECT {k} FROM backends WHERE id = ?",
                                                     (bid,)).fetchone()[0] or "{}")
                 old.update(v or {})
@@ -752,7 +778,7 @@ class ConfigDB:
 
     def _row_backend(self, r) -> dict:
         (bid, kind, label, url, enabled, mmode, models, fallback, maxin, timeouts, inject,
-         harness, created, updated, by, host) = r
+         harness, created, updated, by, host, anth) = r
         cloud = KINDS.get(kind, KINDS["generic"])["cloud"]
         to = dict(TIMEOUTS[cloud])
         to.update(json.loads(timeouts or "{}"))
@@ -767,10 +793,13 @@ class ConfigDB:
                 "harness": h, "cloud": cloud,
                 "host": dict({"mode": "auto", "url": None, "dcgm_url": None},
                              **json.loads(host or "{}")),
-                "created_at": created, "updated_at": updated, "updated_by": by}
+                "created_at": created, "updated_at": updated, "updated_by": by,
+                # SRV-877: the settings stored; proxy/translate/anthropic.py fills the defaults
+                **({"anthropic": json.loads(anth or "{}")} if kind == "anthropic" else {})}
 
     _BCOLS = ("id, kind, label, url, enabled, models_mode, models, fallback, max_inflight, "
-              "timeouts, inject_usage, harness, created_at, updated_at, updated_by, host")
+              "timeouts, inject_usage, harness, created_at, updated_at, updated_by, host, "
+              "anthropic")
 
     def backends(self) -> list[dict]:
         with self._lock:
@@ -814,8 +843,8 @@ class ConfigDB:
             raise ConfigError(f"no backend '{bid}'", status=404)
         locks = self.backend_locks(bid)
         for k, v in patch.items():
-            subs = ([f"{k}.{s}" for s in v] if isinstance(v, dict) and k in
-                    ("timeouts", "harness", "host") else [k])
+            subs = ([f"{k}.{s}" for s in v] if isinstance(v, dict) and k in JSON_GROUPS
+                    else [k])
             for f in subs:
                 var = locks.get(f)
                 if var is None:

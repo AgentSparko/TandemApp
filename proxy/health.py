@@ -2,8 +2,9 @@
 
 Every 15 s for a local backend and every 60 s for a cloud API, one `GET <base>/models` with the
 connect timeout and 10 s for the answer: up or down, down since when, the last error, the latency.
-The model list is refreshed from the same answer every 10 minutes, and at once on "test
-connection" or when a backend is added or changed. A cloud API's list costs nothing to read; the
+A list in pages (the Anthropic-compatible kind's `has_more` and `after_id`) is followed to its
+end, at most 20 pages. The model list is refreshed from the same answer every 10 minutes, and at
+once on "test connection" or when a backend is added or changed. A cloud API's list costs nothing to read; the
 proxy never fetches a price list (no silent network calls beyond these).
 
 A TandemLLM engine's answer is kept whole (`docs`, SRV-733): its cards and what its list holds
@@ -26,6 +27,7 @@ LOCAL_EVERY_S = 15.0
 CLOUD_EVERY_S = 60.0
 MODELS_EVERY_S = 600.0
 ANSWER_TIMEOUT_S = 10.0
+MODELS_PAGES = 20
 
 
 def probe(backend: dict, key: str | None, log=None) -> dict:
@@ -37,9 +39,10 @@ def probe(backend: dict, key: str | None, log=None) -> dict:
            "key_rejected": False}
     conn = None
     try:
+        path = adapter.upstream_path(pool, "/v1" + adapter.models_path)
+        hdrs = [h for h in adapter.headers(key) if h[0] != "Content-Type"]
         conn = pool.get()
-        conn.send("GET", pool.path("/v1" + adapter.models_path),
-                  [h for h in adapter.headers(key) if h[0] != "Content-Type"], b"")
+        conn.send("GET", path + adapter.models_query(), hdrs, b"")
         status, _, uh = conn.read_head(ANSWER_TIMEOUT_S)
         data = conn.read_all(ANSWER_TIMEOUT_S, limit=16 * 1024 * 1024)
         out["latency_ms"] = round((time.perf_counter() - t0) * 1e3, 1)
@@ -53,6 +56,31 @@ def probe(backend: dict, key: str | None, log=None) -> dict:
                     out["doc"] = doc
             except ValueError:
                 out["error"] = "the /models answer is not JSON"
+            # a list in pages (SRV-877, the Messages API's `after_id`): the next ones, at most
+            # MODELS_PAGES; a page that fails leaves the list unread (never a partial list)
+            after = adapter.next_page(doc) if out["ok"] else None
+            pages = 1
+            while after is not None and out["ok"]:
+                if pages >= MODELS_PAGES:
+                    out.update(ok=False, models=None,
+                               error=f"the model list has more than {MODELS_PAGES} pages")
+                    break
+                pool.put(conn)
+                conn = pool.get()
+                conn.send("GET", path + adapter.models_query(after), hdrs, b"")
+                st2, _, _ = conn.read_head(ANSWER_TIMEOUT_S)
+                data = conn.read_all(ANSWER_TIMEOUT_S, limit=16 * 1024 * 1024)
+                pages += 1
+                try:
+                    doc = json.loads(data) if st2 == 200 else None
+                except ValueError:
+                    doc = None
+                if doc is None:
+                    out.update(ok=False, models=None, status=st2,
+                               error=f"page {pages} of the model list: HTTP {st2}")
+                    break
+                out["models"] += adapter.parse_models(doc)
+                after = adapter.next_page(doc)
         elif status in (401, 403):
             out["error"] = f"HTTP {status}: the key was refused"
             out["key_rejected"] = True

@@ -16,7 +16,8 @@ BACKENDS (target `controller`): the config database's backends, routes and users
 
     backends.<id>.<field>   label, url, enabled, models_mode, models, fallback, max_inflight,
                             inject_usage, timeouts.connect|first_byte|idle,
-                            harness.mode|profile|writer|..., host.mode|url|dcgm_url
+                            harness.mode|profile|writer|..., host.mode|url|dcgm_url,
+                            anthropic.auth|api_version|sampling|... (kind anthropic only)
     backends.<id>.key       the backend's API key: a secret, write-only (set or unset)
     routes                  the routing rules in order: [{pattern, backend, enabled, variable?}]
     users.<id>.enabled      a user's key on or off
@@ -156,6 +157,12 @@ def _type_of(sch: dict) -> tuple[str, bool, list | None]:
 FIELD_DEFAULTS = {"enabled": True, "models_mode": "discover", "models": [], "fallback": [],
                   "max_inflight": None, "harness.mode": "off", "harness.profile": None,
                   "host.mode": "auto", "host.url": None, "host.dcgm_url": None, "label": None}
+FIELD_DEFAULTS.update({f"anthropic.{k}": v for k, v in config_mod.ANTHROPIC.items()})
+
+
+def _for_kind(field: str, b: dict) -> bool:
+    """A kind's own settings (SRV-877: `anthropic.*`) are keys of that kind's backends only."""
+    return not field.startswith("anthropic.") or b.get("kind") == "anthropic"
 
 
 class BackendsScope(KeyValueScope):
@@ -174,6 +181,8 @@ class BackendsScope(KeyValueScope):
         for b in self.cfg.backends():
             locks = self.cfg.backend_locks(b["id"])
             for f, sch in self.fields.items():
+                if not _for_kind(f, b):
+                    continue
                 k = f"backends.{b['id']}.{f}"
                 t, nullable, values = _type_of(sch)
                 var = locks.get(f) or locks.get(f.partition(".")[0])
@@ -203,6 +212,8 @@ class BackendsScope(KeyValueScope):
         for b in self.cfg.backends():
             locks = self.cfg.backend_locks(b["id"])
             for f in self.fields:
+                if not _for_kind(f, b):
+                    continue
                 var = locks.get(f) or locks.get(f.partition(".")[0])
                 v = copy.deepcopy(self._get(b, f))
                 # set: the database (or the environment) holds a value; a field that holds
