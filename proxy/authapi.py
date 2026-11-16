@@ -13,9 +13,16 @@
     DELETE /v1/auth/sessions[?user=]   sign out everywhere (another account: `users`)
     DELETE /v1/auth/sessions/{id}      end one session (another account's: `users`)
     GET    /v1/auth/users              the accounts (permission `users`)
-    POST   /v1/auth/users              {username, role, password, display_name?}
+    POST   /v1/auth/users              {username, role, password?, display_name?}; without a
+                                       password the answer holds a one-time code, once (SRV-875):
+                                       the person signs in with it and sets a password
     PATCH  /v1/auth/users/{id}         {role?, enabled?, display_name?}
     DELETE /v1/auth/users/{id}
+    POST   /v1/auth/users/{id}/reset   a one-time code in place of the password, once: the old
+                                       password stops and the account's sessions end (SRV-875)
+    GET    /v1/auth/audit[?limit=]     the audit rows of sign-ins, sessions, accounts, tokens and
+                                       the auth and api settings, newest first (permission
+                                       `users`, a signed-in account or local mode: never a token)
     /v1/auth/tokens[/...]              API tokens (SRV-867, proxy/tokenapi.py)
 
 Only an owner makes, changes or removes an owner. The last enabled owner cannot be disabled,
@@ -112,6 +119,8 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
             return _password(handler, a, body)
         if parts[:1] == ["users"]:
             return _users(handler, a, method, parts[1:], body)
+        if parts == ["audit"] and method == "GET":
+            return _audit(handler, a, q)
         if parts[:1] == ["tokens"]:
             from proxy import tokenapi
             return tokenapi.handle(handler, a, method, parts[1:], body)
@@ -334,10 +343,8 @@ def _users(handler, a, method: str, rest: list, body) -> None:
         if method != "POST":
             return _err(handler, 405, "method_not_allowed", "the users take GET and POST")
         if not isinstance(body, dict) or set(body) - {"username", "role", "password",
-                                                      "display_name"} or \
-                "password" not in body:
-            # the one-time set-password code comes with the first-run setup
-            return _err(handler, 400, "bad_request", "the body is {username, role, password, "
+                                                      "display_name"}:
+            return _err(handler, 400, "bad_request", "the body is {username, role, password?, "
                                                      "display_name?}")
         if p is not None and p.kind == "local":
             # SEC-26: a second user lets another device in: the owner's password first
@@ -346,15 +353,25 @@ def _users(handler, a, method: str, rest: list, body) -> None:
         if body.get("role") == "owner" and not owner:
             return _err(handler, 403, "permission_denied", "only an owner makes an owner",
                         permission="owner")
-        row = st.create(body.get("username"), body.get("role"), body["password"],
-                        display_name=body.get("display_name"), actor=p.name)
-        return handler._json(201, {"contract_version": CONTRACT, "user": st.view(row)},
-                             extra_headers=NOSTORE)
-    if len(rest) != 1:
+        if "password" in body:
+            row = st.create(body.get("username"), body.get("role"), body["password"],
+                            display_name=body.get("display_name"), actor=p.name)
+            return handler._json(201, {"contract_version": CONTRACT, "user": st.view(row)},
+                                 extra_headers=NOSTORE)
+        # SRV-875: no password is typed for someone else: a one-time code, shown this once
+        row = st.create(body.get("username"), body.get("role"), None,
+                        display_name=body.get("display_name"), actor=p.name, must_change=True)
+        code = st.set_code(row["id"], actor=p.name, action="create")
+        return handler._json(201, _with_code(st, row["id"], code), extra_headers=NOSTORE)
+    if len(rest) not in (1, 2):
         return _err(handler, 404, "not_found", "no such users route")
     target = st.get(rest[0])
     if target is None:
         return _err(handler, 404, "not_found", "no such account")
+    if len(rest) == 2:
+        if rest[1] != "reset" or method != "POST":
+            return _err(handler, 404, "not_found", "no such users route")
+        return _reset(handler, a, target, owner)
     if method == "PATCH":
         if not isinstance(body, dict):
             return _err(handler, 400, "bad_request", "the body is {role?, enabled?, "
@@ -384,6 +401,75 @@ def _users(handler, a, method: str, rest: list, body) -> None:
             a.on_account_removed(target["id"])
         return handler._send_empty(204, NOSTORE)
     return _err(handler, 405, "method_not_allowed", "a user takes PATCH and DELETE")
+
+
+def _with_code(st, account_id: str, code: str) -> dict:
+    from proxy import authlocal
+    return {"contract_version": CONTRACT, "user": st.view(st.get(account_id)), "code": code,
+            "code_valid_s": authlocal.CODE_TTL_MS // 1000}
+
+
+def _reset(handler, a, target: dict, owner: bool) -> None:
+    """SRV-875: a one-time code in place of an account's password. The code is in this answer
+    once; the store keeps its hash, and no log line or audit row holds it."""
+    p = handler._principal
+    if p is not None and p.kind == "local":
+        return _err(handler, 409, "password_first", "set the owner's password first: local "
+                    "mode trusts this machine only")
+    if p is not None and target["id"] == p.id:
+        return _err(handler, 409, "own_account", "change your own password with the current "
+                                                 "one")
+    if target["provider"] != "local":
+        return _err(handler, 409, "external_account", "this account signs in elsewhere: it has "
+                                                      "no password here")
+    if target["role"] == "owner" and not owner:
+        return _err(handler, 403, "permission_denied", "only an owner resets an owner",
+                    permission="owner")
+    code = a.store.set_code(target["id"], actor=p.name)
+    return handler._json(200, _with_code(a.store, target["id"], code), extra_headers=NOSTORE)
+
+
+# ------------------------------------------------------------------------------ audit (SRV-875)
+#: the audit rows about people: who signed in from where, accounts, sessions, tokens
+AUDIT_OBJECTS = ("session", "account", "api_token", "setup_code")
+AUDIT_SETTINGS = ("auth.", "api.")
+AUDIT_MAX = 500
+
+
+def private_audit(row: dict) -> bool:
+    """An audit row only the permission `users` reads (a sign-in's row names an address)."""
+    return row.get("object") in AUDIT_OBJECTS or (
+        row.get("object") == "setting"
+        and str(row.get("object_id") or "").startswith(AUDIT_SETTINGS))
+
+
+def may_read_audit(a, p) -> bool:
+    return p is not None and p.kind in ("account", "local") and _may_users(a, p)
+
+
+def _audit(handler, a, q: dict) -> None:
+    p = handler._principal
+    if not may_read_audit(a, p):
+        return _err(handler, 403, "permission_denied", "the sign-in audit needs a signed-in "
+                    "account with the permission users", permission="users")
+    try:
+        limit = int(q.get("limit") or 100)
+    except ValueError:
+        limit = 0
+    if not 1 <= limit <= AUDIT_MAX:
+        return _err(handler, 400, "bad_request", f"limit is a whole number 1..{AUDIT_MAX}")
+    marks = ", ".join("?" * len(AUDIT_OBJECTS))
+    likes = " OR ".join("object_id LIKE ?" for _ in AUDIT_SETTINGS)
+    cfg = a.cfg
+    with cfg._lock:
+        rows = cfg._conn.execute(
+            f"SELECT ts_ms, who, action, object, object_id, fields, detail FROM audit WHERE "
+            f"object IN ({marks}) OR (object = 'setting' AND ({likes})) ORDER BY id DESC "
+            f"LIMIT ?", (*AUDIT_OBJECTS, *(x + "%" for x in AUDIT_SETTINGS), limit)).fetchall()
+    out = [{"at": _iso(t), "who": w or "", "action": act, "object": o, "object_id": i,
+            "fields": json.loads(f) if f else [], "detail": json.loads(d) if d else {}}
+           for t, w, act, o, i, f, d in rows]
+    return handler._json(200, {"contract_version": CONTRACT, "rows": out}, extra_headers=NOSTORE)
 
 
 # ------------------------------------------------------------------------------ the old routes

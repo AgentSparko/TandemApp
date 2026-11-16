@@ -159,6 +159,19 @@ def _harness_defaults(cloud: bool) -> dict:
     return dict(harness_mod.DEFAULTS[cloud])
 
 
+def _audit_rows(handler, svc, cfg) -> list:
+    """The last 50 changes. With the accounts on (SRV-875) the rows about people (sign-ins with
+    their addresses, accounts, sessions, tokens, the auth and api settings) are left out for a
+    caller without the permission `users`; they are read at GET /v1/auth/audit."""
+    acc = svc.auth
+    if getattr(acc, "who_of", None) is None:        # the accounts are off: as before
+        return cfg.audit()
+    from proxy import authapi
+    if authapi.may_read_audit(acc, getattr(handler, "_principal", None)):
+        return cfg.audit()
+    return [r for r in cfg.audit(500) if not authapi.private_audit(r)][:50]
+
+
 def _send(handler, code: int, payload) -> None:
     handler._json(code, payload, extra_headers=(("Cache-Control", "no-store"),))
 
@@ -181,7 +194,7 @@ def handle(handler, svc, method: str, path: str, body) -> None:
         elif parts == ["test"] and method == "POST":
             return _send(handler, 200, _test_unsaved(svc, body or {}))
         elif parts == ["audit"] and method == "GET":
-            return _send(handler, 200, {"audit": cfg.audit()})
+            return _send(handler, 200, {"audit": _audit_rows(handler, svc, cfg)})
         elif parts == ["prices", "seed"] and method == "GET":
             with open(SEED) as f:
                 return _send(handler, 200, json.load(f))

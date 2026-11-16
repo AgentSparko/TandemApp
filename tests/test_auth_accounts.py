@@ -248,9 +248,9 @@ def test_every_route_has_a_permission():
     got["GET"] |= {chatengine.PREFIX + "/health", chatengine.PREFIX + "/v1/dashboard/system",
                    chatengine.PREFIX + "/v1/dashboard/live", chatengine.PREFIX + "/v1/models",
                    "/v1/auth/session", "/v1/auth/sessions", "/v1/auth/users",
-                   "/v1/auth/tokens", "/v1/auth/tokens/x"}
+                   "/v1/auth/tokens", "/v1/auth/tokens/x", "/v1/auth/audit"}
     got["POST"] |= {"/v1/auth/session", "/v1/auth/users", "/v1/auth/tokens",
-                    "/v1/auth/tokens/x/rotate"}
+                    "/v1/auth/tokens/x/rotate", "/v1/auth/users/x/reset"}
     for m in ("PATCH", "DELETE"):
         got.setdefault(m, set()).add("/v1/auth/tokens/x")         # SRV-867
     missing = sorted(f"{m} {p}" for m, ps in got.items() for p in ps

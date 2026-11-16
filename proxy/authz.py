@@ -92,6 +92,7 @@ ROUTES: tuple = (
     (("PUT",), "exact", "/v1/auth/password", "self"),
     (("GET", "POST", "PATCH", "DELETE"), "prefix", "/v1/auth/tokens", "self"),
     (("GET", "POST", "PATCH", "DELETE"), "prefix", "/v1/auth/users", "users"),
+    (GET, "exact", "/v1/auth/audit", "users"),
     # the session address: its token is the credential, for the library and Laya only
     (("GET", "POST"), "prefix", "/s", SESSION_ADDRESS),
     # services
