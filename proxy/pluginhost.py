@@ -308,8 +308,9 @@ class Plugin:
 
 # ===================================================================================== the host
 class PluginHost:
-    def __init__(self, store, *, runner=None, providers=None, cfg=None, state_dir: str | None = None,
-                 log=None, env=None, library=None, health_check=None, clock=time.monotonic):
+    def __init__(self, store, *, runner=None, providers=None, cfg=None,
+                 state_dir: str | None = None, log=None, env=None, library=None,
+                 health_check=None, clock=time.monotonic):
         self.store = store
         self.runner = runner
         self.providers = providers

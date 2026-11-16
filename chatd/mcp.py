@@ -29,8 +29,8 @@ PLUGINS' TOOLS (SRV-859). A running plugin of the controller that runs this chat
 here too: listed with the servers (`id` plugin:<plugin>, `transport` plugin, read-only: its plugin's
 settings manage it), named `mcp__plugin_<plugin>__<tool>`, called through the controller
 (`<engine>/v1/plugins/tools[/call]`, the chat engine's base: proxy/chatengine.py), which runs the
-plugin. A chatd whose engine is not a controller's gets none. The list is read at most every
-PLUGINS_TTL_S.
+plugin. A chatd whose engine is not a controller's `/chat-engine` gets none and asks nothing. The
+list is read at most every PLUGINS_TTL_S.
 """
 
 from __future__ import annotations
@@ -494,8 +494,13 @@ class Mcp:
             return self._plugins[1]
         eng = getattr(self.svc, "engine", None)
         out: list = []
-        if eng is not None:
-            st, doc = eng.get_json("/v1/plugins/tools", timeout=3.0)
+        # only a controller's chat engine (proxy/appchat.py: <controller>/chat-engine) has them
+        if eng is not None and hasattr(eng, "get_json") and \
+                str(getattr(eng, "prefix", "") or "").rstrip("/").endswith("/chat-engine"):
+            try:
+                st, doc = eng.get_json("/v1/plugins/tools", timeout=3.0)
+            except Exception:                                      # noqa: BLE001
+                st, doc = 0, None
             if st == 200 and isinstance(doc, dict) and isinstance(doc.get("plugins"), list):
                 out = [p for p in doc["plugins"] if isinstance(p, dict) and
                        isinstance(p.get("id"), str) and isinstance(p.get("tools"), list)]
@@ -596,8 +601,8 @@ class Mcp:
                 "updated_at": iso(r["updated"])}
 
     def list(self) -> list[dict]:
-        return [self.public(r) for r in self.store.all("SELECT * FROM mcp_servers ORDER BY name")] + \
-            [self._plugin_public(p) for p in self.plugins()]
+        rows = self.store.all("SELECT * FROM mcp_servers ORDER BY name")
+        return [self.public(r) for r in rows] + [self._plugin_public(p) for p in self.plugins()]
 
     def _check(self, d: dict) -> dict:
         from chatd.service import ApiError

@@ -35,11 +35,12 @@ requested; the rest is dropped and listed in the answer (`kept`, `dropped`). It 
 was. The old version's folder is removed after the row is written.
 
 ENABLE checks the tree again (its sha256 against the row's) and the compatibility with this
-TandemApp; DISABLE always works. The plugin host (proxy/pluginhost.py, SRV-859) listens to every
-change (`listeners`) and stops a plugin before its removal (`before_remove`). REMOVE is refused while a hook names the plugin (kind plugin or
+TandemApp; DISABLE always works. REMOVE is refused while a hook names the plugin (kind plugin or
 mcp, target `<id>` or `<id>/<hook>`): 409 referenced with the hooks. `load(id)` is what the plugin
-host (F2) calls before it starts a plugin: enabled, the tree checked, the settings with their
-defaults, the granted capabilities; secrets only through `secret_for`.
+host (proxy/pluginhost.py, SRV-859) calls before it starts a plugin: enabled, the tree checked,
+the settings with their defaults, the granted capabilities and trust; secrets only through
+`secret_for`. The host listens to every change (`listeners`) and stops a plugin before its
+removal (`before_remove`).
 
 CAPABILITIES are deny by default: the manifest requests, the settings interface grants
 (proxy/pluginsettings.py: pairing's rights, and a second confirm for prompts:full, engine:control

@@ -45,8 +45,8 @@ FALLBACK_RUNS at once and shows fewer figures). Every call to it carries ConfigD
 the backend's key, or the HTTP token of the engine host it runs on (SRV-839, engine API 1.9).
 
 ACCESS. The OpenAI routes, the model list, the cache routes, tokenize and the plugins' tools
-follow the completions' rule (Service.authorize: a key of this controller's users once it has any, else open; this
-machine's own calls pass). The facts and the live rows pass this machine's own calls, the
+follow the completions' rule (Service.authorize: a key of this controller's users once it has
+any, else open; this machine's own calls pass). The facts and the live rows pass this machine's own calls, the
 dashboard's rule or a user's key; /health without one says only {"status"}. Anything else under
 the prefix is 404.
 """
