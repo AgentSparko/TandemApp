@@ -1,6 +1,6 @@
 // <qse-app-settings>: Settings → App, the controller's own part (OPS-234, concept §8.13, the v3
 // prototype's App page): where TandemApp's controller runs, its API URL, and moving it; how it runs
-// and its release; the admin password; the machine's permissions; the fleet's configuration as a
+// and its release; where the sign-in lives; the machine's permissions; the fleet's configuration as a
 // file. It stands on the settings area's App page (VIS-280, views/settings/area.ts), which has the
 // page's head and What runs here above it.
 //
@@ -13,8 +13,8 @@
 // the URL of the controller that runs it and its admin password (This Mac takes the fleet back).
 //
 // 6.3b. This controller: the service it runs as and the release, with Update fleet (the Sparks page's
-// dialog). Admin password: set (the first one from the controller's own machine), change and remove,
-// each with the current password or the admin token; a change signs out every other browser. The
+// dialog). Sign-in (SEC-28): passwords, sessions and API tokens are each account's, on the Account and
+// Access pages; the panel links there (the controller's single admin password is gone). The
 // permissions (A14) as the controller reads them, `unknown` where it cannot, each with why, its
 // fallback and its button (Check now asks macOS once; notifications are this browser's). Fleet
 // configuration: Export downloads the file (secrets left out, the page lists which); Import reads a
@@ -26,7 +26,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { describeError } from '../../api/client';
 import { fleet, type AppView, type ControllerView, type ImportMode, type ImportPlan, type MoveJob, type MovePlan } from '../../api/fleet';
-import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, kindWord, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine, type BrowserNotify, type ImportAskKind, type PermRow } from '../../lib/app-settings';
+import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, kindWord, permRows, planSummary, readConfig, resultWords, updateLine, type BrowserNotify, type ImportAskKind, type PermRow } from '../../lib/app-settings';
 import { apiOf, followUrl, hostChoices, MIN_PASSWORD, moveFormError, moveWords, newPassword, planGroups, takeFormError } from '../../lib/controller-host';
 import { onFleet, refreshFleet, sparksOnly, type FleetState } from '../../lib/fleet-state';
 import { poll, type Poller } from '../../lib/poll';
@@ -66,9 +66,6 @@ export class QseAppSettings extends LightElement {
   // 6.3b
   @state() private app: AppView | null = null;
   @state() private notify: BrowserNotify = browserNotify();
-  @state() private pw = { current: '', next: '', again: '' };
-  @state() private pwShow = false;
-  @state() private pwDrop = false;
   @state() private msg: Record<string, string> = {};
   @state() private file: { name: string; doc: Record<string, unknown> } | null = null;
   @state() private mode: ImportMode = 'merge';
@@ -361,87 +358,12 @@ export class QseAppSettings extends LightElement {
     </section>`;
   }
 
-  private async savePassword(): Promise<void> {
-    const p = this.app?.password;
-    if (!p || this.busy) return;
-    const bad = passwordError(p, this.pw);
-    if (bad) {
-      this.msg = { ...this.msg, pw: '', pwErr: bad };
-      return;
-    }
-    this.busy = 'pw';
-    this.msg = { ...this.msg, pw: '', pwErr: '' };
-    try {
-      const was = p.password;
-      await fleet.setPassword({ ...(p.set ? { current: this.pw.current } : {}), password: this.pw.next });
-      this.pw = { current: '', next: '', again: '' };
-      this.pwShow = false;
-      this.msg = { ...this.msg, pw: was ? 'Changed. Every other browser is signed out; this one stays signed in.' : 'Set. Changes from other devices need it from now on; this browser is signed in.' };
-      window.dispatchEvent(new Event('qse-signed-in'));
-    } catch (e) {
-      if (!(await this.refused(e, 'pw'))) this.msg = { ...this.msg, pwErr: describeError(e).message };
-    } finally {
-      this.busy = '';
-      void this.appPoller?.refresh();
-    }
-  }
-
-  private async dropPassword(): Promise<void> {
-    if (this.busy) return;
-    if (!this.pw.current) {
-      this.msg = { ...this.msg, pwErr: 'Your current password, or the admin token, first.' };
-      return;
-    }
-    this.busy = 'pw-drop';
-    this.msg = { ...this.msg, pw: '', pwErr: '' };
-    try {
-      const after = await fleet.removePassword(this.pw.current);
-      this.pw = { current: '', next: '', again: '' };
-      this.pwDrop = false;
-      this.msg = { ...this.msg, pw: after.set ? 'Removed. The admin token still protects the fleet; every other browser is signed out.' : 'Removed. Anyone who opens this page can change the fleet again.' };
-      window.dispatchEvent(new Event('qse-signed-in'));
-    } catch (e) {
-      if (!(await this.refused(e, 'pw'))) this.msg = { ...this.msg, pwErr: describeError(e).message };
-    } finally {
-      this.busy = '';
-      void this.appPoller?.refresh();
-    }
-  }
-
-  private pwInput(key: 'current' | 'next' | 'again', label: string, auto: string, extra: TemplateResult | typeof nothing = nothing): TemplateResult {
-    return html`<label class="field"><span>${label}</span><span class="app-pw"><input type=${this.pwShow && key !== 'current' ? 'text' : 'password'} data-in=${`pw-${key}`} autocomplete=${auto} spellcheck="false" .value=${this.pw[key]} @input=${(e: Event) => ((this.pw = { ...this.pw, [key]: (e.target as HTMLInputElement).value }), (this.msg = { ...this.msg, pwErr: '' }))} />${extra}</span></label>`;
-  }
-
-  private passwordPanel(a: AppView): TemplateResult {
-    const p = a.password;
-    const st = passwordStatus(p);
-    const blocked = passwordBlocked(p);
-    const gen = html`<button type="button" class="btn btn-sm" data-act="pw-gen" @click=${() => {
-      const v = newPassword();
-      this.pw = { ...this.pw, next: v, again: v };
-      this.pwShow = true;
-    }}>Generate</button>`;
+  /** SEC-28: the sign-in is each account's (the Account and Access pages) */
+  private signInPanel(): TemplateResult {
     return html`<section class="panel" data-panel="password">
-      <header class="panel-head"><div class="panel-titles"><h2 class="panel-title">Admin password</h2><p class="panel-sub">Changes from another device need it: node actions, deployments, Setup Guide writes, weights, imports and these settings. Reading needs none.</p></div></header>
-      <div class="app-pw-state" data-password=${p.set ? (p.password ? 'set' : 'token') : 'none'}><span class="app-state is-${st.tone}">${p.set ? '● Protected' : '○ Open'}</span><b>${st.title}</b><span class="small muted">${st.sub}</span></div>
-      ${blocked
-        ? html`<p class="small warn-ink" data-password-blocked>${blocked}</p>`
-        : html`<form class="app-form app-pw-form" @submit=${(e: Event) => (e.preventDefault(), this.pwDrop ? void this.dropPassword() : void this.savePassword())}>
-            ${p.set ? this.pwInput('current', 'Current password or admin token', 'current-password') : nothing}
-            ${this.pwDrop ? nothing : this.pwInput('next', p.password ? 'New password' : 'Password', 'new-password', gen)}
-            ${this.pwDrop ? nothing : this.pwInput('again', 'Again', 'new-password', html`<button type="button" class="btn btn-sm btn-ghost" data-act="pw-show" aria-pressed=${this.pwShow} @click=${() => (this.pwShow = !this.pwShow)}>${this.pwShow ? 'Hide' : 'Show'}</button>`)}
-            ${this.pwDrop
-              ? html`<button type="submit" class="btn app-danger" data-act="pw-remove-go" ?disabled=${this.busy === 'pw-drop'}>${this.busy === 'pw-drop' ? 'Removing…' : 'Remove the password'}</button>`
-              : html`<button type="submit" class="btn btn-primary" data-act="pw-save" ?disabled=${this.busy === 'pw'}>${this.busy === 'pw' ? 'Saving…' : p.password ? 'Change password' : 'Set password'}</button>`}
-          </form>
-          ${this.pwDrop ? html`<p class="small warn-ink" data-remove-warning>${p.token ? 'The admin token in the env file keeps protecting the fleet.' : 'With no password, anyone who opens this page can change the fleet.'}</p>` : nothing}
-          <div class="app-acts">
-            ${p.password ? html`<button type="button" class="btn btn-ghost btn-sm" data-act="pw-remove" @click=${() => ((this.pwDrop = !this.pwDrop), (this.msg = { ...this.msg, pwErr: '' }))}>${this.pwDrop ? 'Keep the password' : 'Remove the password…'}</button>` : nothing}
-          </div>`}
-      <p class="xs faint">${p.min_length} to ${p.max_length} characters, kept as a salted hash on the controller (never the password). Setting or changing it signs out every other browser. Lost it? Run <code class="app-cmd">tandem-app password set</code> on the controller’s machine.</p>
-      ${this.signIn === 'pw' ? signInCard('Password changes') : nothing}
-      ${this.msg.pw ? html`<p class="small ok-ink" role="status" data-password-done>${this.msg.pw}</p>` : nothing}
-      ${this.msg.pwErr ? html`<p class="small err-ink" role="alert" data-password-error>${this.msg.pwErr}</p>` : nothing}
+      <header class="panel-head"><div class="panel-titles"><h2 class="panel-title">Sign-in</h2><p class="panel-sub">Each person has an account: a password, sessions and API tokens of their own.</p></div></header>
+      <div class="app-acts"><a class="btn" href="#/account" data-act="account">Your account</a><a class="btn btn-ghost" href="#/access" data-act="access">Users and tokens</a></div>
+      <p class="xs faint">Lost a password? Run <code class="app-cmd">tandem-app users reset-password NAME</code> on the controller’s machine.</p>
     </section>`;
   }
 
@@ -622,7 +544,7 @@ export class QseAppSettings extends LightElement {
     return html`${v.moved_to ? this.moved(v.moved_to) : nothing}
       ${this.hostPanel(v)}
       ${this.takePanel(v)}
-      ${a ? html`${this.servicePanel(a)}${this.passwordPanel(a)}${this.permPanel(a)}${this.configPanel(a)}` : this.msg.app ? html`<p class="small err-ink">${this.msg.app}</p>` : nothing}
+      ${a ? html`${this.servicePanel(a)}${this.signInPanel()}${this.permPanel(a)}${this.configPanel(a)}` : this.msg.app ? html`<p class="small err-ink">${this.msg.app}</p>` : nothing}
       <dialog class="act-dialog" aria-labelledby="import-title" data-dialog="import" @close=${() => ((this.iplan = null), (this.file = null), (this.msg = { ...this.msg, imp: '' }))}>
         <form method="dialog" class="act-body" @submit=${(e: Event) => (e.preventDefault(), void this.applyImport())}>
           <header class="act-head"><h2 id="import-title">Import ${this.file?.name ?? 'a file'}</h2></header>

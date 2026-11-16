@@ -3,7 +3,7 @@
 // fleet's configuration file and an import's plan. views/fleet/app-settings.ts draws them; the
 // controller's answers are /v1/fleet/app* (proxy/appsettings.py, proxy/adminpw.py).
 
-import type { AppPermission, FleetNode, ImportConfirms, ImportItem, ImportPlan, ImportResult, PasswordState } from '../api/fleet';
+import type { AppPermission, FleetNode, ImportConfirms, ImportItem, ImportPlan, ImportResult } from '../api/fleet';
 import { mixedVersions, releaseOf } from './fleet-update';
 
 export type Tone = 'ok' | 'warn' | 'err' | 'muted';
@@ -58,39 +58,6 @@ export function permRows(perms: AppPermission[], notify: BrowserNotify): PermRow
     }
     return { id: p.id, title: p.title, badge, tone, applies: p.applies, why: p.why, detail, fallback: p.fallback, settings: p.settings ?? null, action, files: p.files ?? [] };
   });
-}
-
-// ---- the admin password -------------------------------------------------------------------------
-
-/** The password's state in words: the title and the line under it. */
-export function passwordStatus(p: PasswordState, date: (t: number) => string = (t) => new Date(t * 1000).toLocaleDateString()): { title: string; sub: string; tone: Tone } {
-  if (!p.set) return { title: 'No admin password', sub: 'Anyone who opens this page can change the fleet. Pairing, moves and imports work from this machine only.', tone: 'warn' };
-  const since = p.set_at ? ` since ${date(p.set_at)}` : '';
-  if (p.password && p.token) return { title: `Set${since}`, sub: 'The admin token in the controller’s env file works too, and stays the bearer for tools.', tone: 'ok' };
-  if (p.password) return { title: `Set${since}`, sub: 'Changes need it, reading does not. Tools on this machine need none.', tone: 'ok' };
-  return { title: 'The admin token', sub: 'The controller runs with an admin token (its env file). Set a password to sign in with something you can type; the token keeps working.', tone: 'ok' };
-}
-
-export interface PasswordForm {
-  current: string;
-  next: string;
-  again: string;
-}
-
-/** What is wrong with the form (null: nothing), as the controller would refuse it. */
-export function passwordError(p: PasswordState, f: PasswordForm): string | null {
-  if (p.set && !f.current) return 'Your current password, or the admin token, first.';
-  if (f.next.length < p.min_length || f.next.length > p.max_length) return `A password is ${p.min_length} to ${p.max_length} characters.`;
-  if (!f.next.trim()) return 'A password is more than spaces.';
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(f.next)) return 'A password has no control characters.';
-  if (f.next !== f.again) return 'The two new passwords differ.';
-  return null;
-}
-
-/** Who may set it from here, or why not (the first one only from the controller's machine). */
-export function passwordBlocked(p: PasswordState): string | null {
-  return !p.set && !p.this_machine ? 'Set the first password from the controller’s own machine (its browser), or run `tandem-app password set` there.' : null;
 }
 
 // ---- the configuration file ---------------------------------------------------------------------

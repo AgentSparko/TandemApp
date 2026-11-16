@@ -13,7 +13,7 @@ import { ago, compact, exact, money, ms } from '../lib/format';
 import { inflightOnce } from '../lib/inflight';
 import { setParams } from '../lib/router';
 import { LightElement, type Loadable } from '../ui/base';
-import { copyButton, emptyState, errorState, icon, panel, skeleton } from '../ui/bits';
+import { emptyState, errorState, icon, panel, skeleton } from '../ui/bits';
 import { engineCard, ENGINE_KINDS } from './engines';
 
 type Screen = 'list' | 'routing' | 'users' | 'setup';
@@ -214,7 +214,6 @@ export class QseBackends extends LightElement {
   @state() private test: (TestResult & { busy?: boolean }) | null = null;
   @state() private busy = false;
   @state() private formError: { message: string; field?: string; variable?: string } | null = null;
-  @state() private newKey: { label: string; key: string } | null = null;
   @state() private rules: Rule[] | null = null;
   @state() private seed: SeedPrices | null = null;
   /** one flight at a time (deep audit 0.11.3): see loadSeed */
@@ -825,25 +824,15 @@ export class QseBackends extends LightElement {
 
   // ---- users ----------------------------------------------------------------------------
   private renderUsers(d: ConfigOverview): TemplateResult {
+    // SEC-28: API tokens replace these keys; the keys of before came in as tokens under Review
     return panel(
       'Users and keys',
-      html`<p class="panel-sub bk-lead">${d.users_active ? html`<b>Keys are required:</b> a request to the OpenAI routes from another machine needs one of these keys${d.engine?.embedded ? html`, also for ${d.engine.model}` : nothing}. Requests from this machine itself pass.` : html`No key yet: the OpenAI routes are open on the network this server listens on. The first key you add makes them require one${d.engine?.embedded ? html`, also for ${d.engine.model}: give every client its key first` : nothing}.`} The ledger keeps the key's label per request.</p>
-        ${this.newKey
-          ? html`<div class="bk-newkey" role="alert">
-              <p><b>${this.newKey.label}</b>'s key, shown this once. It is stored as its sha256 only.</p>
-              <div class="bk-newkey-row"><code class="mono">${this.newKey.key}</code>${copyButton(this.newKey.key)}</div>
-              <button class="btn btn-ghost btn-sm" @click=${() => (this.newKey = null)}>I saved it</button>
-            </div>`
-          : nothing}
+      html`<p class="panel-sub bk-lead">Clients sign in with API tokens now: make, confirm and revoke them under <a href="#/access">Access</a>. The keys below came in as tokens with the same key, under Review there.</p>
         ${d.users.length
-          ? html`<div class="table-scroll"><table class="table bk-users"><thead><tr><th>label</th><th>key</th><th>created</th><th>last seen</th><th>on</th><th></th></tr></thead><tbody>
+          ? html`<div class="table-scroll"><table class="table bk-users"><thead><tr><th>label</th><th>key</th><th>created</th><th>last seen</th></tr></thead><tbody>
               ${d.users.map((u) => this.renderUser(u))}
             </tbody></table></div>`
-          : nothing}
-        <form class="bk-adduser" @submit=${(e: Event) => this.addUser(e)}>
-          <label class="field"><span>New user</span><input id="bk-user-label" required pattern="[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}" placeholder="laptop" /></label>
-          <button class="btn btn-primary btn-sm" type="submit">${icon('plus')} Make a key</button>
-        </form>`,
+          : nothing}`,
       { id: 'users' },
     );
   }
@@ -855,44 +844,7 @@ export class QseBackends extends LightElement {
       <td class="mono">${env ? html`<span class="badge badge-lock">TANDEM_API_KEYS</span>` : `…${u.key_hint ?? ''}`}</td>
       <td>${u.created_at ? ago(new Date(u.created_at).toISOString()) : '—'}</td>
       <td>${u.last_seen_at ? ago(new Date(u.last_seen_at).toISOString()) : 'never'}</td>
-      <td><label class="switch"><input type="checkbox" aria-label=${`${u.label} enabled`} .checked=${u.enabled} ?disabled=${env} @change=${(e: Event) => this.toggleUser(u, (e.target as HTMLInputElement).checked)} /></label></td>
-      <td>${env || u.id == null ? nothing : html`<button class="btn btn-ghost btn-icon btn-sm" aria-label=${`delete ${u.label}`} @click=${() => this.removeUser(u)}>${icon('trash')}</button>`}</td>
     </tr>`;
-  }
-
-  private async addUser(e: Event): Promise<void> {
-    e.preventDefault();
-    const input = this.querySelector<HTMLInputElement>('#bk-user-label');
-    const label = input?.value.trim() ?? '';
-    if (!label) return;
-    try {
-      const r = await config.addUser(label);
-      this.newKey = { label: r.user.label, key: r.key };
-      if (input) input.value = '';
-      await this.load(true);
-    } catch (err) {
-      this.say(describeError(err).message);
-    }
-  }
-
-  private async toggleUser(u: ProxyUser, enabled: boolean): Promise<void> {
-    if (u.id == null) return;
-    try {
-      await config.setUser(u.id, enabled);
-      await this.load(true);
-    } catch (err) {
-      this.say(describeError(err).message);
-    }
-  }
-
-  private async removeUser(u: ProxyUser): Promise<void> {
-    if (u.id == null || !confirm(`Delete ${u.label}'s key? Clients that use it get a 401 from now on.`)) return;
-    try {
-      await config.removeUser(u.id);
-      await this.load(true);
-    } catch (err) {
-      this.say(describeError(err).message);
-    }
   }
 }
 

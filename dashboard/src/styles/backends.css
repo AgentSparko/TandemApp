@@ -331,35 +331,6 @@
   opacity: 0.7;
 }
 
-/* users */
-.bk-newkey {
-  border: 1px solid var(--orange);
-  background: var(--orange-wash);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-.bk-newkey p {
-  margin: 0 0 8px;
-}
-.bk-newkey-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.bk-newkey-row code {
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.bk-adduser {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-top: 12px;
-}
-
 /* the proxy's marks on the other views */
 .proxy-tag {
   display: inline-flex;

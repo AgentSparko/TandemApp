@@ -61,7 +61,7 @@ test('a field the environment sets is locked and names its variable @mock', asyn
   expect(asked).toBe(true);
 });
 
-test('routing rules keep the env rule; a user key is shown once @mock', async ({ page }) => {
+test('routing rules keep the env rule; the keys of before point to Access @mock', async ({ page }) => {
   await open(page, '#/backends?screen=routing');
   await expect(page.locator('.bk-rule').first()).toContainText('set by TANDEM_ROUTE_1');
   await page.getByRole('button', { name: 'Add rule' }).click();
@@ -69,13 +69,9 @@ test('routing rules keep the env rule; a user key is shown once @mock', async ({
   await page.getByRole('button', { name: 'Save rules' }).click();
   await expect(page.locator('.view-backends [role="status"]')).toContainText('rules saved');
   await page.getByRole('tab', { name: 'Users' }).click();
-  await page.locator('#bk-user-label').fill('laptop');
-  await page.getByRole('button', { name: 'Make a key' }).click();
-  const shown = page.locator('.bk-newkey code');
-  await expect(shown).toHaveText(/^tdm-/);
-  await page.getByRole('button', { name: 'I saved it' }).click();
-  await expect(page.locator('.bk-newkey')).toHaveCount(0);
-  await expect(page.locator('tr[data-user="laptop"]')).toBeVisible();
+  // SEC-28: API tokens replace these keys; the panel lists the old ones and points to Access
+  await expect(page.locator('#users a[href="#/access"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Make a key' })).toHaveCount(0);
 });
 
 test('a model gets a price from the list and its switches @mock', async ({ page }) => {

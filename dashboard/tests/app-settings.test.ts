@@ -1,5 +1,5 @@
 // 6.3b: App settings' logic (lib/app-settings.ts: the permission rows with this browser's notification
-// state, the password's state and form, the configuration file, an import's plan and the Updates
+// state, the configuration file, an import's plan and the Updates
 // line) and the mock's App routes (mock/appsettings.ts): the permissions per host, the export without
 // secrets, the import's plan, 428 without the confirm, 409 spent or the fleet changed, applied; an
 // import's second confirms (SEC-16: keys that feed a cache fingerprint, grants outside the LAN)
@@ -11,7 +11,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import { MockFleet } from '../mock/fleet.ts';
 import type { AppPermission, AppView, FleetConfigFile, ImportPlan, ImportResult, PasswordState } from '../src/api/fleet.ts';
-import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, passwordBlocked, passwordError, passwordStatus, permRows, planSummary, readConfig, resultWords, updateLine, type ImportAskKind } from '../src/lib/app-settings.ts';
+import { applyLabel, browserNotify, exportName, importAsks, importConfirms, importGroups, permRows, planSummary, readConfig, resultWords, updateLine, type ImportAskKind } from '../src/lib/app-settings.ts';
 
 const FDIR = join(__dirname, '..', '..', 'contracts', 'fleet-v1');
 // allowUnionTypes: one fleet schema says a field as a string or a list (engine-connect-key-body `from`)
@@ -57,30 +57,12 @@ describe('the permission rows', () => {
   });
 });
 
-describe('the admin password', () => {
-  it('says its state', () => {
-    expect(passwordStatus(PW_STATE).title).toBe('No admin password');
-    expect(passwordStatus({ ...PW_STATE, set: true, token: true }).title).toBe('The admin token');
-    const both = passwordStatus({ ...PW_STATE, set: true, token: true, password: true, set_at: T0 / 1000 }, () => 'today');
-    expect(both.title).toBe('Set since today');
-    expect(both.sub).toContain('bearer for tools');
-  });
-
-  it('checks the form as the controller would', () => {
-    const f = (o = {}) => ({ current: '', next: 'a long passphrase', again: 'a long passphrase', ...o });
-    expect(passwordError(PW_STATE, f())).toBeNull();
-    expect(passwordError(PW_STATE, f({ next: 'short', again: 'short' }))).toBe('A password is 12 to 1024 characters.');
-    expect(passwordError(PW_STATE, f({ next: '            ', again: '            ' }))).toBe('A password is more than spaces.');
-    expect(passwordError(PW_STATE, f({ next: 'tab\there long one', again: 'tab\there long one' }))).toBe('A password has no control characters.');
-    expect(passwordError(PW_STATE, f({ again: 'something else' }))).toBe('The two new passwords differ.');
-    expect(passwordError({ ...PW_STATE, set: true }, f())).toContain('current password');
-    expect(passwordError({ ...PW_STATE, set: true }, f({ current: 'x' }))).toBeNull();
-  });
-
-  it('sets the first one only from the controller’s machine', () => {
-    expect(passwordBlocked(PW_STATE)).toBeNull();
-    expect(passwordBlocked({ ...PW_STATE, this_machine: false })).toContain('tandem-app password set');
-    expect(passwordBlocked({ ...PW_STATE, set: true, this_machine: false })).toBeNull();
+describe('the sign-in (SEC-28)', () => {
+  it('has no admin password of its own: the panel links to the account pages', () => {
+    const src = readFileSync(join(__dirname, '..', 'src', 'views', 'fleet', 'app-settings.ts'), 'utf8');
+    expect(src).toContain('href="#/account"');
+    expect(src).toContain('href="#/access"');
+    expect(src).not.toMatch(/setPassword|removePassword|admin token/);
   });
 });
 

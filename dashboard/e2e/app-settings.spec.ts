@@ -1,6 +1,6 @@
 // 6.3b (OPS-234, VIS-E19): App settings beyond the controller's host, in the mock fleet: this
-// controller's service and release, the admin password (set from the controller's machine, changed
-// with the current one, removed; refused from another device while none is set), the permissions per
+// controller's service and release, the sign-in panel (SEC-28: links to the account pages; the
+// controller's single admin password is gone), the permissions per
 // host (a Mac's Local Network checked and denied with its way around; on a Spark: does not apply),
 // the configuration file (Export downloads it, Import shows the plan and applies it: the alias the
 // file renamed is the Spark's), and the phone. The host, Move and Take stay as they were. Shots in
@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import { IS_MOCK, setMode } from './helpers';
 
 const SHOTS = 'e2e-artifacts/app63b';
-const PW = 'a long admin passphrase';
 
 async function fresh(request: APIRequestContext, scenario: string): Promise<void> {
   expect((await request.post('/__mock/fleet', { data: { reset: true, scenario } })).ok()).toBeTruthy();
@@ -55,54 +54,18 @@ test.describe('App settings: password, permissions, the configuration file', () 
     await expect(ln).toContainText('System Settings → Privacy & Security → Local Network');
     await expect(page.locator('[data-perm="keys"] [data-file-state="ok"]')).toHaveCount(1);
     await expect(page.locator('[data-perm="node_sudo"]')).toContainText('never stored');
-    await expect(page.locator('[data-password="none"]')).toContainText('No admin password');
     await shot(page, 'mac-desk');
   });
 
-  test('the admin password: set from this machine, changed with the current one, removed', async ({ page, request }, info) => {
+  test('the sign-in: each account’s, on the account pages; no admin password here', async ({ page, request }, info) => {
     test.skip(info.project.name !== 'chromium-desktop', 'the desk');
     await fresh(request, 'fleet4');
     await open(page, 'fleet4');
     const panel = page.locator('[data-panel="password"]');
-    await panel.locator('[data-in="pw-next"]').fill('short');
-    await panel.locator('[data-in="pw-again"]').fill('short');
-    await panel.locator('[data-act="pw-save"]').click();
-    await expect(panel.locator('[data-password-error]')).toHaveText('A password is 12 to 1024 characters.');
-    await panel.locator('[data-in="pw-next"]').fill(PW);
-    await panel.locator('[data-in="pw-again"]').fill(PW);
-    await panel.locator('[data-act="pw-save"]').click();
-    await expect(panel.locator('[data-password-done]')).toContainText('Set.');
-    await expect(panel.locator('[data-password="set"]')).toBeVisible();
-    // the session the change gave this browser lets it write (a node's alias)
-    const nodes = (await (await page.request.get('/v1/fleet/nodes')).json()).nodes as { id: string }[];
-    expect((await page.request.patch(`/v1/fleet/nodes/${nodes[0].id}`, { data: { tags: ['e2e'] } })).status()).toBe(200);
-    // without it: 401
-    expect((await request.patch(`/v1/fleet/nodes/${nodes[0].id}`, { data: { tags: [] } })).status()).toBe(401);
-    // a change with a wrong current one is refused
-    await panel.locator('[data-in="pw-current"]').fill('not the password');
-    await panel.locator('[data-in="pw-next"]').fill(`${PW} two`);
-    await panel.locator('[data-in="pw-again"]').fill(`${PW} two`);
-    await panel.locator('[data-act="pw-save"]').click();
-    await expect(panel.locator('[data-password-error]')).toContainText('not right');
-    await panel.locator('[data-in="pw-current"]').fill(PW);
-    await panel.locator('[data-act="pw-save"]').click();
-    await expect(panel.locator('[data-password-done]')).toContainText('Changed');
-    await shot(page, 'password-set');
-    // remove
-    await panel.locator('[data-act="pw-remove"]').click();
-    await expect(panel.locator('[data-remove-warning]')).toContainText('anyone who opens this page');
-    await panel.locator('[data-in="pw-current"]').fill(`${PW} two`);
-    await panel.locator('[data-act="pw-remove-go"]').click();
-    await expect(panel.locator('[data-password-done]')).toContainText('Removed');
-    await expect(panel.locator('[data-password="none"]')).toBeVisible();
-  });
-
-  test('another device with no password set yet is told where to set the first one', async ({ page, request }, info) => {
-    test.skip(info.project.name !== 'chromium-desktop', 'the desk');
-    await setMode(request, 'ok', { remote: true });
-    await open(page, 'fleet4');
-    await expect(page.locator('[data-password-blocked]')).toContainText('tandem-app password set');
-    await expect(page.locator('[data-act="pw-save"]')).toHaveCount(0);
+    await expect(panel.locator('[data-act="account"]')).toHaveAttribute('href', '#/account');
+    await expect(panel.locator('[data-act="access"]')).toHaveAttribute('href', '#/access');
+    await expect(panel.locator('input')).toHaveCount(0);
+    await shot(page, 'sign-in');
   });
 
   test('export, then import the file with one Spark renamed: the plan, then the Spark has the name', async ({ page, request }, info) => {
