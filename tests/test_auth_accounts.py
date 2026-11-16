@@ -247,8 +247,12 @@ def test_every_route_has_a_permission():
         got[m] |= {chat_forward.PREFIX + "/x", chatengine.PREFIX + "/v1/chat/completions"}
     got["GET"] |= {chatengine.PREFIX + "/health", chatengine.PREFIX + "/v1/dashboard/system",
                    chatengine.PREFIX + "/v1/dashboard/live", chatengine.PREFIX + "/v1/models",
-                   "/v1/auth/session", "/v1/auth/sessions", "/v1/auth/users"}
-    got["POST"] |= {"/v1/auth/session", "/v1/auth/users"}
+                   "/v1/auth/session", "/v1/auth/sessions", "/v1/auth/users",
+                   "/v1/auth/tokens", "/v1/auth/tokens/x"}
+    got["POST"] |= {"/v1/auth/session", "/v1/auth/users", "/v1/auth/tokens",
+                    "/v1/auth/tokens/x/rotate"}
+    for m in ("PATCH", "DELETE"):
+        got.setdefault(m, set()).add("/v1/auth/tokens/x")         # SRV-867
     missing = sorted(f"{m} {p}" for m, ps in got.items() for p in ps
                      if authz.permission_for(m, p) is None)
     assert not missing, f"routes without a permission (proxy/authz.py ROUTES): {missing}"

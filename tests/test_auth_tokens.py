@@ -46,6 +46,8 @@ on), with the models small-1 and big-1; the controller is the standalone proxy i
                                                                        test_the_ledger_13
   k  a token never manages tokens, sessions or users; local mode makes none; the routes are
      no-store                                                          test_what_a_token_never_does
+  l  each scope opens its routes and no other (usage:read: the ledger's views only)
+                                                                       test_each_scope_opens_its_routes
 
     python tests/test_auth_tokens.py
 """
@@ -236,9 +238,12 @@ def test_outside_models_and_scopes():
             st, out = j(px.post("/v1/chat/completions", {"model": "small-1", **CHAT},
                                 {**bearer(token), "x-api-key": t2}))
             assert st == 401 and out["error"]["code"] == "invalid_api_key", out
-            # a cache route takes the model list too
+            # a cache route takes the model list too (a cache route that answers 200 here)
+            px.svc.cache_route = lambda path, body, headers: (200, {"ok": True}, ())
             st, out = j(px.post("/v1/cache/peek", {"model": "big-1", **CHAT}, bearer(token)))
-            assert st in (403, 404), (st, out)
+            assert st == 403 and "big-1" in out["error"]["message"], (st, out)
+            assert px.post("/v1/cache/peek", {"model": "small-1", **CHAT}, bearer(token))[0] \
+                == 200
     finally:
         srv.shutdown()
 
@@ -550,7 +555,8 @@ def test_only_the_hash_is_stored():
             p = os.path.join(px.dir, name)
             if os.path.isfile(p):
                 with open(p, "rb") as f:
-                    assert secret not in f.read() and secret[:20] not in f.read(), name
+                    data = f.read()
+                assert secret not in data and secret[:20] not in data, name
         # the full tables, every text column: no part of the secret beyond the last 4
         for table in ("api_tokens", "audit", "settings"):
             for r in c.execute(f"SELECT * FROM {table}"):
@@ -829,6 +835,46 @@ def test_the_ledger_13():
     # client_of reads x-api-key as it reads a bearer
     a = ledger_mod.client_of({"x-api-key": "k1"})[0]
     assert a == ledger_mod.client_of({"Authorization": "Bearer k1"})[0] != "anon"
+
+
+# ---------------------------------------------------------------------------- AC l
+
+def test_each_scope_opens_its_routes():
+    with Proxy(env=ON) as px:
+        make("own", "owner")
+        own = sign_in(px, "own")
+        t = {s: new_token(px, own, label=s, scopes=[s])[0] for s in tokens_mod.MANAGEMENT}
+        plan = {"changes": [{"scope": "app", "target": "controller", "set": {"chat": "off"}}]}
+        cases = [
+            ("usage:read", "GET", "/v1/dashboard/usage", 200),
+            ("usage:read", "GET", "/v1/fleet/ledger/usage", 200),
+            ("usage:read", "GET", "/v1/dashboard/logs", 403),        # the ledger's views only
+            ("usage:read", "GET", "/v1/dashboard/system", 403),
+            ("usage:read", "GET", "/v1/settings", 403),
+            ("usage:read", "GET", "/v1/fleet/nodes", 403),
+            ("settings:read", "GET", "/v1/settings", 200),
+            ("settings:read", "POST", "/v1/settings/plan", 403),
+            ("settings:read", "GET", "/v1/fleet/nodes", 403),
+            ("settings:read", "GET", "/v1/dashboard/usage", 403),
+            ("settings:write", "POST", "/v1/settings/plan", "not 403"),
+            ("fleet:read", "GET", "/v1/fleet/nodes", 200),
+            ("fleet:read", "GET", "/v1/fleet/ledger/usage", 200),
+            ("fleet:read", "GET", "/v1/settings", 403),
+            ("fleet:write", "POST", "/v1/fleet/pair", 403),            # pairing is trust's
+            ("metrics:read", "GET", "/metrics", 200),
+            ("metrics:read", "GET", "/v1/settings", 403),
+        ]
+        for scope, method, path, want in cases:
+            st, out = j(px.request(method, path, plan if method == "POST" else None,
+                                   bearer(t[scope])))
+            if want == "not 403":
+                assert st not in (401, 403), (scope, path, st, out)
+            else:
+                assert st == want, (scope, method, path, st, out)
+        # metrics:read gets the full health; an inference token only the status
+        assert "backends" in j(px.get("/health", bearer(t["metrics:read"])))[1]
+        inf, _ = new_token(px, own, label="inf", scopes=["inference:openai"])
+        assert j(px.get("/health", bearer(inf))) == (200, {"status": "ok"})
 
 
 # ---------------------------------------------------------------------------- AC k

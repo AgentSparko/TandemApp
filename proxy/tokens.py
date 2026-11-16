@@ -29,7 +29,7 @@ A revoked row stays: its hash keeps an import from bringing the key back, and it
 named. Rows are never deleted here.
 
 SCOPES. `inference:openai` and `inference:anthropic` (each protocol's routes, `/v1/models` for
-both), `usage:read`, `metrics:read`, `settings:read`, `settings:write`, `fleet:read`,
+both), `usage:read` (the ledger's summary, usage and requests views), `metrics:read`, `settings:read`, `settings:write`, `fleet:read`,
 `fleet:write`, `trust` (admin-owned tokens only, 30 days at most), and the service scopes
 `collect:write` and `chat-engine`, which no route can put on a token. Never on a token: users,
 sessions, the identity provider and the exposure switches (the `/v1/auth/*` routes refuse every
@@ -122,6 +122,8 @@ IMPLIES = {
 MESSAGES = ("/v1/messages", "/v1/messages/count_tokens")
 OPENAI_EXTRA = ("/v1/library", "/v1/laya")
 SETTINGS_FAMILIES = ("/v1/settings", "/v1/config", "/v1/conductor")
+#: the ledger's views (usage:read); the page's other reads (logs, live, system) take no token
+LEDGER_VIEWS = ("summary", "usage", "requests")
 
 DDL = """
 CREATE TABLE IF NOT EXISTS api_tokens (
@@ -173,9 +175,11 @@ def scope_for(method: str, path: str) -> tuple | None:
         return ("metrics:read",)
     if any(_under(p, f) for f in SETTINGS_FAMILIES):
         return ("settings:read",) if read else ("settings:write",)
+    if read and any(p == f"/v1/fleet/ledger/{v}" for v in LEDGER_VIEWS):
+        return ("usage:read", "fleet:read")
     if _under(p, "/v1/fleet"):
         return ("fleet:read",) if read else ("fleet:write",)
-    if _under(p, "/v1/dashboard"):
+    if read and any(p == f"/v1/dashboard/{v}" for v in LEDGER_VIEWS):
         return ("usage:read",)
     if _under(p, "/v1/collect"):
         return ("collect:write",)
