@@ -9,7 +9,8 @@ history but not from its middle. So the relay keeps every translated answer's ow
 when the client sends that turn back, sends those blocks upstream in place of the translated
 ones.
 
-KEY: the client's credential (a hash of its bearer; one stash cannot be read with another key),
+KEY: the client's credential (a hash of its bearer, or of a Messages API client's key; one
+stash cannot be read with another key),
 the backend, the upstream model (blocks never go to another backend or model), and the turn: its
 tool call ids, or for a turn without calls its place in the history and a hash of its text. A
 turn with no thinking block is not kept: its translation is already what the backend saw.

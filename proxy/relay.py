@@ -825,7 +825,12 @@ class Relay:
         rec.thinking_dropped = 0
         if not (_translating(adapter, path) and path == CHAT):
             return {}
-        scope = (stash_mod.token_of(handler.headers), backend["id"], upstream_model)
+        tok = stash_mod.token_of(handler.headers)
+        if tok == "anon":
+            # a Messages API client's request reaches here without its credential: its key's
+            # hash names it (proxy/messages.py, the ledger's client id)
+            tok = getattr(rec, "client_id", None) or "anon"
+        scope = (tok, backend["id"], upstream_model)
 
         def restore(msgs):
             out, n = self.stash.restore(scope, msgs)

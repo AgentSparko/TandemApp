@@ -238,15 +238,18 @@ class Anthropic(Adapter):
             parts = [_int(obj.get(k)) for k in ("input_tokens", "cache_read_input_tokens",
                                                  "cache_creation_input_tokens")]
             details = obj.get("output_tokens_details")
+            out = {"prompt_tokens": None if parts[0] is None else sum(p or 0 for p in parts),
+                   "completion_tokens": _int(obj.get("output_tokens")),
+                   "cached_tokens": parts[1], "cache_write_tokens": parts[2],
+                   "reasoning_tokens": _int(details.get("thinking_tokens"))
+                   if isinstance(details, dict) else None}
+            # SRV-881: the writes kept for 1 hour, priced apart (`cache_write_1h`); a sixth
+            # field only the price reads, there when the server counts them
             cc = obj.get("cache_creation")
-            return {"prompt_tokens": None if parts[0] is None else sum(p or 0 for p in parts),
-                    "completion_tokens": _int(obj.get("output_tokens")),
-                    "cached_tokens": parts[1], "cache_write_tokens": parts[2],
-                    "reasoning_tokens": _int(details.get("thinking_tokens"))
-                    if isinstance(details, dict) else None,
-                    # SRV-881: the writes kept for 1 hour, priced apart (`cache_write_1h`)
-                    "cache_write_1h_tokens": _int(cc.get("ephemeral_1h_input_tokens"))
-                    if isinstance(cc, dict) else None}
+            w1h = _int(cc.get("ephemeral_1h_input_tokens")) if isinstance(cc, dict) else None
+            if w1h is not None:
+                out["cache_write_1h_tokens"] = w1h
+            return out
         return super().read_usage(obj, path)
 
     # ----------------------------------------------------------------- discovery

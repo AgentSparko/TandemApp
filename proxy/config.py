@@ -1074,13 +1074,16 @@ class ConfigDB:
         p = price or {}
         self._conn.execute("UPDATE models SET price_input = ?, price_cached_input = ?, "
                            "price_cache_write = ?, price_output = ?, currency = ?, "
-                           "price_updated_at = ?, price_offpeak = ?, price_cache_write_1h = ? "
+                           "price_updated_at = ?, price_offpeak = ?, price_cache_write_1h = "
+                           "CASE WHEN ? THEN ? ELSE price_cache_write_1h END "
                            "WHERE backend_id = ? AND model_id = ?",
                            (p.get("input"), p.get("cached_input"), p.get("cache_write"),
                             p.get("output"), p.get("currency", "USD") if price else None,
                             _now_ms() if price else None,
                             json.dumps(p["offpeak"]) if p.get("offpeak") else None,
-                            p.get("cache_write_1h"), bid, mid))
+                            # a price set without the field (the page has none) keeps it
+                            not price or "cache_write_1h" in p, p.get("cache_write_1h"),
+                            bid, mid))
 
     def sync_models(self, bid: str, found: list[dict] | None, listed: list[str],
                     mode: str, trust_new: bool = False) -> list[str]:

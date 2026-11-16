@@ -9,7 +9,7 @@ A remote hook is code outside TandemApp that the controller calls at a stage of 
 | `events/<stage>.schema.json` | `event` per stage; `content` appears only at payload `redacted` or `full` |
 | `result.schema.json` | what a hook answers: `{action: continue\|modify\|deny\|decide, patch, decision, reason, labels}` |
 | `examples/<stage>.<payload>.json` | one call per stage as a `meta` hook gets it, and as a `full` one where the stage has content |
-| `compat-1.0/` | the same calls as version 1.0 sent them (no `request.protocol`): they still validate, and a hook written for them keeps working |
+| `compat/1.0/` | the same calls as version 1.0 sent them (no `request.protocol`): they still validate, and a hook written for them keeps working |
 | `fake_server.py` | a receiver for tests and trying hooks by hand: it checks every call's signature, timestamp and replay as a receiver must |
 | `hooks.schema.json`, `hook.schema.json`, `hook-one.schema.json`, `hook-new.schema.json`, `hook-patch.schema.json`, `hook-created.schema.json`, `hook-test.schema.json`, `hook-calls.schema.json`, `hook-trace.schema.json`, `error.schema.json` | the controller's admin API, `/v1/fleet/hooks/*` (below) |
 

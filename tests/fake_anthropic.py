@@ -11,7 +11,8 @@ and 400), keeps every request (`fake.requests`: path, headers, body), and answer
     fake.queue        answers to give first, in order: {"status", "body"} (a JSON error or any
                       body), {"message": {...}} (a whole message, streamed when asked), or
                       {"message": {...}, "error_after": n} (the stream breaks after n text
-                      deltas with an `error` event)
+                      deltas with an `error` event); `cut_after: n` ends a stream after n events
+                      with neither an error nor `message_stop`; `extra_events` adds events
     otherwise         with tools offered and fewer than `fake.tool_turns` tool results in the
                       conversation: one `tool_use` call (`get_weather`, id toolu_fake_<n>);
                       else the text "done after <n> results". Usage: `fake.usage` (input and
@@ -63,6 +64,7 @@ class Fake:
         self.strict_thinking = False
         self.produced: dict = {}         # a turn's key -> the content this server answered
         self.answers: list = []          # each /v1/messages answer's body bytes as sent
+        self.raws: list = []             # each POST's body bytes as received
         self.signatures: set = set()
         self.lock = threading.Lock()
 
@@ -258,7 +260,8 @@ def make_handler(fake: Fake):
             body = json.loads(raw or b"{}")
             with fake.lock:
                 fake.requests.append({"path": self.path, "headers": dict(self.headers.items()),
-                                      "body": body, "raw": raw})
+                                      "body": body})
+                fake.raws.append(raw)
             if not self._authorized():
                 return self._error(401, "authentication_error", "invalid x-api-key")
             if fake.count is None:
@@ -279,7 +282,8 @@ def make_handler(fake: Fake):
                 return self._error(400, "invalid_request_error", "the body is not JSON")
             with fake.lock:
                 fake.requests.append({"path": self.path, "headers": dict(self.headers.items()),
-                                      "body": body, "raw": raw})
+                                      "body": body})
+                fake.raws.append(raw)
                 item = fake.queue.pop(0) if fake.queue else None
                 count = len(fake.requests)
             if not self._authorized():
@@ -309,8 +313,11 @@ def make_handler(fake: Fake):
             self.end_headers()
             sent = bytearray()
             fake.answers.append(sent)
-            for name, obj in _events(msg, (item or {}).get("error_after"),
-                                     (item or {}).get("extra_events")):
+            cut = (item or {}).get("cut_after")      # the stream ends after n events, unfinished
+            for k, (name, obj) in enumerate(_events(msg, (item or {}).get("error_after"),
+                                                    (item or {}).get("extra_events"))):
+                if cut is not None and k >= cut:
+                    break
                 data = f"event: {name}\ndata: {json.dumps(obj)}\n\n".encode()
                 sent += data
                 self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")

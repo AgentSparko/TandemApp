@@ -71,7 +71,7 @@ TandemApp POSTs one JSON document per call (`call.schema.json`):
            "route": {"backend": "local", "model": "example-model", "attempt": 0}}}
 ```
 
-`request.protocol` (version 1.1) names the client's protocol and the backend's: `openai` or `messages` (the Messages API). A hook always sees the chat shape. When both are `messages` the request passes through as the client sent it: a patch of a parameter with a Messages API field still applies, a patch of the messages, the tools or the answer does not (journaled `refused`, `protocol_native`; the hook's failure policy applies). Calls from version 1.0 had no `protocol`; `contracts/hooks-v1/compat-1.0/` keeps them.
+`request.protocol` (version 1.1) names the client's protocol and the backend's: `openai` or `messages` (the Messages API). A hook always sees the chat shape. When both are `messages` the request passes through as the client sent it: a patch of a parameter with a Messages API field still applies, a patch of the messages, the tools or the answer does not (journaled `refused`, `protocol_native`; the hook's failure policy applies). Calls from version 1.0 had no `protocol`; `contracts/hooks-v1/compat/1.0/` keeps them.
 
 and reads the answer (`result.schema.json`):
 

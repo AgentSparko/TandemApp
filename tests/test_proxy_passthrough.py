@@ -13,7 +13,7 @@ tests/fake_backend.py), no network.
   AC the stash's bounds, per token          test_the_stash_is_bounded_and_per_token,
                                             test_the_stash_is_per_token_over_http
   AC hooks-v1 with and without protocol     tests/test_hooks_contract.py test_examples_validate
-                                            (compat-1.0), test_hooks_name_the_protocols here
+                                            (compat/1.0), test_hooks_name_the_protocols here
   also: errors of our own in the Messages shape, upstream errors as sent, count_tokens passes,
   a mixed route is translated, an early close ends with an error event, the 1 h cache write
 
@@ -107,7 +107,7 @@ def test_bytes_pass():
             st, h, data = px.post("/v1/messages", raw, headers=_hdr())
             assert st == 200, data
             up = srv.fake.last
-            assert up["raw"] == raw, "the client's bytes, unchanged"
+            assert srv.fake.raws[-1] == raw, "the client's bytes, unchanged"
             assert up["path"] == "/v1/messages"
             got = {k.lower(): v for k, v in up["headers"].items()}
             assert got["x-api-key"] == BACKEND_KEY and "authorization" not in got
@@ -139,7 +139,7 @@ def test_a_renamed_model_keeps_its_prefix():
         raw = RAW.replace(b'"model":  "model-a" ,', b'"model":  "house-model" ,')
         st, _, data = px.post("/v1/messages", raw, headers=_hdr())
         assert st == 200, data
-        assert srv.fake.last["raw"] == RAW, (srv.fake.last["raw"][:80], RAW[:80])
+        assert srv.fake.raws[-1] == RAW, (srv.fake.raws[-1][:80], RAW[:80])
     # the byte rewrite alone: one value, escapes and nesting kept
     src = b'{ "a":1.50, "model" : "x\\u00e9", "n":{"model":"keep"},"z":"\xc3\xa9"}'
     assert passthrough.set_model(src, 'up/m"1') == \
@@ -224,6 +224,24 @@ def test_errors_ours_in_shape_and_the_backends_as_sent():
         assert b"[DONE]" not in data
         rows = [r for r in px.rows() if r["endpoint"] == "messages"]
         assert rows[-1]["finish_reason"] == "error", rows[-1]
+        # a stream that ends without message_stop: the relay's own `error` event
+        srv.fake.queue.append({"message": {"content": [{"type": "text", "text": "abcdef"}],
+                                           "stop_reason": "end_turn"}, "cut_after": 4})
+        st, _, data = px.post("/v1/messages", dict(body, stream=True), headers=_hdr())
+        last = data.rstrip().split(b"\n\n")[-1]
+        assert st == 200 and last.startswith(b"event: error") and b"api_error" in last, data
+        assert data.rstrip()[:-len(last)].rstrip() == bytes(srv.fake.answers[-1]).rstrip()
+        r = [r for r in px.rows() if r["endpoint"] == "messages"][-1]
+        assert (r["finish_reason"], r["error_type"]) == ("error", "upstream_closed"), r
+    srv.shutdown()
+    # a backend that takes a bearer gets one, and no x-api-key
+    srv, port = fake_anthropic.start(key=BACKEND_KEY, auth="bearer")
+    with Proxy(_env(port, {"TANDEM_BACKEND_ANTH_ANTHROPIC_AUTH": "bearer"})) as px:
+        px.sync()
+        st, _, data = px.post("/v1/messages", body, headers=_hdr())
+        got = {k.lower(): v for k, v in srv.fake.last["headers"].items()}
+        assert st == 200 and got["authorization"] == f"Bearer {BACKEND_KEY}" and \
+            "x-api-key" not in got, (data, got)
     srv.shutdown()
 
 
@@ -236,7 +254,7 @@ def test_count_tokens_passes_and_a_mixed_route_is_translated():
         raw = b'{"model":"model-a", "messages":[{"role":"user","content":"x"}],"z":1}'
         st, h, data = px.post("/v1/messages/count_tokens", raw, headers=_hdr())
         assert st == 200 and json.loads(data) == {"input_tokens": 7}, data
-        assert srv.fake.last["raw"] == raw and h["request-id"] == "req_fake_1"
+        assert srv.fake.raws[-1] == raw and h["request-id"] == "req_fake_1"
         assert srv.fake.last["headers"]["anthropic-beta"] == "some-beta-2026-01-01"
     env = _env(port, {"TANDEM_BACKENDS": "anth,gen", "TANDEM_BACKEND_ANTH_FALLBACK": "gen",
                       "TANDEM_BACKEND_GEN_KIND": "generic",
@@ -249,7 +267,7 @@ def test_count_tokens_passes_and_a_mixed_route_is_translated():
                               headers=_hdr())
         assert st == 200, data
         up = srv.fake.last
-        assert up["raw"] != RAW and "temperature" not in up["body"], "translated (cell 4, 3)"
+        assert srv.fake.raws[-1] != RAW and "temperature" not in up["body"], "translated"
         assert up["headers"]["anthropic-version"] == "2023-06-01"
     srv.shutdown()
     gen.shutdown()
@@ -284,7 +302,7 @@ def test_a_hook_that_wants_to_rewrite():
                         "stages": ["request.before_engine"], "priority": 1})
             raw = json.dumps(body).encode()
             st, _, data = px.post("/v1/messages", raw, headers=_hdr())
-            assert st == 200 and srv.fake.last["raw"] == raw, data
+            assert st == 200 and srv.fake.raws[-1] == raw, data
             env = hs.calls[-1]["env"]
             assert env["request"]["protocol"] == {"inbound": "messages", "upstream": "messages"}
             assert env["event"]["content"]["messages"] == [{"role": "user", "content": "x"}], \
@@ -350,6 +368,21 @@ def test_hooks_name_the_protocols():
                 assert st == 200, (path, model, data)
                 got = [c["env"]["request"]["protocol"] for c in hs.calls]
                 assert got and all(p == {"inbound": inb, "upstream": upb} for p in got), got
+            # a stream.chunk observer on a streamed pass-through sees canonical chunks
+            st, out = px.post("/v1/fleet/hooks", {
+                "name": "chunks", "endpoint": f"http://127.0.0.1:{hport}/",
+                "role": "observer", "stages": ["stream.chunk"], "priority": 2})[:2]
+            assert st == 201, out
+            hs.calls.clear()
+            st, _, data = px.post("/v1/messages", {"model": "model-a", "max_tokens": 10,
+                                                   "stream": True, "messages": [
+                                                       {"role": "user", "content": "x"}]},
+                                  headers=_hdr())
+            assert st == 200 and data == bytes(srv.fake.answers[-1]), data
+            px.svc.hooks.bg.drain(5)
+            kinds = [c["env"]["event"]["kind"] for c in hs.calls
+                     if c["env"]["stage"] == "stream.chunk"]
+            assert "content" in kinds and "finish" in kinds and "done" in kinds, kinds
             # an answer patch on a pass-through: refused, the answer as the backend sent it
             hs.respond = lambda env: {"action": "modify", "patch": {"choices": []}} \
                 if env["stage"] == "response.after_engine" else None
@@ -434,8 +467,9 @@ def test_models_in_two_shapes():
 
 
 # ------------------------------------------------------------------------- the stash
-def _loop(px, fake, stream: bool, key=KEY, turns=3):
-    """An OpenAI client's tool loop on the Messages API backend; [(status, body)] per turn."""
+def _loop(px, fake, stream: bool, key=KEY, turns=3, history=None):
+    """An OpenAI client's tool loop on the Messages API backend; [(status, body)] per turn.
+    `history` (a list) gets the conversation, the last answer included."""
     msgs = [{"role": "user", "content": "weather in two cities?"}]
     out = []
     for _ in range(turns):
@@ -461,11 +495,14 @@ def _loop(px, fake, stream: bool, key=KEY, turns=3):
                         f = tc.get("function") or {}
                         c["function"]["name"] = f.get("name") or c["function"]["name"]
                         c["function"]["arguments"] += f.get("arguments") or ""
-            msg = {"role": "assistant", "content": content or None,
-                   "tool_calls": [calls[i] for i in sorted(calls)]}
+            msg = {"role": "assistant", "content": content or None}
+            if calls:
+                msg["tool_calls"] = [calls[i] for i in sorted(calls)]
         else:
             msg = json.loads(data)["choices"][0]["message"]
             msg.pop("reasoning_content", None)
+        if history is not None:
+            history[:] = msgs + [msg]
         if not msg.get("tool_calls"):
             break
         msgs = msgs + [msg] + [{"role": "tool", "tool_call_id": c["id"], "content": "12 C"}
@@ -474,16 +511,18 @@ def _loop(px, fake, stream: bool, key=KEY, turns=3):
 
 
 def test_the_stash_keeps_thinking_in_a_tool_loop():
-    """Gherkin + the brief: a 3-turn tool loop from an OpenAI client on a thinking model; the
-    fake server refuses a turn that comes back without its signed thinking. With the stash every
-    turn passes and the upstream history holds the original thinking blocks and signatures;
-    without it (a stash that keeps nothing) the second turn is refused."""
+    """Gherkin: a 3-turn tool loop from an OpenAI client on a thinking model; the fake server
+    refuses a turn that comes back without its signed thinking. With the stash every turn
+    passes and the upstream history holds the original thinking blocks and signatures, a
+    follow-up after the final (text) answer too; without it (a stash that keeps nothing) the
+    second turn is refused."""
     for stream in (False, True):
         srv, port = fake_anthropic.start(key=BACKEND_KEY)
         srv.fake.think = srv.fake.strict_thinking = True
         with Proxy(_env(port)) as px:
             px.sync()
-            got = _loop(px, srv.fake, stream)
+            hist: list = []
+            got = _loop(px, srv.fake, stream, history=hist)
             assert [s for s, _ in got] == [200, 200, 200], got
             assert ("text", "done after 2 results") in srv.fake.produced, "the loop ended"
             last = srv.fake.last["body"]["messages"]
@@ -492,6 +531,14 @@ def test_the_stash_keeps_thinking_in_a_tool_loop():
             assert [b["thinking"] for b in th] == ["Plan 1.", "Plan 2."], last
             assert all(b["signature"] in srv.fake.signatures for b in th)
             assert px.svc.relay.stash.view()["turns"] == 3
+            # a follow-up after the final answer: its text turn keeps its thinking too
+            st, _, data = px.post("/v1/chat/completions", {
+                "model": "model-a", "tools": [FN], "stream": stream,
+                "messages": hist + [{"role": "user", "content": "and tomorrow?"}]},
+                headers={"Authorization": f"Bearer {KEY}"})
+            assert st == 200, data
+            sent = srv.fake.last["body"]["messages"]
+            assert sent[-2]["content"][0]["thinking"] == "Plan 3.", sent[-2]
             assert all(r["error_type"] is None for r in px.rows()), px.rows()
             # the control: with nothing kept, the fake refuses the second turn
             px.svc.relay.stash = stash_mod.Stash(max_bytes=0)
@@ -551,6 +598,38 @@ def test_the_stash_is_per_token_over_http():
         sent = srv.fake.last["body"]["messages"][1]["content"]
         assert not any(b["type"] == "thinking" for b in sent), sent
     srv.shutdown()
+
+
+def test_the_stash_is_per_token_for_messages_clients_too():
+    """A Messages API client on a mixed route (translated twice) keeps its thinking through the
+    stash, under its own key: the same history from another key goes without."""
+    srv, port = fake_anthropic.start(key=BACKEND_KEY)
+    srv.fake.think = True
+    gen, gport = fake_backend.start(models=["model-a"])
+    env = _env(port, {"TANDEM_BACKENDS": "anth,gen", "TANDEM_BACKEND_ANTH_FALLBACK": "gen",
+                      "TANDEM_BACKEND_GEN_KIND": "generic",
+                      "TANDEM_BACKEND_GEN_URL": f"http://127.0.0.1:{gport}/v1",
+                      "TANDEM_ROUTE_1": "model-a=anth"})
+    with Proxy(env) as px:
+        px.sync()
+        req = {"model": "model-a", "max_tokens": 100, "tools": [TOOL],
+               "messages": [{"role": "user", "content": "weather?"}]}
+        st, _, data = px.post("/v1/messages", req, headers=_hdr())
+        m = json.loads(data)
+        assert st == 200 and m["content"][0]["type"] == "thinking", m
+        call = m["content"][-1]
+        nxt = dict(req, messages=req["messages"] + [
+            {"role": "assistant", "content": m["content"]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": call["id"],
+                                          "content": "12 C"}]}])
+        for key, kept in ((KEY, True), (KEY2, False)):
+            st, _, data = px.post("/v1/messages", nxt, headers=_hdr(key=key))
+            assert st == 200, data
+            sent = srv.fake.last["body"]["messages"][1]["content"]
+            th = [b for b in sent if b["type"] == "thinking"]
+            assert (th[0]["signature"] in srv.fake.signatures if kept else th == []), sent
+    srv.shutdown()
+    gen.shutdown()
 
 
 def test_the_stash_is_bounded_and_per_token():
@@ -636,6 +715,13 @@ def test_the_1h_cache_write_price():
         px.sync()
         row = next(m for m in px.svc.cfg.models("anth") if m["model"] == "model-a")
         assert row["price"]["cache_write_1h"] == 4.0, row["price"]
+        # a price set without the field (the page has none) keeps it; null clears it
+        p = {"input": 2, "cached_input": 0.2, "cache_write": 2.5, "output": 10}
+        for price, want in ((dict(p, cache_write_1h=3.0), 3.0), (p, 3.0),
+                            (dict(p, cache_write_1h=None), None)):
+            px.svc.cfg.update_model("anth", "model-b", {"price": price})
+            row = next(m for m in px.svc.cfg.models("anth") if m["model"] == "model-b")
+            assert row["price"].get("cache_write_1h") == want, (price, row["price"])
         for stream in (False, True):
             srv.fake.queue.append({"message": ANSWER})
             st, _, data = px.post("/v1/messages", _stream_raw(stream), headers=_hdr())
