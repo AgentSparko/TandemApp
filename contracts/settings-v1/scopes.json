@@ -1,5 +1,5 @@
 {
- "version": "1.0",
+ "version": "1.1",
  "scopes": [
   {
    "name": "app",
@@ -46,6 +46,15 @@
    "restart": [
     "none",
     "engine"
+   ]
+  },
+  {
+   "name": "plugins",
+   "order": 5,
+   "store": "the plugin registry's tables (proxy/pluginstore.py) through the plugins scope (proxy/pluginsettings.py): one target a plugin, its keys from its manifest: enabled, settings.<property> from its settings schema, secrets.<NAME> write-only, capabilities.<capability> (deny by default); enabling and every grant take pairing's rights, prompts:full, engine:control and network outside the LAN a second confirm",
+   "targets": "an installed plugin's id",
+   "restart": [
+    "none"
    ]
   }
  ],
