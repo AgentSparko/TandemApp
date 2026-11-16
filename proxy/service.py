@@ -49,6 +49,7 @@ from proxy import config as config_mod
 from proxy import engines as engines_mod
 from proxy import health as health_mod
 from proxy import hooks as hooks_mod
+from proxy import providers as providers_mod
 from proxy import http1
 from proxy import relay as relay_mod
 from proxy import route as route_mod
@@ -197,6 +198,10 @@ class Service:
         self.hooks = hooks_mod.Runner(cfg, log=lambda m: self.log(m))
         if registry is not None:
             self.hooks.families(registry)
+        # SRV-851: the decision providers the controller's conductor asks through (proxy/
+        # providers.py); idle while none is enabled
+        self.providers = providers_mod.Providers(cfg, runner=self.hooks,
+                                                 log=lambda m: self.log(m))
         if conductor is not None:
             from proxy.harness import Harness
             self.harness = Harness(self, conductor, monitor_base, log=self.log)
@@ -212,6 +217,8 @@ class Service:
             self.harness.stop()
         if self.hooks is not None:
             self.hooks.stop()
+        if getattr(self, "providers", None) is not None:
+            self.providers.stop()
         self.health.stop()
         self.engines.stop()
         self.collect.stop()

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision provider health",
+  "description": "GET /v1/fleet/decision-providers/{id}/health[?force=1] (SRV-851): each endpoint's probe (/readyz and /v1/models, cached 10 s; a hook: its state and breaker), its breaker and its questions; status ok, failing (a breaker not closed or the last call within a minute failed), down (a probe failed) or off",
+  "$ref": "decision-provider.schema.json#/$defs/health"
+}

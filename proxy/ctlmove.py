@@ -17,7 +17,8 @@
 THE EXPORT (`kind: tandemapp-export`): the config database without the secrets, the wizard's
 sessions and the jobs (backends, models, routes, the proxy's own keys as hashes, the settings,
 the nodes with their pins, the layouts), and the backends' stored API keys decrypted, for the new
-controller to store under its own master key. The metric history (fleet.sqlite3) stays where it
+controller to store under its own master key. The decision providers' keys (SRV-851) do not go:
+they are typed again on the new controller. The metric history (fleet.sqlite3) stays where it
 is. A node reached through an SSH tunnel stays too: its key is a file on this machine (rented
 nodes, step 7); the plan says so. An import lands only in a controller with no fleet of its own,
 and every node's trust then names that controller's certificate.
@@ -120,7 +121,7 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             dst.close()
         c = sqlite3.connect(path)
         for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
-                  "fleet_jobs", "audit"):
+                  "fleet_jobs", "audit", "decision_provider_keys"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:

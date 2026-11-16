@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision provider test",
+  "description": "POST /v1/fleet/decision-providers/{id}/test {question?, text?} (SRV-851): one live call with a sample question; nothing counted, nothing journaled",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "endpoint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ms": {
+      "type": "number"
+    },
+    "answer": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "probs": {
+          "type": "object"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ms": {
+          "type": "number"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "confidence",
+        "probs",
+        "model",
+        "ms",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "provider",
+    "question",
+    "ok",
+    "endpoint",
+    "ms",
+    "answer",
+    "error"
+  ],
+  "additionalProperties": false
+}
