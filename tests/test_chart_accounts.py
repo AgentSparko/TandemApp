@@ -15,11 +15,17 @@
      Secret's token in TANDEM_ADMIN_TOKEN (the old template), Then it starts and the token signs
      in as before                                                test_rollback
   5  API paths: /v1/models and /v1/messages answer 401 without a token (the ingress's 503 for a
-     blocked path is the chart's: test_chart_defaults test_api_paths)
+     path set to false is the chart's: test_chart_defaults test_api_paths)
                                                                  test_new_release
-  6  A leftover variable: Given extraEnv sets TANDEM_API_KEYS with a bad value, Then the
-     controller serves /health (the probes) and the health page shows legacy_env_invalid
-                                                                 test_leftover_variable
+  6  A leftover variable: Given extraEnv sets TANDEM_API_KEYS with a bad value, and
+     auth.trustedProxy an entry that is neither an address nor a range, Then the controller
+     serves /health (the probes) and the health page shows legacy_env_invalid and
+     trusted_proxy_invalid naming TANDEM_TRUSTED_PROXY              test_leftover_variable
+  7  The API through the ingress: Given the chart's defaults (the ingress routes the API paths)
+     and both exposure switches at "this machine", When the signed-in page posts to
+     /v1/chat/completions and /v1/messages through the ingress, Then each answers 200, And a
+     token from another device gets 403 api_not_exposed on both; at "network" the token's call
+     answers 200                                                  test_api_through_the_ingress
   the kubectl exec lines NOTES prints run as written against a volume laid out as the pod's
                                                                  test_notes_exec_lines
   TANDEM_ADMIN_TOKEN_FILE: 32 characters or more count as the admin token, named by its file; a
@@ -233,19 +239,88 @@ def test_rollback():
 def test_leftover_variable():
     tcd = _chart()
     env, code = rendered("controller.extraEnv[0].name=TANDEM_API_KEYS",
-                         "controller.extraEnv[0].value=laptop", tcd=tcd)
+                         "controller.extraEnv[0].value=laptop",
+                         r"auth.trustedProxy=192.0.2.0/24\,not-an-address", tcd=tcd)
     assert env["TANDEM_API_KEYS"] == "laptop"
+    assert env["TANDEM_TRUSTED_PROXY"] == "192.0.2.0/24,not-an-address"
     d = tempfile.mkdtemp(prefix="o1-left-")
     proc, port, lines = serve(os.path.join(d, "state"), with_file(env, code, d))
     try:
         assert ask(port, "GET", "/health")[0] == 200, "the probes pass: the pod is Ready"
         assert ask(port, "POST", "/v1/auth/setup", {"code": code, "username": "owner",
                                                      "password": PW})[0] == 201
-        got = findings(port, session(port))
-        assert "legacy_env_invalid" in got, got
+        h = session(port)
+        got = findings(port, h)
+        assert {"legacy_env_invalid", "trusted_proxy_invalid"} <= got, got
+        st, _, out = ask(port, "GET", "/v1/fleet/health/controller", headers=h)
+        f = next(x for x in json.loads(out)["findings"] if x["code"] == "trusted_proxy_invalid")
+        assert f["facts"] == {"variable": "TANDEM_TRUSTED_PROXY", "file": "the environment"}, f
+        assert "TANDEM_TRUSTED_PROXY" in f["sentence"] and f["detail"] == "not-an-address", f
+        assert any("TANDEM_TRUSTED_PROXY: ignored 'not-an-address'" in x for x in lines), lines
     finally:
         stop(proc)
-    return "a bad TANDEM_API_KEYS: the controller serves, the finding is on the health page"
+    return "a bad TANDEM_API_KEYS or proxy entry: the controller serves, each is a finding"
+
+
+#: a request as the ingress controller forwards it from a browser or a client on another device
+INGRESS = {"Host": "app.example.com", "Origin": "https://app.example.com",
+           "X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.7",
+           "X-Real-IP": "198.51.100.7"}
+CHAT = {"model": "small-1", "messages": [{"role": "user", "content": "hi"}]}
+MSG = {"model": "small-1", "max_tokens": 8, "messages": [{"role": "user", "content": "hi"}]}
+
+
+def test_api_through_the_ingress():
+    """OPS-298 decision: the ingress routes the API paths by default; exposure is the
+    controller's rule for a token, never for a signed-in page."""
+    from proxy_util import fake
+    tcd = _chart()
+    env, code = rendered(r"auth.trustedProxy=192.0.2.0/24\,2001:db8:42::/64", tcd=tcd)
+    assert env["TANDEM_INGRESS_API"] == "openai,anthropic", env
+    srv, eport = fake(models=["small-1"], cache=False)
+    d = tempfile.mkdtemp(prefix="o1-api-")
+    env = {**with_file(env, code, d), "TANDEM_BACKENDS": "engine",
+           "TANDEM_BACKEND_ENGINE_KIND": "tandemllm",
+           "TANDEM_BACKEND_ENGINE_URL": f"http://127.0.0.1:{eport}/v1",
+           "TANDEM_DEFAULT_BACKEND": "engine"}
+    proc, port, _ = serve(os.path.join(d, "state"), env)
+    try:
+        assert ask(port, "POST", "/v1/auth/setup", {"code": code, "username": "owner",
+                                                     "password": PW}, INGRESS)[0] == 201
+        st, h, out = ask(port, "POST", "/v1/auth/session", {"username": "owner",
+                                                            "password": PW}, INGRESS)
+        assert st == 200 and h["Set-Cookie"].startswith("__Host-tandem_session="), (st, h)
+        page = {**INGRESS, "Cookie": h["Set-Cookie"].split(";", 1)[0],
+                "X-Tandem-CSRF": json.loads(out)["csrf"]}
+        st, _, out = ask(port, "GET", "/v1/settings/api", headers=page)
+        values = {v["key"]: v["value"] for v in json.loads(out)["values"]}
+        assert values["openai.exposure"] == values["anthropic.exposure"] == "this-machine", values
+        st, _, out = ask(port, "POST", "/v1/auth/tokens", {
+            "label": "laptop", "scopes": ["inference:openai", "inference:anthropic"]}, page)
+        assert st == 201, out[:200]
+        tok = {**INGRESS, "Authorization": f"Bearer {json.loads(out)['token']}"}
+        for path, body in (("/v1/chat/completions", CHAT), ("/v1/messages", MSG)):
+            # the page's Playground, signed in, through the ingress: 200
+            st, _, out = ask(port, "POST", path, body, page)
+            assert st == 200, (path, st, out[:300])
+            # a token from another device while the protocol is "this machine": the refusal
+            st, _, out = ask(port, "POST", path, body, tok)
+            assert st == 403 and b"Other devices cannot use this API" in out, (path, st, out)
+        # the switch at network (an owner with a password may set it): the token's call answers
+        st, _, out = ask(port, "POST", "/v1/settings/api/plan",
+                         {"set": {"openai.exposure": "network"}}, page)
+        assert st == 200, out[:300]
+        plan = json.loads(out)
+        st, _, out = ask(port, "POST", "/v1/settings/api/apply",
+                         {"set": {"openai.exposure": "network"}, "confirm": plan["confirm"]},
+                         page)
+        assert st == 200, out[:300]
+        assert ask(port, "POST", "/v1/chat/completions", CHAT, tok)[0] == 200
+        assert ask(port, "POST", "/v1/messages", MSG, tok)[0] == 403
+    finally:
+        stop(proc)
+        srv.shutdown()
+    return "through the ingress: the page 200, a token 403 at this-machine and 200 at network"
 
 
 def test_notes_exec_lines():

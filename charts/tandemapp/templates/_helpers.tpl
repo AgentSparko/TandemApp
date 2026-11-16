@@ -94,27 +94,15 @@ proxy/tokens.py MESSAGES). /v1/models is never among them: the page reads it */}
 {{- end -}}
 
 {{/* {"openai": bool, "anthropic": bool}: does the ingress route the protocol's paths.
-ingress.api.<protocol> when set. Empty: legacy mode routes them (as before); accounts mode follows
-the running release on an upgrade (its TANDEM_INGRESS_API; a release without it that is not in
-accounts mode routed every path) and blocks them on a new install */}}
+ingress.api.<protocol> false blocks them; true or empty routes them, in both auth modes, on a new
+install and an upgrade alike. Who may call is the controller's rule (the API exposure switch: a
+token from another device needs the protocol at "network"; a signed-in page always may) */}}
 {{- define "tandemapp.apiRouted" -}}
 {{- $out := dict -}}
 {{- $api := .Values.ingress.api | default dict -}}
-{{- $accounts := eq (include "tandemapp.authMode" .) "accounts" -}}
-{{- $run := dict -}}
-{{- if $accounts -}}{{- $run = include "tandemapp.runningEnv" . | fromJson -}}{{- end -}}
 {{- range $p := list "openai" "anthropic" -}}
 {{- $raw := get $api $p -}}
-{{- $v := "" -}}{{- if not (kindIs "invalid" $raw) -}}{{- $v = toString $raw -}}{{- end -}}
-{{- if eq $v "true" -}}{{- $_ := set $out $p true -}}
-{{- else if eq $v "false" -}}{{- $_ := set $out $p false -}}
-{{- else if not $accounts -}}{{- $_ := set $out $p true -}}
-{{- else if hasKey $run "TANDEM_INGRESS_API" -}}
-{{- $_ := set $out $p (has $p (splitList "," (toString (get $run "TANDEM_INGRESS_API")))) -}}
-{{- else if and (get $run "running") (ne (toString (get $run "TANDEM_AUTH")) "accounts") -}}
-{{- $_ := set $out $p true -}}
-{{- else -}}{{- $_ := set $out $p false -}}
-{{- end -}}
+{{- $_ := set $out $p (ne (toString $raw) "false") -}}
 {{- end -}}
 {{- toJson $out -}}
 {{- end -}}
@@ -140,7 +128,7 @@ neither (an empty value would read as "not known") */}}
 {{- toJson (uniq $out) -}}
 {{- end -}}
 
-{{/* TANDEM_CHAT, TANDEM_CONDUCTOR, TANDEM_AUTH and TANDEM_INGRESS_API of the controller this
+{{/* TANDEM_CHAT and TANDEM_CONDUCTOR of the controller this
 release runs now (an upgrade), as JSON, with "running": true; {} on a new install and wherever the
 cluster is not asked (helm template, lint) */}}
 {{- define "tandemapp.runningEnv" -}}
@@ -151,7 +139,7 @@ cluster is not asked (helm template, lint) */}}
 {{- range $d.spec.template.spec.containers -}}
 {{- if eq .name "controller" -}}
 {{- range .env -}}
-{{- if and (has .name (list "TANDEM_CHAT" "TANDEM_CONDUCTOR" "TANDEM_AUTH" "TANDEM_INGRESS_API")) (hasKey . "value") -}}
+{{- if and (has .name (list "TANDEM_CHAT" "TANDEM_CONDUCTOR")) (hasKey . "value") -}}
 {{- $_ := set $out .name .value -}}
 {{- end -}}
 {{- end -}}

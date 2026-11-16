@@ -174,27 +174,31 @@ and open `https://tandemapp.example.com/`: the setup wizard (pairing an engine h
 - The chart's annotations turn buffering off and allow an hour per request: answers stream, and a
   long one takes minutes. A proxy in front needs the same.
 - Behind an ingress every client reaches the controller from the ingress pod's address, so the
-  sign-in limit (5 wrong passwords a minute) is shared by all clients.
-- **The API paths** (accounts mode). `ingress.api.openai` routes or blocks the OpenAI-compatible
-  routes (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/responses`,
-  `/v1/cache`), `ingress.api.anthropic` the Messages API (`/v1/messages`). A blocked path goes to
-  the Service with no endpoints (503). `/v1/models` is always routed: the page reads it. Empty, a
-  new install blocks both and an upgrade keeps what the running release did (a release before
-  accounts mode routed every path, so its clients keep working). `helm template` and a client-side
-  dry run see no running release: pin `ingress.api.openai: true` in the values of a release whose
-  clients use the API. The page's Playground on a backend (not a deployment), its model windows
-  and the developer view post to `/v1/chat/completions` too: with that path blocked they answer
-  503 through the ingress, so set `ingress.api.openai: true` when the page uses them. The chart
-  tells the controller what it routes (`TANDEM_INGRESS_API`); the
-  page's API exposure switch still decides who may call, and the health page says when the switch
-  is on for a path the ingress blocks (`exposure_unreachable`). In legacy mode every path is routed
-  unless a value says otherwise.
+  sign-in limit (5 wrong passwords a minute) is shared by all clients until `auth.trustedProxy`
+  names that address (below).
+- **The API paths.** The ingress routes the OpenAI-compatible routes (`/v1/chat/completions`,
+  `/v1/completions`, `/v1/embeddings`, `/v1/responses`, `/v1/cache`) and the Messages API
+  (`/v1/messages`) by default, in both auth modes, on a new install and an upgrade alike.
+  `/v1/models` is always routed: the page reads it. `ingress.api.openai: false` or
+  `ingress.api.anthropic: false` sends that protocol's paths to the Service with no endpoints
+  (503). The page's Playground, its model windows and the developer view post to
+  `/v1/chat/completions`, so `ingress.api.openai: false` breaks them through the ingress.
+  Who may call is the controller's rule, the page's API exposure switch (accounts mode): while a
+  protocol is "this machine", an API token from another device gets 403 `api_not_exposed`;
+  "network" lets a token with the protocol's scope in. A signed-in page session always reaches
+  the routes its role allows, whatever the switch says. On Kubernetes no caller counts as this
+  machine, so a client with a token needs its protocol at "network". The chart tells the
+  controller what it routes (`TANDEM_INGRESS_API`), and the health page says when a switch is on
+  for a path the ingress blocks (`exposure_unreachable`).
 - **The trusted proxy.** With TLS ended at the ingress, set `auth.trustedProxy` to the ingress
-  controller's address (`TANDEM_TRUSTED_PROXY`, a comma list of exact addresses). Only then do its
-  `X-Forwarded-Proto` and `X-Real-IP` count; without it every API token through the ingress is
-  taken as sent over plain HTTP (`exposure_plain_http`) and every client shares one sign-in limit.
-  The list takes no ranges: an ingress controller whose pod address changes needs the value
-  changed with it.
+  controller (`TANDEM_TRUSTED_PROXY`: a comma list of addresses and CIDR ranges, IPv4 and IPv6).
+  Only then do its `X-Forwarded-Proto` and `X-Real-IP` count; without it every API token through
+  the ingress is taken as sent over plain HTTP (`exposure_plain_http`) and every client shares one
+  sign-in limit. An ingress controller's pod gets a new address when it restarts, so name the
+  cluster's pod range rather than one address, for example with `--set`
+  `auth.trustedProxy=192.0.2.0/24\,2001:db8:42::/64` (write your cluster's own pod CIDR). An
+  entry that is neither an address nor a range is ignored, and the health page names the variable
+  (`trusted_proxy_invalid`).
 - `networkPolicy.enabled` admits the controller's port from `ingressNamespaces` and this release's
   pods only (`extraFrom` adds more). The kubelet's probes still pass.
 
@@ -209,8 +213,8 @@ The full table is the [chart's README](../charts/tandemapp/README.md). The ones 
 | `auth.mode` | `legacy` | `legacy` (the admin token in the env) or `accounts` (section 3) |
 | `auth.existingSecret`, `.secretKey` | a Secret the chart makes | the admin token; in accounts mode the setup code |
 | `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty: the Secret above | accounts mode: the setup code's own Secret |
-| `auth.trustedProxy` | empty | the ingress controller's address when it ends TLS (section 5) |
-| `ingress.api.openai`, `.anthropic` | empty: see section 5 | route or block each API's paths |
+| `auth.trustedProxy` | empty | the ingress controller's address or its pods' CIDR range when it ends TLS (section 5) |
+| `ingress.api.openai`, `.anthropic` | empty: routed | `false` blocks that API's paths (section 5) |
 | `chat.mode` | empty: off on a new install, the running release's on an upgrade | `off`, `own` (chatd in this pod), `external` (another host's chatd) |
 | `sandbox.mode` | `off` | `off`, `podman-socket`, `kubernetes` (section 7) |
 | `controller.conductor` | empty: off on a new install, the running release's on an upgrade | a folder under the volume, an absolute path, or `off` |
@@ -368,6 +372,7 @@ the volume, so no archive is needed. Releases are never removed by the chart: re
 | a moved chat's first sandbox start is slow | the one ACL pass over its files (section 7) |
 | every client is throttled after a few wrong passwords | they share the ingress's address (section 5) |
 | accounts mode: every route answers 401, also through `kubectl port-forward` | no owner yet: use the setup code (section 3); `users setup-code` through `kubectl exec` makes a new one |
-| the health page says `exposure_plain_http` behind a TLS ingress | `auth.trustedProxy` is not the ingress controller's address (section 5) |
-| an OpenAI client gets 503 through the ingress after the upgrade | `ingress.api.openai` is false, or a dry run rendered a new install: set it to true |
+| the health page says `exposure_plain_http` behind a TLS ingress | `auth.trustedProxy` does not cover the ingress controller's address (section 5) |
+| an OpenAI client gets 503 through the ingress | `ingress.api.openai` is false: unset it |
+| an OpenAI client with a token gets 403 `api_not_exposed` | the OpenAI API is "this machine" on the page's API exposure switch: set it to "network" |
 | `/chat-engine` answers from outside | the Ingress is not the chart's, or a proxy in front routes around it: block the path there too |

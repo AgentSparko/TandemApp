@@ -46,14 +46,15 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
 {{- if .Values.ingress.enabled }}
 {{- $r := include "tandemapp.apiRouted" . | fromJson }}
    The ingress routes the OpenAI-compatible API: {{ if $r.openai }}yes{{ else }}no{{ end }}; the Messages API: {{ if $r.anthropic }}yes{{ else }}no{{ end }}
-   (ingress.api.openai, ingress.api.anthropic). Who may call it is the page's API exposure switch.
+   (ingress.api.openai, ingress.api.anthropic). Who may call is the page's API exposure switch:
+   a token from another device needs its API switched on there; a signed-in page always works.
 {{- if not $r.openai }}
-   The page's Playground on a backend posts to /v1/chat/completions: it answers 503 here.
+   The page's Playground posts to /v1/chat/completions: it answers 503 here.
 {{- end }}
 {{- if not .Values.auth.trustedProxy }}
 {{- if .Values.ingress.tls }}
-   Set auth.trustedProxy to the ingress controller's address, or every API token through it
-   counts as sent without https (exposure_plain_http).
+   Set auth.trustedProxy to the ingress controller's address or its pods' CIDR range, or every
+   API token through it counts as sent without https (exposure_plain_http).
 {{- end }}
 {{- end }}
 {{- end }}

@@ -43,8 +43,10 @@ that makes the first owner; a release that had an admin token keeps it, and the 
 the setup code and then, for 30 days, as an API token for scripts. The pod never trusts its own
 loopback, so `kubectl port-forward` needs a sign-in like any client. NOTES prints where the code is,
 and the `kubectl exec` lines for a new code (`users setup-code`) and a lost password
-(`users reset-password NAME`). `ingress.api.*` routes or blocks each API's paths; `auth.trustedProxy`
-names the ingress controller when it ends TLS. docs/install-kubernetes.md has the whole of it.
+(`users reset-password NAME`). The ingress routes the API paths; `ingress.api.*` blocks one only when
+set to false. Who may call is the page's API exposure switch: a token from another device is refused
+while its API is "this machine", a signed-in page always works. `auth.trustedProxy` names the ingress
+controller, or its pods' CIDR range, when it ends TLS. docs/install-kubernetes.md has the whole of it.
 
 ## Values
 
@@ -65,7 +67,7 @@ names the ingress controller when it ends TLS. docs/install-kubernetes.md has th
 | `auth.mode` | `legacy` | `legacy`: the admin token in the controller's env; `accounts`: TANDEM_AUTH=accounts, the setup code as a file |
 | `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the admin token's Secret; in accounts mode the setup code's (made with 20 characters) |
 | `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty | accounts mode: a Secret of its own for the setup code; empty: the one above. No Secret at all is allowed: the code is then in the log |
-| `auth.trustedProxy` | empty | TANDEM_TRUSTED_PROXY: exact addresses of the proxies whose forwarded headers count |
+| `auth.trustedProxy` | empty | TANDEM_TRUSTED_PROXY: addresses and CIDR ranges (IPv4, IPv6) of the proxies whose forwarded headers count, e.g. `192.0.2.0/24` |
 | `chat.mode` | empty | `off`, `own` (chatd in this pod), `external` (another host's). Empty: off on a new install, the running release's on an upgrade. The page's switch wins once used |
 | `chat.dataDir`, `chat.env` | `data/chat`, {} | chatd's data folder under the volume, more lines of its env file |
 | `sandbox.mode` | `off` | `off`, `podman-socket`, `kubernetes` (below) |
@@ -78,7 +80,7 @@ names the ingress controller when it ends TLS. docs/install-kubernetes.md has th
 | `trust.extraCA`, `.existingConfigMap`, `.configMapKey` | empty | more CA certificates for every container |
 | `service.*` | ClusterIP, 80 | the Service |
 | `ingress.enabled`, `.className`, `.host`, `.annotations`, `.tls`, `.blockedPaths` | off; streaming annotations; `/chat-engine` and `/plugin-backends` blocked | the Ingress |
-| `ingress.api.openai`, `.anthropic` | empty | route (true) or block (false) the OpenAI-compatible paths and the Messages API's `/v1/messages`; `/v1/models` is always routed. Empty: routed in legacy mode; in accounts mode blocked on a new install, the running release's on an upgrade |
+| `ingress.api.openai`, `.anthropic` | empty | route (empty or true) or block (false) the OpenAI-compatible paths and the Messages API's `/v1/messages`; `/v1/models` is always routed. Blocking `openai` breaks the page's Playground through the ingress |
 | `networkPolicy.enabled`, `.ingressNamespaces`, `.extraFrom` | off | who may reach the controller's port |
 | `serviceAccount.*`, `podSecurityContext`, `securityContext` | uid 10001, read-only root, no capabilities | the pod's identity and lockdown |
 | `podAnnotations`, `podLabels`, `nodeSelector`, `tolerations`, `affinity`, `terminationGracePeriodSeconds` | | scheduling |

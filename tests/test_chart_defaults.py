@@ -26,10 +26,10 @@ sign-in of accounts (auth.mode) with the ingress's API paths.
   6  Given a release on the chart before accounts, When it is upgraded with auth.mode accounts,
      Then the Secret keeps its name, key and value (a rollback finds it) and is the setup code
                                                                 test_upgrade_keeps_the_secret
-  7  Given a release whose ingress routes /v1/chat/completions and ingress.api.openai empty, When
-     it is upgraded to accounts mode, Then the ingress still routes it, And a new install with the
-     same values blocks it; a release in accounts mode keeps what its TANDEM_INGRESS_API says
-                                                                test_upgrade_keeps_the_clients_path
+  7  Given ingress.api.openai and .anthropic empty, When the chart renders a new install or an
+     upgrade (of a release before accounts, or of one in accounts mode that blocked them), in
+     either auth mode, Then the ingress routes the API paths and TANDEM_INGRESS_API says
+     openai,anthropic; only false blocks a protocol             test_upgrade_keeps_the_clients_path
   8  Given ingress.api.anthropic false, Then /v1/messages goes to the blocked Service (503) while
      /v1/models stays routed; Given it true, Then /v1/messages is routed; the paths are the
      server's own lists                                         test_api_paths
@@ -315,6 +315,9 @@ def test_accounts_values():
     # the proxy in front
     rc, out = render("auth.mode=accounts", "auth.trustedProxy=192.0.2.10")
     assert controller_env(out)["TANDEM_TRUSTED_PROXY"] == "192.0.2.10"
+    # ranges, IPv4 and IPv6, as the comma list the controller parses (tandemapp/auth.py)
+    rc, out = render("auth.mode=accounts", r"auth.trustedProxy=192.0.2.0/24\,2001:db8:42::/64")
+    assert controller_env(out)["TANDEM_TRUSTED_PROXY"] == "192.0.2.0/24,2001:db8:42::/64"
     # refusals
     for sets, words in {
         ("auth.mode=open",): "auth.mode is legacy or accounts",
@@ -387,35 +390,27 @@ def test_upgrade_keeps_the_secret(tmp_path):
 def test_upgrade_keeps_the_clients_path(tmp_path):
     chart = _chart_with_running(str(tmp_path))
     before = _running(str(tmp_path), BEFORE)
-    rc, out = render("auth.mode=accounts", *ING, chart=chart, values=before)
-    assert rc == 0, out[-800:]
-    assert blocked(out) == ["/chat-engine", "/plugin-backends"], blocked(out)
-    assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
-    # values that say it win
-    rc, out = render("auth.mode=accounts", *ING, "ingress.api.openai=false", chart=chart,
-                     values=before)
-    assert blocked(out)[2:] == OPENAI_PATHS and controller_env(out)["TANDEM_INGRESS_API"] == \
-        "anthropic"
-    # a new install with the same values blocks both
-    rc, out = render("auth.mode=accounts", *ING, chart=chart)
-    assert blocked(out) == ["/chat-engine", "/plugin-backends", *OPENAI_PATHS, "/v1/messages"]
-    assert controller_env(out)["TANDEM_INGRESS_API"] == "none" and routed_root(out)
-    # a release in accounts mode keeps what its TANDEM_INGRESS_API says
-    for said, want in {"openai": ["/v1/messages"], "anthropic": OPENAI_PATHS,
-                       "openai,anthropic": [], "none": OPENAI_PATHS + ["/v1/messages"]}.items():
-        run = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"},
-                                       {"name": "TANDEM_INGRESS_API", "value": said}])
-        rc, out = render("auth.mode=accounts", *ING, chart=chart, values=run)
-        assert blocked(out)[2:] == want, (said, blocked(out))
-    # in accounts mode with no ingress before (no TANDEM_INGRESS_API): a new ingress blocks both
-    run = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"}])
-    rc, out = render("auth.mode=accounts", *ING, chart=chart, values=run)
-    assert blocked(out)[2:] == OPENAI_PATHS + ["/v1/messages"]
-    # legacy mode: the ingress as before, whatever runs
-    rc, out = render(*ING, chart=chart)
-    assert blocked(out) == ["/chat-engine", "/plugin-backends"]
-    assert "TANDEM_INGRESS_API" not in controller_env(out)
-    return "an upgrade keeps routing the API; a new install blocks it; accounts keep their own"
+    blocked_o1 = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"},
+                                          {"name": "TANDEM_INGRESS_API", "value": "none"}])
+    # empty routes both: a new install, an upgrade of either kind, in both auth modes
+    for mode in ("accounts", "legacy"):
+        for values in (None, before, blocked_o1):
+            rc, out = render(f"auth.mode={mode}", *ING, chart=chart, values=values)
+            assert rc == 0, out[-800:]
+            assert blocked(out) == ["/chat-engine", "/plugin-backends"], (mode, values,
+                                                                          blocked(out))
+            assert routed_root(out)
+            if mode == "accounts":
+                assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
+            else:
+                assert "TANDEM_INGRESS_API" not in controller_env(out)
+    # only false blocks, on an upgrade as on a new install
+    for values in (None, before):
+        rc, out = render("auth.mode=accounts", *ING, "ingress.api.openai=false", chart=chart,
+                         values=values)
+        assert blocked(out)[2:] == OPENAI_PATHS
+        assert controller_env(out)["TANDEM_INGRESS_API"] == "anthropic"
+    return "empty routes the API paths on a new install and every upgrade; false blocks"
 
 
 def test_api_paths():
@@ -446,12 +441,15 @@ def test_api_paths():
     # a value set in legacy mode is applied too
     rc, out = render(*ING, "ingress.api.anthropic=false")
     assert blocked(out)[2:] == ["/v1/messages"]
-    # the blocked Service is there for the API paths alone
+    # empty: both routed, no blocked Service without blocked paths
     rc, out = render("auth.mode=accounts", *ING, "ingress.blockedPaths=null")
-    assert blocked(out) == OPENAI_PATHS + ["/v1/messages"] and "name: t-tandemapp-blocked" in out
-    rc, out = render("auth.mode=accounts", *ING, "ingress.blockedPaths=null",
-                     "ingress.api.openai=true", "ingress.api.anthropic=true")
     assert blocked(out) == [] and "t-tandemapp-blocked" not in out
+    assert controller_env(out)["TANDEM_INGRESS_API"] == "openai,anthropic"
+    # the blocked Service is there for the API paths alone
+    rc, out = render("auth.mode=accounts", *ING, "ingress.blockedPaths=null",
+                     "ingress.api.openai=false", "ingress.api.anthropic=false")
+    assert blocked(out) == OPENAI_PATHS + ["/v1/messages"] and "name: t-tandemapp-blocked" in out
+    assert controller_env(out)["TANDEM_INGRESS_API"] == "none"
     return "per protocol: blocked or routed; /v1/models always routed; the server's own lists"
 
 
@@ -502,9 +500,7 @@ AUTH_BITS = re.compile(
     r"^\s+(# .*|- \{name: TANDEM_(DEPLOY|AUTH|SETUP_CODE_FILE|ADMIN_TOKEN_FILE|INGRESS_API), "
     r"value: .*\}|- \{name: auth, mountPath: /etc/tandemapp/auth, readOnly: true\}|- name: auth|"
     r"secret:|secretName: t-tandemapp-admin|optional: true|defaultMode: 0440|items:|"
-    r"- \{key: admin-token, path: setup-code\}|- path: /v1/(chat/completions|completions|"
-    r"embeddings|responses|cache|messages)|pathType: Prefix|backend:|service:|"
-    r"name: t-tandemapp-blocked|port:|number: 80)$")
+    r"- \{key: admin-token, path: setup-code\})$")
 
 
 def test_single_node_render(tmp_path):
@@ -519,8 +515,9 @@ def test_single_node_render(tmp_path):
     assert gone == ENV_SECRET, gone
     assert added and all(AUTH_BITS.match(x) for x in added), \
         [x for x in added if not AUTH_BITS.match(x)]
-    assert "            - {name: TANDEM_INGRESS_API, value: \"none\"}" in added
-    # the same values as an upgrade of the release before: its ingress keeps the API paths
+    assert "            - {name: TANDEM_INGRESS_API, value: \"openai,anthropic\"}" in added
+    assert not any("- path: /v1/" in x for x in added), "the ingress routes the API paths"
+    # the same values as an upgrade of the release before: the same objects
     chart = _chart_with_running(str(tmp_path))
     running = _running(str(tmp_path), BEFORE, secret=OLD_TOKEN)
     argv = [_helm(), "template", "t", chart, "-n", "ns", "-f", SINGLE_NODE, "-f", running,
@@ -582,12 +579,16 @@ def test_notes():
                   f"{cli} users reset-password NAME --config-db "
                   "/var/lib/tandemapp/state/config.sqlite3",
                   "API token for scripts that ends after 30 days", "bootstrap_secret_left",
-                  "roll back", "OpenAI-compatible API: no; the Messages API: no",
-                  "Playground on a backend posts to /v1/chat/completions",
-                  "auth.trustedProxy", f"{cli} tokens chatd-key /tmp/chatd.key",
-                  "/v1/messages is not routed"):
+                  "roll back", "OpenAI-compatible API: yes; the Messages API: yes",
+                  "a signed-in page always works",
+                  "auth.trustedProxy", "CIDR range", f"{cli} tokens chatd-key /tmp/chatd.key",
+                  "/plugin-backends is not routed"):
         assert words in n, (words, n)
-    assert "TANDEM_ADMIN_TOKEN" not in n
+    assert "TANDEM_ADMIN_TOKEN" not in n and "Playground" not in n
+    assert "/v1/messages" not in n and "/v1/chat/completions" not in n, "routed by default"
+    n = notes("auth.mode=accounts", *ING, "ingress.api.openai=false")
+    assert "OpenAI-compatible API: no; the Messages API: yes" in n
+    assert "Playground posts to /v1/chat/completions: it answers 503 here" in n
     n = notes("auth.mode=accounts", "auth.bootstrap.existingSecret=code", *ING,
               "ingress.api.openai=true", "auth.trustedProxy=192.0.2.10")
     assert "Secret code, key admin-token" in n and "30 days" not in n

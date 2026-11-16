@@ -115,9 +115,10 @@ auth:
     existingSecret: ""
     secretKey: ""
     create: null
-  # the addresses of proxies in front whose X-Forwarded-Proto and X-Real-IP count
-  # (TANDEM_TRUSTED_PROXY, a comma list of exact addresses, no ranges): the ingress controller
-  # when it ends TLS, else every API token through it counts as sent without https
+  # the proxies in front whose X-Forwarded-Proto and X-Real-IP count (TANDEM_TRUSTED_PROXY, a
+  # comma list of addresses and CIDR ranges, IPv4 and IPv6): the ingress controller when it ends
+  # TLS, else every API token through it counts as sent without https. Its pod's address changes,
+  # so name the cluster's pod range (e.g. 192.0.2.0/24); `\,` between entries with --set
   trustedProxy: ""
 
 # -- Chat: who runs chatd. off: nobody, the Chat tab says Chat is off until an admin switches it
@@ -226,13 +227,13 @@ ingress:
   blockedPaths:
     - /chat-engine
     - /plugin-backends
-  # the API paths, per protocol: true routes them, false adds them to the blocked paths.
+  # the API paths, per protocol: empty or true routes them, false adds them to the blocked paths.
   # openai: /v1/chat/completions, /v1/completions, /v1/embeddings, /v1/responses, /v1/cache.
   # anthropic: /v1/messages (the Messages API). /v1/models is always routed (the page reads it).
-  # Empty: routed in legacy mode; in accounts mode blocked on a new install and as the running
-  # release had it on an upgrade (a release before accounts routed every path). The page's API
-  # exposure switch still decides who may call; this only says whether the ingress gets there.
-  # The page's Playground on a backend posts to /v1/chat/completions too: openai false blocks it.
+  # Who may call is the page's API exposure switch: a token from another device is refused while
+  # its protocol is "this machine"; a signed-in page always gets through. The page's Playground,
+  # its model windows and the developer view post to /v1/chat/completions: openai false breaks
+  # them through the ingress.
   api:
     openai: ""
     anthropic: ""
