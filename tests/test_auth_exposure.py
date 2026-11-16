@@ -40,6 +40,8 @@ this_machine); the Messages API's routes come with SRV-879, so its cells check t
   need the owner's password (never from local mode); api.listen writes TANDEM_HOST to the env
   file for the next restart and is locked on Kubernetes; a token reads neither scope; a change set
   or a restore through another route is refused the same way   test_scopes_rules
+  A move carries none of either scope's settings: the export leaves them out, an import drops any
+  a bundle holds                                                 test_a_move_carries_no_account_settings
 
     python tests/test_auth_exposure.py
 """
@@ -532,6 +534,49 @@ def test_viewers_may_create_rights():
         assert change(px, own, "api", {"tokens.viewers_may_create": "off"})[0] == 200
         assert not accounts().policy.viewers_may_create
     return "off; an admin and an owner switch it; an operator and a token cannot"
+
+
+# ---------------------------------------------------------------------------- the move
+
+def test_a_move_carries_no_account_settings():
+    """Only the highest role changes the auth and api settings, so a move (another controller's
+    export, a take by an admin's trust token) brings none: the export leaves them out, and an
+    import drops any a bundle holds."""
+    import base64
+    import sqlite3
+    from proxy import config as config_mod
+    from proxy import ctlmove
+    with Proxy(env=ON) as px:
+        own = setup(px)
+        assert change(px, own, "api", {"openai.exposure": "network"})[0] == 200
+        assert change(px, own, "auth", {"local_mode": "off"})[0] == 200
+        px.svc.cfg.set_setting("app.marker", "kept", who="test")
+        bundle = ctlmove.export(px.svc.cfg)
+    d = tempfile.mkdtemp(prefix="move-settings-")
+    raw = os.path.join(d, "b.sqlite3")
+    with open(raw, "wb") as f:
+        f.write(base64.b64decode(bundle["db"]))
+    con = sqlite3.connect(raw)
+    keys = {r[0] for r in con.execute("SELECT key FROM settings")}
+    assert "app.marker" in keys and not any(k.startswith(("auth.", "api.")) for k in keys), keys
+    # a bundle that holds them anyway (an older or a crafted export)
+    for k, v in (("api.openai.exposure", "network"), ("auth.local_mode", "off"),
+                 ("api.tokens.viewers_may_create", "on")):
+        con.execute("INSERT OR REPLACE INTO settings(key, value, updated_at) VALUES (?, ?, 1)",
+                    (k, json.dumps(v)))
+    con.commit()
+    con.close()
+    with open(raw, "rb") as f:
+        bundle["db"] = base64.b64encode(f.read()).decode()
+    cfg = config_mod.ConfigDB(os.path.join(d, "config.sqlite3"), env={}, use_keychain=False).open()
+    try:
+        ctlmove.import_bundle(cfg, bundle, os.path.join(d, "c.pem"), os.path.join(d, "k.pem"))
+        assert cfg.setting("app.marker") == "kept"
+        for k in ("api.openai.exposure", "auth.local_mode", "api.tokens.viewers_may_create"):
+            assert cfg.setting(k) is None, k
+    finally:
+        cfg.close()
+    return "left out of the export, dropped from an import"
 
 
 # ---------------------------------------------------------------------------- the rest

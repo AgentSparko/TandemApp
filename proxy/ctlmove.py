@@ -98,7 +98,8 @@ USER_COLS = ("label", "key_hash", "key_hint", "role", "enabled", "created_at", "
 LOOPBACK_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost")
 #: SRV-871: the sign-in's and the API's settings stay with the accounts and tokens, which no
 #: export carries
-SKIP_SETTINGS = ("controller.", "fleet.", "auth.", "api.")
+ACCOUNT_SETTINGS = ("auth.", "api.")
+SKIP_SETTINGS = ("controller.", "fleet.") + ACCOUNT_SETTINGS
 STEPS = {"push": (("check", "Check {to}"), ("export", "Export the fleet"),
                   ("start", "Start the controller on {to}"),
                   ("repin", "Hand the nodes to the new controller"),
@@ -339,8 +340,13 @@ def import_bundle(cfg, bundle: dict, cert: str, key: str, who: str = "controller
                         continue
                     if t == "users":
                         c.execute("DELETE FROM main.users")
+                    # SRV-871: the sign-in's and the API's settings never come with a move,
+                    # whatever the bundle holds (only the highest role changes them, here)
+                    where, args = ("", ()) if t != "settings" else (
+                        " WHERE " + " AND ".join("key NOT LIKE ?" for _ in ACCOUNT_SETTINGS),
+                        tuple(p + "%" for p in ACCOUNT_SETTINGS))
                     c.execute(f"INSERT OR REPLACE INTO main.{t}({', '.join(cols)}) SELECT "
-                              f"{', '.join(cols)} FROM src.{t}")
+                              f"{', '.join(cols)} FROM src.{t}{where}", args)
                     n[t] = c.execute(f"SELECT COUNT(*) FROM src.{t}").fetchone()[0]
                     if t == "backends":
                         ids = [r[0] for r in c.execute("SELECT id FROM src.backends")]
