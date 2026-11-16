@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS hook_secrets (
   expires_at INTEGER);
 """
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,47}$")
+#: ids the hooks' API answers routes of its own at (/v1/fleet/hooks/stages, /calls)
+RESERVED = ("stages", "calls")
 SCOPE_KEYS = ("models", "backends", "profiles", "users", "sessions", "client_kinds")
 FIELDS = ("name", "kind", "stages", "role", "priority", "mode", "scope", "policy", "timeout_ms",
           "payload", "endpoint", "target", "options", "enabled")
@@ -286,7 +288,7 @@ class HookStore:
         if not ID_RE.match(base):
             base = "hook"
         hid, n = base, 2
-        while self.get(hid) is not None:
+        while self.get(hid) is not None or hid in RESERVED:
             hid = f"{base}-{n}"
             n += 1
         return hid
@@ -311,6 +313,8 @@ class HookStore:
             hid = self._free_id(d["name"])
         elif not isinstance(hid, str) or not ID_RE.match(hid):
             raise _bad("id: [a-z0-9][a-z0-9._-]{0,47}", "id")
+        elif hid in RESERVED:
+            raise _bad(f"id: {hid!r} is a route of the hooks' API; choose another", "id")
         elif self.get(hid) is not None:
             raise HookError(409, "exists", f"a hook {hid!r} exists", "id")
         d["id"] = hid

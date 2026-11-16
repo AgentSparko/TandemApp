@@ -827,6 +827,31 @@ class Runner:
         with st.lock:
             return list(st.journal)[-limit:][::-1]
 
+    def trace(self, request: str) -> list[dict]:
+        """Every journaled call of one request across the hooks and stages, in the order the
+        request met them: by time, then the stage's place in the path, then the hook's priority
+        and id. Each carries its hook's id and name (the id when the hook is gone)."""
+        names: dict = {}
+        prio: dict = {}
+        try:
+            rows = self.store.list() if self.store.ready() else []
+        except Exception:                                          # noqa: BLE001
+            rows = []
+        for h in rows + [h for h in self.hooks() if h["id"] not in names]:
+            names.setdefault(h["id"], h["name"])
+            prio.setdefault(h["id"], h["priority"])
+        order = {s: i for i, s in enumerate(S.STAGES)}
+        out = []
+        for hid, st in list(self.stats.items()):
+            with st.lock:
+                got = [dict(e) for e in st.journal if e.get("request") == request]
+            for e in got:
+                e["hook"], e["name"] = hid, names.get(hid, hid)
+                out.append(e)
+        out.sort(key=lambda e: (e["ts"], order.get(e["stage"], len(order)),
+                                prio.get(e["hook"], 0), e["hook"]))
+        return out
+
     def metrics(self, hid: str) -> dict:
         out = self._stats(hid).view()
         out["breaker"] = self._breaker(hid).view()

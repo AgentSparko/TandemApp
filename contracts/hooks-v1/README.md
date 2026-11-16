@@ -10,7 +10,7 @@ A remote hook is code outside TandemApp that the controller calls at a stage of 
 | `result.schema.json` | what a hook answers: `{action: continue\|modify\|deny\|decide, patch, decision, reason, labels}` |
 | `examples/<stage>.<payload>.json` | one call per stage as a `meta` hook gets it, and as a `full` one where the stage has content |
 | `fake_server.py` | a receiver for tests and trying hooks by hand: it checks every call's signature, timestamp and replay as a receiver must |
-| `hooks.schema.json`, `hook.schema.json`, `hook-one.schema.json`, `hook-new.schema.json`, `hook-patch.schema.json`, `hook-created.schema.json`, `hook-test.schema.json`, `hook-calls.schema.json`, `error.schema.json` | the controller's admin API, `/v1/fleet/hooks/*` (below) |
+| `hooks.schema.json`, `hook.schema.json`, `hook-one.schema.json`, `hook-new.schema.json`, `hook-patch.schema.json`, `hook-created.schema.json`, `hook-test.schema.json`, `hook-calls.schema.json`, `hook-trace.schema.json`, `error.schema.json` | the controller's admin API, `/v1/fleet/hooks/*` (below) |
 
 `tests/test_hooks_contract.py` holds `stages.json` to `proxy/hookstages.py`, every example and every call the runner makes to these schemas, and the admin API's answers to theirs.
 
@@ -72,6 +72,7 @@ Under the controller's admin rights (the configuration's writes); granting `full
 | `POST /v1/fleet/hooks/{id}/enable`, `/disable`; `PUT .../mode {mode}` | `hook-one.schema.json` |
 | `POST /v1/fleet/hooks/{id}/test {stage?, event?}` | `hook-test.schema.json` |
 | `GET /v1/fleet/hooks/{id}/calls?limit=N` | `hook-calls.schema.json` |
+| `GET /v1/fleet/hooks/calls?request=<id>` | `hook-trace.schema.json`: one request across every hook and stage, from the journals |
 | `POST /v1/fleet/hooks/{id}/secret {grace_s?}` | `hook-created.schema.json` |
 
 Errors are `error.schema.json`. A grant of `full` outside the LAN answers 409 `confirm_needed` with `confirm`; the same request with that `confirm` applies it.

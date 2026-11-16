@@ -14,6 +14,9 @@
                                                  stage's sample event (the playground's call);
                                                  nothing counted, nothing applied
     GET    /v1/fleet/hooks/{id}/calls?limit=N    the journal, newest first (never a payload)
+    GET    /v1/fleet/hooks/calls?request=<id>    one request's trace: every journaled call of
+                                                 that request, across hooks and stages, in the
+                                                 order the request met them
     POST   /v1/fleet/hooks/{id}/secret           {grace_s?}: a new secret, answered once; the
                                                  previous one signs beside it for grace_s
 
@@ -114,6 +117,12 @@ def _route(runner, method: str, sub: list[str], body, who: str, q: dict) -> tupl
             return 201, out
     elif sub == ["stages"] and method == "GET":
         return 200, hookstages.export()
+    elif sub == ["calls"] and method == "GET":
+        rid = q.get("request")
+        if not rid or len(rid) > 200:
+            raise HookError(400, "bad_request", "request: the id of a request (its "
+                                                "X-Request-Id, or a journal row's `request`)")
+        return 200, {"request": rid, "calls": runner.trace(rid)}
     elif len(sub) == 1:
         hid = sub[0]
         if method == "GET":

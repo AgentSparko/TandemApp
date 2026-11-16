@@ -7,6 +7,7 @@
      relay, validates against call.schema and its stage's event      test_real_calls_validate
   4  results: the schema's shape and the runner's check agree        test_results_validate
   5  the admin API's answers validate against their schemas          test_api_answers_validate
+  5b one request's trace across hooks and stages, in the path's order test_real_calls_validate
   6  the fake hook server refuses a wrong signature, an old timestamp
      and a replay, and signs as proxy/hookcall.py does              test_fake_server_refuses
   7  the README names every file of the folder                      test_readme_names_every_file
@@ -132,7 +133,27 @@ def test_real_calls_validate():
                     assert e["event"]["content"]["messages"], e
                 seen[e["stage"]] = seen.get(e["stage"], 0) + 1
             assert set(seen) == set(wired), set(wired) - set(seen)
-            return f"{len(hs.calls)} calls at {len(seen)} stages"
+            # SRV-849: one request's trace holds every call of it, across hooks and stages
+            per: dict = {}
+            for c in hs.calls:
+                per.setdefault(c["env"]["request"]["request_id"], []).append(c["env"])
+            rid, envs = max(per.items(), key=lambda kv: len({e["stage"] for e in kv[1]}))
+            from urllib.parse import quote
+            code, _, out = px.get(f"/v1/fleet/hooks/calls?request={quote(rid)}")
+            got = json.loads(out)
+            assert code == 200 and not _check(got, "hook-trace.schema.json"), got
+            assert got["request"] == rid and len(got["calls"]) == len(envs), (got, len(envs))
+            assert sorted((c["hook"], c["stage"]) for c in got["calls"]) == \
+                sorted((e["hook"], e["stage"]) for e in envs)
+            names = {h["id"]: h["name"] for h in json.loads(px.get("/v1/fleet/hooks")[2])["hooks"]}
+            assert all(c["name"] == names[c["hook"]] for c in got["calls"])
+            order = list(S.STAGES)
+            keys = [(c["ts"], order.index(c["stage"])) for c in got["calls"]]
+            assert keys == sorted(keys), keys                   # the order the request met them
+            assert len({c["stage"] for c in got["calls"]}) > 1
+            code, _, out = px.get("/v1/fleet/hooks/calls?request=nope-0")
+            assert code == 200 and json.loads(out) == {"request": "nope-0", "calls": []}
+            return f"{len(hs.calls)} calls at {len(seen)} stages, a trace of {len(envs)}"
     finally:
         s1.shutdown()
         s2.shutdown()
@@ -193,6 +214,12 @@ def test_api_answers_validate():
             got = json.loads(out)
             assert st == 200 and got["calls"][0]["mode"] == "test", got
             assert not _check(got, "hook-calls.schema.json"), got
+            rid = got["calls"][0]["request"]
+            st, _, out = px.get(f"/v1/fleet/hooks/calls?request={rid}")
+            tr = json.loads(out)
+            assert st == 200 and not _check(tr, "hook-trace.schema.json"), tr
+            assert [(c["hook"], c["name"], c["mode"]) for c in tr["calls"]] == \
+                [(hid, "Temperature cap", "test")], tr
             st, _, out = px.post(f"/v1/fleet/hooks/{hid}/secret", {"grace_s": 60})
             got = json.loads(out)
             assert st == 200 and not _check(got, "hook-created.schema.json"), got
@@ -208,6 +235,10 @@ def test_api_answers_validate():
                                                  "http://127.0.0.1:1/", "role": "observer",
                                                  "stages": ["request.finished"]}, 409),
                     ("GET", "/v1/fleet/hooks/nope", None, 404),
+                    ("GET", "/v1/fleet/hooks/calls", None, 400),
+                    ("POST", "/v1/fleet/hooks", {"name": "x", "id": "calls", "endpoint":
+                                                 "http://127.0.0.1:1/", "role": "observer",
+                                                 "stages": ["request.finished"]}, 422),
                     ("POST", "/v1/fleet/hooks", {"name": "x", "endpoint":
                                                  "http://u:p@127.0.0.1:1/", "role": "observer",
                                                  "stages": ["request.finished"]}, 422),

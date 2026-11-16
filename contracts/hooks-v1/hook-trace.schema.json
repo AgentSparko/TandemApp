@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GET /v1/fleet/hooks/calls?request=<id>",
+  "description": "one request's trace: every call the hooks' journals still hold for that request id, across hooks and stages, in the order the request met them (by time, then the stage's place in the path, then the hook's priority and id). Ids, outcomes and sizes, never a payload. Empty when no hook was in its scope, or the journals no longer hold it.",
+  "type": "object",
+  "properties": {
+    "request": {
+      "type": "string"
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "hook": {
+            "type": "string",
+            "description": "the hook's id"
+          },
+          "name": {
+            "type": "string",
+            "description": "the hook's name now, its id when it is gone"
+          },
+          "ts": {
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "request.received",
+              "route.select",
+              "request.before_engine",
+              "decision.ask",
+              "stream.chunk",
+              "tool_call.detected",
+              "tool.before_exec",
+              "tool.after_exec",
+              "response.after_engine",
+              "request.error",
+              "request.finished",
+              "memory.write",
+              "session.start",
+              "session.compact",
+              "engine.lifecycle"
+            ]
+          },
+          "request": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "on",
+              "shadow",
+              "test"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "ok",
+              "timeout",
+              "error",
+              "invalid",
+              "cap",
+              "breaker_open",
+              "redaction_failed",
+              "refused",
+              "dropped"
+            ]
+          },
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": "number"
+          },
+          "breaker": {
+            "enum": [
+              "closed",
+              "open",
+              "half_open"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object"
+          },
+          "decision": {
+            "type": "object"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "string"
+          },
+          "diff": {
+            "type": "object",
+            "description": "shadow: field -> {op, bytes}, or {deny: true}, or {decision}; never a value"
+          }
+        },
+        "required": [
+          "hook",
+          "name",
+          "ts",
+          "stage",
+          "request",
+          "mode",
+          "outcome",
+          "action",
+          "duration_ms",
+          "breaker"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "request",
+    "calls"
+  ],
+  "additionalProperties": false
+}

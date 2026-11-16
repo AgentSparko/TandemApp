@@ -195,6 +195,7 @@ The answer holds the hook and, once, its `secret`. Then:
 
 - `POST /v1/fleet/hooks/{id}/test {"stage": "request.before_engine"}` calls it once with the stage's sample event and shows what it answered and what it would change. Nothing is applied or counted.
 - `PUT /v1/fleet/hooks/{id}/mode {"mode": "shadow"}` lets it see real traffic without changing it; `GET /v1/fleet/hooks/{id}/calls` shows each call's outcome and, for a shadow, the diff (field names and sizes).
+- `GET /v1/fleet/hooks/calls?request=<id>` traces one request: every call the journals hold for it, across hooks and stages, in the order the request met them, each with its hook's name.
 - `POST /v1/fleet/hooks/{id}/disable`, `/enable`, `PATCH`, `DELETE`.
 - `POST /v1/fleet/hooks/{id}/secret {"grace_s": 3600}` rotates the secret; the old one keeps signing beside it for the grace.
 
