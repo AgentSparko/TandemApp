@@ -305,7 +305,7 @@ describe('add a hook', () => {
     html = addPage(p);
     expect([...html.matchAll(/data-card=(\w+)>/g)].map((m) => m[1]).filter((c) => ['transform', 'guard', 'decider', 'observer'].includes(c))).toEqual(['decider', 'observer']);
     expect([...html.split('data-cards=payload')[1].matchAll(/data-card=(\w+)>/g)].map((m) => m[1]).slice(0, 3)).toEqual(p.flow.table!.payloads);
-    expect(html).toContain('Plugin, MCP, In-process: not in this version.');
+    expect(html).toContain('MCP, In-process: not in this version.');
     // each payload level says in plain words what leaves TandemApp
     for (const s of ['Facts only', 'Never a word of a prompt or an answer.', 'Text with secrets removed', 'replaced by [redacted:kind]', 'Everything as written', 'A destination outside the LAN asks a second time']) expect(html).toContain(s);
     // nothing is refused until the user tries; then every field says what is wrong with it

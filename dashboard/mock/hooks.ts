@@ -51,7 +51,7 @@ const OPTIONS: Record<string, string[]> = { classify: ['code_edit', 'chat', 'res
 export const BUILTIN_NAMES = ['deny', 'fallback', 'noop', 'route', 'set'];
 const SCOPE_KEYS = ['models', 'backends', 'profiles', 'users', 'sessions', 'client_kinds'] as const;
 const HOOK_FIELDS = ['name', 'kind', 'stages', 'role', 'priority', 'mode', 'scope', 'policy', 'timeout_ms', 'payload', 'endpoint', 'target', 'options', 'enabled'];
-const PROVIDER_FIELDS = ['name', 'kind', 'endpoint', 'hook_id', 'model', 'timeout_ms', 'questions', 'mode', 'ab_percent', 'sticky', 'enabled', 'api_key'];
+const PROVIDER_FIELDS = ['name', 'kind', 'endpoint', 'hook_id', 'target', 'model', 'timeout_ms', 'questions', 'mode', 'ab_percent', 'sticky', 'enabled', 'api_key'];
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,47}$/;
 const PROVIDER_TIMEOUT_MAX = 5000;
 const JOURNAL = 500;
@@ -70,7 +70,7 @@ const SENTENCE: Record<string, string> = {
   exists: 'a hook with that id exists',
   no_secret: 'only an http hook has a secret',
   question_taken: 'the provider ‘classes’ serves classify on: one provider a question on or ab (any number in shadow)',
-  kind_unavailable: 'kind ‘plugin’ is not available in this version: it arrives with the plugin host (plugin-v1). Use http or builtin.',
+  kind_unavailable: 'kind ‘mcp’ is not available in this version: it arrives with a later version (a plugin’s hooks are kind plugin). Use http, builtin or plugin.',
   invalid: 'name: 1 to 80 characters',
   bad_request: 'the body must be a JSON object',
 };
@@ -487,7 +487,7 @@ export class MockHooks {
   private check(d: Record<string, unknown>): void {
     if (typeof d.name !== 'string' || !d.name.trim() || d.name.trim().length > 80) bad('name: 1 to 80 characters', 'name');
     if (!STAGES.kinds.includes(d.kind as never)) bad(`kind: one of ${STAGES.kinds.join(', ')}`, 'kind');
-    if (!STAGES.kinds_available.includes(d.kind as never)) no('kind_unavailable', `kind '${String(d.kind)}' is not available in this version: it arrives with ${d.kind === 'inproc' ? 'the in-process chain' : 'the plugin host (plugin-v1)'}. Use http or builtin.`, 'kind');
+    if (!STAGES.kinds_available.includes(d.kind as never)) no('kind_unavailable', `kind '${String(d.kind)}' is not available in this version: it arrives with ${d.kind === 'inproc' ? 'the in-process chain' : 'a later version (a plugin’s hooks are kind plugin)'}. Use http, builtin or plugin.`, 'kind');
     if (!ROLES.includes(d.role as Role)) bad(`role: one of ${ROLES.join(', ')}`, 'role');
     const st = d.stages;
     if (!Array.isArray(st) || !st.length || new Set(st).size !== st.length || !st.every((x) => typeof x === 'string')) bad('stages: a list of distinct stage names', 'stages');
@@ -508,7 +508,12 @@ export class MockHooks {
     if (d.kind === 'http') {
       const why = urlError(d.endpoint);
       if (why) bad(`endpoint: ${why}`, 'endpoint');
-      if (d.target != null) bad('target: only for a builtin hook', 'target');
+      if (d.target != null) bad('target: only for a builtin or plugin hook', 'target');
+    } else if (d.kind === 'plugin') {
+      // the mock installs no plugin: a target is refused as the registry refuses an unknown one
+      if (d.endpoint != null) bad('endpoint: only for an http hook', 'endpoint');
+      if (typeof d.target !== 'string' || !/^[a-z0-9][a-z0-9-]{0,47}\/[a-z0-9][a-z0-9_-]{0,47}$/.test(d.target)) bad('target: <plugin>/<hook>, a hook a plugin declares', 'target');
+      bad(`target: no installed plugin declares the hook ${String(d.target)}`, 'target');
     } else {
       if (d.endpoint != null) bad('endpoint: only for an http hook', 'endpoint');
       if (!BUILTIN_NAMES.includes(d.target as string)) bad(`target: one of the builtins (${BUILTIN_NAMES.join(', ')})`, 'target');
@@ -706,7 +711,7 @@ export class MockHooks {
         .map(([q, s]) => [q, { model: s.model ?? null, endpoint: s.endpoint ?? null, timeout_ms: s.timeout_ms ?? null, ...(p.kind === 'systemone-http' ? { key: this.hint(p, q) } : {}) }]),
     );
     return {
-      id, name: p.name, kind: p.kind, endpoint: p.endpoint, hook_id: p.hook_id, model: p.model, timeout_ms: p.timeout_ms, questions, mode: v.mode as Provider['mode'], ab_percent: v.ab_percent as number, sticky: v.sticky as Provider['sticky'], enabled: !!v.enabled,
+      id, name: p.name, kind: p.kind, endpoint: p.endpoint, hook_id: p.hook_id, target: null, model: p.model, timeout_ms: p.timeout_ms, questions, mode: v.mode as Provider['mode'], ab_percent: v.ab_percent as number, sticky: v.sticky as Provider['sticky'], enabled: !!v.enabled,
       key: p.kind === 'systemone-http' ? this.hint(p, '*') : null, created_at: p.created_at, updated_at: p.updated_at, updated_by: p.updated_by, version: p.version,
       breakers: Object.fromEntries(this.targets(p).map(([ep]) => [ep, this.breaker(p, now)])),
       ...(health ? { health: this.healthOf(id, now, false) } : {}),
@@ -715,7 +720,7 @@ export class MockHooks {
 
   private checkProvider(d: Record<string, unknown>): void {
     if (typeof d.name !== 'string' || !d.name.trim() || d.name.trim().length > 80) bad('name: 1 to 80 characters', 'name');
-    if (!['builtin', 'systemone-http', 'hook'].includes(d.kind as string)) bad('kind: one of builtin, systemone-http, hook', 'kind');
+    if (!['builtin', 'systemone-http', 'hook', 'plugin'].includes(d.kind as string)) bad('kind: one of builtin, systemone-http, hook, plugin', 'kind');
     if (d.kind === 'systemone-http') {
       const why = urlError(d.endpoint);
       if (why) bad(`endpoint: ${why}`, 'endpoint');
@@ -725,6 +730,11 @@ export class MockHooks {
       if (!h) bad('hook_id: the id of a hook in /v1/fleet/hooks', 'hook_id');
       if (!h!.stages.includes('decision.ask') || h!.role !== 'decider') bad('hook_id: the hook must be a decider at the stage decision.ask', 'hook_id');
     } else if (d.hook_id != null) bad('hook_id: only for a hook provider', 'hook_id');
+    if (d.kind === 'plugin') {
+      // the mock installs no plugin: a target is refused as the store refuses an unknown one
+      if (typeof d.target !== 'string' || !/^[a-z0-9][a-z0-9-]{0,47}\/[a-z0-9][a-z0-9_-]{0,47}$/.test(d.target)) bad('target: <plugin>/<provider>, a provider a plugin declares', 'target');
+      bad(`target: no installed plugin declares the provider ${String(d.target)}`, 'target');
+    } else if (d.target != null) bad('target: only for a plugin provider', 'target');
     if (typeof d.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(d.model)) bad('model: a model id or auto', 'model');
     if (!Number.isInteger(d.timeout_ms) || (d.timeout_ms as number) < 1 || (d.timeout_ms as number) > PROVIDER_TIMEOUT_MAX) bad(`timeout_ms: 1..${PROVIDER_TIMEOUT_MAX}`, 'timeout_ms');
     if (!['on', 'shadow', 'ab'].includes(d.mode as string)) bad('mode: one of on, shadow, ab', 'mode');
@@ -787,7 +797,7 @@ export class MockHooks {
   private createProvider(doc: Record<string, unknown>, who: string): Provider {
     const unknown = Object.keys(doc).filter((k) => !PROVIDER_FIELDS.includes(k) && k !== 'id').sort();
     if (unknown.length) bad(`unknown field '${unknown[0]}'`, unknown[0]);
-    const d: Record<string, unknown> = { name: doc.name, kind: doc.kind ?? 'systemone-http', endpoint: doc.endpoint ?? null, hook_id: doc.hook_id ?? null, model: doc.model ?? 'auto', timeout_ms: doc.timeout_ms ?? 400, questions: doc.questions, mode: doc.mode ?? 'shadow', ab_percent: doc.ab_percent ?? 0, sticky: doc.sticky ?? 'session', enabled: doc.enabled ?? true, api_key: doc.api_key ?? null };
+    const d: Record<string, unknown> = { name: doc.name, kind: doc.kind ?? 'systemone-http', endpoint: doc.endpoint ?? null, hook_id: doc.hook_id ?? null, target: doc.target ?? null, model: doc.model ?? 'auto', timeout_ms: doc.timeout_ms ?? 400, questions: doc.questions, mode: doc.mode ?? 'shadow', ab_percent: doc.ab_percent ?? 0, sticky: doc.sticky ?? 'session', enabled: doc.enabled ?? true, api_key: doc.api_key ?? null };
     this.checkProvider(d);
     let id = doc.id as string | undefined;
     if (id == null) id = this.freeId(d.name as string, this.providers, 'provider');

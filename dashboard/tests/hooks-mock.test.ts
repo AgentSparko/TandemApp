@@ -31,7 +31,7 @@ describe('the hooks’ API in the mock', () => {
       ['export', 'http', 'observer', ['response.after_engine', 'request.finished'], 200, 'shadow', 'closed'],
       ['guard', 'builtin', 'guard', ['request.received'], 10, 'on', 'closed'],
     ]);
-    expect([list.kinds_available, list.builtins]).toEqual([['http', 'builtin'], ['deny', 'fallback', 'noop', 'route', 'set']]);
+    expect([list.kinds_available, list.builtins]).toEqual([['http', 'builtin', 'plugin'], ['deny', 'fallback', 'noop', 'route', 'set']]);
     const by = Object.fromEntries(list.hooks.map((h) => [h.id, h]));
     expect([by.audit.destination, by.export.destination, by.guard.destination]).toEqual([{ host: 'audit.lan', lan: true }, { host: 'archive.example.com', lan: false }, { host: null, lan: true }]);
     expect([by.guard.policy_effective, by.audit.policy_effective, by.export.policy_effective]).toEqual([{ 'request.received': 'closed' }, { 'request.finished': 'drop' }, { 'response.after_engine': 'open', 'request.finished': 'open' }]);
@@ -78,7 +78,9 @@ describe('the hooks’ API in the mock', () => {
       return [status, type, facts.field];
     };
     expect(await bad({ name: ' ' })).toEqual([422, 'invalid', 'name']);
-    expect(await bad({ kind: 'plugin' })).toEqual([422, 'kind_unavailable', 'kind']);
+    expect(await bad({ kind: 'mcp' })).toEqual([422, 'kind_unavailable', 'kind']);
+    expect(await bad({ kind: 'plugin' })).toEqual([422, 'invalid', 'endpoint']);
+    expect(await bad({ kind: 'plugin', endpoint: null, target: 'audit/peek' })).toEqual([422, 'invalid', 'target']);
     expect(await bad({ role: 'decider' })).toEqual([422, 'invalid', 'stages']);
     expect(await bad({ stages: ['nowhere'] })).toEqual([422, 'invalid', 'stages']);
     expect(await bad({ stages: [] })).toEqual([422, 'invalid', 'stages']);

@@ -88,7 +88,7 @@ function whatStep(v: AddView, on: AddHandlers): TemplateResult {
       (kind) => on.edit({ kind }),
       { label: 'How TandemApp calls it' },
     )}
-    ${later.length ? html`<p class="xs muted" data-kinds-later>${later.map((k) => KIND_WORDS[k]?.label ?? k).join(', ')}: not in this version. They arrive with the plugin host and the in-process chain.</p>` : nothing}
+    ${later.length ? html`<p class="xs muted" data-kinds-later>${later.map((k) => KIND_WORDS[k]?.label ?? k).join(', ')}: not in this version. A plugin’s own hooks join the pipeline while the plugin runs.</p>` : nothing}
     ${f.kind === 'http'
       ? field('endpoint', 'The URL TandemApp calls', textInput('endpoint', f.endpoint, (endpoint) => on.edit({ endpoint }), { placeholder: 'http://hooks.lan:9300/', mono: true, bad: !!e.endpoint, type: 'url' }), { error: e.endpoint, hint: 'One signed POST per call. It answers 200 with a result, or 204 to change nothing.', wide: true })
       : html`${field(

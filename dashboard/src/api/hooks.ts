@@ -268,6 +268,8 @@ export interface Provider {
   kind: ProviderKind;
   endpoint: string | null;
   hook_id: string | null;
+  /** kind plugin: `<plugin>/<provider>` (SRV-859) */
+  target?: string | null;
   model: string;
   timeout_ms: number;
   questions: Record<string, QuestionMap>;
