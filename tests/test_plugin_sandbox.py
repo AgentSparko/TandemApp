@@ -4,11 +4,12 @@ Kubernetes API or another plugin's secret.
   1  The egress filter's host list (chatd/egress.py `Allow`): only a granted host (and port), a
      granted LAN address allowed, a loopback, link-local or the Kubernetes API's address refused
      even when granted                                          test_egress_allow
-  2  The real container runtime (Docker on the box: QSE_SANDBOX_BOX=1, as tests/test_sandbox_box.py,
-     else skipped; skipped too without its socket and the sandbox image): the kitchen-sink plugin in its own container, uid 1000, no network, its tree
-     read-only; from inside it a direct connect to a LAN address or the controller fails, the
-     proxy refuses an address it was not granted, this box and the Kubernetes API even when
-     granted, and passes the one it was granted; another plugin's secret is neither in its
+  2  The real container runtime (Docker on the box with QSE_SANDBOX_BOX=1, as
+     tests/test_sandbox_box.py; skipped without it, its socket or the sandbox image): the
+     kitchen-sink plugin in its own container, uid 1000, no network, its tree read-only; from
+     inside it a direct connect to a LAN address or the controller fails, the proxy refuses an
+     address it was not granted, this box and the Kubernetes API even when granted, and passes
+     the one it was granted; another plugin's secret is neither in its
      environment nor given on request, the config database and the other plugin's folders are
      not there; stopped, its container is gone                  test_docker_sandbox_gate
   3  The examples run sandboxed: hello-tool's greet answers from its container  (with 2)

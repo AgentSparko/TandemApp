@@ -205,7 +205,10 @@ def test_ungranted_capability_refused():
         assert [x["capability"] for x in st["refusals"][before:]] == \
             ["secrets:OTHER", "secrets:other-sink/TOKEN", "settings:read", "engine:control"]
         audit = [a for a in r.audit() if a["action"] == "refused"]
-        assert len(audit) >= 4 and all(a["who"] == "plugin:kitchen-sink" for a in audit)
+        mine = [a for a in audit if a["who"] == "plugin:kitchen-sink"]
+        assert len(mine) >= 4 and {a["who"] for a in audit} <= {"plugin:kitchen-sink",
+                                                                 "plugin:other-sink"}, audit
+        assert all(a["object_id"] == a["who"].split(":", 1)[1] for a in audit), audit
         assert not any("tok-secret" in json.dumps(a) for a in r.audit())
         # granted: settings:read gives its own settings only
         r.store.write(pid, grant=["settings:read"], who="admin")
