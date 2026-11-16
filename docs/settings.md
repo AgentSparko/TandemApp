@@ -72,6 +72,8 @@ It leaves out the wait for idle, which `deadline_s` bounds.
 
 It gives one `confirm` for the whole set. A key that feeds the fingerprint adds `confirm_fingerprint`: after that restart every saved prefix and parked chat misses, so it asks twice.
 
+**A refusal** while a part is planned names the part: its `scope` and `target`, and the `key` when it is about one key's value (`unknown_key`, `locked`, `bad_value`, `invalid_document`, `extension_missing`). The same key on two engine hosts is told apart. A part of one key names that key even when its store's sentence does not.
+
 **Applying** plans again and compares:
 
 | situation | answer |
@@ -207,6 +209,8 @@ Changing a field writes nothing. The page stages the change, and a bar at the bo
 - every part in the order it applies, with its changes and warnings;
 - whether a part restarts an engine, and how long the restart takes ("about 3 min"). The plan then asks when: once idle (it waits 10 minutes by default), at a set time, or now;
 - a second confirm for a key that feeds the fingerprint.
+
+A plan the controller refuses for one field marks that field, on the page of the part the refusal names, with the sentence under it.
 
 Apply answers with each part's state. An applied part has a Restore button. After a failure you can plan the same changes again.
 

@@ -65,6 +65,19 @@ describe('the mock answers the contract', () => {
     ok(await get(r, '/audit'));
   });
 
+  it('a part’s refusal names its scope and target besides the key', async () => {
+    const r = rig();
+    const facts = (x: { body: unknown }) => {
+      const e = (x.body as { error: { type: string; scope?: string; target?: string; key?: string } }).error;
+      return [e.type, e.scope, e.target, e.key];
+    };
+    expect(facts(await post(r, '/plan', { changes: [...QUEUE.map((c) => ({ ...c, set: { MAX_QUEUE: 'many' } }))] }))).toEqual(['bad_value', 'engine', 'eh-desk', 'MAX_QUEUE']);
+    expect(facts(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { PORT: '9000' } }] }))).toEqual(['locked', 'engine', 'eh-desk', 'PORT']);
+    expect(facts(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { NOPE_KEY: '1' } }] }))).toEqual(['unknown_key', 'engine', 'eh-desk', 'NOPE_KEY']);
+    expect(facts(await post(r, '/plan', { changes: [...QUEUE, { scope: 'backends', set: { 'backends.cloud.max_inflight': 0 } }] }))).toEqual(['bad_value', 'backends', 'controller', 'backends.cloud.max_inflight']);
+    expect(facts(await post(r, '/plan', { changes: [{ scope: 'conductor', set: { router: { default: 'main' } } }] }))).toEqual(['invalid_document', 'conductor', 'controller', 'router']);
+  });
+
   it('refuses what the controller refuses, each with the contract’s status', async () => {
     const r = rig();
     expect(refused(await get(r, '/memory'))).toEqual([404, 'not_found']);
@@ -93,7 +106,7 @@ describe('the mock answers the contract', () => {
     expect(refused(await post(r, '/plan', { changes: [{ scope: 'conductor', set: { router: 'main' } }] }))).toEqual([422, 'bad_value']);
     expect(refused(await post(r, '/plan', { changes: [{ scope: 'conductor', restore: 'router@9' }] }))).toEqual([404, 'no_version']);
     // an engine: a key it does not manage, a wrong value, an engine reached over HTTP only
-    expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { PORT: '9000' } }] }))).toEqual([422, 'bad_value']);
+    expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { PORT: '9000' } }] }))).toEqual([422, 'locked']);
     expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { MAX_QUEUE: 'many' } }] }))).toEqual([422, 'bad_value']);
     expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { MAX_QUEUE: true } }] }))).toEqual([422, 'bad_value']);
     expect(refused(await post(r, '/plan', { changes: [{ scope: 'engine', target: 'eh-desk', set: { NOPE: '1' } }] }))).toEqual([422, 'unknown_key']);

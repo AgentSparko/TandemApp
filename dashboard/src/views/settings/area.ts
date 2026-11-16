@@ -21,7 +21,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { settings as api, type AuditRow, type Overview, type PartChange, type Result, type SchemaView, type Scope, type SettingsError, type Target, type ValuesView, type VersionsView } from '../../api/settings';
 import { SETTINGS_TABS, settingsHref, type SettingsTab } from '../../lib/menu';
 import { parseHash, setParams } from '../../lib/router';
-import { draft, same } from '../../lib/settings-draft';
+import { draft, refusedField, same } from '../../lib/settings-draft';
 import { ChangeSetFlow, RestartWatch, asError } from '../../lib/settings-flow';
 import { asText, fieldId, fieldsOf, groupsOf, parseInput, type Field } from '../../lib/settings-form';
 import { placeOf } from '../../lib/settings-words';
@@ -299,13 +299,13 @@ export class QseSettings extends LightElement {
       this.signIn = true;
       void checkSession(true);
     }
-    // a plan refused for one key: the sentence stands under that field too, in a group that is open
-    const key = s.phase === 'plan' && !s.plan && this.fromDraft ? s.error?.facts.key : undefined;
-    const part = key ? draft.parts.find((p) => key in p.set || p.unset.includes(key)) : undefined;
-    if (key && part) {
-      const id = fieldId(part.scope, part.target, key);
+    // a plan refused for one key: the sentence stands under that field too, in a group that is open;
+    // the refusal names the part (its scope and target), so the same key on another engine stays clean
+    const hit = s.phase === 'plan' && !s.plan && this.fromDraft && s.error ? refusedField(draft.parts, s.error.facts) : null;
+    if (hit) {
+      const id = fieldId(hit.scope, hit.target, hit.key);
       this.form.invalid.set(id, s.error!.message);
-      this.form.open.add(part.scope === 'backends' && key.startsWith('backends.') ? `backend:${key.split('.')[1]}` : id);
+      this.form.open.add(hit.scope === 'backends' && hit.key.startsWith('backends.') ? `backend:${hit.key.split('.')[1]}` : id);
     }
     if (s.phase === 'result' && s.result && s.result !== this.seen) {
       this.seen = s.result;

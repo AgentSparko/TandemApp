@@ -4,7 +4,7 @@
 // change, so a switch flipped back leaves no trace. The draft lives in this page's memory only: a
 // secret typed into it is never stored anywhere. Kept free of the DOM.
 
-import { SCOPES, type PartChange, type Scope } from '../api/settings';
+import { SCOPES, type ErrorFacts, type PartChange, type Scope } from '../api/settings';
 
 export interface DraftPart {
   scope: Scope;
@@ -34,6 +34,17 @@ function stable(v: unknown): string {
 
 /** the same value, whatever the order of an object's keys */
 export const same = (a: unknown, b: unknown): boolean => stable(a) === stable(b);
+
+/** The staged field a plan's refusal is about: the part its scope and target name, the key in it.
+ *  A refusal that names no part (an older controller) marks a key only when one part holds it. */
+export function refusedField(parts: DraftPart[], facts: ErrorFacts): { scope: Scope; target: string; key: string } | null {
+  const key = facts.key;
+  if (!key) return null;
+  const has = (p: DraftPart) => key in p.set || p.unset.includes(key);
+  const named = facts.scope ? parts.filter((p) => p.scope === facts.scope && (facts.target == null || p.target === facts.target)) : parts;
+  const hit = named.filter(has);
+  return hit.length === 1 ? { scope: hit[0].scope, target: hit[0].target, key } : null;
+}
 
 export class Draft {
   parts: DraftPart[] = [];

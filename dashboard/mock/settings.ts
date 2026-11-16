@@ -73,6 +73,9 @@ const SENTENCE: Record<string, string> = {
   json_only: 'the body must be JSON (Content-Type: application/json)',
 };
 
+/** the refusals about one key's value (proxy/settings.py KEY_ERRORS) */
+const KEY_ERRORS = ['unknown_key', 'locked', 'bad_value', 'invalid_document', 'extension_missing'];
+
 class Refuse extends Error {
   constructor(
     public status: number,
@@ -760,8 +763,8 @@ class EngineScope implements ScopeImpl {
       if (SHOWN[k]) no('locked', `${k} changes through the key ${SHOWN[k]}: the mode installs the extension chat mode needs`, { key: k });
       if (MODE_VARS[k]) continue;
       const d = ENGINE_KEYS[k];
-      if (!d) no('unknown_key', `unknown key ${k}`, { code: 'unknown_key' });
-      if (!d.managed) no('bad_value', `${k} is not managed: ${d.why}`, { code: 'key_not_managed' });
+      if (!d) no('unknown_key', `not a setting of this engine: ${k}`, { key: k, keys: [k] });
+      if (!d.managed || secretKey(k)) no('locked', `${k} is not changed from here: ${d.why ?? 'the engine keeps it'}`, { key: k });
     }
     const curMode = over.QSE_MODE ?? 'engine';
     const curExt = over.QSE_EXT || null;
@@ -789,9 +792,9 @@ class EngineScope implements ScopeImpl {
       const d = ENGINE_KEYS[k];
       if (typeof raw === 'boolean' || (typeof raw !== 'string' && typeof raw !== 'number')) no('bad_value', `${k}: an engine setting is a string or a number`, { key: k });
       const v = String(raw);
-      if (d.type === 'integer' && !/^\d+$/.test(v)) no('bad_value', `${k} is a whole number`, { code: 'bad_value' });
-      if (d.values && !d.values.includes(v)) no('bad_value', `${k} is one of ${d.values.join(', ')}`, { code: 'bad_value' });
-      if (d.type === 'cidrs' && v && !v.split(',').every((c) => /^\s*[0-9a-fA-F:.]+\/\d{1,3}\s*$/.test(c))) no('bad_value', `${k} is a list of networks, like 192.0.2.0/24`, { code: 'bad_value' });
+      if (d.type === 'integer' && !/^\d+$/.test(v)) no('bad_value', `${k} is a whole number`, { code: 'bad_value', key: k });
+      if (d.values && !d.values.includes(v)) no('bad_value', `${k} is one of ${d.values.join(', ')}`, { key: k });
+      if (d.type === 'cidrs' && v && !v.split(',').every((c) => /^\s*[0-9a-fA-F:.]+\/\d{1,3}\s*$/.test(c))) no('bad_value', `${k} is a list of networks, like 192.0.2.0/24`, { code: 'bad_value', key: k });
       next[k] = v;
     }
     for (const k of unsets) {
@@ -1037,7 +1040,18 @@ export class MockSettings {
   }
 
   private planParts(parts: Part[]): Plan {
-    for (const p of parts) p.plan = p.kind === 'restore' ? this.scopes[p.scope].planRestore(p.target, p.version!) : this.scopes[p.scope].plan(p.target, p.sets, p.unsets);
+    for (const p of parts) {
+      try {
+        p.plan = p.kind === 'restore' ? this.scopes[p.scope].planRestore(p.target, p.version!) : this.scopes[p.scope].plan(p.target, p.sets, p.unsets);
+      } catch (e) {
+        // a part's refusal names its scope and target, and the key of a part of one key when it is about a value
+        if (!(e instanceof Refuse)) throw e;
+        const keys = [...Object.keys(p.sets), ...p.unsets];
+        e.facts = { scope: p.scope, target: p.target, ...e.facts };
+        if (e.facts.key == null && keys.length === 1 && KEY_ERRORS.includes(e.type)) e.facts.key = keys[0];
+        throw e;
+      }
+    }
     const msg = [this.epoch, ...parts.map((p) => [p.scope, p.target, p.kind, p.version, digest(p.sets), [...p.unsets].sort(), p.plan!.state, p.plan!.changes.map((c) => c.key)])];
     const confirm = digest(['confirm', msg]).slice(0, 32);
     const fp = parts.some((p) => p.plan!.fingerprint_keys.length) ? digest(['fingerprint', msg]).slice(0, 32) : null;

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { RESTART_ENDED, SettingsError, type KeySpec, type KeyValue, type Plan, type Restart, type SchemaView } from '../src/api/settings.ts';
 import { SETTINGS_TABS, crumb, sectionOf, settingsHref, subPages } from '../src/lib/menu.ts';
 import { parseHash } from '../src/lib/router.ts';
-import { Draft, same } from '../src/lib/settings-draft.ts';
+import { Draft, refusedField, same } from '../src/lib/settings-draft.ts';
 import { EXT_KEY, MODE_KEY, asText, controlOf, fieldsOf, groupsOf, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
 import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
 import { ERRORS } from './settings-rig.ts';
@@ -60,6 +60,25 @@ describe('the draft', () => {
     d.dropPart('backends', 'controller');
     expect(d.empty).toBe(true);
     expect([same({ a: 1, b: [1, 2] }, { b: [1, 2], a: 1 }), same([1, 2], [2, 1]), same(null, undefined)]).toEqual([true, false, true]);
+  });
+});
+
+describe('a refusal’s field', () => {
+  it('the part the refusal names, not another part with the same key', () => {
+    const d = new Draft();
+    d.set('engine', 'eh-a', 'MAX_QUEUE', '32');
+    d.set('engine', 'eh-b', 'MAX_QUEUE', 'many');
+    d.set('backends', 'controller', 'backends.cloud.label', 'Cloud');
+    expect(refusedField(d.parts, { scope: 'engine', target: 'eh-b', key: 'MAX_QUEUE' })).toEqual({ scope: 'engine', target: 'eh-b', key: 'MAX_QUEUE' });
+    expect(refusedField(d.parts, { scope: 'engine', target: 'eh-a', key: 'MAX_QUEUE' })).toEqual({ scope: 'engine', target: 'eh-a', key: 'MAX_QUEUE' });
+    // no key, or a key the named part does not hold: no field is marked
+    expect(refusedField(d.parts, { scope: 'engine', target: 'eh-b' })).toBeNull();
+    expect(refusedField(d.parts, { scope: 'backends', target: 'controller', key: 'MAX_QUEUE' })).toBeNull();
+    // a refusal that names no part (an older controller): only a key one part holds
+    expect(refusedField(d.parts, { key: 'MAX_QUEUE' })).toBeNull();
+    expect(refusedField(d.parts, { key: 'backends.cloud.label' })).toEqual({ scope: 'backends', target: 'controller', key: 'backends.cloud.label' });
+    d.unset('engine', 'eh-b', 'QSE_ALLOW_FROM', { set: true });
+    expect(refusedField(d.parts, { scope: 'engine', target: 'eh-b', key: 'QSE_ALLOW_FROM' })).toEqual({ scope: 'engine', target: 'eh-b', key: 'QSE_ALLOW_FROM' });
   });
 });
 

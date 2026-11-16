@@ -342,6 +342,19 @@ class EngineScope(Scope):
                 raise SettingsError(422, "locked", f"{k} changes through the key "
                                                    f"{shown_key(k)}: the mode installs the "
                                                    f"extension chat mode needs", key=k)
+        for k in list(sets) + list(unsets):
+            if k in MODE_KEYS:
+                continue
+            r = rows.get(k)
+            if r is None:
+                raise SettingsError(422, "unknown_key", f"not a setting of this engine: {k}",
+                                    key=k, keys=[k])
+            if not r["managed"] or is_secret(r):
+                raise SettingsError(422, "locked", f"{k} is not changed from here: "
+                                                   f"{r.get('why') or 'the engine keeps it'}", key=k)
+            if k in sets and r.get("values") and str(sets[k]) not in r["values"]:
+                raise SettingsError(422, "bad_value", f"{k} is one of {', '.join(r['values'])}",
+                                    key=k)
         changes = {k: _value(k, v) for k, v in sets.items() if k not in MODE_KEYS}
         unset = [k for k in unsets if k not in MODE_KEYS]
         touched = [k for k in list(sets) + list(unsets) if k in MODE_KEYS]

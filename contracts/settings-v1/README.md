@@ -17,7 +17,7 @@ These files are the truth for `/v1/settings/*`, TandemApp's one settings interfa
 | `result.schema.json` | an apply or restore: each part `applied`, `scheduled` (an engine restart runs it), `unchanged`, `failed` or `not_run`, with the version it had before and the restore that brings it back; the set's `state` `applied`, `partial`, `failed` or `unchanged` |
 | `restart.schema.json`, `restarts.schema.json` | `GET /v1/settings/restarts[/{id}]` and `POST /v1/settings/restarts/{id}/cancel`: an engine restart a change scheduled, its state, countdown and the engine's job |
 | `audit.schema.json` | `GET /v1/settings/audit[?change_set=&limit=]`: the audit rows of the settings and of every store write a change set made |
-| `error.schema.json` | every refusal: `error.type` (one of `scopes.json` `errors`), a sentence and its facts |
+| `error.schema.json` | every refusal: `error.type` (one of `scopes.json` `errors`), a sentence and its facts; a part's refusal in a plan names its `scope` and `target`, and its `key` when it is about one key's value |
 
 ## Rules
 

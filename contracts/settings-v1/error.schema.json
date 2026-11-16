@@ -9,6 +9,15 @@
     },
     "message": {
      "type": "string"
+    },
+    "scope": {
+     "$ref": "common.schema.json#/$defs/scope"
+    },
+    "target": {
+     "type": "string"
+    },
+    "key": {
+     "type": "string"
     }
    },
    "required": [
@@ -21,6 +30,6 @@
   "error"
  ],
  "additionalProperties": false,
- "description": "every refusal: error.type one of scopes.json's errors, a sentence, and its facts (key, variable, plan, keys, errors)",
+ "description": "every refusal: error.type one of scopes.json's errors, a sentence, and its facts (key, variable, plan, keys, errors); a refusal while a part is planned names that part's scope and target, and its key when it is about one key's value",
  "$id": "settings-v1/error"
 }

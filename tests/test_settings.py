@@ -52,6 +52,10 @@ contracts/settings-v1 (tools/contract_check.py).
      anything is known, the engine's own last start when its status reports one, what this
      controller measured once it followed a restart; a hot change and a store's change say none
                                                         test_restart_estimate
+ 13  A refusal while a part is planned names its scope and target besides the key, so the page
+     marks that field: the same key on two engine hosts, a backend's value, a conductor document,
+     a hook's check that names no key itself (a part of one key names it)
+                                                        test_refusal_names_its_place
 
 CPU only. Run: python tests/test_settings.py
 """
@@ -1008,6 +1012,49 @@ def test_restart_estimate():
     finally:
         r.close()
     return "default, then the engine's own last start, then what this controller measured"
+
+
+def test_refusal_names_its_place():
+    r = Rig("place", hooks=FakeHooks())
+    try:
+        # two engine hosts with the same keys: the refusal says which one
+        eng2 = ftr.install(os.path.join(r.dir, "engine2"))
+        ftr.set_state(eng2, sim=True)
+        rows = [r.row, {"id": "h2", "alias": "box2"}]
+        r.scopes["engine"].rows = lambda: rows
+        dirs = {"h1": r.eng, "h2": eng2}
+        r.scopes["engine"].ctl_for = lambda row: enginectl.LocalControl(dirs[row["id"]],
+                                                                        label=row["id"])
+        cases = [
+            ([{"scope": "engine", "target": "h1", "set": {"MAX_QUEUE": 20}},
+              {"scope": "engine", "target": "h2", "set": {"MAX_QUEUE": 21, "PORT": 1}}],
+             ("locked", "engine", "h2", "PORT")),
+            ([{"scope": "engine", "target": "h2", "set": {"NOPE_KEY": 1}}],
+             ("unknown_key", "engine", "h2", "NOPE_KEY")),
+            ([{"scope": "engine", "target": "h1", "set": {"MAX_QUEUE": 20}},
+              {"scope": "backends", "set": {"backends.cloud.max_inflight": "many"}}],
+             ("bad_value", "backends", "controller", "backends.cloud.max_inflight")),
+            ([{"scope": "conductor", "set": {"settings": {"default_profile": "no-such"}}}],
+             ("invalid_document", "conductor", "controller", "settings")),
+            ([{"scope": "hooks", "set": {"hooks.audit.mode": "loud"}}],
+             ("bad_value", "hooks", "controller", "hooks.audit.mode")),
+        ]
+        for changes, want in cases:
+            st, err = r.call("POST", "plan", {"changes": changes})
+            e = ok(err, "error")["error"]
+            assert st == 422 and (e["type"], e["scope"], e["target"], e["key"]) == want, (want, err)
+        # a refusal that is not about a value names the part, not a key
+        r.scopes["engine"].ctl_for = lambda row: (_ for _ in ()).throw(
+            enginectl.CtlTransport("ssh: connect timed out", verb="settings get"))
+        st, err = r.call("POST", "plan", {"changes": [{"scope": "engine", "target": "h2",
+                                                       "set": {"MAX_QUEUE": 9}}]})
+        e = err["error"]
+        assert st == 502 and (e["type"], e["scope"], e["target"]) == ("engine_unreachable",
+                                                                       "engine", "h2"), err
+        assert "key" not in e, err
+    finally:
+        r.close()
+    return "scope and target on every part's refusal; the key of a value's refusal"
 
 
 if __name__ == "__main__":

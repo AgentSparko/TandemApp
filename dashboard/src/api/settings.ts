@@ -249,6 +249,9 @@ export interface ApplyOptions {
 }
 
 export interface ErrorFacts {
+  /** the part a plan's refusal is about */
+  scope?: Scope;
+  target?: string;
   key?: string;
   keys?: string[];
   variable?: string;

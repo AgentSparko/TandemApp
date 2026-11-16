@@ -43,7 +43,8 @@ lock (a second change set meanwhile is 409 `busy`), and the first failure stops 
 lists each part as applied, scheduled (an engine restart runs it), unchanged, failed or not_run,
 with the version it had before and the restore that brings it back. Applying the same confirm again
 answers the same result (`replayed`); planning the same changes again after a partial failure plans
-only what is still different.
+only what is still different. A refusal while a part is planned names that part's `scope` and
+`target` (and its `key` when the refusal is about one key's value), so the page marks that field.
 
 SECRETS (a backend's API key) are write-only: a value is never in an answer, a version, a log line,
 an audit row or an export; an answer says `set` true or false. A plan shows a secret's change as
@@ -88,6 +89,8 @@ DEFAULT_DEADLINE_S = 600
 TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,159}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./@:-]{0,159}$")
+#: the refusals about one key's value: a part of one key names it (`Settings._placed`)
+KEY_ERRORS = ("unknown_key", "locked", "bad_value", "invalid_document", "extension_missing")
 
 
 class SettingsError(Exception):
@@ -559,12 +562,26 @@ class Settings:
     def _plan_parts(self, parts: list[dict]) -> None:
         for p in parts:
             s = self.scope(p["scope"])
-            if p["kind"] == "restore":
-                pl = s.plan_restore(p["target"], p["version"])
-            else:
-                pl = s.plan(p["target"], p["sets"], p["unsets"])
+            try:
+                if p["kind"] == "restore":
+                    pl = s.plan_restore(p["target"], p["version"])
+                else:
+                    pl = s.plan(p["target"], p["sets"], p["unsets"])
+            except SettingsError as exc:
+                raise self._placed(exc, p) from None
             pl["native"].setdefault("sets", dict(p["sets"]))
             p["plan"] = pl
+
+    @staticmethod
+    def _placed(exc: SettingsError, p: dict) -> SettingsError:
+        """A part's refusal names its scope and target, and the key of a part of one key when it
+        is about a value: the page marks that field and no other."""
+        exc.extra.setdefault("scope", p["scope"])
+        exc.extra.setdefault("target", p["target"])
+        keys = list(p["sets"]) + list(p["unsets"])
+        if exc.extra.get("key") is None and len(keys) == 1 and exc.kind in KEY_ERRORS:
+            exc.extra["key"] = keys[0]
+        return exc
 
     def _tokens(self, parts: list[dict]) -> tuple[str, str | None]:
         body = [[p["scope"], p["target"], p["kind"], p["version"], digest(p["sets"]),
