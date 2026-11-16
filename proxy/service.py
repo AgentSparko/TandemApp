@@ -504,6 +504,10 @@ class Service:
         finally:
             rec.end()
             if ticket is not None:
+                if rec.finish_reason == "limit" and rec.cost_micros is None and ticket.live:
+                    # a stream its spend limit cut has no usage: its row keeps the live cost, so
+                    # the spend is still there after a restart (an estimate, named here)
+                    rec.cost_micros = ticket.live
                 try:
                     self.limits.done(ticket, (rec.prompt_tokens or 0) + (rec.completion_tokens
                                                                           or 0),

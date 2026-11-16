@@ -36,16 +36,18 @@ watched while it runs (`watch`, every WATCH_FRAMES frames). When the token's spe
 the month, with the live cost of its streams in flight (their completion frames at the model's
 price), passes the limit, the stream ends as the protocol ends one with an error: an OpenAI
 error frame then `data: [DONE]`, a Messages API `error` event (permission_error); the backend's
-connection is closed, and the row says finish `limit`, error spend_limit_reached. Every other
-stream's bytes are untouched.
+connection is closed, and the row says finish `limit`, error spend_limit_reached, and as its cost
+the live figure (the completion frames at the model's price; the stream sent no usage): the one
+estimate in the ledger, so a restart still counts the spend. Every other stream's bytes are
+untouched.
 
 HOW FAR A LIMIT CAN BE PASSED. Requests a minute and requests at once never: a request is let in
 under one lock. Tokens a minute and spend are known when a request ends, so the requests in
 flight can pass them, each by its own size at most (a watched stream by a few frames).
 
 COUNTERS live in memory, under one lock; one replica runs (the chart's rule). The first request
-of a token after a start reads its counters from the ledger once (the index on token_id, time):
-the day's and the month's cost, the last minute's requests and tokens. From then on they are
+of a token after a start reads its counters from the ledger once, outside the lock (the index on
+token_id, time): the day's and the month's cost as two sums, the last minute's rows. From then on they are
 kept here, never read again: the ledger's writer is queued, so a re-read could miss a row or
 count one twice. Day and month roll over at local midnight; a request's cost counts in the
 period it arrived in, as its ledger row does.
@@ -164,13 +166,23 @@ class TokenLimits:
         return day0.strftime("%Y-%m-%d"), day0.strftime("%Y-%m"), day0.timestamp(), \
             month0.timestamp()
 
-    def _get(self, token_id: str, now: float) -> _State:
-        """The token's counters: read from the ledger at the first sight, rolled at midnight."""
+    def _ensure(self, token_id: str, now: float) -> None:
+        """The token's counters from the ledger at the first sight, read outside the lock (two
+        threads may both read; the first to store wins, the rows are the same)."""
+        if token_id in self._state:
+            return
         day, month, day0, month0 = self._periods(now)
+        st = self._seed(token_id, now, day0, month0)
+        st.day, st.month = day, month
+        with self._lock:
+            self._state.setdefault(token_id, st)
+
+    def _get(self, token_id: str, now: float) -> _State:
+        """The token's counters (seeded by _ensure; empty when it was not), rolled at midnight."""
+        day, month, _, _ = self._periods(now)
         st = self._state.get(token_id)
         if st is None:
-            st = self._state[token_id] = self._seed(token_id, now, day0, month0)
-            st.day, st.month = day, month
+            st = self._state[token_id] = _State(day=day, month=month)
         if st.month != month:
             st.month, st.month_micros = month, 0
         if st.day != day:
@@ -190,24 +202,22 @@ class TokenLimits:
             db = None
         if db is None:
             return st
-        lo = int(min(month0, now - WINDOW_S) * 1000)
         try:
+            month, day = db.execute(
+                "SELECT COALESCE(SUM(cost_micros), 0), COALESCE(SUM(CASE WHEN ts_ms >= ? THEN "
+                "cost_micros END), 0) FROM requests WHERE token_id = ? AND ts_ms >= ?",
+                (int(day0 * 1000), token_id, int(month0 * 1000))).fetchone()
             rows = db.execute(
-                "SELECT ts_ms, COALESCE(cost_micros, 0), COALESCE(prompt_tokens, 0) + "
-                "COALESCE(completion_tokens, 0), finish_reason FROM requests WHERE token_id = ? "
-                "AND ts_ms >= ? ORDER BY ts_ms", (token_id, lo)).fetchall()
+                "SELECT ts_ms, COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0) FROM "
+                "requests WHERE token_id = ? AND ts_ms > ? AND COALESCE(finish_reason, '') != "
+                "'refused' ORDER BY ts_ms", (token_id, int((now - WINDOW_S) * 1000))).fetchall()
         except Exception:                                          # noqa: BLE001
             return st
-        for ts_ms, cost, toks, finish in rows:
-            ts = ts_ms / 1000.0
-            if ts >= month0:
-                st.month_micros += int(cost)
-            if ts >= day0:
-                st.day_micros += int(cost)
-            if ts > now - WINDOW_S and finish != "refused":
-                st.reqs.append(ts)
-                if toks:
-                    st.toks.append((ts, int(toks)))
+        st.month_micros, st.day_micros = int(month), int(day)
+        for ts_ms, toks in rows:
+            st.reqs.append(ts_ms / 1000.0)
+            if toks:
+                st.toks.append((ts_ms / 1000.0, int(toks)))
         return st
 
     # ------------------------------------------------------------------ the request
@@ -216,6 +226,7 @@ class TokenLimits:
         model has a price (an unpriced one passes the spend limits)."""
         limits = self.effective(dict(getattr(p, "limits", ()) or ()), getattr(p, "role", None))
         now = self.clock()
+        self._ensure(p.id, now)
         with self._lock:
             st = self._get(p.id, now)
             bad = self._check(st, limits, priced, now)
@@ -309,6 +320,7 @@ class TokenLimits:
         eff = self.effective(limits, role)
         own = dict(limits or {})
         now = self.clock()
+        self._ensure(token_id, now)
         with self._lock:
             st = self._get(token_id, now)
             used = {"requests_per_minute": len(st.reqs),
@@ -334,9 +346,8 @@ class TokenLimits:
             eff = self.effective(limits, role)
             if not any(k in eff for k in SPEND_KEYS):
                 continue
+            self._ensure(tid, self.clock())
             with self._lock:
-                if tid not in self._state and self.reader is None:
-                    continue
                 st = self._get(tid, self.clock())
                 spent = {"cost_per_day": st.day_micros, "cost_per_month": st.month_micros}
             shares = [spent[k] / micros(eff[k]) if micros(eff[k]) else math.inf

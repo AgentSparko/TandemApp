@@ -1,6 +1,9 @@
 // Tests for SRV-873: limits and usage per API token and user, on the page, against the mock.
 //
 //   Gherkin (SRV-873):
+//   A rate limit             the page's side: My tokens marks the reached limit and lists the 429
+//   A spend limit            the page's side: the dollars used of the limit, reached, and the 403
+//                            (the 429 and the 403 themselves: tests/test_token_limits.py)
 //   A model without a price  "the token's page says the spend limit does not apply to that model"
 //   Usage adds up            "the usage view grouped by token, then by user: each sum equals the
 //                             ledger's rows" (the mock's rows; tests/test_token_limits.py holds
@@ -31,6 +34,32 @@ async function made(r: AccessRig, limits: Record<string, string>, label = 'desk'
 }
 
 describe('Gherkin: limits and usage (SRV-873)', () => {
+  it('A rate limit: My tokens marks the reached requests-a-minute limit and lists its 429', async () => {
+    const r = rig('ola');
+    const id = await made(r, { requests_per_minute: '10' });
+    r.mock.usage[id] = {
+      limits: { limits: { requests_per_minute: { limit: 10, used: 10, left: 0, reached: true, from: 'token' } }, over: true, refused_at: '2026-11-16T08:00:05Z' },
+      refusals: [{ at: '2026-11-16T08:00:05Z', code: 'rate_limited', status: 429, model: 'small-1' }],
+    };
+    await open(r, 'my-tokens');
+    const row = rowText(page(r), id);
+    expect(row).toContain('<span class="tag ac-warn">Requests a minute 10 of 10</span>');
+    expect(row).toContain('Last refused: 2026-11-16 08:00 UTC requests a minute (small-1)');
+  });
+
+  it('A spend limit: My tokens shows the dollars used of the day’s limit, reached, and its 403', async () => {
+    const r = rig('ola');
+    const id = await made(r, { cost_per_day: '1' });
+    r.mock.usage[id] = {
+      limits: { limits: { cost_per_day: { limit: 1, used: 1_160_000, left: 0, reached: true, from: 'token' } }, over: true, refused_at: null },
+      refusals: [{ at: '2026-11-16T09:30:00Z', code: 'spend_limit_reached', status: 403, model: 'big-1' }],
+    };
+    await open(r, 'my-tokens');
+    const row = rowText(page(r), id);
+    expect(row).toContain('<span class="tag ac-warn">Cost a day $1.16 of $1.00</span>');
+    expect(row).toContain('Last refused: 2026-11-16 09:30 UTC spend limit (big-1)');
+  });
+
   it('A model without a price: the token’s page says the spend limit does not apply to that model', async () => {
     const r = rig('ola');
     const id = await made(r, { cost_per_day: '1' });

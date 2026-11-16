@@ -10,7 +10,8 @@ local days (1 to 400, default 30) in `tz` (the page's, default Europe/Berlin):
     totals      requests, refused, prompt, cached and completion tokens, total, cost_micros
     days        the same per local day, every day of the range (zeros included)
     models      per model, the most tokens first, with `priced`: false when an answered row of
-                the model had no cost (a model without a price: no spend limit applies to it)
+                the model had token counts and no cost (a model without a price: no spend limit
+                applies to it; a row without counts, or a stream a limit cut, says nothing)
     unpriced    those models' ids
     refusals    the last 10 refused rows: when, the code (a limit's, a model the token may not
                 use, ...) and the model
@@ -90,8 +91,9 @@ def usage(reader, where: str, args: list, q: dict, clock) -> dict:
             out["days"][i].update(_sums(sums))
     models = []
     for model, unpriced, *sums in db.execute(
-            f"SELECT model, SUM(cost_micros IS NULL AND COALESCE(finish_reason, '') != "
-            f"'refused' AND COALESCE(status, 0) < 400), {_SUMS} FROM requests WHERE {span} GROUP BY model",
+            f"SELECT model, SUM(cost_micros IS NULL AND COALESCE(prompt_tokens, completion_tokens) "
+            f"IS NOT NULL AND COALESCE(finish_reason, '') NOT IN ('refused', 'limit') AND "
+            f"COALESCE(status, 0) < 400), {_SUMS} FROM requests WHERE {span} GROUP BY model",
             sargs):
         models.append({"model": model, "priced": not unpriced, **_sums(sums)})
     models.sort(key=lambda m: (-m["total_tokens"], -m["requests"], str(m["model"])))

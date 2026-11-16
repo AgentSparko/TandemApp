@@ -30,8 +30,11 @@ counters.
   Also:
   d  defaults per role from api.limits.default.*, written by an admin; a token never above its
      owner's role, at creation, on a change and at each request        test_role_defaults_and_caps
-  e  a spend limit reached mid-stream ends the stream cleanly, in both protocols; an unlimited
-     stream is not watched                                             test_a_limit_mid_stream
+  e  a spend limit reached mid-stream ends the stream cleanly, in both protocols (translated and
+     passed through); its row keeps the live cost, so a restart still refuses; an unlimited
+     stream is not watched                                             test_a_limit_mid_stream,
+                                                     test_a_limit_mid_stream_passes_through,
+                                                     test_the_end_of_a_cut_stream_in_each_protocol
   f  the findings token_limit_near and token_limit_reached fire and clear   test_the_findings
   g  the counters come from the ledger at the first sight, and roll at midnight
                                                                        test_counters_from_the_ledger
@@ -534,6 +537,14 @@ def test_a_limit_mid_stream():
             row = px.rows()[-1]
             assert row["finish_reason"] == "limit" and \
                 row["error_type"] == "spend_limit_reached" and row["token_id"] == view["id"], row
+            # the row keeps the stream's live cost (it sent no usage), so a restart still counts it
+            assert row["cost_micros"] and row["cost_micros"] > 1_000_000, row
+            st, use = j(px.get(f"/v1/auth/tokens/{view['id']}/usage", ops))
+            assert use["unpriced"] == [] and use["refusals"][0]["code"] == \
+                "spend_limit_reached", use
+            restart(px)
+            st, _, out = px.post("/v1/chat/completions", BIG, bearer(tok))
+            assert st == 403 and b"spend_limit_reached" in out, (st, out)
             # the Messages API: an error event ends it (the spend is reached now: a new stream is
             # refused at once, so a second token shows the cut in that shape)
             tok2, _ = new_token(px, ops, label="dollar2", scopes=["inference:anthropic"],
@@ -556,6 +567,53 @@ def test_a_limit_mid_stream():
             assert out.count(b"data: {") >= 400, out.count(b"data: {")
     finally:
         srv.shutdown()
+
+
+def test_a_limit_mid_stream_passes_through():
+    """A Messages API stream that passes through (bytes as the backend sent them) ends with the
+    API's own `error` event when its token's spend limit is passed."""
+    from proxy import relay as relay_mod
+    srv, port = fake_anthropic.start(key="sk-fixture-ABCDEFGH1234")
+    every = relay_mod.WATCH_FRAMES
+    relay_mod.WATCH_FRAMES = 1                    # the fake's answer is two text deltas long
+    try:
+        env = {**ON, "TANDEM_BACKENDS": "anth", "TANDEM_BACKEND_ANTH_KIND": "anthropic",
+               "TANDEM_BACKEND_ANTH_URL": f"http://127.0.0.1:{port}",
+               "TANDEM_BACKEND_ANTH_KEY": "sk-fixture-ABCDEFGH1234", "TANDEM_LOCAL_NODE": "off",
+               "TANDEM_PRICE_1": "anth/model-a=1000000,1000000,1000000"}   # a dollar a token
+        with Proxy(env=env) as px:
+            px.sync()
+            make("ops", "operator")
+            ops = sign_in(px, "ops")
+            token, view = new_token(px, ops, label="dollar", scopes=["inference:anthropic"],
+                                    limits={"cost_per_day": 1})
+            st, _, out = px.post("/v1/messages", msg("model-a", stream=True),
+                                 {"x-api-key": token, "anthropic-version": "2023-06-01"})
+            assert st == 200, out
+            text = out.decode()
+            assert "event: error" in text and '"permission_error"' in text, text[-500:]
+            assert "message_stop" not in text, text[-300:]
+            row = px.rows()[-1]
+            assert row["finish_reason"] == "limit" and row["api"] == "anthropic" and \
+                row["error_type"] == "spend_limit_reached", row
+    finally:
+        relay_mod.WATCH_FRAMES = every
+        srv.shutdown()
+
+
+def test_the_end_of_a_cut_stream_in_each_protocol():
+    import io
+    from proxy import relay as relay_mod
+    bad = tokenlimits.Refusal(403, "spend_limit_reached", "cost_per_day", "reached")
+    for path, want in (("/v1/messages", b'event: error\ndata: {"type": "error", "error": '
+                                        b'{"type": "permission_error", "message": "reached"}}'
+                                        b'\n\n'),
+                       ("/v1/chat/completions", b'"code": "spend_limit_reached"')):
+        w = io.BytesIO()
+        relay_mod.Relay._limit_end(w, bad, path)
+        got = w.getvalue()
+        assert want in got, got
+        assert got.endswith(b"data: [DONE]\n\n") == (path != "/v1/messages"), got
 
 
 # ---------------------------------------------------------------------------- f
