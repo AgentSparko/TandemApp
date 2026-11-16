@@ -257,6 +257,16 @@
       "message": "The backend {backend} does not answer: {detail}",
       "fix": "Check that it runs and that its address and key are right; Backends tests it."
     },
+    "plugin_failed": {
+      "status": 409,
+      "message": "The plugin {plugin} does not run: {detail}",
+      "fix": "Its page's log says why; fix it, then enable or start it again."
+    },
+    "plugin_no_sandbox": {
+      "status": 409,
+      "message": "The plugin {plugin} waits for a sandbox: {detail}",
+      "fix": "Give TandemApp the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env, or the Kubernetes sandbox), or set TANDEM_PLUGIN_SANDBOX."
+    },
     "not_offered": {
       "status": 409,
       "message": "{node} does not need that fix now.",
@@ -384,6 +394,14 @@
     "backend_down": {
       "severity": "warning",
       "action": "retry"
+    },
+    "plugin_failed": {
+      "severity": "warning",
+      "action": null
+    },
+    "plugin_no_sandbox": {
+      "severity": "warning",
+      "action": null
     }
   },
   "actions": {

@@ -61,6 +61,7 @@ you name with `auth.existingSecret`. Values files never hold a token.
 | `sandbox.kubernetes.image`, `.imagePullPolicy` | `tandem-sandbox:1`, Never | the sandbox image, imported on each node |
 | `sandbox.kubernetes.podLabels`, `.runtimeClassName`, `.hostUsers`, `.runAsUser` | component label, empty, false, 1000 | the sandbox pods |
 | `sandbox.kubernetes.memoryGiB`, `.cpus`, `.maxRunning`, `.egressPort` | 2 (empty), 4, 2 (empty), 3128 | per sandbox, and chatd's egress proxy port |
+| `sandbox.kubernetes.pluginEgressPort` | 3129 | the plugin host's egress proxy port, for the plugins' sandbox pods (SRV-859) |
 | `mcpBridge.enabled`, `.name`, `.port`, `.path`, `.command`, `.env`, `.resources` | off, `tools`, 8031, `/mcp` | a stdio MCP server as HTTP on the pod's loopback (below) |
 | `trust.extraCA`, `.existingConfigMap`, `.configMapKey` | empty | more CA certificates for every container |
 | `service.*` | ClusterIP, 80 | the Service |
@@ -128,8 +129,9 @@ host folder with a Retain volume.
   the node's `podPidsLimit` is the only one. `sandbox.kubernetes.runtimeClassName` (gVisor, Kata)
   where the cluster has one; chatd's start check refuses a class that does not exist.
 - **Network.** Two NetworkPolicies: sandbox pods reach only the controller's
-  `sandbox.kubernetes.egressPort` (3128, chatd's egress proxy) and nothing reaches them; the
-  controller takes that port from this release's sandbox pods only. The cluster's network plugin
+  `sandbox.kubernetes.egressPort` (3128, chatd's egress proxy) and `.pluginEgressPort` (3129,
+  the plugin host's; each proxy refuses a pod that is not its own) and nothing reaches them; the
+  controller takes those ports from this release's sandbox pods only. The cluster's network plugin
   must enforce NetworkPolicy: chatd checks that at start with a probe pod and offers no sandbox
   when it does not.
 - **Limits.** `sandbox.kubernetes.memoryGiB` (empty: 2 GiB), `cpus` (4), `maxRunning` (empty:

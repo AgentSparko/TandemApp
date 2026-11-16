@@ -1,0 +1,6 @@
+{
+ "why": "plugin.json does not parse",
+ "code": "manifest_invalid_json",
+ "field": null,
+ "raw": "{\"name\": "
+}

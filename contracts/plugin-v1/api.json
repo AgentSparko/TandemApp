@@ -1,0 +1,167 @@
+{
+ "version": "1.0",
+ "routes": [
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins",
+   "schema": "plugins.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/inspect",
+   "body": "install-body.schema.json",
+   "schema": "inspect.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins",
+   "body": "install-body.schema.json",
+   "schema": "install.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}",
+   "schema": "plugin-one.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/enable",
+   "schema": "plugin-one.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/disable",
+   "schema": "plugin-one.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/verify",
+   "schema": "verify.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/fleet/plugins/{id}",
+   "schema": "removed.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/status",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/logs",
+   "schema": "logs.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/start",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/stop",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/restart",
+   "schema": "status.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/panels",
+   "schema": "panels.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/bridge",
+   "body": "bridge-body.schema.json",
+   "schema": "bridge.schema.json",
+   "rights": "conductor_write"
+  }
+ ],
+ "settings": "a plugin's settings, secrets and capability grants: /v1/settings/plugins?target=<id> (contracts/settings-v1 1.1, the plugins scope)",
+ "errors": {
+  "bad_request": 400,
+  "unauthorized": 401,
+  "cross_site": 403,
+  "cross_origin": 403,
+  "not_found": 404,
+  "bad_source": 422,
+  "commit_required": 422,
+  "commit_not_found": 422,
+  "plugin_refused": 422,
+  "manifest_missing": 422,
+  "bad_wheel": 422,
+  "symlink": 422,
+  "special_file": 422,
+  "bad_name": 422,
+  "too_large": 422,
+  "submodule": 422,
+  "lfs": 422,
+  "not_a_folder": 422,
+  "exists": 409,
+  "version_unchanged": 409,
+  "downgrade": 409,
+  "conflict": 409,
+  "referenced": 409,
+  "integrity": 409,
+  "disabled": 409,
+  "incompatible_tandemapp": 409,
+  "incompatible_hooks_api": 409,
+  "incompatible_plugin_api": 409,
+  "git_failed": 422,
+  "git_missing": 503,
+  "git_timeout": 504,
+  "unavailable": 503,
+  "unreadable": 422,
+  "plugin_down": 503,
+  "refused": 403,
+  "plugin_error": 502,
+  "bad_arguments": 400
+ },
+ "checks": {
+  "manifest_missing": "no plugin.json at the plugin's root",
+  "manifest_too_large": "plugin.json over 256 KiB",
+  "manifest_invalid_json": "plugin.json does not parse",
+  "missing_field": "a required field is missing",
+  "unknown_field": "a field plugin-v1 does not have (refused, not ignored)",
+  "bad_value": "a field's value breaks the manifest schema",
+  "kind_rules": "a field the kind does not take",
+  "duplicate_name": "two contributions (or secrets) of one name",
+  "annotation_missing": "an MCP tool lacks one of readOnlyHint, destructiveHint, idempotentHint, openWorldHint",
+  "extra_properties": "an MCP tool's input schema, or an object in it, does not say additionalProperties false",
+  "tool_schema": "an MCP tool's input schema is not of type object",
+  "stage_unknown": "a hook names a stage hooks-v1 does not have",
+  "role_not_allowed": "a hook's role cannot run at that stage",
+  "capability_missing": "a hook's payload or a decision provider is not covered by a requested prompts: capability",
+  "secret_undeclared": "secrets:<NAME> names no declared secret",
+  "trust_mismatch": "engine_hooks without trust engine",
+  "path_outside": "a path leaves the plugin's folder",
+  "path_missing": "a path the manifest names is not in the plugin",
+  "settings_schema": "the settings schema is not one a form can draw (proxy/schemaform.py STRICT)",
+  "signature_invalid": "plugin.sig.json is present and does not hold for this tree",
+  "incompatible_tandemapp": "tandemapp does not hold for this TandemApp",
+  "incompatible_hooks_api": "hooks_api is newer than (or of another major than) this controller's",
+  "incompatible_plugin_api": "plugin_api is newer than (or of another major than) this controller's",
+  "symlink": "a symlink in the tree",
+  "special_file": "a device, fifo or socket in the tree",
+  "bad_name": "a name with a control character",
+  "too_large": "over 5000 files or 64 MiB"
+ }
+}

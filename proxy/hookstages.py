@@ -34,7 +34,8 @@ CAP_MS = 800                      # sync hooks before the first token, per reque
 ASYNC_TIMEOUT_MS = 5000           # an observer's default timeout off the request's path
 MAX_TIMEOUT_MS = 30000
 KINDS = ("http", "builtin", "plugin", "mcp", "inproc")
-KINDS_NOW = ("http", "builtin")   # plugin (F1), mcp (F1/F2), inproc (E3) refuse until they exist
+KINDS_NOW = ("http", "builtin", "plugin")   # plugin: the plugin host (SRV-859); mcp is reserved
+                                            # and inproc (E3) refuses until the chain exists
 PAYLOADS = ("meta", "redacted", "full")
 MODES = ("off", "shadow", "on")
 POLICIES = ("open", "closed")

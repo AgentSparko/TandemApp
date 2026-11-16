@@ -1,0 +1,215 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "a plugin's status",
+ "description": "GET /v1/fleet/plugins/{id}/status and the answer of /start, /stop and /restart (SRV-859): the plugin host's view of one plugin",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "contract_version",
+  "status"
+ ],
+ "properties": {
+  "contract_version": {
+   "type": "string"
+  },
+  "status": {
+   "$ref": "#/$defs/status"
+  }
+ },
+ "$defs": {
+  "status": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "state",
+    "held",
+    "runtime",
+    "where",
+    "version",
+    "started_at",
+    "restarts",
+    "failures_last_hour",
+    "next_start_at",
+    "last_error",
+    "tools",
+    "hooks",
+    "providers",
+    "backends",
+    "skills",
+    "panels",
+    "notes",
+    "refusals",
+    "trust",
+    "gave_up"
+   ],
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "state": {
+     "enum": [
+      "starting",
+      "running",
+      "stopping",
+      "backoff",
+      "stopped",
+      "unavailable",
+      "refused",
+      "failed",
+      "disabled"
+     ],
+     "description": "unavailable: no sandbox runtime here; refused: it may not start as it is (trust, tree, compatibility); failed: the host gave up after too many failures and disabled it"
+    },
+    "held": {
+     "type": "boolean",
+     "description": "stopped by hand: the host does not start it until a hand start"
+    },
+    "runtime": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "enum": [
+      "host",
+      "docker",
+      "kubernetes",
+      null
+     ]
+    },
+    "where": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "its pid, container or pod"
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "started_at": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "restarts": {
+     "type": "integer"
+    },
+    "failures_last_hour": {
+     "type": "integer"
+    },
+    "next_start_at": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "last_error": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "tools": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "hooks": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "providers": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "backends": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "skills": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "panels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "notes": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "contributions not registered, and why"
+    },
+    "refusals": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "ts",
+       "capability",
+       "what"
+      ],
+      "properties": {
+       "ts": {
+        "type": "integer"
+       },
+       "capability": {
+        "type": "string"
+       },
+       "what": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "trust": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "requested",
+      "granted"
+     ],
+     "properties": {
+      "requested": {
+       "enum": [
+        "sandboxed",
+        "host",
+        "engine"
+       ]
+      },
+      "granted": {
+       "enum": [
+        "sandboxed",
+        "host"
+       ]
+      }
+     }
+    },
+    "gave_up": {
+     "type": [
+      "object",
+      "null"
+     ]
+    }
+   }
+  }
+ }
+}

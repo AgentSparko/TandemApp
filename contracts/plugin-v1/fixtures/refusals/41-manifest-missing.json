@@ -1,0 +1,8 @@
+{
+ "why": "no plugin.json at the root",
+ "code": "manifest_missing",
+ "field": null,
+ "files": {
+  "server.py": "print('hi')\n"
+ }
+}

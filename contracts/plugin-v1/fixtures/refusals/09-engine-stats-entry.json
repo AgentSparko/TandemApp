@@ -1,0 +1,29 @@
+{
+ "why": "an engine-stats plugin is never started by the plugin host",
+ "code": "kind_rules",
+ "field": "entry",
+ "manifest": {
+  "plugin_api": "1.0",
+  "name": "hello-tool",
+  "version": "0.1.0",
+  "title": "Hello tool",
+  "description": "The smallest tool plugin: one MCP tool that greets a name.",
+  "license": "AGPL-3.0-only",
+  "tandemapp": ">=0.15",
+  "hooks_api": "1.0",
+  "entry": {
+   "command": [
+    "python3",
+    "server.py"
+   ]
+  },
+  "kind": "engine-stats",
+  "engine_stats": {
+   "engine": "vllm",
+   "package": "p",
+   "entry_points": [
+    "vllm.x"
+   ]
+  }
+ }
+}

@@ -1,0 +1,285 @@
+{
+ "name": "nested",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "limits": {
+    "type": "object",
+    "title": "Limits",
+    "required": [
+     "rps"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "rps": {
+      "type": "integer"
+     },
+     "burst": {
+      "type": "integer",
+      "default": 5
+     }
+    }
+   },
+   "tags": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "maxLength": 20
+    },
+    "minItems": 0,
+    "maxItems": 8,
+    "uniqueItems": true
+   },
+   "rules": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "match": {
+       "type": "string"
+      },
+      "deny": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "match"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "free": {
+    "type": "object"
+   },
+   "anything": {},
+   "tuple": {
+    "type": "array"
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "limits",
+    "path": [
+     "limits"
+    ],
+    "label": "Limits",
+    "description": null,
+    "type": "object",
+    "control": "group",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "fields": [
+     {
+      "key": "limits.rps",
+      "path": [
+       "limits",
+       "rps"
+      ],
+      "label": "Rps",
+      "description": null,
+      "type": "integer",
+      "control": "number",
+      "required": true,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": false,
+      "default": null,
+      "step": 1
+     },
+     {
+      "key": "limits.burst",
+      "path": [
+       "limits",
+       "burst"
+      ],
+      "label": "Burst",
+      "description": null,
+      "type": "integer",
+      "control": "number",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": true,
+      "default": 5,
+      "step": 1
+     }
+    ]
+   },
+   {
+    "key": "tags",
+    "path": [
+     "tags"
+    ],
+    "label": "Tags",
+    "description": null,
+    "type": "array",
+    "control": "list",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "min_items": 0,
+    "max_items": 8,
+    "unique": true,
+    "item": {
+     "key": "tags[]",
+     "path": [
+      "tags",
+      "[]"
+     ],
+     "label": "Tags",
+     "description": null,
+     "type": "string",
+     "control": "text",
+     "required": true,
+     "nullable": false,
+     "read_only": false,
+     "secret": false,
+     "has_default": false,
+     "default": null,
+     "max_length": 20
+    }
+   },
+   {
+    "key": "rules",
+    "path": [
+     "rules"
+    ],
+    "label": "Rules",
+    "description": null,
+    "type": "array",
+    "control": "list",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "item": {
+     "key": "rules[]",
+     "path": [
+      "rules",
+      "[]"
+     ],
+     "label": "Rules",
+     "description": null,
+     "type": "object",
+     "control": "group",
+     "required": true,
+     "nullable": false,
+     "read_only": false,
+     "secret": false,
+     "has_default": false,
+     "default": null,
+     "fields": [
+      {
+       "key": "rules[].match",
+       "path": [
+        "rules",
+        "[]",
+        "match"
+       ],
+       "label": "Match",
+       "description": null,
+       "type": "string",
+       "control": "text",
+       "required": true,
+       "nullable": false,
+       "read_only": false,
+       "secret": false,
+       "has_default": false,
+       "default": null
+      },
+      {
+       "key": "rules[].deny",
+       "path": [
+        "rules",
+        "[]",
+        "deny"
+       ],
+       "label": "Deny",
+       "description": null,
+       "type": "boolean",
+       "control": "switch",
+       "required": false,
+       "nullable": false,
+       "read_only": false,
+       "secret": false,
+       "has_default": false,
+       "default": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "free",
+    "path": [
+     "free"
+    ],
+    "label": "Free",
+    "description": null,
+    "type": "object",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "an object without named properties: edited as JSON"
+   },
+   {
+    "key": "anything",
+    "path": [
+     "anything"
+    ],
+    "label": "Anything",
+    "description": null,
+    "type": "any",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "no type: edited as JSON"
+   },
+   {
+    "key": "tuple",
+    "path": [
+     "tuple"
+    ],
+    "label": "Tuple",
+    "description": null,
+    "type": "array",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "an array without one item schema: edited as JSON"
+   }
+  ],
+  "notes": [
+   "free: an object without named properties: edited as JSON",
+   "anything: no type: edited as JSON",
+   "tuple: an array without one item schema: edited as JSON"
+  ]
+ }
+}

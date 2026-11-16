@@ -1,0 +1,137 @@
+{
+ "name": "nullable",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "a": {
+    "type": [
+     "integer",
+     "null"
+    ],
+    "minimum": 1
+   },
+   "b": {
+    "anyOf": [
+     {
+      "type": "string",
+      "maxLength": 9
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "description": "outer",
+    "default": null
+   },
+   "c": {
+    "oneOf": [
+     {
+      "type": "null"
+     },
+     {
+      "$ref": "#/$defs/port"
+     }
+    ]
+   },
+   "d": {
+    "anyOf": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "integer"
+     }
+    ]
+   }
+  },
+  "$defs": {
+   "port": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 65535,
+    "title": "Port"
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "a",
+    "path": [
+     "a"
+    ],
+    "label": "A",
+    "description": null,
+    "type": "integer",
+    "control": "number",
+    "required": false,
+    "nullable": true,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "min": 1,
+    "step": 1
+   },
+   {
+    "key": "b",
+    "path": [
+     "b"
+    ],
+    "label": "B",
+    "description": "outer",
+    "type": "string",
+    "control": "text",
+    "required": false,
+    "nullable": true,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": null,
+    "max_length": 9
+   },
+   {
+    "key": "c",
+    "path": [
+     "c"
+    ],
+    "label": "Port",
+    "description": null,
+    "type": "integer",
+    "control": "number",
+    "required": false,
+    "nullable": true,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "min": 1,
+    "max": 65535,
+    "step": 1
+   },
+   {
+    "key": "d",
+    "path": [
+     "d"
+    ],
+    "label": "D",
+    "description": null,
+    "type": "any",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "anyOf of 2 forms: edited as JSON"
+   }
+  ],
+  "notes": [
+   "d: anyOf of 2 forms: edited as JSON"
+  ]
+ }
+}

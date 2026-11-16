@@ -1,0 +1,219 @@
+{
+ "name": "refs",
+ "schema": {
+  "type": "object",
+  "$defs": {
+   "level": {
+    "enum": [
+     "meta",
+     "redacted",
+     "full"
+    ],
+    "default": "meta"
+   },
+   "endpoint": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string"
+     },
+     "level": {
+      "$ref": "#/$defs/level"
+     }
+    }
+   }
+  },
+  "properties": {
+   "primary": {
+    "$ref": "#/$defs/endpoint"
+   },
+   "backup": {
+    "$ref": "#/$defs/endpoint",
+    "title": "Backup"
+   },
+   "broken": {
+    "$ref": "#/$defs/missing"
+   },
+   "remote": {
+    "$ref": "other.json#/x"
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "primary",
+    "path": [
+     "primary"
+    ],
+    "label": "Primary",
+    "description": null,
+    "type": "object",
+    "control": "group",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "fields": [
+     {
+      "key": "primary.url",
+      "path": [
+       "primary",
+       "url"
+      ],
+      "label": "Url",
+      "description": null,
+      "type": "string",
+      "control": "text",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": false,
+      "default": null
+     },
+     {
+      "key": "primary.level",
+      "path": [
+       "primary",
+       "level"
+      ],
+      "label": "Level",
+      "description": null,
+      "type": "string",
+      "control": "choice",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": true,
+      "default": "meta",
+      "options": [
+       {
+        "value": "meta",
+        "label": "meta"
+       },
+       {
+        "value": "redacted",
+        "label": "redacted"
+       },
+       {
+        "value": "full",
+        "label": "full"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "backup",
+    "path": [
+     "backup"
+    ],
+    "label": "Backup",
+    "description": null,
+    "type": "object",
+    "control": "group",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "fields": [
+     {
+      "key": "backup.url",
+      "path": [
+       "backup",
+       "url"
+      ],
+      "label": "Url",
+      "description": null,
+      "type": "string",
+      "control": "text",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": false,
+      "default": null
+     },
+     {
+      "key": "backup.level",
+      "path": [
+       "backup",
+       "level"
+      ],
+      "label": "Level",
+      "description": null,
+      "type": "string",
+      "control": "choice",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": true,
+      "default": "meta",
+      "options": [
+       {
+        "value": "meta",
+        "label": "meta"
+       },
+       {
+        "value": "redacted",
+        "label": "redacted"
+       },
+       {
+        "value": "full",
+        "label": "full"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "broken",
+    "path": [
+     "broken"
+    ],
+    "label": "Broken",
+    "description": null,
+    "type": "any",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "$ref '#/$defs/missing' does not resolve"
+   },
+   {
+    "key": "remote",
+    "path": [
+     "remote"
+    ],
+    "label": "Remote",
+    "description": null,
+    "type": "any",
+    "control": "json",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "why": "$ref 'other.json#/x': only a local reference (#/$defs/...) is followed"
+   }
+  ],
+  "notes": [
+   "broken: $ref '#/$defs/missing' does not resolve",
+   "remote: $ref 'other.json#/x': only a local reference (#/$defs/...) is followed"
+  ]
+ }
+}

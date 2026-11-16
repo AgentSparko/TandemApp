@@ -24,6 +24,13 @@ TOOLS reach the model as `mcp__<server>__<tool>` (letters, digits and _ only), a
 allow-list and deny-list (a 10-tool allow-list beat 37 schemas for the x1 reply model). Their
 default permission is ask; `mcp__<server>__*` rules allow a whole server. The last list is kept in
 the store, so building a request never starts a server; the first call does.
+
+PLUGINS' TOOLS (SRV-859). A running plugin of the controller that runs this chatd offers its tools
+here too: listed with the servers (`id` plugin:<plugin>, `transport` plugin, read-only: its plugin's
+settings manage it), named `mcp__plugin_<plugin>__<tool>`, called through the controller
+(`<engine>/v1/plugins/tools[/call]`, the chat engine's base: proxy/chatengine.py), which runs the
+plugin. A chatd whose engine is not a controller's `/chat-engine` gets none and asks nothing. The
+list is read at most every PLUGINS_TTL_S.
 """
 
 from __future__ import annotations
@@ -53,6 +60,8 @@ MAX_BODY = 64 << 20       # one JSON answer over this is refused BY NAME, never 
                          # into a json.loads failure: a screenshot result is a few MB,
                          # the cap has to clear the work, not just the hostility
 MAX_SSE_LINE = 64 << 20   # the same cap per SSE line — one line IS one answer there
+PLUGINS_TTL_S = 10.0
+PLUGIN_PREFIX = "plugin:"
 
 class OverCap(ValueError):
     """A response over the named cap: reported as 'answer over N MiB', not as
@@ -447,6 +456,7 @@ class Mcp:
         self.stdio_pipe = None                   # tests: (server row, cid) -> open_pipe
         self.tried: set = set()                  # (server, chat) whose first listing was tried
         self._vault = None
+        self._plugins: tuple[float, list] | None = None
 
     def start(self) -> None:
         pass
@@ -476,8 +486,88 @@ class Mcp:
         return json.loads(self.vault().decrypt(sid, base64.b64decode(d["ct"]),
                                                base64.b64decode(d["nonce"]), d["kid"]))
 
+    # ---- plugins' tools (SRV-859)
+    def plugins(self, fresh: bool = False) -> list[dict]:
+        """The running plugins' tools, as the controller lists them; [] without one."""
+        now = time.monotonic()
+        if not fresh and self._plugins is not None and now - self._plugins[0] < PLUGINS_TTL_S:
+            return self._plugins[1]
+        eng = getattr(self.svc, "engine", None)
+        out: list = []
+        # only a controller's chat engine (proxy/appchat.py: <controller>/chat-engine) has them
+        if eng is not None and hasattr(eng, "get_json") and \
+                str(getattr(eng, "prefix", "") or "").rstrip("/").endswith("/chat-engine"):
+            try:
+                st, doc = eng.get_json("/v1/plugins/tools", timeout=3.0)
+            except Exception:                                      # noqa: BLE001
+                st, doc = 0, None
+            if st == 200 and isinstance(doc, dict) and isinstance(doc.get("plugins"), list):
+                out = [p for p in doc["plugins"] if isinstance(p, dict) and
+                       isinstance(p.get("id"), str) and isinstance(p.get("tools"), list)]
+        self._plugins = (now, out)
+        return out
+
+    def _plugin_public(self, p: dict) -> dict:
+        tools = [t for t in p["tools"] if isinstance(t, dict) and t.get("name")]
+        return {"id": PLUGIN_PREFIX + p["id"], "name": p.get("title") or p["id"],
+                "transport": "plugin", "plugin": p["id"], "command": None, "args": [],
+                "url": None, "env": {}, "headers": {}, "status": "connected", "error": None,
+                "tools": [{"name": t["name"], "description": (t.get("description") or "")[:300]}
+                          for t in tools],
+                "tool_allow": None, "tool_deny": [], "prompts": [], "resources": [],
+                "schema_tokens": sum(len(json.dumps(t)) for t in tools) // 4,
+                "enabled_global": True, "timeout_s": DEFAULT_TIMEOUT_S, "updated_at": None,
+                "read_only": True}
+
+    def _plugin_tools(self) -> list[Tool]:
+        out = []
+        for p in self.plugins():
+            for t in p["tools"]:
+                if not isinstance(t, dict) or not t.get("name"):
+                    continue
+                name = (f"mcp__plugin_{slug(p['id'])}__"
+                        f"{re.sub(r'[^A-Za-z0-9_-]', '_', t['name'])}")[:64]
+                schema = t.get("inputSchema") if isinstance(t.get("inputSchema"), dict) else \
+                    {"type": "object", "properties": {}}
+                ann = t.get("annotations") if isinstance(t.get("annotations"), dict) else {}
+                out.append(Tool(name, (t.get("description") or "")[:1024], schema, risk="network",
+                                default="ask", source={"kind": "plugin", "id": p["id"]},
+                                executor=self._plugin_executor(p["id"], t["name"]),
+                                side_effects=ann.get("readOnlyHint") is not True))
+        return out
+
+    def _plugin_executor(self, pid: str, tool_name: str):
+        def run(ctx, args):
+            eng = getattr(self.svc, "engine", None)
+            if eng is None:
+                raise ToolError("no controller to run the plugin's tool")
+            st, doc = eng.post_json("/v1/plugins/tools/call",
+                                    {"plugin": pid, "tool": tool_name, "arguments": args},
+                                    timeout=DEFAULT_TIMEOUT_S)
+            if st != 200 or not isinstance(doc, dict):
+                msg = ((doc or {}).get("error") or {}).get("message") if isinstance(doc, dict) \
+                    else None
+                raise ToolError(f"the plugin {pid} answered: {msg or f'HTTP {st}'}")
+            res = doc.get("result") or {}
+            texts, images = [], []
+            for c in res.get("content") or []:
+                if c.get("type") == "text":
+                    texts.append(c.get("text") or "")
+                elif c.get("type") == "image" and c.get("data"):
+                    images.append((c.get("mimeType") or "image/png",
+                                   base64.b64decode(c["data"])))
+            if res.get("structuredContent") is not None and not texts:
+                texts.append(json.dumps(res["structuredContent"]))
+            return Result("\n".join(texts) or "(no content)", is_error=bool(res.get("isError")),
+                          images=images)
+        return run
+
     # ---- the API's shape
     def _row(self, sid: str):
+        if str(sid).startswith(PLUGIN_PREFIX):
+            from chatd.service import ApiError
+            raise ApiError(409, "plugin_managed", "a plugin's tools are managed by the plugin's "
+                                                 "own settings in TandemApp")
         r = self.store.one("SELECT * FROM mcp_servers WHERE id = ?", (sid,))
         if r is None:
             from chatd.service import ApiError
@@ -511,7 +601,8 @@ class Mcp:
                 "updated_at": iso(r["updated"])}
 
     def list(self) -> list[dict]:
-        return [self.public(r) for r in self.store.all("SELECT * FROM mcp_servers ORDER BY name")]
+        rows = self.store.all("SELECT * FROM mcp_servers ORDER BY name")
+        return [self.public(r) for r in rows] + [self._plugin_public(p) for p in self.plugins()]
 
     def _check(self, d: dict) -> dict:
         from chatd.service import ApiError
@@ -744,7 +835,7 @@ class Mcp:
 
     def all_tools(self) -> list[Tool]:
         return [t for r in self.store.all("SELECT * FROM mcp_servers ORDER BY name")
-                for t in self._tools_of(r)]
+                for t in self._tools_of(r)] + self._plugin_tools()
 
     def tools_for(self, settings: dict, cid: str | None = None) -> list[Tool]:
         """The chat's MCP tools. A stdio server whose tools were never listed is started in this
@@ -758,7 +849,7 @@ class Mcp:
                 self.tried.add((r["id"], cid))
                 self.refresh(r["id"], cid)
         rows = [self._row(r["id"]) for r in rows]
-        return [t for r in rows for t in self._tools_of(r)]
+        return [t for r in rows for t in self._tools_of(r)] + self._plugin_tools()
 
     def tool(self, name: str):
         return next((t for t in self.all_tools() if t.name == name), None)

@@ -216,7 +216,7 @@ interface PackageInfo { id: string; name: string; description: string; kind: 'sk
 interface UserToolkit { id: string; slug: string; title: string; description: string; version: string; requirements: string[]; enabled: boolean; tools: string[]; valves: {name, type, default, description, secret, value, set}[]; created_at: string }
 type McpStatus = 'connected' | 'starting' | 'failed' | 'stopped';
 interface McpServer {
-  id: string; name: string; transport: 'stdio' | 'http';
+  id: string; name: string; transport: 'stdio' | 'http' | 'plugin';   // plugin: SRV-859, read-only
   command?: string; args?: string[]; url?: string;
   env?: Record<string, string>;                  // v0.2: values are WRITE-ONLY; GET returns every value as ""
   headers?: Record<string, string>;              // same rule

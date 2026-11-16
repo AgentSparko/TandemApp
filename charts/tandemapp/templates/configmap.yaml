@@ -35,6 +35,7 @@ data:
     QSE_K8S_RUNTIME_CLASS={{ $k.runtimeClassName }}
     QSE_K8S_HOST_USERS={{ $k.hostUsers }}
     QSE_K8S_EGRESS_PORT={{ $k.egressPort }}
+    TANDEM_PLUGIN_EGRESS_PORT={{ $k.pluginEgressPort }}
     QSE_K8S_CONTROLLER_PORT={{ .Values.controller.port }}
     QSE_SANDBOX_IMAGE={{ $k.image }}
     QSE_SANDBOX_UID={{ $k.runAsUser }}

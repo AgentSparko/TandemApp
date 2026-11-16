@@ -152,6 +152,9 @@ sandbox:
     maxRunning: ""
     # chatd's egress proxy in the controller's pod: the only place a sandbox pod may connect to
     egressPort: 3128
+    # the plugin host's egress proxy in the controller's pod, for the plugins' sandbox pods
+    # (SRV-859); each proxy refuses a pod that is not one of its own
+    pluginEgressPort: 3129
 
 # -- a stdio MCP server served as streamable HTTP on the pod's loopback (files/mcp-stdio-http.py),
 # a sidecar. chatd's MCP servers reach it at http://127.0.0.1:<port><path>. The command is a

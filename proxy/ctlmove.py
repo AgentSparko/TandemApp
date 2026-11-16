@@ -121,7 +121,7 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
             dst.close()
         c = sqlite3.connect(path)
         for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
-                  "fleet_jobs", "audit", "decision_provider_keys"):
+                  "fleet_jobs", "audit", "decision_provider_keys", "plugin_secrets"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:

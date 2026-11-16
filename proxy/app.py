@@ -35,8 +35,9 @@ serves on one port:
                                    plan and its confirm; the page's switch wins over the install's
     *    /v1/settings/*            one settings interface over the stores (SRV-845,
                                    proxy/settings.py, contracts/settings-v1): the scopes app,
-                                   backends, conductor, engine and hooks, each with schema, get,
-                                   plan, apply, versions and restore; change sets across scopes;
+                                   backends, conductor, engine, hooks and plugins, each with
+                                   schema, get, plan, apply, versions and restore; change sets
+                                   across scopes;
                                    the engine restarts they schedule; the audit. Reads as the
                                    dashboard, plans and writes as the configuration
     *    /v1/fleet/hooks[/...]     the remote hooks around the relay: list, create, change, test,
@@ -45,6 +46,9 @@ serves on one port:
                                    who answers the conductor's questions: list, create, change,
                                    test, health, the agreement report (proxy/providerapi.py,
                                    SRV-851)
+    *    /v1/fleet/plugins[/...]   the plugin registry: list, inspect a source, install from a
+                                   folder, a wheel or a git commit, enable, disable, verify,
+                                   remove (proxy/pluginapi.py, SRV-857); nothing of a plugin runs
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -353,6 +357,12 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.path.split("?")[0]
         if raw == "/dashboard" or raw.startswith("/dashboard/"):
             return static.serve(self, self.path, STATE.get("dashboard_dir"))
+        if raw.startswith(("/plugin-panels/", "/plugin-backends/")):
+            # SRV-859: a running plugin's panels and backends (proxy/pluginweb.py)
+            from proxy import pluginweb
+            if raw.startswith(pluginweb.PANELS):
+                return pluginweb.panel(self, STATE["svc"], raw)
+            return pluginweb.backend(self, STATE["svc"], "GET", raw, None)
         path = raw.rstrip("/") or "/"
         if path == "/":
             return self._send_empty(302, (("Location", "/dashboard/"),))
@@ -478,6 +488,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/v1/collect/"):          # P6: a plugin's batch, its own token
             from proxy import collect_api
             return collect_api.handle(self, STATE["svc"], path, raw)
+        if path.startswith("/plugin-backends/"):     # SRV-859: a plugin's backend (loopback)
+            from proxy import pluginweb
+            return pluginweb.backend(self, STATE["svc"], "POST", path, raw)
         if path == GATEWAY:
             return self._gateway(raw, t_arrival)
         if path.startswith("/v1/fleet/"):
@@ -663,6 +676,11 @@ class Handler(BaseHTTPRequestHandler):
             from proxy import providerapi
             return providerapi.handle(self, STATE["svc"], method,
                                       [unquote(x) for x in parts[1:]], body)
+        if parts[:1] == ["plugins"]:
+            # SRV-857: the plugins' admin API (proxy/pluginapi.py), its own rights
+            from proxy import pluginapi
+            return pluginapi.handle(self, STATE["svc"], method, [unquote(x) for x in parts[1:]],
+                                    body)
         if parts == ["app", "password"]:
             return self._app_password(method, body)
         if parts[:1] == ["app"] and method == "POST":
@@ -1235,6 +1253,12 @@ def build(args, env=None) -> Service:
                   engine_version=STATE["version"], log=lambda m: print(m, flush=True),
                   conductor=cond, monitor_base=base)
     STATE["svc"] = svc
+    # SRV-859: the plugin host reads the conductor's Library of the moment (the page's switch)
+    svc.plugin_host.library = lambda: getattr(STATE.get("conductor"), "library", None)
+    svc.plugin_host.env = dict(env)
+    svc.plugin_host.state_dir = state_dir
+    if getattr(args, "port", 0):
+        svc.plugin_host.own_url = gateway_url(getattr(args, "host", "127.0.0.1"), args.port)
     if env.get("TANDEM_DECISION_REPLAY"):
         # SRV-851: recorded provider answers in place of every provider (tools/decision_replay.py)
         n = svc.providers.load_replay(env["TANDEM_DECISION_REPLAY"])
@@ -1268,7 +1292,7 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
     """SRV-845: the settings interface over this controller's stores (proxy/settings.py). The
     keyword arguments replace a part for a test (an engine host's control, its backends, the
     warm-up, the hot route, the chat extension's wheel); each default is the fleet's own."""
-    from proxy import hooksettings
+    from proxy import hooksettings, pluginsettings
     from proxy import settings as settings_mod
     from proxy import settingscopes, settingsengine
 
@@ -1340,6 +1364,8 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
         # the hook registry's and the decision providers' switches (proxy/hooksettings.py)
         "hooks": settingscopes.HooksScope(cfg, hooksettings.RegistryHooks(
             svc.hooks, svc.providers.store)),
+        # each installed plugin's settings, secrets and capability grants (SRV-857)
+        "plugins": pluginsettings.PluginsScope(cfg, svc.plugins),
     }
     return settings_mod.Settings(cfg, scopes, restarts=restarts,
                                  log=lambda m: print(m, flush=True))
@@ -1587,9 +1613,10 @@ def laya_of(cond):
 def serve(args) -> None:
     logbuf.install()
     svc = build(args)
+    srv = Server((args.host, args.port), Handler)
+    svc.plugin_host.own_url = gateway_url(args.host, srv.server_address[1])
     svc.start()
     STATE["fleet"].start()
-    srv = Server((args.host, args.port), Handler)
     led = STATE.get("ledger")
     print(f"[proxy] {version()} on {args.host}:{args.port}, config {svc.cfg.path} "
           f"(schema {svc.cfg.schema_was or 'new'} -> {proxy_config.SCHEMA_VERSION}), {len(svc.cfg.backends())} backends, "

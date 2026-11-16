@@ -1,0 +1,309 @@
+{
+ "name": "enums",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "two": {
+    "enum": [
+     "on",
+     "off"
+    ]
+   },
+   "four": {
+    "enum": [
+     "a",
+     "b",
+     "c",
+     "d"
+    ],
+    "default": "b"
+   },
+   "five": {
+    "enum": [
+     "a",
+     "b",
+     "c",
+     "d",
+     "e"
+    ]
+   },
+   "one": {
+    "enum": [
+     "only"
+    ]
+   },
+   "numbers": {
+    "type": "integer",
+    "enum": [
+     1,
+     2,
+     4,
+     8
+    ]
+   },
+   "with_null": {
+    "enum": [
+     "x",
+     "y",
+     null
+    ]
+   },
+   "titled": {
+    "oneOf": [
+     {
+      "const": "fast",
+      "title": "Fast"
+     },
+     {
+      "const": "safe",
+      "title": "Safe"
+     },
+     {
+      "const": "auto"
+     }
+    ]
+   },
+   "boolenum": {
+    "type": "boolean",
+    "enum": [
+     true,
+     false
+    ]
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "two",
+    "path": [
+     "two"
+    ],
+    "label": "Two",
+    "description": null,
+    "type": "string",
+    "control": "choice",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": "on",
+      "label": "on"
+     },
+     {
+      "value": "off",
+      "label": "off"
+     }
+    ]
+   },
+   {
+    "key": "four",
+    "path": [
+     "four"
+    ],
+    "label": "Four",
+    "description": null,
+    "type": "string",
+    "control": "choice",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": "b",
+    "options": [
+     {
+      "value": "a",
+      "label": "a"
+     },
+     {
+      "value": "b",
+      "label": "b"
+     },
+     {
+      "value": "c",
+      "label": "c"
+     },
+     {
+      "value": "d",
+      "label": "d"
+     }
+    ]
+   },
+   {
+    "key": "five",
+    "path": [
+     "five"
+    ],
+    "label": "Five",
+    "description": null,
+    "type": "string",
+    "control": "select",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": "a",
+      "label": "a"
+     },
+     {
+      "value": "b",
+      "label": "b"
+     },
+     {
+      "value": "c",
+      "label": "c"
+     },
+     {
+      "value": "d",
+      "label": "d"
+     },
+     {
+      "value": "e",
+      "label": "e"
+     }
+    ]
+   },
+   {
+    "key": "one",
+    "path": [
+     "one"
+    ],
+    "label": "One",
+    "description": null,
+    "type": "string",
+    "control": "select",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": "only",
+      "label": "only"
+     }
+    ]
+   },
+   {
+    "key": "numbers",
+    "path": [
+     "numbers"
+    ],
+    "label": "Numbers",
+    "description": null,
+    "type": "integer",
+    "control": "choice",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": 1,
+      "label": "1"
+     },
+     {
+      "value": 2,
+      "label": "2"
+     },
+     {
+      "value": 4,
+      "label": "4"
+     },
+     {
+      "value": 8,
+      "label": "8"
+     }
+    ]
+   },
+   {
+    "key": "with_null",
+    "path": [
+     "with_null"
+    ],
+    "label": "With null",
+    "description": null,
+    "type": "string",
+    "control": "choice",
+    "required": false,
+    "nullable": true,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": "x",
+      "label": "x"
+     },
+     {
+      "value": "y",
+      "label": "y"
+     }
+    ]
+   },
+   {
+    "key": "titled",
+    "path": [
+     "titled"
+    ],
+    "label": "Titled",
+    "description": null,
+    "type": "string",
+    "control": "choice",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "options": [
+     {
+      "value": "fast",
+      "label": "Fast"
+     },
+     {
+      "value": "safe",
+      "label": "Safe"
+     },
+     {
+      "value": "auto",
+      "label": "auto"
+     }
+    ]
+   },
+   {
+    "key": "boolenum",
+    "path": [
+     "boolenum"
+    ],
+    "label": "Boolenum",
+    "description": null,
+    "type": "boolean",
+    "control": "switch",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null
+   }
+  ],
+  "notes": []
+ }
+}

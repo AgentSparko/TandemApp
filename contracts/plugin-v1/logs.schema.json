@@ -1,0 +1,26 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "a plugin's log",
+ "description": "GET /v1/fleet/plugins/{id}/logs?tail=N (SRV-859): its log's last lines, stderr and the host's, every secret value replaced by [secret NAME]",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "contract_version",
+  "id",
+  "lines"
+ ],
+ "properties": {
+  "contract_version": {
+   "type": "string"
+  },
+  "id": {
+   "type": "string"
+  },
+  "lines": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ }
+}

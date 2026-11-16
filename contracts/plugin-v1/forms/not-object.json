@@ -1,0 +1,52 @@
+{
+ "name": "not-object",
+ "schema": {
+  "type": "array",
+  "items": {
+   "type": "integer"
+  },
+  "title": "Numbers"
+ },
+ "form": {
+  "form": "1.0",
+  "title": "Numbers",
+  "description": null,
+  "fields": [
+   {
+    "key": "value",
+    "path": [
+     "value"
+    ],
+    "label": "Numbers",
+    "description": null,
+    "type": "array",
+    "control": "list",
+    "required": true,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "item": {
+     "key": "value[]",
+     "path": [
+      "value",
+      "[]"
+     ],
+     "label": "Value",
+     "description": null,
+     "type": "integer",
+     "control": "number",
+     "required": true,
+     "nullable": false,
+     "read_only": false,
+     "secret": false,
+     "has_default": false,
+     "default": null,
+     "step": 1
+    }
+   }
+  ],
+  "notes": []
+ }
+}

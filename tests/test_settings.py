@@ -16,8 +16,9 @@ contracts/settings-v1 (tools/contract_check.py).
   3  No secret in the audit: Given a change set that sets an API key, Then the audit row holds the
      field name and no key value; nor does any answer, version, log line or the engine's secret
      keys' values                                       test_no_secret_anywhere
-  4  Each of the five scopes answers schema, get, plan, apply, versions and restore with the same
-     shapes; each key carries its restart class and the plan shows it
+  4  Each of the six scopes answers schema, get, plan, apply, versions and restore with the same
+     shapes; each key carries its restart class and the plan shows it (the plugins scope with
+     one installed plugin, SRV-857)
                                                         test_every_scope_six_operations
   5  Versions and restore work for the engine and the conductor scopes
                                                         test_engine_and_conductor_restore
@@ -80,7 +81,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fake_tandem_remote as ftr  # noqa: E402
-from proxy import appparts, enginectl  # noqa: E402
+from proxy import appparts, enginectl, pluginsettings, pluginstore  # noqa: E402
 from proxy import config as config_mod  # noqa: E402
 from proxy import settings as settings_mod  # noqa: E402
 from proxy import settingscopes, settingsengine  # noqa: E402
@@ -202,6 +203,10 @@ class Rig:
             warm=warm or (lambda b, m: (self.warms.append((b, m)) or (True, None))),
             log=self.logs.append, poll_s=0.02, warm_wait_s=0.5)
         self.hooks = hooks
+        # SRV-857: the plugin registry with the example tool plugin installed
+        self.plugins = pluginstore.PluginStore(self.cfg)
+        self.plugins.install({"type": "folder", "path": os.path.join(
+            ROOT, "contracts", "plugin-v1", "examples", "hello-tool")}, who="t")
         self.scopes = {
             "app": settingscopes.AppScope(self.cfg, self.parts),
             "backends": settingscopes.BackendsScope(self.cfg),
@@ -210,6 +215,7 @@ class Rig:
                                                  restarts=self.restarts,
                                                  ext_wheel=self.own_wheel),
             "hooks": settingscopes.HooksScope(self.cfg, hooks),
+            "plugins": pluginsettings.PluginsScope(self.cfg, self.plugins),
         }
         self.s = settings_mod.Settings(self.cfg, self.scopes, restarts=self.restarts,
                                        log=self.logs.append)
@@ -434,6 +440,7 @@ def test_every_scope_six_operations():
             "conductor": ({}, None),
             "engine": ({"target": "h1"}, {"MAX_QUEUE": 20}),
             "hooks": ({}, {"hooks.audit.mode": "on"}),
+            "plugins": ({"target": "hello-tool"}, {"settings.greeting": "Hi"}),
         }
         _, sdoc = r.store.get("settings")
         sdoc["journal"]["retention_days"] = 14
@@ -473,7 +480,8 @@ def test_every_scope_six_operations():
         assert ("conductor", os.path.join(r.dir, "conductor"), "admin") in r.app.calls
     finally:
         r.close()
-    return "app, backends, conductor, engine, hooks: schema get plan apply versions restore"
+    return "app, backends, conductor, engine, hooks, plugins: schema get plan apply versions " \
+        "restore"
 
 
 # ---------------------------------------------------------------------------- 5 engine, conductor
@@ -858,7 +866,7 @@ def test_contract_files():
                     assert f in docs, (r, f)
     # every error type the code raises is listed, with the status it raises
     raised = {}
-    for mod in ("settings", "settingscopes", "settingsengine", "hooksettings"):
+    for mod in ("settings", "settingscopes", "settingsengine", "hooksettings", "pluginsettings"):
         src = open(os.path.join(ROOT, "proxy", f"{mod}.py")).read()
         for st, kind in re.findall(r'SettingsError\(\s*(\d{3}),\s*"([a-z_]+)"', src):
             raised.setdefault(kind, set()).add(int(st))

@@ -1,0 +1,123 @@
+{
+ "name": "too-deep",
+ "schema": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+   "a": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "b": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "c": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "d": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "e": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "a",
+    "path": [
+     "a"
+    ],
+    "label": "A",
+    "description": null,
+    "type": "object",
+    "control": "group",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "fields": [
+     {
+      "key": "a.b",
+      "path": [
+       "a",
+       "b"
+      ],
+      "label": "B",
+      "description": null,
+      "type": "object",
+      "control": "group",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": false,
+      "default": null,
+      "fields": [
+       {
+        "key": "a.b.c",
+        "path": [
+         "a",
+         "b",
+         "c"
+        ],
+        "label": "C",
+        "description": null,
+        "type": "object",
+        "control": "group",
+        "required": false,
+        "nullable": false,
+        "read_only": false,
+        "secret": false,
+        "has_default": false,
+        "default": null,
+        "fields": [
+         {
+          "key": "a.b.c.d",
+          "path": [
+           "a",
+           "b",
+           "c",
+           "d"
+          ],
+          "label": "D",
+          "description": null,
+          "type": "object",
+          "control": "json",
+          "required": false,
+          "nullable": false,
+          "read_only": false,
+          "secret": false,
+          "has_default": false,
+          "default": null,
+          "why": "nested deeper than 4 levels: edited as JSON"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "notes": [
+   "a.b.c.d: nested deeper than 4 levels: edited as JSON"
+  ]
+ }
+}

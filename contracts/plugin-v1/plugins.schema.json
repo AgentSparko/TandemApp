@@ -1,0 +1,33 @@
+{
+ "$id": "plugin-v1/plugins",
+ "description": "GET /v1/fleet/plugins",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "plugin_api": {
+   "type": "string"
+  },
+  "hooks_api": {
+   "type": "string"
+  },
+  "tandemapp": {
+   "type": "string"
+  },
+  "plugins": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/plugin"
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "plugin_api",
+  "hooks_api",
+  "tandemapp",
+  "plugins"
+ ],
+ "additionalProperties": false
+}

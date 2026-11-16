@@ -1,0 +1,221 @@
+{
+ "name": "classify-provider",
+ "schema": {
+  "type": "object",
+  "properties": {
+   "classes": {
+    "type": "object",
+    "title": "Keywords by class",
+    "properties": {
+     "code": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 40
+      },
+      "maxItems": 50,
+      "default": [
+       "traceback",
+       "compile",
+       "function"
+      ]
+     },
+     "chat": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "maxLength": 40
+      },
+      "maxItems": 50,
+      "default": [
+       "hello",
+       "thanks"
+      ]
+     }
+    },
+    "additionalProperties": false
+   },
+   "fallback": {
+    "enum": [
+     "code",
+     "chat",
+     "unclear"
+    ],
+    "default": "unclear"
+   },
+   "endpoint": {
+    "anyOf": [
+     {
+      "type": "string",
+      "pattern": "^https?://",
+      "maxLength": 300
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "description": "a model to ask when no keyword matches; null: answer the fallback",
+    "default": null
+   }
+  },
+  "required": [
+   "fallback"
+  ],
+  "additionalProperties": false
+ },
+ "form": {
+  "form": "1.0",
+  "title": null,
+  "description": null,
+  "fields": [
+   {
+    "key": "classes",
+    "path": [
+     "classes"
+    ],
+    "label": "Keywords by class",
+    "description": null,
+    "type": "object",
+    "control": "group",
+    "required": false,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": false,
+    "default": null,
+    "fields": [
+     {
+      "key": "classes.code",
+      "path": [
+       "classes",
+       "code"
+      ],
+      "label": "Code",
+      "description": null,
+      "type": "array",
+      "control": "list",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": true,
+      "default": [
+       "traceback",
+       "compile",
+       "function"
+      ],
+      "max_items": 50,
+      "item": {
+       "key": "classes.code[]",
+       "path": [
+        "classes",
+        "code",
+        "[]"
+       ],
+       "label": "Code",
+       "description": null,
+       "type": "string",
+       "control": "text",
+       "required": true,
+       "nullable": false,
+       "read_only": false,
+       "secret": false,
+       "has_default": false,
+       "default": null,
+       "max_length": 40
+      }
+     },
+     {
+      "key": "classes.chat",
+      "path": [
+       "classes",
+       "chat"
+      ],
+      "label": "Chat",
+      "description": null,
+      "type": "array",
+      "control": "list",
+      "required": false,
+      "nullable": false,
+      "read_only": false,
+      "secret": false,
+      "has_default": true,
+      "default": [
+       "hello",
+       "thanks"
+      ],
+      "max_items": 50,
+      "item": {
+       "key": "classes.chat[]",
+       "path": [
+        "classes",
+        "chat",
+        "[]"
+       ],
+       "label": "Chat",
+       "description": null,
+       "type": "string",
+       "control": "text",
+       "required": true,
+       "nullable": false,
+       "read_only": false,
+       "secret": false,
+       "has_default": false,
+       "default": null,
+       "max_length": 40
+      }
+     }
+    ]
+   },
+   {
+    "key": "fallback",
+    "path": [
+     "fallback"
+    ],
+    "label": "Fallback",
+    "description": null,
+    "type": "string",
+    "control": "choice",
+    "required": true,
+    "nullable": false,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": "unclear",
+    "options": [
+     {
+      "value": "code",
+      "label": "code"
+     },
+     {
+      "value": "chat",
+      "label": "chat"
+     },
+     {
+      "value": "unclear",
+      "label": "unclear"
+     }
+    ]
+   },
+   {
+    "key": "endpoint",
+    "path": [
+     "endpoint"
+    ],
+    "label": "Endpoint",
+    "description": "a model to ask when no keyword matches; null: answer the fallback",
+    "type": "string",
+    "control": "textarea",
+    "required": false,
+    "nullable": true,
+    "read_only": false,
+    "secret": false,
+    "has_default": true,
+    "default": null,
+    "max_length": 300,
+    "pattern": "^https?://"
+   }
+  ],
+  "notes": []
+ }
+}

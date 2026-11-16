@@ -49,6 +49,8 @@ from proxy import config as config_mod
 from proxy import engines as engines_mod
 from proxy import health as health_mod
 from proxy import hooks as hooks_mod
+from proxy import pluginhost as pluginhost_mod
+from proxy import pluginstore as pluginstore_mod
 from proxy import providers as providers_mod
 from proxy import http1
 from proxy import relay as relay_mod
@@ -205,6 +207,14 @@ class Service:
         # providers.py); idle while none is enabled
         self.providers = providers_mod.Providers(cfg, runner=self.hooks,
                                                  log=lambda m: self.log(m))
+        # SRV-857: the plugin registry (proxy/pluginstore.py)
+        self.plugins = pluginstore_mod.PluginStore(cfg, hooks=self.hooks.store,
+                                                   log=lambda m: self.log(m))
+        # SRV-859: the plugin host (proxy/pluginhost.py): the enabled plugins' processes and
+        # their contributions; idle with none enabled (started by `start`)
+        self.plugin_host = pluginhost_mod.PluginHost(
+            self.plugins, runner=self.hooks, providers=self.providers, cfg=cfg,
+            log=lambda m: self.log(m), health_check=lambda b: self.health.check(b))
         if conductor is not None:
             from proxy.harness import Harness
             self.harness = Harness(self, conductor, monitor_base, log=self.log)
@@ -213,9 +223,12 @@ class Service:
         self.health.start()
         self.engines.start()
         self.collect.start()
+        self.plugin_host.start()
         return self
 
     def stop(self) -> None:
+        if getattr(self, "plugin_host", None) is not None:
+            self.plugin_host.close()
         if self.harness is not None:
             self.harness.stop()
         if self.hooks is not None:

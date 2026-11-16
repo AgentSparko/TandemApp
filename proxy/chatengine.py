@@ -31,6 +31,12 @@ reaches an engine:
                                    shares its memory); an engine on another host gives nothing
                                    back for a sandbox here: 200 with `released_bytes` 0
     POST /chat-engine/v1/tokenize  the engine the body's model routes to
+    GET  /chat-engine/v1/plugins/tools
+                                   the running plugins' tools (SRV-859, proxy/pluginhost.py):
+                                   chatd lists them with its MCP servers
+    POST /chat-engine/v1/plugins/tools/call {plugin, tool, arguments}
+                                   one call of a plugin's tool -> {result} (MCP's tools/call
+                                   answer); arguments outside the tool's schema are refused
 
 THE CHAT ENGINE is the TandemLLM backend whose facts chatd reads: TANDEM_CHAT_ENGINE_BACKEND when it
 names an enabled one, else the default backend when it is a TandemLLM engine, else the first
@@ -38,9 +44,9 @@ enabled TandemLLM backend; none: the facts answer as a server without them does 
 FALLBACK_RUNS at once and shows fewer figures). Every call to it carries ConfigDB.key_for's bearer:
 the backend's key, or the HTTP token of the engine host it runs on (SRV-839, engine API 1.9).
 
-ACCESS. The OpenAI routes, the model list, the cache routes and tokenize follow the completions'
-rule (Service.authorize: a key of this controller's users once it has any, else open; this
-machine's own calls pass). The facts and the live rows pass this machine's own calls, the
+ACCESS. The OpenAI routes, the model list, the cache routes, tokenize and the plugins' tools
+follow the completions' rule (Service.authorize: a key of this controller's users once it has
+any, else open; this machine's own calls pass). The facts and the live rows pass this machine's own calls, the
 dashboard's rule or a user's key; /health without one says only {"status"}. Anything else under
 the prefix is 404.
 """
@@ -215,10 +221,51 @@ def handle(handler, state: dict, method: str, path: str, query: str) -> None:
             return handler._json(400, {"error": {"type": "invalid_request_error",
                                                  "message": "the body is a JSON object"}})
         return _post(handler, svc, b, path, body)
+    if path in ("/v1/plugins/tools", "/v1/plugins/tools/call"):
+        return _plugin_tools(handler, svc, method, path)
     if method != "GET":
         handler.close_connection = True         # a body this route never read ends the connection
     return handler._json(404, {"error": {"type": "not_found",
                                          "message": f"no route {method} {PREFIX}{path}"}})
+
+
+def _plugin_tools(handler, svc, method: str, path: str) -> None:
+    """SRV-859: the running plugins' tools for chatd, and one call of one."""
+    from proxy.pluginstore import PluginError
+    host = getattr(svc, "plugin_host", None)
+    raw = b""
+    if method == "POST":
+        try:
+            raw = handler._read_raw()
+        except http_body.BodyError as exc:
+            return handler._body_error(exc)
+    ok, _user = svc.authorize(handler)
+    if not ok:
+        return None
+    if path == "/v1/plugins/tools":
+        if method != "GET":
+            return handler._json(405, {"error": {"type": "method_not_allowed",
+                                                 "message": "GET only"}})
+        return handler._json(200, {"plugins": host.tools_view() if host is not None else []})
+    if method != "POST":
+        return handler._json(405, {"error": {"type": "method_not_allowed",
+                                             "message": "POST only"}})
+    try:
+        body = json.loads(raw or b"{}")
+    except (ValueError, RecursionError):
+        body = None
+    if not isinstance(body, dict) or set(body) - {"plugin", "tool", "arguments"} or \
+            not isinstance(body.get("plugin"), str) or not isinstance(body.get("tool"), str):
+        return handler._json(400, {"error": {"type": "bad_request", "message":
+                                             "{plugin, tool, arguments}"}})
+    if host is None:
+        return handler._json(503, {"error": {"type": "plugin_down",
+                                             "message": "no plugin host here"}})
+    try:
+        res = host.tool_call(body["plugin"], body["tool"], body.get("arguments") or {})
+    except PluginError as exc:
+        return handler._json(exc.status, exc.body())
+    return handler._json(200, {"result": res})
 
 
 def _post(handler, svc, b: dict | None, path: str, body: dict) -> None:

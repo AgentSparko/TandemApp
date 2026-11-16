@@ -1,7 +1,8 @@
 """The decision providers' registry (SRV-851): two tables of their own in the config database.
 
-    decision_providers      one row per provider: id, name, kind (builtin, systemone-http, hook),
-                            endpoint (systemone-http), hook id (hook), model, timeout, the
+    decision_providers      one row per provider: id, name, kind (builtin, systemone-http, hook,
+                            plugin), endpoint (systemone-http), hook id (hook), target (plugin:
+                            `<plugin>/<provider>`, SRV-859), model, timeout, the
                             questions it answers (JSON: question id -> {model?, endpoint?,
                             timeout_ms?}), mode (on, shadow, ab), the A/B share and its sticky
                             key, enabled, created and updated (when, by whom), version
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS decision_providers (
   questions TEXT NOT NULL DEFAULT '{}', mode TEXT NOT NULL DEFAULT 'shadow',
   ab_percent INTEGER NOT NULL DEFAULT 0, sticky TEXT NOT NULL DEFAULT 'session',
   enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-  updated_by TEXT, version INTEGER NOT NULL DEFAULT 1);
+  updated_by TEXT, version INTEGER NOT NULL DEFAULT 1, target TEXT);
 CREATE TABLE IF NOT EXISTS decision_provider_keys (
   ref TEXT PRIMARY KEY, provider_id TEXT NOT NULL, scope TEXT NOT NULL, ciphertext BLOB NOT NULL,
   nonce BLOB NOT NULL, master_key_id TEXT NOT NULL, last4 TEXT, sha256_6 TEXT,
@@ -53,14 +54,15 @@ QUESTIONS = {
     "memory_gate": "the memory writer: is there anything worth a note in the session",
     "judge": "the tester's questions after a turn: a failure in a tool output, a build's end",
 }
-KINDS = ("builtin", "systemone-http", "hook")
+KINDS = ("builtin", "systemone-http", "hook", "plugin")
 MODES = ("on", "shadow", "ab")
 STICKY = ("session", "user", "request")
 DEFAULT_SCOPE = "*"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,47}$")
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$")
-FIELDS = ("name", "kind", "endpoint", "hook_id", "model", "timeout_ms", "questions", "mode",
-          "ab_percent", "sticky", "enabled", "api_key")
+FIELDS = ("name", "kind", "endpoint", "hook_id", "target", "model", "timeout_ms", "questions",
+          "mode", "ab_percent", "sticky", "enabled", "api_key")
+TARGET_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}/[a-z0-9][a-z0-9_-]{0,47}$")
 QUESTION_FIELDS = ("model", "endpoint", "timeout_ms", "api_key")
 TIMEOUT_MAX_MS = 5000
 KEY_MAX = 4096
@@ -105,6 +107,8 @@ class ProviderStore:
     def __init__(self, cfg, hook=None):
         self.cfg = cfg
         self.hook = hook or (lambda hid: None)
+        # SRV-859: fn(target) -> {questions} of a plugin's declared provider, or None
+        self.plugin_target = None
         self.gen = 0
         self._ready = False
 
@@ -118,6 +122,9 @@ class ProviderStore:
         with self.cfg._lock:            # the config database's lock alone (proxy/hookstore.py)
             if not self._ready:
                 conn.executescript(DDL)
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(decision_providers)")}
+                if "target" not in cols:                     # a table made before SRV-859
+                    conn.execute("ALTER TABLE decision_providers ADD COLUMN target TEXT")
                 conn.commit()
                 self._ready = True
         return True
@@ -137,7 +144,7 @@ class ProviderStore:
     # ------------------------------------------------------------------ reads
     _COLS = ("id", "name", "kind", "endpoint", "hook_id", "model", "timeout_ms", "questions",
              "mode", "ab_percent", "sticky", "enabled", "created_at", "updated_at", "updated_by",
-             "version")
+             "version", "target")
 
     def _row(self, r) -> dict:
         d = dict(zip(self._COLS, r))
@@ -188,6 +195,19 @@ class ProviderStore:
                            "hook_id")
         elif d["hook_id"] is not None:
             raise _bad("hook_id: only for a hook provider", "hook_id")
+        if d["kind"] == "plugin":
+            t = d.get("target")
+            if not isinstance(t, str) or not TARGET_RE.match(t):
+                raise _bad("target: <plugin>/<provider>, a provider a plugin declares", "target")
+            want = self.plugin_target(t) if self.plugin_target is not None else None
+            if want is None:
+                raise _bad(f"target: no installed plugin declares the provider {t}", "target")
+            other = sorted(set(d["questions"] or {}) - set(want["questions"]))
+            if other:
+                raise _bad(f"questions: {t} answers {', '.join(want['questions'])}, not "
+                           f"{other[0]}", "questions")
+        elif d.get("target") is not None:
+            raise _bad("target: only for a plugin provider", "target")
         if not isinstance(d["model"], str) or not MODEL_RE.match(d["model"]):
             raise _bad("model: a model id or auto", "model")
         t = d["timeout_ms"]
@@ -286,6 +306,7 @@ class ProviderStore:
             raise _bad(f"unknown field {sorted(unknown)[0]!r}", sorted(unknown)[0])
         d = {"name": doc.get("name"), "kind": doc.get("kind", "systemone-http"),
              "endpoint": doc.get("endpoint"), "hook_id": doc.get("hook_id"),
+             "target": doc.get("target"),
              "model": doc.get("model", "auto"), "timeout_ms": doc.get("timeout_ms", 400),
              "questions": doc.get("questions"), "mode": doc.get("mode", "shadow"),
              "ab_percent": doc.get("ab_percent", 0), "sticky": doc.get("sticky", "session"),
@@ -305,12 +326,12 @@ class ProviderStore:
             c = self._c()
             c.execute("INSERT INTO decision_providers(id, name, kind, endpoint, hook_id, model, "
                       "timeout_ms, questions, mode, ab_percent, sticky, enabled, created_at, "
-                      "updated_at, updated_by, version) VALUES "
-                      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                      "updated_at, updated_by, version, target) VALUES "
+                      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
                       (pid, d["name"].strip(), d["kind"], d["endpoint"], d["hook_id"],
                        d["model"], d["timeout_ms"], json.dumps(mapping, sort_keys=True),
                        d["mode"], d["ab_percent"], d["sticky"], int(d["enabled"]), now, now,
-                       who))
+                       who, d["target"]))
             keys = dict(qkeys)
             if d["api_key"] is not None:
                 keys[DEFAULT_SCOPE] = d["api_key"]
@@ -355,11 +376,12 @@ class ProviderStore:
             c = self._c()
             c.execute("UPDATE decision_providers SET name = ?, endpoint = ?, hook_id = ?, "
                       "model = ?, timeout_ms = ?, questions = ?, mode = ?, ab_percent = ?, "
-                      "sticky = ?, enabled = ?, updated_at = ?, updated_by = ?, "
+                      "sticky = ?, enabled = ?, updated_at = ?, updated_by = ?, target = ?, "
                       "version = version + 1 WHERE id = ?",
                       (new["name"].strip(), new["endpoint"], new["hook_id"], new["model"],
                        new["timeout_ms"], json.dumps(mapping, sort_keys=True), new["mode"],
-                       new["ab_percent"], new["sticky"], int(new["enabled"]), now, who, pid))
+                       new["ab_percent"], new["sticky"], int(new["enabled"]), now, who,
+                       new.get("target"), pid))
             # a question no longer answered takes its key with it
             gone = [q for q in old["questions"] if q not in mapping]
             for q in gone:

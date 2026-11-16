@@ -81,6 +81,9 @@
     },
     "speaks": {
       "type": "string"
+    },
+    "plugin": {
+      "type": "string"
     }
   },
   "required": [

@@ -1,10 +1,12 @@
 """The hook registry (SRV-849, SEC-16): two tables of their own in the config database.
 
-    hooks          one row per hook: id, name, kind (http, builtin; plugin, mcp and inproc are
+    hooks          one row per hook: id, name, kind (http, builtin, plugin; mcp and inproc are
                    refused until they exist), stages (JSON list), role (transform, guard, decider,
                    observer), priority, mode (off, shadow, on), scope (JSON), failure policy,
                    timeout, payload level (meta, redacted, full), endpoint (http) or target
-                   (builtin), options (JSON), the secret's ref, the full payload's grant (JSON),
+                   (builtin: its name; plugin: `<plugin>/<hook>`, a hook its manifest declares,
+                   at its stages, role and payload or below), options (JSON), the secret's ref,
+                   the full payload's grant (JSON),
                    enabled, created and updated (when, by whom), version
     hook_secrets   a hook's HMAC secret as AES-256-GCM ciphertext under the master key
                    (proxy/secrets.py) with `hook-secret:<ref>` as associated data, its last 4
@@ -89,6 +91,8 @@ class HookStore:
         self.gen = 0
         self._ready = False
         self._secret = _rand.token_bytes(32)          # the confirm tokens' key, this process's
+        # SRV-859: fn(target) -> {stages, role, payload} of a plugin's declared hook, or None
+        self.plugin_target = None
 
     # ------------------------------------------------------------------ lifecycle
     def ready(self) -> bool:
@@ -165,11 +169,11 @@ class HookStore:
         if d["kind"] not in S.KINDS:
             raise _bad(f"kind: one of {', '.join(S.KINDS)}", "kind")
         if d["kind"] not in S.KINDS_NOW:
-            later = {"plugin": "the plugin host (plugin-v1)", "mcp": "the plugin host's MCP "
-                     "client (plugin-v1)", "inproc": "the in-process chain"}[d["kind"]]
+            later = {"mcp": "a later version (a plugin's hooks are kind plugin)",
+                     "inproc": "the in-process chain"}[d["kind"]]
             raise HookError(422, "kind_unavailable", f"kind {d['kind']!r} is not available in "
-                            f"this version: it arrives with {later}. Use http or builtin.",
-                            "kind")
+                            f"this version: it arrives with {later}. Use http, builtin or "
+                            f"plugin.", "kind")
         if d["role"] not in S.ROLES:
             raise _bad(f"role: one of {', '.join(S.ROLES)}", "role")
         st = d["stages"]
@@ -213,7 +217,26 @@ class HookStore:
             if why:
                 raise _bad(f"endpoint: {why}", "endpoint")
             if d["target"] is not None:
-                raise _bad("target: only for a builtin hook", "target")
+                raise _bad("target: only for a builtin or plugin hook", "target")
+        elif d["kind"] == "plugin":
+            if d["endpoint"] is not None:
+                raise _bad("endpoint: only for an http hook", "endpoint")
+            t = d["target"]
+            if not isinstance(t, str) or not re.match(
+                    r"^[a-z0-9][a-z0-9-]{0,47}/[a-z0-9][a-z0-9_-]{0,47}$", t):
+                raise _bad("target: <plugin>/<hook>, a hook a plugin declares", "target")
+            want = self.plugin_target(t) if self.plugin_target is not None else None
+            if want is None:
+                raise _bad(f"target: no installed plugin declares the hook {t}", "target")
+            extra = sorted(set(d["stages"]) - set(want["stages"]))
+            if extra:
+                raise _bad(f"stages: {t} runs at {', '.join(want['stages'])}, not {extra[0]}",
+                           "stages")
+            if d["role"] != want["role"]:
+                raise _bad(f"role: {t} is a {want['role']}", "role")
+            if S.PAYLOADS.index(d["payload"]) > S.PAYLOADS.index(want["payload"]):
+                raise _bad(f"payload: {t} declares {want['payload']}; at most that",
+                           "payload")
         else:
             if d["endpoint"] is not None:
                 raise _bad("endpoint: only for an http hook", "endpoint")
@@ -223,7 +246,8 @@ class HookStore:
 
     # ------------------------------------------------------------------ the full payload
     def destination(self, d: dict) -> dict:
-        """{host, lan} of where a hook's payload goes: an in-process builtin is on this host."""
+        """{host, lan} of where a hook's payload goes: an in-process builtin and a plugin (on this
+        host, its own capabilities decide what it may reach) are on this host."""
         if d["kind"] != "http":
             return {"host": None, "lan": True}
         host = hookcall.destination(d["endpoint"])["host"]

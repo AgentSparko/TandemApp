@@ -70,6 +70,8 @@ spec:
       ports:
         - port: {{ .Values.sandbox.kubernetes.egressPort }}
           protocol: TCP
+        - port: {{ .Values.sandbox.kubernetes.pluginEgressPort }}
+          protocol: TCP
 ---
 # the controller's egress port: from this release's sandbox pods only. Policies add up: with
 # networkPolicy.enabled the controller's own policy admits its HTTP port; without it this policy
@@ -94,6 +96,8 @@ spec:
               {{- include "tandemapp.sandboxLabels" . | nindent 14 }}
       ports:
         - port: {{ .Values.sandbox.kubernetes.egressPort }}
+          protocol: TCP
+        - port: {{ .Values.sandbox.kubernetes.pluginEgressPort }}
           protocol: TCP
     {{- if not .Values.networkPolicy.enabled }}
     - ports:

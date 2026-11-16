@@ -35,7 +35,7 @@ A remote hook is code outside TandemApp that the controller calls at a stage of 
 
 ## Kinds
 
-`http` (a signed webhook) and `builtin` (code in the controller: `set`, `deny`, `route`, `fallback`, `noop`) run now. `plugin`, `mcp` and `inproc` are part of the contract and refused with `kind_unavailable` until the plugin host and the in-process chain exist.
+`http` (a signed webhook), `builtin` (code in the controller: `set`, `deny`, `route`, `fallback`, `noop`) and `plugin` (SRV-859: `hooks/call` to a running plugin, `target` `<plugin>/<hook>`, a hook its manifest declares, at its stages, role and payload or below) run now. A plugin's call carries the same envelope with `hook` set to the plugin's hook name; it is local (stdio), so there is no signature. `mcp` and `inproc` are part of the contract and refused with `kind_unavailable` until they exist.
 
 ## Payload levels
 

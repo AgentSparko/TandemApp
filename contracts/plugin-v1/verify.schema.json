@@ -1,0 +1,37 @@
+{
+ "$id": "plugin-v1/verify",
+ "description": "POST /v1/fleet/plugins/{id}/verify",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "id": {
+   "type": "string"
+  },
+  "integrity": {
+   "enum": [
+    "ok",
+    "mismatch",
+    "missing"
+   ]
+  },
+  "sha256": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "expected": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "contract_version",
+  "id",
+  "integrity",
+  "sha256",
+  "expected"
+ ],
+ "additionalProperties": false
+}

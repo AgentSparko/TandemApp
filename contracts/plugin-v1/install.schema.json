@@ -1,0 +1,50 @@
+{
+ "$id": "plugin-v1/install",
+ "description": "POST /v1/fleet/plugins: 201 installed, 200 upgraded or unchanged",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "plugin": {
+   "$ref": "common.schema.json#/$defs/plugin_full"
+  },
+  "action": {
+   "enum": [
+    "installed",
+    "upgraded",
+    "unchanged"
+   ]
+  },
+  "from": {
+   "type": "string"
+  },
+  "kept": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "dropped": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "warnings": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  }
+ },
+ "required": [
+  "contract_version",
+  "plugin",
+  "action",
+  "kept",
+  "dropped",
+  "warnings"
+ ],
+ "additionalProperties": false
+}

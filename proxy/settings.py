@@ -79,9 +79,9 @@ import threading
 import time
 from datetime import datetime, timezone
 
-CONTRACT = "1.0"
+CONTRACT = "1.1"
 #: the scopes in dependency order: a change set applies them in this order
-SCOPES = ("app", "backends", "conductor", "engine", "hooks")
+SCOPES = ("app", "backends", "conductor", "engine", "hooks", "plugins")
 OPS = ("schema", "get", "plan", "apply", "versions", "restore")
 RESTART = ("none", "app", "hot", "engine")
 TYPES = ("string", "integer", "number", "boolean", "enum", "list", "object", "document", "path",
