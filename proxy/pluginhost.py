@@ -641,6 +641,8 @@ class PluginHost:
         try:
             info = self.store.load(p.id)       # the tree, the signature and the trust (SEC-18)
         except PluginError as exc:
+            row = self.store.get(p.id)          # a change of the row looks at it again
+            p.row_version = row["row_version"] if row else None
             raise Refused(exc.message, exc.code) from None
         m = info["manifest"]
         p.info, p.version, p.row_version = info, info["version"], info["row_version"]
