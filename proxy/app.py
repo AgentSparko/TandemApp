@@ -1365,6 +1365,9 @@ def build(args, env=None) -> Service:
     svc.plugin_host.state_dir = state_dir
     if getattr(args, "port", 0):
         svc.plugin_host.own_url = gateway_url(getattr(args, "host", "127.0.0.1"), args.port)
+    if accounts is not None:
+        # SRV-869: the relay reaches a plugin's backend with this process's own secret
+        cfg.service_key = lambda url: accounts.relay_key(url, svc.plugin_host.own_url)
     if env.get("TANDEM_DECISION_REPLAY"):
         # SRV-851: recorded provider answers in place of every provider (tools/decision_replay.py)
         n = svc.providers.load_replay(env["TANDEM_DECISION_REPLAY"])
@@ -1521,6 +1524,13 @@ def own_chat(args, cfg, env):
     if svc is not None:
         chat.engine_here = lambda: chatengine.engine_here(svc)
         chat.users = cfg
+    acc = STATE.get("accounts")
+    if acc is not None:
+        # SRV-869: chatd's identity svc:chatd, a fresh secret at each start of chatd, into its
+        # environment only (no users row, no engine.key)
+        from proxy import tokens as tokens_mod
+        chat.service_key = lambda: acc.tokens.mint_service(
+            tokens_mod.CHATD_SERVICE, tokens_mod.CHATD_SCOPES, memory_user=tokens_mod.CHATD_LABEL)
     STATE["chat"] = chat
     if STATE.get("fleet") is not None:
         STATE["fleet"].chat = chat              # SRV-835: the health page checks it

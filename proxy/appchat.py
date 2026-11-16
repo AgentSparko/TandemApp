@@ -211,10 +211,16 @@ class AppChat:
             here = None
         return "engine" if here else "app"
 
+    #: SRV-869 (accounts on): () -> a fresh secret of chatd's service identity svc:chatd, minted
+    #: at each start of chatd and handed over in its environment only (proxy/app.py own_chat)
+    service_key = None
+
     def engine_key(self) -> str | None:
         """chatd's key for this controller's completions once it has users (QSE_CHAT_ENGINE_KEY
-        above); None while it has none, or when the env file names one."""
-        if (self.cfg.get("QSE_CHAT_ENGINE_KEY") or "").strip() or self.users is None:
+        above); None while it has none, or when the env file names one. With the accounts on
+        the service identity replaces it (start): no users row, no engine.key."""
+        if (self.cfg.get("QSE_CHAT_ENGINE_KEY") or "").strip() or self.users is None or \
+                self.service_key is not None:
             return None
         try:
             if not self.users.users_active():
@@ -332,7 +338,11 @@ class AppChat:
         os.makedirs(os.path.dirname(self.log_path), mode=0o700, exist_ok=True)
         out = open(self.log_path, "ab")
         try:
-            self.proc = subprocess.Popen(self.argv(), cwd=ROOT, env=self.child_env(),
+            env = self.child_env()
+            if self.service_key is not None and not \
+                    (self.cfg.get("QSE_CHAT_ENGINE_KEY") or "").strip():
+                env["QSE_CHAT_ENGINE_KEY"] = self.service_key()      # SRV-869
+            self.proc = subprocess.Popen(self.argv(), cwd=ROOT, env=env,
                                          stdin=subprocess.DEVNULL, stdout=out,
                                          stderr=subprocess.STDOUT, start_new_session=True,
                                          close_fds=True)

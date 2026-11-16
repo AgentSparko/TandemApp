@@ -886,9 +886,18 @@ class ConfigDB:
         with self._lock:
             r = self._conn.execute("SELECT kind, url FROM backends WHERE id = ?",
                                    (bid,)).fetchone()
+        if r is not None and self.service_key is not None:
+            # SRV-869 (accounts only): a plugin's backend at this controller's own
+            # /plugin-backends/* gets the relay's in-process secret; never stored, never moved
+            got = self.service_key(r[1])
+            if got:
+                return got
         if r is None or r[0] != "tandemllm":
             return None
         return self.engine_token_for(r[1])
+
+    #: SRV-869: (url) -> a bearer this process holds for its own routes, or None (proxy/app.py)
+    service_key = None
 
     def own_key(self, bid: str) -> str | None:
         """The backend's own key (the env's first, else the stored one), never an engine host's

@@ -45,9 +45,17 @@ rule and key). Per name tried: after five failures each further try waits twice 
 one before, 2 s up to 300 s, never a lock for good; the name tried is the key whether or not it
 exists, so the answer does not tell. Over every address: proxy/identity.py's cap.
 
-SEAMS for the changes after this one: `service_resolver` (service identities), `exposure`
-(SRV-871: `(principal, method, path, peer, headers) -> (status, code, message) | None`, the
-protocol's exposure switch for a token), `on_account_removed(account_id)`.
+SEAMS: `service_resolver` (SRV-869: `(headers, peer) -> Principal | None`, asked before the token
+store for a request with a bearer: the plugin relay's in-process secret, relay_principal),
+`exposure` (SRV-871: `(principal, method, path, peer, headers) -> (status, code, message) |
+None`, the protocol's exposure switch for a token), `on_account_removed`.
+
+SRV-869: being on the same machine opens nothing outside local mode: `trusted_local` is False
+here for every old guard, and the one this-machine test (proxy/authlocal.py this_machine) lets
+a request in from local mode only. The controller's own callers have identities: chatd's
+svc:chatd, the CLI's svc:cli (<state>/run/cli.token, write_cli_token at each start), a backend's
+collect identity, the plugin relay's secret. A revoked token's open stream closes as an ended
+session's does (Streams).
 
 SRV-867 adds API tokens (proxy/tokens.py): `token_resolver` is the token store's. A request with
 an API credential is that token and nothing else: unknown, revoked, expired or of a disabled owner
@@ -72,6 +80,7 @@ import collections
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import socket
@@ -93,6 +102,7 @@ CSRF_HEADER = "X-Tandem-CSRF"
 DAY_MS = 86_400_000
 TOUCH_MS = 60_000                       # last_seen_at is written at most once a minute
 STREAM_CHECK_S = 2.0
+TOKEN_STREAM = "t:"                     # SRV-869: a token's key in the stream registry
 ACCOUNT_FAILS = 5
 ACCOUNT_WAIT_S = (2.0, 300.0)
 ACCOUNT_FORGET_S = 3600.0               # a name's failures are forgotten after an hour of quiet
@@ -585,7 +595,12 @@ class AccountStore:
 # ======================================================================================== streams
 class Streams:
     """The connections each session holds open now. An end closes them: at once from this
-    process, within STREAM_CHECK_S from anywhere (a check of the table)."""
+    process, within STREAM_CHECK_S from anywhere (a check of the table).
+
+    SRV-869: an API token's open stream too, under the key `t:<token id>`: a revoke closes it at
+    once from this process (TokenStore.on_revoked), and the watcher closes it within
+    STREAM_CHECK_S when the token was revoked elsewhere (the CLI), expired, or its owner was
+    disabled."""
 
     def __init__(self, store: AccountStore, *, check_s: float = STREAM_CHECK_S):
         self.store = store
@@ -633,7 +648,9 @@ class Streams:
             dead = []
             for h in keys:
                 try:
-                    if not self.store.valid(h):
+                    ok = self.store.tokens.live(h[2:]) if h.startswith(TOKEN_STREAM) else \
+                        self.store.valid(h)
+                    if not ok:
                         dead.append(h)
                 except Exception:                                  # noqa: BLE001
                     pass
@@ -738,6 +755,8 @@ class AccountsAuth:
         self.limits = SignInLimits(self.trusted_proxies, clock=clock)
         self.streams = Streams(self.store)
         self.store.on_revoked = lambda ids: self.streams.close(ids, keep=self._tls_conn())
+        self.store.tokens.on_revoked = lambda ids: self.streams.close(
+            [TOKEN_STREAM + i for i in ids], keep=self._tls_conn())
         self.listener_tls = listener_tls
         self.log = log or (lambda m: None)
         self._unmapped: set = set()
@@ -746,7 +765,10 @@ class AccountsAuth:
         self.tokens = self.store.tokens
         self.token_resolver = self.tokens.resolve   # SRV-867: (headers) -> Principal | Refused
         self.exposure = None                # SRV-871: (p, method, path, peer, headers) -> refusal
-        self.service_resolver = None        # (headers, peer) -> Principal | None
+        # SRV-869: the plugin relay's secret, made at each start and kept in this process only;
+        # the relay sends it as the bearer of a plugin's backend (proxy/config.py service_key)
+        self.relay_secret = secrets.token_urlsafe(32)
+        self.service_resolver = self.relay_principal    # (headers, peer) -> Principal | None
         self.local_mode = None              # (peer, headers) -> Principal | None
         self.on_account_removed = None      # (account_id) -> None: its tokens
         # SEC-26: local mode and the setup codes; SRV-865: the legacy variables' findings
@@ -763,6 +785,10 @@ class AccountsAuth:
         from proxy import authlocal
         say = say or self.log
         self.local.bind = host
+        try:
+            self.write_cli_token()                   # SRV-869: every start, a fresh one
+        except OSError as exc:
+            say(f"[auth] the CLI's token was not written: {type(exc).__name__}: {exc}")
         if not self.store.setup_required():
             return None
         if self.local.on():
@@ -781,6 +807,26 @@ class AccountsAuth:
             f"24 h or until the next start; it opens only the first-run setup). Open {where} and "
             f"enter it; `tandem-app users setup-code` prints a new one")
         return code
+
+    def write_cli_token(self, state_dir: str | None = None) -> str:
+        """SRV-869: the CLI's service identity (svc:cli, an operator's reach, never trust),
+        minted at each start into <state>/run/cli.token: the file 0600, its folder 0700. Reading
+        the file is the proof; another local user cannot. Returns the file's path."""
+        path = tokens_mod.cli_token_path(state_dir or os.path.dirname(self.cfg.path))
+        d = os.path.dirname(path)
+        os.makedirs(d, mode=0o700, exist_ok=True)
+        os.chmod(d, 0o700)
+        token = self.tokens.mint_service(tokens_mod.CLI_SERVICE, tokens_mod.CLI_SCOPES,
+                                         memory_user="cli")
+        tmp = f"{path}.tmp-{os.getpid()}"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+            os.write(fd, (token + "\n").encode())
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+        return path
 
     def findings(self) -> list[dict]:
         """The health page's controller findings of the sign-in (codes of proxy/enginecodes.py):
@@ -838,8 +884,33 @@ class AccountsAuth:
                 return v
         return None
 
+    def relay_principal(self, headers, peer: str = "") -> Principal | None:
+        """SRV-869: the relay to /plugin-backends/* (proxy/pluginweb.py): this process's own
+        secret, from a loopback peer. Its identity holds `plugin-backend` and nothing else."""
+        if peer not in auth_mod.LOOPBACK:
+            return None
+        value, bad = tokens_mod.credential(headers)
+        if bad is not None or not value or \
+                not hmac.compare_digest(value.encode(), self.relay_secret.encode()):
+            return None
+        scopes = frozenset({"plugin-backend"})
+        return Principal(kind="service", id=tokens_mod.PLUGIN_SERVICE, name="plugin-host",
+                         via="token", scopes=scopes, perms=scopes)
+
+    def relay_key(self, url: str, own_url: str | None) -> str | None:
+        """The bearer the relay sends to a backend at `url`: the secret above for this
+        controller's own /plugin-backends/*, else None (proxy/config.py key_for)."""
+        if not own_url or not isinstance(url, str):
+            return None
+        return self.relay_secret if url.startswith(own_url.rstrip("/") + "/plugin-backends/") \
+            else None
+
     def resolve(self, headers, peer: str = "", path: str = "") -> Principal | None:
         if self.has_token(headers):
+            if self.service_resolver is not None:
+                got = self.service_resolver(headers, peer)
+                if got is not None:
+                    return got
             return self.token_resolver(headers) if self.token_resolver is not None else None
         if path.startswith("/s/"):
             from tandemapp import session_tokens as st_mod
@@ -858,10 +929,6 @@ class AccountsAuth:
                                  csrf=csrf_of(sid),
                                  expires_at=min(row["expires_at"], row["idle_until"]),
                                  must_change=bool(acc["must_change"]))
-        if self.service_resolver is not None:
-            got = self.service_resolver(headers, peer)
-            if got is not None:
-                return got
         if self.local_mode is not None:
             return self.local_mode(peer, headers)
         return None
@@ -1046,7 +1113,15 @@ class AccountsAuth:
             return self._refuse(handler, method, 403, "password_change_required",
                                 "set a new password first (PUT /v1/auth/password)")
         if p.via == "token":
-            return self._token_gate(handler, method, raw, peer, perm, p)
+            if self._token_gate(handler, method, raw, peer, perm, p):
+                return True
+            conn = getattr(handler, "connection", None)
+            if conn is not None and p.id != tokens_mod.PLUGIN_SERVICE:
+                # SRV-869: a revoked token's open stream is closed as an ended session's is
+                key = TOKEN_STREAM + p.id
+                self.streams.add(key, conn)
+                handler._stream_key = key
+            return False
         if not authz.allow(p, perm, self.policy):
             return self._refuse(handler, method, 403, "permission_denied",
                                 f"this needs the permission {perm}", permission=perm)

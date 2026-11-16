@@ -63,6 +63,14 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def this_machine(peer: str, headers) -> bool:
+    """The one test of "a caller on this machine" with the accounts on (SRV-869): a loopback
+    peer, a loopback Host, no forwarding header. Two callers, each named in tests/
+    test_auth_services.py: local mode (LocalMode below, the only place it lets a request in) and
+    the exposure rule (proxy/exposure.py, which only narrows a token that is valid already)."""
+    return peer in auth_mod.LOOPBACK and not LocalMode.proxied(headers)
+
+
 def loopback_bind(host: str | None) -> bool:
     h = (host or "").strip().strip("[]").lower()
     if h == "localhost":
@@ -236,7 +244,7 @@ class LocalMode:
     def __call__(self, peer: str, headers):
         if peer not in auth_mod.LOOPBACK or not self.on():
             return None
-        if self.proxied(headers):
+        if not this_machine(peer, headers):
             if self.seen is None:
                 self.log("[auth] a request came through a proxy while TandemApp trusts this "
                          "machine: it was refused; set a password")
