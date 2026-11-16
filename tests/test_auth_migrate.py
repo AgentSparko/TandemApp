@@ -347,6 +347,9 @@ def test_variables_and_files():
         # the valid key still reads (the users' keys stay until the API tokens replace them)
         assert px.svc.cfg.apply_env()["users"] == [{"label": "laptop",
                                                     "key": "0123456789abcdef0123"}]
+        from onboard_rig import ok as schema_ok
+        for one in f.values():
+            schema_ok(one, "health-finding.schema.json")
         dump = json.dumps(list(f.values()))
         assert TOKEN not in dump and "0123456789abcdef0123" not in dump
     # the switch off: the old rule, unchanged (a malformed key list still stops it)

@@ -172,6 +172,12 @@
         },
         "speaks": {
           "type": "string"
+        },
+        "variable": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
         }
       },
       "required": [],
