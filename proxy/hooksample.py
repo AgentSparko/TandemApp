@@ -98,6 +98,19 @@ def sample(stage: str) -> dict:
     return {"request": req, "meta": meta, "content": copy.deepcopy(content)}
 
 
+def samples() -> dict:
+    """stage -> {event, content}: the sample event as a hook at payload `meta` gets it, and the
+    text a `redacted` or `full` one gets with it as `content` (None where the stage has none).
+    `GET /v1/fleet/hooks/stages` serves them for the playground."""
+    from proxy import hookstages
+    out = {}
+    for st in hookstages.STAGES:
+        s = sample(st)
+        out[st] = {"event": hookcall.event_at("meta", s["meta"], s["content"]),
+                   "content": s["content"]}
+    return out
+
+
 def envelope(stage: str, level: str = "meta", hook: str = "example-hook") -> dict:
     """A whole call body as a hook of `level` gets it at `stage`."""
     from proxy import hookstages

@@ -65,12 +65,12 @@ Under the controller's admin rights (the configuration's writes); granting `full
 | route | answer |
 |-|-|
 | `GET /v1/fleet/hooks` | `hooks.schema.json` |
-| `GET /v1/fleet/hooks/stages` | `stages.json` |
+| `GET /v1/fleet/hooks/stages` | `stages.json` and `samples`: each stage's sample event as `{event, content}` (the meta event of `examples/<stage>.meta.json`, and the `content` a redacted or full hook gets with it, null where the stage has none) |
 | `POST /v1/fleet/hooks` (`hook-new.schema.json`) | 201 `hook-created.schema.json` |
 | `GET`, `PATCH` (`hook-patch.schema.json`) `/v1/fleet/hooks/{id}` | `hook-one.schema.json` |
 | `DELETE /v1/fleet/hooks/{id}` | `{deleted}` |
 | `POST /v1/fleet/hooks/{id}/enable`, `/disable`; `PUT .../mode {mode}` | `hook-one.schema.json` |
-| `POST /v1/fleet/hooks/{id}/test {stage?, event?}` | `hook-test.schema.json` |
+| `POST /v1/fleet/hooks/{id}/test {stage?, event?}` | `hook-test.schema.json`, with the event the hook was sent |
 | `GET /v1/fleet/hooks/{id}/calls?limit=N` | `hook-calls.schema.json` |
 | `GET /v1/fleet/hooks/calls?request=<id>` | `hook-trace.schema.json`: one request across every hook and stage, from the journals |
 | `POST /v1/fleet/hooks/{id}/secret {grace_s?}` | `hook-created.schema.json` |

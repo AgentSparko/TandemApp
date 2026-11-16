@@ -3,6 +3,9 @@
     GET    /v1/fleet/hooks                       every hook with its secret's hint, where its
                                                  payload goes, its breaker and its figures
     GET    /v1/fleet/hooks/stages                the stage table (contracts/hooks-v1/stages.json)
+                                                 and `samples`: each stage's sample event (the
+                                                 playground's default, contracts/hooks-v1/
+                                                 examples)
     POST   /v1/fleet/hooks                       create; an http hook's answer holds its secret,
                                                  once (201)
     GET    /v1/fleet/hooks/{id}
@@ -12,7 +15,8 @@
     PUT    /v1/fleet/hooks/{id}/mode             {mode: off|shadow|on}
     POST   /v1/fleet/hooks/{id}/test             {stage?, event?}: the hook once against the
                                                  stage's sample event (the playground's call);
-                                                 nothing counted, nothing applied
+                                                 nothing counted, nothing applied; the answer
+                                                 holds the event the hook was sent
     GET    /v1/fleet/hooks/{id}/calls?limit=N    the journal, newest first (never a payload)
     GET    /v1/fleet/hooks/calls?request=<id>    one request's trace: every journaled call of
                                                  that request, across hooks and stages, in the
@@ -116,7 +120,8 @@ def _route(runner, method: str, sub: list[str], body, who: str, q: dict) -> tupl
                 out["secret"] = secret
             return 201, out
     elif sub == ["stages"] and method == "GET":
-        return 200, hookstages.export()
+        from proxy import hooksample
+        return 200, dict(hookstages.export(), samples=hooksample.samples())
     elif sub == ["calls"] and method == "GET":
         rid = q.get("request")
         if not rid or len(rid) > 200:

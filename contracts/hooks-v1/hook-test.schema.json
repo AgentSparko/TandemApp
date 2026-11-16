@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "POST /v1/fleet/hooks/{id}/test",
-  "description": "the hook once against the stage's sample event (examples/), or the body's `event` merged over it; nothing counted or applied.",
+  "description": "the hook once against the stage's sample event (examples/), or the body's `event` merged over it; nothing counted or applied; `event` is the event the hook was sent, at its payload level (null when none was sent: the redaction failed).",
   "type": "object",
   "properties": {
     "hook": {
@@ -56,6 +56,12 @@
     },
     "diff": {
       "type": "object"
+    },
+    "event": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "required": [
@@ -64,7 +70,8 @@
     "outcome",
     "duration_ms",
     "result",
-    "error"
+    "error",
+    "event"
   ],
   "additionalProperties": false
 }

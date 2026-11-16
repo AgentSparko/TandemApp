@@ -2,7 +2,8 @@
 
   1  stages.json is proxy/hookstages.py's table; every stage has its event schema
      and examples                                                   test_stages_json_is_the_table
-  2  every example validates; a meta example has no `content`       test_examples_validate
+  2  every example validates; a meta example has no `content`; the
+     stages route serves each stage's sample as the examples hold it test_examples_validate
   3  every call the runner makes at every wired stage, through the
      relay, validates against call.schema and its stage's event      test_real_calls_validate
   4  results: the schema's shape and the runner's check agree        test_results_validate
@@ -79,6 +80,17 @@ def test_examples_validate():
         assert env["stage"] == stage and env["payload"] == level
         assert ("content" in env["event"]) == (level != "meta"), f
         assert env == hooksample.envelope(stage, level), f        # the files are the samples
+        # SRV-849: what the stages route serves is the same: the meta event, and the full
+        # example's content where the stage has one
+        served = hooksample.samples()[stage]
+        if level == "meta":
+            assert served["event"] == env["event"], f
+            if not os.path.isfile(os.path.join(CONTRACT, "examples", f"{stage}.full.json")):
+                assert served["content"] is None, f
+        else:
+            assert served["content"] == env["event"]["content"], f
+            assert served["event"] == {k: v for k, v in env["event"].items()
+                                       if k != "content"}, f
         n += 1
     # a redacted envelope validates too, its strings through the redaction
     s = hooksample.sample("request.received")
@@ -210,6 +222,14 @@ def test_api_answers_validate():
             got = json.loads(out)
             assert st == 200 and got["outcome"] == "ok", got
             assert not _check(got, "hook-test.schema.json"), got
+            # the event it was sent: the stage's sample at its payload level (meta)
+            assert got["event"] == _load("examples/request.before_engine.meta.json")["event"]
+            assert hs.calls[-1]["env"]["event"] == got["event"]
+            st, _, out = px.post(f"/v1/fleet/hooks/{hid}/test", {"event": {"params": {
+                "temperature": 1.5}}})
+            got2 = json.loads(out)
+            assert st == 200 and got2["event"]["params"] == {"temperature": 1.5}, got2
+            assert hs.calls[-1]["env"]["event"] == got2["event"]
             st, _, out = px.get(f"/v1/fleet/hooks/{hid}/calls")
             got = json.loads(out)
             assert st == 200 and got["calls"][0]["mode"] == "test", got
@@ -225,7 +245,10 @@ def test_api_answers_validate():
             assert st == 200 and not _check(got, "hook-created.schema.json"), got
             assert got["hook"]["secret"]["previous_until"] is not None
             st, _, out = px.get("/v1/fleet/hooks/stages")
-            assert st == 200 and json.loads(out) == S.export()
+            got = json.loads(out)
+            samples = got.pop("samples")
+            assert st == 200 and got == S.export()
+            assert samples == hooksample.samples() and set(samples) == set(S.STAGES)
             for method, path, body, code in (
                     ("POST", "/v1/fleet/hooks", {"name": "p", "kind": "plugin",
                                                  "role": "observer",

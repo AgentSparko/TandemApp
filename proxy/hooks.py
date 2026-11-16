@@ -542,11 +542,12 @@ class Runner:
             raise hookcall.CallError("bad_json", "the answer is not JSON")
 
     def call(self, h: dict, stage: str, ctx: dict, meta: dict, value, *, timeout_ms: float,
-             mode: str, count: bool = True, streamed: bool = False) -> Call:
+             mode: str, count: bool = True, streamed: bool = False,
+             sent: list | None = None) -> Call:
         """Call `h` once within `timeout_ms`, check its result, keep its figures (`count`: the
         breaker and the metrics; a test call keeps neither). A shadow call's diff is journaled;
-        `streamed`: the answer went out already, so anything but continue is `refused`. Never
-        raises."""
+        `streamed`: the answer went out already, so anything but continue is `refused`; `sent`:
+        the envelope the hook was sent is appended (the playground shows it). Never raises."""
         hid = h["id"]
         own_ms = self._timeout_of(h, stage)
         br = self._breaker(hid)
@@ -566,6 +567,8 @@ class Runner:
                 br.probing = False
             return self._end(h, stage, ctx, mode, Call("redaction_failed", error="the "
                              "redaction failed; the hook got no payload"), count)
+        if sent is not None:
+            sent.append(env)
         t0 = time.monotonic()
         fut = self.pool.submit(self._invoke, h, env, timeout_ms / 1000.0)
         try:
@@ -801,7 +804,7 @@ class Runner:
     def test(self, hid: str, stage: str | None, event: dict | None) -> dict:
         """The playground's call: the hook once against `event` (the stage's example by
         default), outside its scope, mode and breaker; nothing counted, the call journaled with
-        mode `test`."""
+        mode `test`. The answer holds the event the hook was sent."""
         h = self.store.need(hid)
         stage = stage or h["stages"][0]
         if stage not in h["stages"]:
@@ -814,10 +817,13 @@ class Runner:
             content = event.pop("content", content)
             meta.update(event)
         ctx = dict(sample["request"], request_id="test-" + uuid.uuid4().hex[:12])
+        sent: list = []
         c = self.call(h, stage, ctx, meta, content, timeout_ms=self._timeout_of(h, stage),
-                      mode="test", count=False)
+                      mode="test", count=False, sent=sent)
         out = {"hook": hid, "stage": stage, "outcome": c.outcome,
-               "duration_ms": round(c.ms, 1), "result": c.result, "error": c.error}
+               "duration_ms": round(c.ms, 1), "result": c.result, "error": c.error,
+               # the event as the hook got it (at its payload level), None when none was sent
+               "event": copy.deepcopy(sent[0]["event"]) if sent else None}
         if c.ok and c.action == "modify" and isinstance(content, dict):
             out["diff"] = diff_of(content, c.result["patch"])
         return out
