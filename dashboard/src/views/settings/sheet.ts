@@ -12,7 +12,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 import type { Change, Overview, PartChange, PartPlan, PartResult, Restart, SettingsError } from '../../api/settings';
 import { FINGERPRINT_NOTE, shown } from '../../lib/settings-form';
 import { restartsEngine, restoreOf, type FlowState } from '../../lib/settings-flow';
-import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, partStateWords, placeOf, planSummary, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
+import { DEADLINES, PART_GLYPH, changeWords, costOf, dur, errorWords, fingerprintWords, partStateWords, placeOf, planSummary, restartModel, resultHead, targetLabel, whenWords, type When } from '../../lib/settings-words';
 import { icon } from '../../ui/bits';
 
 export interface SheetHandlers {
@@ -127,15 +127,10 @@ function whenBlock(s: FlowState, names: string[], h: SheetHandlers, blocked: str
 
 /** The second confirm: the keys that feed a disk cache's fingerprint, and what that costs. */
 function secondConfirm(s: FlowState, o: Overview | null): TemplateResult {
-  const keys = s.plan!.fingerprint_keys.map((k) => {
-    const [where, key] = k.split(':');
-    const [scope, target] = where.split('/');
-    return { key, host: targetLabel(o, scope as PartPlan['scope'], target) };
-  });
-  const hosts = [...new Set(keys.map((k) => k.host))];
+  const { keys, hosts, verb } = fingerprintWords(s.plan!.fingerprint_keys, o);
   return html`<section class="rs-second" role="alert" data-second>
     <h3>${icon('warn')} Saved caches on ${hosts.join(' and ')} start cold</h3>
-    <p class="small">${keys.map((k, i) => html`${i ? ', ' : ''}<span class="num">${k.key}</span>`)} ${keys.length === 1 ? 'feeds' : 'feed'} the disk cache’s fingerprint. After the restart every saved prefix and every parked chat there misses once: the first turn of each chat reads its whole context again.</p>
+    <p class="small">${keys.map((k, i) => html`${i ? ', ' : ''}<span class="num">${k}</span>`)} ${verb} the disk cache’s fingerprint. After the restart every saved prefix and every parked chat there misses once: the first turn of each chat reads its whole context again.</p>
     <p class="small">Nothing is lost for good, and nothing else changes. Apply only if that is what you want now.</p>
   </section>`;
 }

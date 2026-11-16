@@ -560,6 +560,11 @@ def test_confirm_tokens():
         assert fp["parts"][0]["changes"][0]["fingerprint"] is True
         st, err = r.call("POST", "apply", {"changes": fch, "confirm": fp["confirm"]})
         assert st == 428 and err["error"]["type"] == "fingerprint_confirm_required", err
+        # the sentence's verb agrees with the number of keys
+        assert err["error"]["message"].startswith(
+            "engine/h1:QWEN38_PREFIX_CHUNK feeds the disk cache's fingerprint"), err
+        assert settings_mod.feeds(["A"]) == "A feeds"
+        assert settings_mod.feeds(["A", "B"]) == "A, B feed"
         st, err = r.call("POST", "apply", {"changes": fch, "confirm": fp["confirm"],
                                            "confirm_fingerprint": "f" * 32})
         assert st == 409 and err["error"]["type"] == "stale_plan", err

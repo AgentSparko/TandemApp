@@ -122,6 +122,12 @@ def digest(obj) -> str:
                                      ensure_ascii=False, default=str).encode()).hexdigest()
 
 
+def feeds(keys) -> str:
+    """`A feeds`, `A, B feed`: the verb agrees with the number of keys."""
+    keys = list(keys)
+    return f"{', '.join(keys)} {'feeds' if len(keys) == 1 else 'feed'}"
+
+
 def max_restart(classes) -> str:
     got = [c for c in classes if c in RESTART]
     return max(got, key=RESTART.index) if got else "none"
@@ -666,9 +672,9 @@ class Settings:
             if view["confirm_fingerprint"]:
                 if not cfp:
                     raise SettingsError(428, "fingerprint_confirm_required",
-                                        f"{', '.join(view['fingerprint_keys'])} feed the disk "
-                                        f"cache's fingerprint: every saved prefix misses after "
-                                        f"the restart; apply needs confirm_fingerprint as well",
+                                        f"{feeds(view['fingerprint_keys'])} the disk cache's "
+                                        f"fingerprint: every saved prefix misses after the "
+                                        f"restart; apply needs confirm_fingerprint as well",
                                         plan=view)
                 if not isinstance(cfp, str) or not hmac.compare_digest(
                         cfp, view["confirm_fingerprint"]):

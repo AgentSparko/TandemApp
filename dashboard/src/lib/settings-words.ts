@@ -102,6 +102,18 @@ export function costOf(p: PartPlan, label: string): { tone: Tone; text: string }
   return { tone: 'ok', text: 'No restart: it applies at once.' };
 }
 
+/** The second confirm's keys: each key once, the hosts they are on, and the verb that agrees with
+ *  the number of keys (`feeds` for one, also when one key changes on two engines). */
+export function fingerprintWords(keys: string[], o: Overview | null = null): { keys: string[]; hosts: string[]; verb: 'feeds' | 'feed' } {
+  const rows = keys.map((k) => {
+    const [where, ...rest] = k.split(':');
+    const [scope, target] = where.split('/');
+    return { key: rest.join(':'), host: targetLabel(o, scope as Scope, target) };
+  });
+  const names = [...new Set(rows.map((r) => r.key))];
+  return { keys: names, hosts: [...new Set(rows.map((r) => r.host))], verb: names.length === 1 ? 'feeds' : 'feed' };
+}
+
 export const changeCount = (plan: Pick<Plan, 'parts'>): number => plan.parts.reduce((n, p) => n + p.changes.length, 0);
 
 /** The plan's head: how much changes and what restarts. */

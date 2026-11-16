@@ -210,7 +210,7 @@ describe('from the plan to the result', () => {
     p.draft.set('engine', 'eh-desk', 'QWEN38_PREFIX_CHUNK', '4096', await held(p, 'QWEN38_PREFIX_CHUNK'));
     await p.flow.review(p.draft.changes());
     const plan = sheet(p);
-    for (const s of ['saved caches start cold', 'QWEN38_PREFIX_CHUNK feed the disk cache’s fingerprint.', '>Continue<']) expect(plan).toContain(s);
+    for (const s of ['saved caches start cold', 'QWEN38_PREFIX_CHUNK feeds the disk cache’s fingerprint.', '>Continue<']) expect(plan).toContain(s);
     expect(plan).not.toContain('Apply 1 change');
     await p.flow.apply();
     expect([p.flow.state.phase, p.flow.state.second]).toEqual(['plan', true]);

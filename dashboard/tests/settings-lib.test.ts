@@ -10,7 +10,7 @@ import { SETTINGS_TABS, crumb, sectionOf, settingsHref, subPages } from '../src/
 import { parseHash } from '../src/lib/router.ts';
 import { Draft, refusedField, same } from '../src/lib/settings-draft.ts';
 import { EXT_KEY, MODE_KEY, asText, controlOf, fieldsOf, groupsOf, humanize, labelOf, parseInput, sentence, shown, textOf, versionDiff } from '../src/lib/settings-form.ts';
-import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
+import { DEADLINES, WHEN_DEFAULT, auditWords, changeWords, clock, costOf, dur, errorWords, fingerprintWords, leftNow, partStateWords, placeOf, planSummary, restartModel, resultHead, whenError, whenParam, whenWords } from '../src/lib/settings-words.ts';
 import { ERRORS } from './settings-rig.ts';
 
 const key = (k: string, type: KeySpec['type'], o: Partial<KeySpec> = {}): KeySpec => ({ key: k, type, restart: 'none', fingerprint: false, secret: false, write_only: false, writable: true, nullable: false, default: null, ...o });
@@ -228,6 +228,10 @@ describe('a plan and a result in words', () => {
     expect([placeOf(PLAN.parts[0], OVERVIEW), placeOf(PLAN.parts[1], OVERVIEW), placeOf(PLAN.parts[1])]).toEqual(['App', 'Engine: spark-desk', 'Engine: eh-desk']);
     expect(costOf(PLAN.parts[0], 'this controller')).toEqual({ tone: 'ok', text: 'No restart: it applies at once.' });
     expect(costOf(PLAN.parts[1], 'spark-desk')).toEqual({ tone: 'live', text: 'Restarts the engine on spark-desk, once.' });
+    // the second confirm: the verb agrees with the number of keys, each key named once
+    expect(fingerprintWords(['engine/eh-desk:QWEN38_PREFIX_CHUNK'], OVERVIEW)).toEqual({ keys: ['QWEN38_PREFIX_CHUNK'], hosts: ['spark-desk'], verb: 'feeds' });
+    expect(fingerprintWords(['engine/eh-desk:QWEN38_PREFIX_CHUNK', 'engine/eh-desk:QWEN38_SPILL'], OVERVIEW)).toEqual({ keys: ['QWEN38_PREFIX_CHUNK', 'QWEN38_SPILL'], hosts: ['spark-desk'], verb: 'feed' });
+    expect(fingerprintWords(['engine/eh-desk:QWEN38_PREFIX_CHUNK', 'engine/eh-two:QWEN38_PREFIX_CHUNK'], OVERVIEW)).toEqual({ keys: ['QWEN38_PREFIX_CHUNK'], hosts: ['spark-desk', 'eh-two'], verb: 'feeds' });
     // how long the restart itself takes, and where the figure comes from
     expect(costOf({ ...PLAN.parts[1], restart_estimate: { seconds: 180, source: 'default' } }, 'spark-desk').text).toBe('Restarts the engine on spark-desk, once. The restart takes about 3 min, a usual time for an engine.');
     expect(costOf({ ...PLAN.parts[1], restart_estimate: { seconds: 144, source: 'engine' } }, 'spark-desk').text).toBe('Restarts the engine on spark-desk, once. The restart takes about 2 min, as its last one did.');

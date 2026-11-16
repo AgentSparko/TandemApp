@@ -257,7 +257,7 @@ describe('a change set', () => {
     const changes = [{ scope: 'engine', target: 'eh-desk', set: { QWEN38_PREFIX_CHUNK: '4096' } }];
     const plan = ok<Plan>(await post(r, '/plan', { changes }));
     expect([plan.fingerprint_keys, typeof plan.confirm_fingerprint, plan.parts[0].changes[0].fingerprint]).toEqual([['engine/eh-desk:QWEN38_PREFIX_CHUNK'], 'string', true]);
-    expect(plan.parts[0].warnings).toEqual(['QWEN38_PREFIX_CHUNK feed the disk cache’s fingerprint']);
+    expect(plan.parts[0].warnings).toEqual(['QWEN38_PREFIX_CHUNK feeds the disk cache’s fingerprint']);
     const first = await post(r, '/apply', { changes, confirm: plan.confirm });
     expect(refused(first)).toEqual([428, 'fingerprint_confirm_required']);
     expect(refused(await post(r, '/apply', { changes, confirm: plan.confirm, confirm_fingerprint: 'f'.repeat(32) }))).toEqual([409, 'stale_plan']);

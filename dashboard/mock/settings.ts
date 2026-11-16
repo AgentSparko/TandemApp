@@ -98,6 +98,8 @@ function stable(v: unknown): string {
 const digest = (v: unknown): string => createHash('sha256').update(stable(v)).digest('hex');
 const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v ?? null)) as T;
 const iso = (ms: number | null): string | null => (ms == null ? null : new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z'));
+/** `A feeds`, `A, B feed`: the verb agrees with the number of keys (proxy/settings.py `feeds`) */
+const feeds = (keys: string[]): string => `${keys.join(', ')} ${keys.length === 1 ? 'feeds' : 'feed'}`;
 const RANK: RestartClass[] = ['none', 'app', 'hot', 'engine'];
 const maxRestart = (xs: RestartClass[]): RestartClass => xs.reduce<RestartClass>((a, b) => (RANK.indexOf(b) > RANK.indexOf(a) ? b : a), 'none');
 
@@ -811,7 +813,7 @@ class EngineScope implements ScopeImpl {
     }
     const hot = changes.length > 0 && restore === null && changes.every((c) => c.restart === 'hot');
     const fp = changes.filter((c) => c.fingerprint).map((c) => c.key);
-    const warnings = [...(install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : []), ...(fp.length ? [`${fp.join(', ')} feed the disk cache’s fingerprint`] : [])];
+    const warnings = [...(install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : []), ...(fp.length ? [`${feeds(fp)} the disk cache’s fingerprint`] : [])];
     return planOf(changes, [h.current, next, restore, install], { restart: hot ? 'hot' : 'engine', fingerprint_keys: fp, warnings, native: { next, hot, restore, base: h.current, install }, estimate: hot ? null : this.estimate(h) });
   }
   plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
@@ -1094,7 +1096,7 @@ export class MockSettings {
     if (!confirm) no('confirm_required', 'apply needs the plan’s confirm: POST the plan first', { plan });
     if (confirm !== plan.confirm) no('stale_plan', 'the settings changed since this plan, or the confirm is not its: plan again', { plan });
     if (plan.confirm_fingerprint) {
-      if (!b.confirm_fingerprint) no('fingerprint_confirm_required', `${plan.fingerprint_keys.join(', ')} feed the disk cache’s fingerprint: every saved prefix misses after the restart; apply needs confirm_fingerprint as well`, { plan });
+      if (!b.confirm_fingerprint) no('fingerprint_confirm_required', `${feeds(plan.fingerprint_keys)} the disk cache’s fingerprint: every saved prefix misses after the restart; apply needs confirm_fingerprint as well`, { plan });
       if (b.confirm_fingerprint !== plan.confirm_fingerprint) no('stale_plan', 'confirm_fingerprint is not this plan’s: plan again', { plan });
     }
     const cs = plan.change_set;

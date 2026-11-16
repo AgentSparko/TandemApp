@@ -244,7 +244,8 @@ def _sim_plan(m: dict, new: dict) -> dict:
            "confirm": _tok("plan", base, new), "warnings": []}
     if fp:
         out["confirm_fingerprint"] = _tok("fingerprint", base, new)
-        out["warnings"].append(f"{', '.join(fp)} feed the disk cache's fingerprint")
+        out["warnings"].append(f"{', '.join(fp)} feed{'s' if len(fp) == 1 else ''} the disk "
+                               f"cache's fingerprint")
     return out
 
 
