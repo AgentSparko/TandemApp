@@ -113,6 +113,8 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   legacy_env_invalid: ['error', null],
   legacy_users_from_unreadable: ['warning', null],
   bootstrap_secret_left: ['info', null],
+  tokens_need_review: ['warning', null],
+  legacy_admin_token: ['warning', null],
 };
 
 export const actionView = (a: ActionId | null): HealthAction | null => (a === null ? null : { id: a, label: HEALTH_ACTIONS[a][0], changes: HEALTH_ACTIONS[a][1], confirm: HEALTH_ACTIONS[a][2] });
@@ -281,6 +283,8 @@ function build(name: HealthScenario, t0: number): Sim {
             { code: 'legacy_env_invalid', facts: { variable: 'TANDEM_API_KEYS', file: 'the environment' } },
             { code: 'legacy_users_from_unreadable', facts: { variable: 'TANDEM_API_USERS_FROM', file: '/data/app.env' } },
             { code: 'bootstrap_secret_left', facts: { path: '/etc/tandemapp/setup/code' } },
+            { code: 'tokens_need_review', facts: { n: 3 } },
+            { code: 'legacy_admin_token', facts: {} },
           ],
         }),
         pairings: [],
