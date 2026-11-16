@@ -83,8 +83,13 @@ chatd makes there), plugin-backend /plugin-backends/* alone.
 A token never exceeds its owner's role of now (`effective`, at each request): an inference scope
 counts only while the role may make inference tokens; the other scopes lose what the role lost.
 
-SEAMS. `exposure` (SRV-871, proxy/exposure.py), the `limits` field (SRV-873 enforces it),
-`/v1/auth/tokens/{id}/usage` (SRV-873). The Messages API's routes (/v1/messages and below, SRV-879)
+LIMITS (SRV-873, proxy/tokenlimits.py): requests a minute, tokens a minute, requests at once,
+dollars a day and a month. A new token takes its owner's role's values (`api.limits.default.<role>.
+<key>`) where it names none, and names none above them (400 limit_over_role); its owner changes
+them with PATCH under the same rule. At each request the lower of the token's and the role's of
+now holds. Its usage: proxy/tokenusage.py.
+
+SEAMS. `exposure` (SRV-871, proxy/exposure.py), `/v1/auth/tokens/{id}/usage` (SRV-873). The Messages API's routes (/v1/messages and below, SRV-879)
 take `inference:anthropic` and refuse in their own shape.
 """
 
@@ -497,10 +502,24 @@ class TokenStore:
             return {}
         if not isinstance(limits, dict) or set(limits) - set(LIMIT_KEYS) or \
                 not all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)
-                                      and v >= 0) for v in limits.values()):
+                                      and 0 <= v <= 1e12) for v in limits.values()):
             raise TokenError(400, "bad_request", f"limits takes {', '.join(LIMIT_KEYS)}, each "
                                                  f"a number of 0 or more")
         return {k: v for k, v in limits.items() if v is not None}
+
+    def role_limits(self, limits: dict, role: str | None) -> dict:
+        """SRV-873: a token's limits under its owner's role: the role's value where the token
+        names none (or 0), and none above it (400 limit_over_role)."""
+        from proxy import tokenlimits
+        caps = tokenlimits.role_caps(self.policy, role)
+        out = {k: v for k, v in limits.items() if v}
+        for k, cap in caps.items():
+            if k not in out:
+                out[k] = cap
+            elif out[k] > cap:
+                raise TokenError(400, "limit_over_role", f"{tokenlimits.WORDS[k]}: at most "
+                                 f"{cap} for a token of a {role or 'viewer'}", limit=k, most=cap)
+        return {k: out[k] for k in LIMIT_KEYS if k in out}
 
     @staticmethod
     def check_label(label) -> str:
@@ -517,7 +536,7 @@ class TokenStore:
         label = self.check_label(label)
         scopes = self.check_scopes(scopes, owner["role"])
         models = self.check_models(models)
-        limits = self.check_limits(limits)
+        limits = self.role_limits(self.check_limits(limits), owner["role"])
         days = self._days(days, owner["role"], TRUST in scopes)
         tid, token = self._new_secret()
         now = self.now_ms()
@@ -573,17 +592,24 @@ class TokenStore:
         row = self.get(tid)
         if row is None:
             raise TokenError(404, "not_found", "no such token")
-        if not isinstance(changes, dict) or not changes or set(changes) - {"label", "models"}:
-            raise TokenError(400, "bad_request", "the body is {label?, models?}")
+        if not isinstance(changes, dict) or not changes or \
+                set(changes) - {"label", "models", "limits"}:
+            raise TokenError(400, "bad_request", "the body is {label?, models?, limits?}")
         label = self.check_label(changes.get("label", row["label"]))
         models = self.check_models(changes.get("models", row["models"]))
+        limits = row["limits"]
+        if "limits" in changes:
+            # SRV-873: the whole set, under the owner's role of now
+            owner = self.store.get(row["owner_id"]) if row["owner_id"] else None
+            limits = self.role_limits(self.check_limits(changes["limits"]),
+                                      owner["role"] if owner else None)
         with self.cfg._lock:
             if label != row["label"] and self._c.execute(
                     "SELECT 1 FROM api_tokens WHERE owner_id IS ? AND label = ? AND revoked_at "
                     "IS NULL AND id != ?", (row["owner_id"], label, tid)).fetchone():
                 raise TokenError(409, "conflict", f"a token {label!r} exists already")
-            self._c.execute("UPDATE api_tokens SET label = ?, models = ? WHERE id = ?",
-                            (label, json.dumps(models), tid))
+            self._c.execute("UPDATE api_tokens SET label = ?, models = ?, limits = ? WHERE id = ?",
+                            (label, json.dumps(models), json.dumps(limits), tid))
             self.cfg._audit(actor, "update", "api_token", tid, fields=sorted(changes))
             self._c.commit()
         return self.view(self.get(tid))
@@ -751,7 +777,8 @@ class TokenStore:
                          perms=effective(row["scopes"], role, row["kind"], self.policy,
                                          owned=row["owner_id"] is not None),
                          models=tuple(row["models"]), client="k:" + h[:12],
-                         expires_at=row["expires_at"])
+                         expires_at=row["expires_at"],
+                         limits=tuple(sorted(row["limits"].items())))
 
     def _note(self, tid: str, now: int) -> None:
         """last_used_at: in memory, written at most once a minute (as config.flush_seen)."""
@@ -790,6 +817,25 @@ class TokenStore:
             return self._c.execute("SELECT COUNT(*) FROM api_tokens WHERE kind != 'service' AND "
                                    "revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at "
                                    "> ? AND expires_at <= ?", (now, now + within_ms)).fetchone()[0]
+
+    def limited(self) -> list[tuple]:
+        """SRV-873: (id, limits, owner's role) of every live token of a person or an import:
+        the findings token_limit_near and token_limit_reached weigh their spend limits."""
+        now = self.now_ms()
+        with self.cfg._lock:
+            got = self._c.execute("SELECT t.id, t.limits, a.role FROM api_tokens t LEFT JOIN "
+                                  "accounts a ON a.id = t.owner_id WHERE t.kind != 'service' AND "
+                                  "t.revoked_at IS NULL AND (t.expires_at IS NULL OR "
+                                  "t.expires_at > ?)", (now,)).fetchall()
+        return [(i, json.loads(lim or "{}"), role) for i, lim, role in got]
+
+    def labels(self) -> dict:
+        """SRV-873: {id: {label, owner}} of every token, for the Usage view's token dimension."""
+        with self.cfg._lock:
+            got = self._c.execute("SELECT t.id, t.label, t.kind, a.username FROM api_tokens t "
+                                  "LEFT JOIN accounts a ON a.id = t.owner_id").fetchall()
+        return {i: {"label": label, "owner": user, "kind": kind}
+                for i, label, kind, user in got}
 
     def admin_token_live(self) -> dict | None:
         now = self.now_ms()

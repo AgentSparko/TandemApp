@@ -207,6 +207,9 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "exposure_unreachable": ("warning", None),
     "exposure_plain_http": ("warning", None),
     "token_expiring": ("info", None),
+    # API tokens near or at their spend limit (SRV-873)
+    "token_limit_near": ("info", None),
+    "token_limit_reached": ("warning", None),
 }
 
 ERR = enginecodes.error

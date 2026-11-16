@@ -208,7 +208,9 @@ def dashboard() -> "dashboard_api.DashboardAPI":
     if api is None:
         api = STATE["dashboard_api"] = dashboard_api.DashboardAPI(
             STATE.get("ledger"), live=_live_status, system=_system,
-            backends=lambda: STATE["svc"].cfg.backends(), clients_path=clients_path())
+            backends=lambda: STATE["svc"].cfg.backends(), clients_path=clients_path(),
+            tokens=(lambda: STATE["accounts"].tokens.labels())
+            if STATE.get("accounts") is not None else None)
     return api
 
 
@@ -1389,6 +1391,11 @@ def build(args, env=None) -> Service:
                   engine_version=STATE["version"], log=lambda m: print(m, flush=True),
                   conductor=cond, monitor_base=base)
     STATE["svc"] = svc
+    if accounts is not None:
+        # SRV-873: an API token's limits, kept in memory and read from the ledger at first sight
+        from proxy import tokenlimits
+        svc.limits = accounts.token_limits = tokenlimits.TokenLimits(
+            accounts.policy, reader=led.reader if led is not None else None)
     # SRV-859: the plugin host reads the conductor's Library of the moment (the page's switch)
     svc.plugin_host.library = lambda: getattr(STATE.get("conductor"), "library", None)
     svc.plugin_host.env = dict(env)

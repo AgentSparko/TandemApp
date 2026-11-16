@@ -211,6 +211,11 @@ CATALOG: dict[str, tuple[int, str, str]] = {
         "Reach TandemApp over https (a front that ends TLS), then rotate the token."),
     "token_expiring": (409, "{n} API tokens end within 7 days.",
         "Open each token and make a new one before it ends."),
+    # API tokens near or at their spend limit (SRV-873)
+    "token_limit_near": (409, "{n} API tokens have used 80% of a spend limit.",
+        "Open My tokens to see each token's use, or raise the limit."),
+    "token_limit_reached": (409, "{n} API tokens have reached a spend limit. Their requests to priced models are refused.",
+        "Open My tokens to see each token's use, raise the limit, or wait for the next day or month."),
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
     "job_not_found": (404, "{node} has no job {job} any more.",

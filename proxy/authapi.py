@@ -24,6 +24,8 @@
                                        the auth and api settings, newest first (permission
                                        `users`, a signed-in account or local mode: never a token)
     /v1/auth/tokens[/...]              API tokens (SRV-867, proxy/tokenapi.py)
+    GET    /v1/auth/usage[?user=]      what an account used (another's: permission `users`),
+                                       SRV-873, proxy/tokenusage.py
 
 Only an owner makes, changes or removes an owner. The last enabled owner cannot be disabled,
 demoted or removed (409 `last_owner`, checked first). A disable, a lower role and a removal end
@@ -121,6 +123,9 @@ def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
             return _users(handler, a, method, parts[1:], body)
         if parts == ["audit"] and method == "GET":
             return _audit(handler, a, q)
+        if parts == ["usage"] and method == "GET":
+            from proxy import tokenusage
+            return tokenusage.account(handler, a, q)
         if parts[:1] == ["tokens"]:
             from proxy import tokenapi
             return tokenapi.handle(handler, a, method, parts[1:], body)

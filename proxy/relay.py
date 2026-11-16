@@ -42,6 +42,11 @@ and the answer's come back as the engine would have taken and sent them; a reque
 in without a key is the engine's `owner`, as one sent straight to the engine is
 (`X-Tandem-User`); the cost comment is the engine's own, which prices what it relays.
 
+A TOKEN'S SPEND LIMIT (SRV-873, proxy/tokenlimits.py): a stream of an API token with a spend limit
+is watched every few frames (`rec.watch`). When the limit is passed it ends as an error ends a
+stream: an error frame (`spend_limit_reached`) then `[DONE]`, or the Messages API's `error` event;
+the backend's connection is closed and the row says finish `limit`. No other stream is watched.
+
 THE CLIENT LEAVES: the upstream connection is closed within a quarter second (the backend stops
 generating), and the row says `abandoned`.
 
@@ -92,6 +97,7 @@ from proxy.translate.anthropic import TranslateError
 from tandemapp.parallel import _fetch_json
 
 RETRYABLE = (429, 502, 503)      # the default; an adapter may add its own (`retryable`)
+WATCH_FRAMES = 8                         # SRV-873: a watched stream's check, every N frames
 MESSAGES_PATHS = (anthropic_adapter.MESSAGES,)  # SRV-881: a stream that passes through
 MAX_RETRIES = 2
 RETRY_AFTER_CAP = 30.0
@@ -101,6 +107,14 @@ BOARD = "/v1/dashboard/parallel?since=9999999999"
 
 
 _DONE = re.compile(rb"(?:^|\n)data: ?\[DONE\]")
+
+
+class LimitReached(Exception):
+    """SRV-873: a watched stream passed its token's spend limit (`refusal`)."""
+
+    def __init__(self, refusal):
+        super().__init__(refusal.message)
+        self.refusal = refusal
 
 
 class CostTap:
@@ -527,6 +541,11 @@ class Relay:
                 rec.finish_reason = "stop"
             if st.error:
                 rec.error_type = "upstream_stream_error"
+        except LimitReached as lim:
+            conn.close()                       # the backend stops generating
+            rec.finish_reason = "limit"
+            rec.error_type = lim.refusal.code
+            self._limit_end(w, lim.refusal, path)
         except http1.Aborted:
             conn.close()
             rec.finish_reason = "abandoned"
@@ -567,6 +586,8 @@ class Relay:
         hk = getattr(rec, "hk", None)
         if hk is not None and not hk.watches_stream():
             hk = None
+        watch = getattr(rec, "watch", None)          # SRV-873: a token's spend limit
+        seen = rec.frames
         # SRV-877: a translating kind's events become the client's protocol here, before the
         # ledger's reader, the hooks, the harness and the client see them
         trs = adapter.stream_translator(int(time.time()), self._keeper(rec)) \
@@ -609,6 +630,11 @@ class Relay:
             if hx is not None and hx.stop is not None:
                 conn.close()                   # the backend stops generating
                 return False
+            if watch is not None and rec.frames - seen >= WATCH_FRAMES:
+                seen = rec.frames
+                bad = watch()
+                if bad is not None:
+                    raise LimitReached(bad)
         if trs is not None and buf:
             # a last event without its blank line: translated whole, then read as any other
             buf = _translate(trs, buf, st, True)
@@ -718,6 +744,21 @@ class Relay:
             else:
                 w.write(("data: " + json.dumps(_error_body(message, "upstream_error", code))
                          + "\n\ndata: [DONE]\n\n").encode())
+            w.flush()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _limit_end(w, refusal, path: str) -> None:
+        """SRV-873: the end of a stream its token's spend limit stopped, in its protocol."""
+        try:
+            if path in MESSAGES_PATHS:
+                w.write(("event: error\ndata: " + json.dumps(
+                    {"type": "error", "error": {"type": "permission_error",
+                                                "message": refusal.message}}) + "\n\n").encode())
+            else:
+                w.write(("data: " + json.dumps(refusal.body()) + "\n\ndata: [DONE]\n\n")
+                        .encode())
             w.flush()
         except OSError:
             pass

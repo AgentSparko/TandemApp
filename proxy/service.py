@@ -38,7 +38,9 @@ With TANDEM_AUTH=accounts (SRV-867) none of that is read: the request gate's pri
 (proxy/accounts.py), an API token's included (proxy/tokens.py). The user is the principal's
 memory owner: a token's owner's username, an imported key's old label. A token with a model list
 answers 403 for any other model (`resolve`), and the ledger row names the token (`token_id`) with
-the same client id the bearer's hash gave before.
+the same client id the bearer's hash gave before. SRV-873: `serve` holds a token to its limits
+(proxy/tokenlimits.py) before anything else runs for the request: a refusal is a 429 or a 403
+and a ledger row with the token and the reason.
 """
 
 from __future__ import annotations
@@ -205,6 +207,8 @@ class Service:
         # the monitor's policy: its stall watchdog's ntfy settings carry the push of a new model
         self.monitor_base = monitor_base
         self.notifier = None                   # notify.send; a test puts its own here
+        # SRV-873: an API token's limits (proxy/tokenlimits.py), with TANDEM_AUTH=accounts only
+        self.limits = None
         # SRV-849: the remote hooks around the relay (proxy/hooks.py); idle while none is enabled
         self.hooks = hooks_mod.Runner(cfg, log=lambda m: self.log(m))
         if registry is not None:
@@ -453,6 +457,9 @@ class Service:
         rec.hx = None
         rec.hk = None
         deny = None
+        ticket = self._admit(handler, route, rec)
+        if ticket is False:
+            return rec
         if self.hooks is not None:
             try:
                 rec.hk = self.hooks.turn(self._hook_ctx(handler, path, route, rec, b))
@@ -496,6 +503,13 @@ class Service:
             self._answer_failure(handler, rec, exc)
         finally:
             rec.end()
+            if ticket is not None:
+                try:
+                    self.limits.done(ticket, (rec.prompt_tokens or 0) + (rec.completion_tokens
+                                                                          or 0),
+                                     rec.cost_micros)
+                except Exception as exc:                           # noqa: BLE001
+                    self.log(f"[limits] {type(exc).__name__}: {exc}")
             if self.live is not None:
                 try:
                     self.live.finish(rec)
@@ -510,6 +524,43 @@ class Service:
                              + traceback.format_exc()[-800:])
             self.account(rec)
         return rec
+
+    # ----------------------------------------------------------------- limits (SRV-873)
+    def _admit(self, handler, route, rec):
+        """An API token's limits (proxy/tokenlimits.py): its Ticket, None when no limit is
+        kept for the caller, or False when a limit refused the request (answered here in the
+        OpenAI shape, which the Messages API's handler turns into its own, and accounted)."""
+        if self.limits is None:
+            return None
+        p = self.principal(handler)
+        if p is None or getattr(p, "kind", None) != "token":
+            return None
+        try:
+            priced = self.price_of(route.backend, route.model) is not None or \
+                self.price_of(route.backend, route.public) is not None
+            got = self.limits.admit(p, priced=priced)
+        except Exception as exc:                                   # noqa: BLE001
+            self.log(f"[limits] the check failed, the request goes on: "
+                     f"{type(exc).__name__}: {exc}")
+            return None
+        if not hasattr(got, "status"):
+            if self.limits.watched(got):
+                rec.watch = lambda: self._watch(got, rec)
+            return got
+        rec.finish_reason = "refused"
+        rec.error_type = got.code
+        self.relay._write_plain(handler, got.status, list(got.headers()),
+                                json.dumps(got.body()).encode(), rec)
+        rec.end()
+        self.account(rec)
+        return False
+
+    def _watch(self, ticket, rec):
+        """A watched stream's check (relay._pump, every few frames): a Refusal ends it."""
+        try:
+            return self.limits.watch(ticket, self.live_cost(rec, rec.frames))
+        except Exception:                                          # noqa: BLE001
+            return None
 
     # ----------------------------------------------------------------- the hooks (SRV-849)
     def _hook_ctx(self, handler, path: str, route, rec, backend) -> dict:

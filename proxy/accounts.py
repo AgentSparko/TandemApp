@@ -167,6 +167,7 @@ class Principal:
     perms: frozenset | None = None  # SRV-867: a token's scopes cut to its owner's role of now
     models: tuple = ()              # SRV-867: a token's model globs (none: every model)
     client: str | None = None       # SRV-867: the ledger's client id (a prefix of the hash)
+    limits: tuple = ()              # SRV-873: a token's own limits, (key, value) pairs
 
 
 def _sha(text: str) -> str:
@@ -792,6 +793,7 @@ class AccountsAuth:
         self.service_resolver = self.relay_principal    # (headers, peer) -> Principal | None
         self.local_mode = None              # (peer, headers) -> Principal | None
         self.on_account_removed = None      # (account_id) -> None: its tokens
+        self.token_limits = None            # SRV-873: proxy/tokenlimits.py (proxy/app.py sets it)
         # SEC-26: local mode and the setup codes; SRV-865: the legacy variables' findings
         from proxy import authlocal
         self.env = dict(env) if env is not None else {}
@@ -881,6 +883,13 @@ class AccountsAuth:
         n = self.tokens.expiring(EXPIRING_MS)
         if n:
             out.append({"code": "token_expiring", "facts": {"n": n}})
+        # SRV-873: tokens near or at a spend limit
+        if self.token_limits is not None:
+            near, over = self.token_limits.near(self.tokens.limited())
+            if over:
+                out.append({"code": "token_limit_reached", "facts": {"n": over}})
+            if near:
+                out.append({"code": "token_limit_near", "facts": {"n": near}})
         return out
 
     def describe(self) -> str:

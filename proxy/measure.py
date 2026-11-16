@@ -38,6 +38,7 @@ class RelayRecord(usage_mod.RequestRecord):
 
     token_id = None                    # SRV-867: the API token that sent it
     api = None                         # the inbound protocol: openai, or the Messages API's
+    watch = None                       # SRV-873: () -> a Refusal when a token's spend limit ends it
 
     def __init__(self, request_id: str, endpoint: str, stream: bool, t_arrival=None):
         super().__init__(request_id, endpoint, stream, t_arrival=t_arrival)

@@ -352,6 +352,16 @@
       "message": "{n} API tokens end within 7 days.",
       "fix": "Open each token and make a new one before it ends."
     },
+    "token_limit_near": {
+      "status": 409,
+      "message": "{n} API tokens have used 80% of a spend limit.",
+      "fix": "Open My tokens to see each token's use, or raise the limit."
+    },
+    "token_limit_reached": {
+      "status": 409,
+      "message": "{n} API tokens have reached a spend limit. Their requests to priced models are refused.",
+      "fix": "Open My tokens to see each token's use, raise the limit, or wait for the next day or month."
+    },
     "not_offered": {
       "status": 409,
       "message": "{node} does not need that fix now.",
@@ -559,6 +569,14 @@
     },
     "token_expiring": {
       "severity": "info",
+      "action": null
+    },
+    "token_limit_near": {
+      "severity": "info",
+      "action": null
+    },
+    "token_limit_reached": {
+      "severity": "warning",
       "action": null
     }
   },

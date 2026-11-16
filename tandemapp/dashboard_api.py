@@ -58,6 +58,10 @@ from tandemapp.activity import REPLAY  # noqa: E402  (answered from memory, noth
 # `backend=` / `user=` filter usage and requests. Every new field is optional in the schemas.
 # SRV-731 (ledger schema 11, still 1.3: optional fields only): rows gain `node` and `deployment`,
 # the dimensions `nodes` and `deployments`, and `node=` / `deployment=` filter usage and requests.
+# SRV-873 (ledger schema 13, still 1.3: optional fields only, and only with TANDEM_AUTH=accounts):
+# the dimension `tokens` (each API token the ledger has seen, its label and owner), `token=`
+# filters usage and requests, and usage's `group=token` or `group=user` adds `groups`: the
+# range's sums per token or per user, each the sum of the ledger's rows.
 CONTRACT = "1.3"
 # the log endpoints did not change: their answers stay at 1.0
 LOGS_CONTRACT = "1.0"
@@ -81,6 +85,10 @@ DECODED = ("status = 200 AND (finish_reason IS NULL OR finish_reason NOT IN ('er
            "AND COALESCE(sampling, '') NOT IN ('regenerate', 'loop_escape', 'card')")
 ERROR = ("(finish_reason = 'error' OR (status >= 500 AND (finish_reason IS NULL "
          "OR finish_reason != 'refused')))")
+
+
+#: SRV-873: usage's `group=`, and the column it sums by
+GROUPS = {"token": "token_id", "user": "user"}
 
 
 class ApiError(Exception):
@@ -258,7 +266,7 @@ NAMED = "="
 
 def _filters(model: str | None, client: str | None, backend: str | None = None,
              user: str | None = None, internal: bool = False, node: str | None = None,
-             deployment: str | None = None) -> tuple[str, list]:
+             deployment: str | None = None, token: str | None = None) -> tuple[str, list]:
     """The rows a view counts. VIS-60: TandemLLM's own calls (client kind `internal`, the router's
     question to the engine) are left out unless `internal` (the views' "show internal" switch)."""
     sql, args = "", []
@@ -284,6 +292,9 @@ def _filters(model: str | None, client: str | None, backend: str | None = None,
     if deployment:
         sql += " AND deployment = ?"
         args.append(deployment)
+    if token:
+        sql += " AND token_id = ?"
+        args.append(token)
     return sql, args
 
 
@@ -353,8 +364,11 @@ class DashboardAPI:
 
     def __init__(self, ledger=None, *, live=None, system=None, clock=time.time,
                  clients_path: str = CLIENTS_JSON, cache_ttl: float = CACHE_TTL_S,
-                 backends=None):
+                 backends=None, tokens=None):
         self.ledger = ledger
+        # SRV-873: {token id: {label, owner, kind}} of the API tokens (TANDEM_AUTH=accounts);
+        # None: no token dimension, no `groups`
+        self.tokens_fn = tokens
         # 1.3: the configured backends (proxy/config.py), for their labels and kinds; None on a
         # server without the proxy
         self.backends_fn = backends
@@ -410,13 +424,13 @@ class DashboardAPI:
 
     # ----------------------------------------------------------------- the aggregation
     def _scan(self, rng: Range, model=None, client=None, backend=None, user=None,
-              internal=False, node=None, deployment=None) -> list:
+              internal=False, node=None, deployment=None, token=None) -> list:
         """Every bucket of a range from the ledger: two scans, the sums and the decoded rows."""
         aggs = [Agg() for _ in rng.starts]
         db = self._db()
         if db is None:
             return aggs
-        fsql, fargs = _filters(model, client, backend, user, internal, node, deployment)
+        fsql, fargs = _filters(model, client, backend, user, internal, node, deployment, token)
         where = f"ts_ms >= ? AND ts_ms < ?{fsql}"
         args = rng.idx_args + [rng.start_ms, rng.end_ms] + fargs
         for row in db.execute(f"SELECT {rng.idx_sql} AS i, {_SUMS} FROM requests "
@@ -436,7 +450,8 @@ class DashboardAPI:
         return aggs
 
     def _days(self, first: _dt.date, last: _dt.date, tz, tz_name, model, client,
-              backend=None, user=None, internal=False, node=None, deployment=None) -> list:
+              backend=None, user=None, internal=False, node=None, deployment=None,
+              token=None) -> list:
         """One `Agg` per local day, from the memo where the day is final.
 
         A day is final two hours after it ended: a row carries its request's ARRIVAL time and is
@@ -451,7 +466,7 @@ class DashboardAPI:
                 self._memo.clear()
                 self._memo_gen = gen
             memo = self._memo.setdefault((tz_name, model, client, backend, user, internal, node,
-                                          deployment), {})
+                                          deployment, token), {})
             while len(self._memo) > 8:
                 self._memo.pop(next(iter(self._memo)))
         dates = [first + _dt.timedelta(days=i) for i in range((last - first).days + 1)]
@@ -467,7 +482,7 @@ class DashboardAPI:
                 j += 1
             for k, a in enumerate(self._scan(Range(dates[i], dates[j], "day", tz), model,
                                              client, backend, user, internal, node,
-                                             deployment)):
+                                             deployment, token)):
                 d = dates[i + k]
                 out[i + k] = a
                 if local_midnight_ms(d + _dt.timedelta(days=1), tz) < cutoff:
@@ -476,9 +491,10 @@ class DashboardAPI:
         return out
 
     def _top_client(self, day: _dt.date, tz, model, client, backend=None,
-                    user=None, internal=False, node=None, deployment=None) -> str | None:
+                    user=None, internal=False, node=None, deployment=None,
+                    token=None) -> str | None:
         """The client with the most tokens on one local day (the ts index makes it cheap)."""
-        fsql, fargs = _filters(model, client, backend, user, internal, node, deployment)
+        fsql, fargs = _filters(model, client, backend, user, internal, node, deployment, token)
         row = self._db().execute(
             "SELECT client_id, SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)) "
             f"AS t FROM requests WHERE ts_ms >= ? AND ts_ms < ?{fsql} GROUP BY client_id "
@@ -506,19 +522,27 @@ class DashboardAPI:
         backend, user = self._backend(q.get("backend") or None), q.get("user") or None
         node, deployment = q.get("node") or None, q.get("deployment") or None
         internal = _flag(q.get("internal"))
+        # SRV-873: a token's rows, and the sums per token or per user (accounts only)
+        token = q.get("token") or None
+        group = q.get("group") or None
+        if group is not None and group not in GROUPS:
+            raise _bad(f"group must be one of {', '.join(GROUPS)}, got {group!r}")
+        if (token or group) and self.tokens_fn is None:
+            raise _bad("token= and group= need the accounts (TANDEM_AUTH=accounts)")
         key = ("usage", tz_name, bucket, first, last, model, client, backend, user, internal,
-               node, deployment)
+               node, deployment, token, group)
         return self._cached(key, lambda: self._usage(first, last, bucket, tz, tz_name, model,
                                                      client, backend, user, internal, node,
-                                                     deployment))
+                                                     deployment, token, group))
 
     def _usage(self, first, last, bucket, tz, tz_name, model, client, backend=None,
-               user=None, internal=False, node=None, deployment=None) -> dict:
+               user=None, internal=False, node=None, deployment=None, token=None,
+               group=None) -> dict:
         rng = Range(first, last, bucket, tz)
         aggs = (self._days(first, last, tz, tz_name, model, client, backend, user, internal,
-                           node, deployment)
+                           node, deployment, token)
                 if bucket == "day" else self._scan(rng, model, client, backend, user, internal,
-                                                   node, deployment))
+                                                   node, deployment, token))
         buckets = []
         for i, a in enumerate(aggs):
             b = a.totals(None)
@@ -535,7 +559,7 @@ class DashboardAPI:
                                  "requests": aggs[i].n,
                                  "top_client": self._top_client(d, tz, model, client, backend,
                                                                 user, internal, node,
-                                                                deployment)})
+                                                                deployment, token)})
         filters = {"model": model, "client": client}
         if internal:
             filters["internal"] = True
@@ -543,11 +567,55 @@ class DashboardAPI:
             filters.update(backend=backend, user=user)
         if node or deployment:
             filters.update(node=node, deployment=deployment)
-        return {"contract_version": CONTRACT, "from": first.isoformat(), "to": last.isoformat(),
-                "bucket": bucket, "tz": tz_name, "filters": filters,
-                "buckets": buckets,
-                "totals": Agg.merge(aggs).totals(sum(1 for a in aggs if a.n)),
-                "top_days": top_days, "dimensions": self.dimensions(internal)}
+        if token:
+            filters["token"] = token
+        out = {"contract_version": CONTRACT, "from": first.isoformat(), "to": last.isoformat(),
+               "bucket": bucket, "tz": tz_name, "filters": filters,
+               "buckets": buckets,
+               "totals": Agg.merge(aggs).totals(sum(1 for a in aggs if a.n)),
+               "top_days": top_days, "dimensions": self.dimensions(internal)}
+        if group:
+            out["group"] = group
+            out["groups"] = self._groups(group, rng.start_ms, rng.end_ms, model, client, backend,
+                                         user, internal, node, deployment, token)
+        return out
+
+    def _groups(self, group: str, start_ms: int, end_ms: int, model, client, backend, user,
+                internal, node, deployment, token) -> list:
+        """SRV-873: the range's sums per token or per user, straight from the rows (a row
+        without a token or a user is the group `null`), the most tokens first."""
+        db = self._db()
+        if db is None:
+            return []
+        col = GROUPS[group]
+        fsql, fargs = _filters(model, client, backend, user, internal, node, deployment, token)
+        names = self._token_names() if group == "token" else {}
+        out = []
+        for key, n, ref, p, c, o, r, cost, cost_n in db.execute(
+                f"SELECT {col}, COUNT(*), SUM(finish_reason = 'refused'), "
+                "SUM(COALESCE(prompt_tokens, 0)), SUM(COALESCE(cached_tokens, 0)), "
+                "SUM(COALESCE(completion_tokens, 0)), SUM(COALESCE(reasoning_tokens, 0)), "
+                "SUM(COALESCE(cost_micros, 0)), COUNT(cost_micros) FROM requests "
+                f"WHERE ts_ms >= ? AND ts_ms < ?{fsql} GROUP BY {col}",
+                [start_ms, end_ms] + fargs):
+            g = {"key": key, "requests": int(n), "refused": int(ref or 0),
+                 "prompt_tokens": int(p or 0), "cached_tokens": int(c or 0),
+                 "completion_tokens": int(o or 0), "reasoning_tokens": int(r or 0),
+                 "total_tokens": int(p or 0) + int(o or 0),
+                 "cost_micros": int(cost) if cost_n else None}
+            if group == "token":
+                t = names.get(key) or {}
+                g.update(label=t.get("label"), owner=t.get("owner"))
+            out.append(g)
+        out.sort(key=lambda g: (-g["total_tokens"], -g["requests"], str(g["key"])))
+        return out
+
+    def _token_names(self) -> dict:
+        try:
+            got = self.tokens_fn() if self.tokens_fn is not None else {}
+            return got if isinstance(got, dict) else {}
+        except Exception:                                          # noqa: BLE001
+            return {}
 
     def dimensions(self, internal: bool = False) -> dict:
         """Every model and client the ledger has seen (the filter lists), from the covering
@@ -636,6 +704,15 @@ class DashboardAPI:
         out = {"backends": backends, "users": users}
         if fleet["nodes"] or fleet["deployments"]:
             out.update(fleet)                          # SRV-731: rows a fleet's gateway wrote
+        if self.tokens_fn is not None and db is not None:
+            # SRV-873: the tokens the ledger has seen (one seek each), with label and owner
+            try:
+                seen = self._distinct(db, "token_id")
+            except sqlite3.Error:
+                seen = []
+            names = self._token_names()
+            out["tokens"] = [{"id": t, "label": (names.get(t) or {}).get("label"),
+                              "owner": (names.get(t) or {}).get("owner")} for t in seen]
         return out
 
     def summary(self, q: dict) -> dict:
@@ -697,7 +774,8 @@ class DashboardAPI:
                 args.append(before)
             fsql, fargs = _filters(q.get("model"), q.get("client"),
                                    self._backend(q.get("backend")), q.get("user"),
-                                   _flag(q.get("internal")), q.get("node"), q.get("deployment"))
+                                   _flag(q.get("internal")), q.get("node"), q.get("deployment"),
+                                   q.get("token") if self.tokens_fn is not None else None)
             sql += fsql
             args += fargs
             if q.get("finish"):

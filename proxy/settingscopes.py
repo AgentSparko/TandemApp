@@ -671,7 +671,8 @@ class AccountsScope(KeyValueScope):
     """SRV-871: the `auth` and `api` scopes (TANDEM_AUTH=accounts only; proxy/app.py adds them),
     flat keys over the config database's settings `auth.<key>` and `api.<key>`, the keys
     proxy/authz.py Policy, proxy/authlocal.py and proxy/exposure.py read. Owner-only for writes
-    (but `api.tokens.viewers_may_create`, which an admin switches) and
+    (but `api.tokens.viewers_may_create` and SRV-873's `api.limits.default.<role>.<limit>`, which
+    an admin writes) and
     never with an API token, not even to read. A change that lets other devices in (the exposure
     switches, `api.listen`, the provider) needs the owner's password first: never from local mode
     (409 password_first). Every change is an audit row with the old and the new value. Restart
@@ -745,6 +746,11 @@ class AccountsScope(KeyValueScope):
             if not isinstance(v, int) or isinstance(v, bool) or v < d["lo"] or v > d["hi"]:
                 raise SettingsError(422, "bad_value", f"{self.name}.{k} is a whole number from "
                                     f"{d['lo']} to {d['hi']}", key=k)
+        elif d["type"] == "number":
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v or \
+                    v < d["lo"] or v > d["hi"]:
+                raise SettingsError(422, "bad_value", f"{self.name}.{k} is a number from "
+                                    f"{d['lo']} to {d['hi']}", key=k)
         elif not isinstance(v, str):
             raise SettingsError(422, "bad_value", f"{self.name}.{k} is text", key=k)
 
@@ -814,6 +820,16 @@ class ApiScope(AccountsScope):
                                           "accounts (later)", lo=0, hi=3650),
         "tokens.viewers_may_create": _spec("enum", "off", "viewers may make inference tokens",
                                            values=("on", "off"), perm="users"),
+        **{f"limits.default.{role}.{key}": _spec(
+            "number" if key.startswith("cost") else "integer", 0,
+            f"the most a {role}'s token may use: {words} (0: no limit); a new token gets it "
+            f"when it names none (SRV-873)", lo=0, hi=1_000_000_000, perm="users")
+           for role in ("viewer", "operator", "admin", "owner")
+           for key, words in (("requests_per_minute", "requests a minute"),
+                              ("tokens_per_minute", "tokens a minute"),
+                              ("concurrent", "requests at once"),
+                              ("cost_per_day", "dollars a day"),
+                              ("cost_per_month", "dollars a month"))},
     }
 
     def _default(self, k: str):

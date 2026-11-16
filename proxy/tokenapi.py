@@ -5,11 +5,14 @@
     POST   /v1/auth/tokens               {label, scopes, models?, days? (a number or "never"),
                                          limits?}: 201 with the token, shown this once
     GET    /v1/auth/tokens/{id}          one token (never its secret)
-    PATCH  /v1/auth/tokens/{id}          {label?, models?} (its owner); {needs_review: false}
-                                         confirms an imported key (permission `users`)
+    PATCH  /v1/auth/tokens/{id}          {label?, models?, limits?} (its owner; limits under the
+                                         owner's role, SRV-873); {needs_review: false} confirms
+                                         an imported key (permission `users`)
     DELETE /v1/auth/tokens/{id}          revoke
     POST   /v1/auth/tokens/{id}/rotate   {grace_s?}: a new secret under the same id and label;
                                          the old one works grace_s more seconds (default 0)
+    GET    /v1/auth/tokens/{id}/usage    what it used, per day and per model, its last refusals
+                                         and its limits' state (SRV-873, proxy/tokenusage.py)
 
 A signed-in account only: a token never manages tokens (the gate refuses it), and local mode makes
 none (a token is for another device: set the owner's password first). A person manages their own
@@ -81,6 +84,10 @@ def handle(handler, a, method: str, rest: list, body) -> None:
         if not mine and not others_ok:
             # someone else's token: as if it were not there
             return _err(handler, 404, "not_found", "no such token")
+        if len(rest) == 2 and rest[1] == "usage" and method == "GET":
+            from proxy import tokenusage
+            q = {k: v[-1] for k, v in parse_qs(urlsplit(handler.path).query).items()}
+            return tokenusage.token(handler, a, row, q)
         if len(rest) == 2:
             if rest[1] != "rotate" or method != "POST":
                 return _err(handler, 404, "not_found", "no such token route")
@@ -104,8 +111,8 @@ def handle(handler, a, method: str, rest: list, body) -> None:
                                  extra_headers=NOSTORE)
         if method == "PATCH":
             if not isinstance(body, dict) or not body:
-                return _err(handler, 400, "bad_request", "the body is {label?, models?} or "
-                            "{needs_review: false}")
+                return _err(handler, 400, "bad_request", "the body is {label?, models?, "
+                            "limits?} or {needs_review: false}")
             if "needs_review" in body:
                 if body != {"needs_review": False}:
                     return _err(handler, 400, "bad_request", "confirm with {needs_review: "
