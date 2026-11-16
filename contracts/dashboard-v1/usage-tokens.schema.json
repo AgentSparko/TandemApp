@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/dashboard-v1/usage-tokens.schema.json",
+  "title": "GET /v1/dashboard/usage: the fields TandemApp adds with TANDEM_AUTH=accounts (SRV-873)",
+  "description": "usage.schema.json is the engine's byte copy; with the accounts on, TandemApp's answer also has these fields: filters.token, dimensions.tokens, group and groups. A reader without the permission users gets only its own tokens in them.",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "description": "SRV-873: an API token's id (TANDEM_AUTH=accounts)",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "tokens": {
+          "description": "SRV-873: the API tokens seen in the ledger, with label and owner (TANDEM_AUTH=accounts); without the permission users only the reader's own",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "owner": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "owner"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "group": {
+      "description": "SRV-873: the query's group=, token or user",
+      "type": "string",
+      "enum": [
+        "token",
+        "user"
+      ]
+    },
+    "groups": {
+      "description": "SRV-873: the range's sums per token or per user, each the sum of the ledger's rows; key null holds the rows without one; without the permission users only the rows of the reader's own tokens",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "refused": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "required": [
+          "key",
+          "requests",
+          "refused",
+          "prompt_tokens",
+          "cached_tokens",
+          "completion_tokens",
+          "reasoning_tokens",
+          "total_tokens",
+          "cost_micros"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}
