@@ -664,9 +664,11 @@ class PluginHost:
         p.pipe, p.session, p.runtime = pipe, s, runtime.kind
         try:
             pipe.proc = runtime.spawn(spec, pipe.line, p.log.stderr)
-        except (pluginrt.StartFailed, pluginrt.Unavailable) as exc:
-            p.last_error = str(exc)
-            p.log.line(f"[host] {exc}")
+        except Exception as exc:                                   # noqa: BLE001
+            p.last_error = str(exc) if isinstance(exc, (pluginrt.StartFailed,
+                                                        pluginrt.Unavailable)) else \
+                f"it did not start: {type(exc).__name__}: {exc}"[:300]
+            p.log.line(f"[host] {p.last_error}")
             p.session = None
             return False
         p.where = pipe.proc.where

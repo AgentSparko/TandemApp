@@ -27,6 +27,11 @@ chatd's env file (`<state dir>/chatd.env`, proxy/appchat.py). `TANDEM_PLUGIN_SAN
 auto (the default), docker, kubernetes or off. With none (no socket, `off`) a sandboxed plugin does
 not start and says why (`Unavailable`; the health page's plugin_no_sandbox).
 
+The egress proxy's socket is `<state dir>/plugin-sandboxes/egress/<plugin>/proxy.sock`; where that
+path is longer than a unix socket's address allows, it is in a folder of this user's own instead
+(`$XDG_RUNTIME_DIR/tandem-plugins`, else `<tmp>/tandem-plugins-<uid>`, made 0700 and refused when
+another user owns it or it is a link).
+
 A pod's environment is not put on its exec's command line (the API server may log a command): the
 host writes it to a 0600 file in the plugin's home, and a small launcher in the pod reads it,
 removes it and execs the entry.
@@ -34,11 +39,14 @@ removes it and execs the entry.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import signal
+import stat
 import subprocess
+import tempfile
 import threading
 
 LABEL = "tandem.plugin"
@@ -51,6 +59,7 @@ PIDS = 128
 EGRESS_PORT = 3129
 STOP_GRACE_S = 3.0
 ENV_FILE = ".tandem-plugin-env.json"
+SOCK_MAX = 100                    # a unix socket's path, with room under sun_path's 108 bytes
 #: the pod's launcher: argv[1] the env file, the rest the entry; the file is read and removed
 LAUNCH = ("import json, os, sys\n"
           "p = sys.argv[1]\n"
@@ -98,6 +107,24 @@ class Proc:
                 return
             self._closed = True
         self._close()
+
+
+def short_dir(root: str) -> str:
+    """A folder of this user's own for the egress sockets of the sandboxes under `root`, short
+    enough for a socket's address (THE MODULE'S DOC)."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or ""
+    base = os.path.join(base, "tandem-plugins") if base and os.path.isdir(base) else \
+        os.path.join(tempfile.gettempdir(), f"tandem-plugins-{os.getuid()}")
+    for d in (base, os.path.join(base, hashlib.sha256(os.path.realpath(root).encode())
+                                 .hexdigest()[:12])):
+        try:
+            os.mkdir(d, 0o700)
+        except FileExistsError:
+            pass
+        st = os.lstat(d)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+            raise OSError(f"{d} is not this user's own folder")
+    return d
 
 
 def _lines(on_line):
@@ -204,8 +231,11 @@ def _boxes_mixin():
             self.network_mode = lambda cid: self.policies.get(cid) or "off"
 
         def paths(self, cid: str) -> tuple[str, str, str]:
+            eg = os.path.join(self.data, "egress", cid)
+            if len(os.path.join(eg, "proxy.sock")) > SOCK_MAX:
+                eg = os.path.join(short_dir(self.data), cid)
             return (os.path.join(self.data, "data", cid), os.path.join(self.data, "home", cid),
-                    os.path.join(self.data, "egress", cid))
+                    eg)
 
         def admit(self):
             return None
@@ -224,12 +254,16 @@ def _boxes_mixin():
                 b.state, b.error = "creating", None
                 try:
                     b.container = self._start(cid)
+                    b.state, b.stopped_reason = "running", None
+                    b.started = b.last_used = self.clock()
+                    self._proxy(b)
                 except (SbxUnavailable, OSError) as exc:
                     b.state, b.error = "error", str(exc)
+                    try:
+                        self.remove(cid)
+                    except Exception:                              # noqa: BLE001
+                        pass
                     raise SbxUnavailable(str(exc)) from None
-                b.state, b.stopped_reason = "running", None
-                b.started = b.last_used = self.clock()
-                self._proxy(b)
                 return b.container
     return Mixin, SbxUnavailable
 
@@ -363,7 +397,11 @@ class BoxRuntime:
         try:
             self.boxes.ensure(pid)
         except SbxUnavailable as exc:
-            raise Unavailable(str(exc)) from None
+            if not self.boxes.available():
+                raise Unavailable(str(exc)) from None
+            raise StartFailed(f"its sandbox did not start: {exc}") from None
+        except OSError as exc:
+            raise StartFailed(f"its sandbox did not start: {exc}") from None
         workdir = "/plugin" + ("/" + spec["workdir"] if spec.get("workdir") else "")
         env = dict(spec["env"])
         env.update(HOME="/home/agent", TANDEM_PLUGIN_DATA="/workspace")
