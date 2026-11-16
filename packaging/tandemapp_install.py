@@ -486,8 +486,11 @@ def accounts_on(cur: dict) -> bool:
 def setup_code(rel: str, state: str) -> str | None:
     """A one-time setup code from the release's own CLI while no owner exists, else None."""
     py = os.path.join(rel, "venv", "bin", "python")
-    r = subprocess.run([py, os.path.join(rel, "proxy", "__main__.py"), "users", "setup-code",
-                        "--config-db", os.path.join(state, "config.sqlite3")],
+    # `-m proxy` from the release (as its launcher runs it): run as a file, proxy/ would come
+    # first on the path and its secrets.py would hide the standard library's
+    env = dict(os.environ, PYTHONPATH=rel)
+    r = subprocess.run([py, "-m", "proxy", "users", "setup-code", "--config-db",
+                        os.path.join(state, "config.sqlite3")], cwd=rel, env=env,
                        capture_output=True, text=True, check=False, timeout=60)
     if r.returncode != 0:
         return None
@@ -1075,7 +1078,9 @@ def install(a) -> int:
           + f" ({svc['manager']}).")
     if url:
         print(f"  Open {url}  (the first page sets up an engine)")
-        code = setup_code(rel, state) if st.get("accounts") else None
+        # a loopback install without a proxy is in local mode: it needs no code
+        no_local = st["lan"] or read_env(os.path.join(state, "app.env")).get(LOCAL_ENV) == "off"
+        code = setup_code(rel, state) if st.get("accounts") and no_local else None
         if code:
             where = "http://<this host's address>" if st["lan"] else url.rstrip("/")
             print(f"  Setup code: {code}  (single use, valid 24 hours: open {where}"

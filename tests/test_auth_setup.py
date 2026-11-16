@@ -42,6 +42,9 @@ packaging/tandemapp_install.py), with TANDEM_AUTH=accounts.
   the CLI: list, add (a one-time code), disable, enable, role, remove, setup-code, the last owner,
   the password alias                                                  test_users_cli
   the Secret's file on Kubernetes, and bootstrap_secret_left         test_secret_file
+  the real start (`python -m proxy serve`): local mode on loopback; with TANDEM_LOCAL_MODE=off a
+  setup code in the log and 401; the installer's CLI line, its setup_code() and its health check
+  without a credential                                                test_real_start
 
     python tests/test_auth_setup.py
 """
@@ -591,6 +594,98 @@ def test_users_cli():
     # no database: a word, not a traceback
     rc, out = cli("list", "--config-db", os.path.join(tempfile.mkdtemp(), "none.sqlite3"))
     assert rc == 1 and "no config database" in out
+
+
+# ---------------------------------------------------------------------------- the real start
+
+def _serve(state: str, extra: dict):
+    """`python -m proxy serve` on 127.0.0.1 with the accounts on: (process, port, its lines)."""
+    import subprocess
+    import threading
+    import time
+    import ports
+    port = ports.free_port()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TANDEM_", "QSE_"))}
+    env.update({"TANDEM_AUTH": "accounts", "TANDEM_NODE_AGENT": "off", "TANDEM_LOCAL_NODE": "off",
+                "HOME": state, "PYTHONUNBUFFERED": "1", **extra})
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "proxy", "serve", "--host", "127.0.0.1", "--port", str(port),
+         "--config-db", os.path.join(state, "config.sqlite3"), "--usage-ledger", "off",
+         "--conductor-config", "off", "--fleet-store", "off", "--chat", "off", "--no-keychain"],
+        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines: list[str] = []
+    threading.Thread(target=lambda: lines.extend(iter(proc.stdout.readline, "")),
+                     daemon=True).start()
+    end = time.monotonic() + 60
+    while time.monotonic() < end and not any(f"127.0.0.1:{port}" in x for x in lines):
+        assert proc.poll() is None, "the controller stopped at its start"
+        time.sleep(0.1)
+    assert any(f"127.0.0.1:{port}" in x for x in lines), "the controller did not start"
+    return proc, port, lines
+
+
+def _ask(port: int, method: str, path: str, body=None):
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request(method, path, body=None if body is None else json.dumps(body),
+              headers={"Content-Type": "application/json"})
+    r = c.getresponse()
+    out = r.read()
+    c.close()
+    return r.status, out
+
+
+def test_real_start():
+    """serve() hands the bound address to the accounts: local mode on loopback; with
+    TANDEM_LOCAL_MODE=off a setup code in the log, 401, the installer's own CLI line and its
+    health check without a credential."""
+    import subprocess
+    import tandemapp_install as inst
+    state = tempfile.mkdtemp(prefix="serve-")
+    proc, port, lines = _serve(state, {})
+    try:
+        assert any("[auth] local mode" in x for x in lines)
+        assert not any(CODE_RE.search(x) for x in lines)
+        assert _ask(port, "GET", "/v1/settings")[0] == 200
+    finally:
+        proc.terminate()
+        proc.wait(20)
+    state = tempfile.mkdtemp(prefix="serve-")
+    proc, port, lines = _serve(state, {authlocal.LOCAL_ENV: "off"})
+    try:
+        assert any(CODE_RE.search(x) for x in lines), "a setup code in the log"
+        assert _ask(port, "GET", "/v1/settings")[0] == 401
+        db = os.path.join(state, "config.sqlite3")
+        # the command the summary names, as the machine's owner runs it
+        r = subprocess.run([sys.executable, "-m", "proxy", "users", "setup-code", "--config-db",
+                            db], capture_output=True, text=True, timeout=60, cwd=ROOT)
+        assert r.returncode == 0, r.stderr[-500:]
+        code = code_of(r.stdout.splitlines())
+        # and the installer's own function over a release laid out as it lays one out
+        rel = tempfile.mkdtemp(prefix="rel-")
+        os.makedirs(os.path.join(rel, "venv", "bin"))
+        py = os.path.join(rel, "venv", "bin", "python")
+        with open(py, "w") as f:
+            f.write(f"#!/bin/sh\nexec '{sys.executable}' \"$@\"\n")
+        os.chmod(py, 0o755)
+        for pkg in ("proxy", "tandemapp"):
+            os.symlink(os.path.join(ROOT, pkg), os.path.join(rel, pkg))
+        other = inst.setup_code(rel, state)
+        assert other and other != code and len(other) == 20
+        # its health check: no version without a credential, the status counts
+        ok, said = inst.health("127.0.0.1", port, None, "any version", None, 10, accounts=True)
+        assert ok, said
+        ok, _ = inst.health("127.0.0.1", port, None, "any version", None, 1, accounts=False)
+        assert not ok
+        st, out = _ask(port, "POST", "/v1/auth/setup", {"code": code, "username": "kim",
+                                                        "password": PW})
+        assert st == 201, out[:200]
+        assert _ask(port, "POST", "/v1/auth/setup", {"code": other, "username": "lee",
+                                                     "password": PW})[0] == 404
+        assert inst.setup_code(rel, state) is None, "an owner exists: no code"
+    finally:
+        proc.terminate()
+        proc.wait(20)
 
 
 # ---------------------------------------------------------------------------- the Secret's file
