@@ -1325,8 +1325,10 @@ def build(args, env=None) -> Service:
         # SRV-865: a legacy variable that does not read is a health finding, never a stop
         from proxy import authlegacy
         env_file = getattr(args, "env_file", None)
-        env, legacy = authlegacy.scan(env, {v: env_file for v in
-                                            authlegacy.env_file_vars(env_file)})
+        # OPS-298: on Kubernetes the old admin token is a mounted file, not a variable
+        env, files = authlegacy.token_from_file(env, {v: env_file for v in
+                                                      authlegacy.env_file_vars(env_file)})
+        env, legacy = authlegacy.scan(env, files)
     cfg = config_mod.ConfigDB(args.config_db, env=env,
                               use_keychain=not getattr(args, "no_keychain", False)).open()
     cfg.apply_env()

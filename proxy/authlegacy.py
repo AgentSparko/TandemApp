@@ -26,6 +26,12 @@ then ignored: an admin or metrics token under 32 characters, a TANDEM_API_KEYS e
 label:key with 16 characters or more, a dashboard login that is not on or off; the valid
 TANDEM_API_KEYS entries stay), `legacy_users_from_unreadable` for a TANDEM_API_USERS_FROM file
 that cannot be read. `--dashboard-login` and `--trust-loopback` are accepted and ignored.
+
+THE ADMIN TOKEN AS A FILE (OPS-298). On Kubernetes the chart puts no auth secret into the pod's
+environment: the Secret that held the admin token is a mounted file, named by
+TANDEM_ADMIN_TOKEN_FILE (and by TANDEM_SETUP_CODE_FILE: the same file). A value of 32 characters
+or more there counts as TANDEM_ADMIN_TOKEN for all of the above, with the file named in its
+finding; a shorter one is a setup code only. A variable in the environment wins over the file.
 """
 
 from __future__ import annotations
@@ -43,6 +49,26 @@ USERS_FROM = "TANDEM_API_USERS_FROM"
 VARIABLES = TOKENS + (KEYS, USERS_FROM) + LOGINS
 OLD_FIELDS = ("v", "kdf", "n", "r", "p", "rounds", "salt", "hash", "set_at")
 ENVIRONMENT = "the environment"
+TOKEN_FILE = "TANDEM_ADMIN_TOKEN_FILE"
+
+
+def token_from_file(env, files: dict | None = None) -> tuple[dict, dict]:
+    """(env, files) with TANDEM_ADMIN_TOKEN read from TANDEM_ADMIN_TOKEN_FILE when the
+    environment has no admin token and the file holds 32 characters or more; else unchanged."""
+    files = dict(files or {})
+    path = (env.get(TOKEN_FILE) or "").strip()
+    if not path or any((env.get(v) or "").strip() for v in TOKENS[:2]):
+        return env, files
+    try:
+        with open(path) as f:
+            text = f.read(4096).strip()
+    except OSError:
+        return env, files
+    if len(text) < 32:
+        return env, files
+    files["TANDEM_ADMIN_TOKEN"] = path
+    return {**env, "TANDEM_ADMIN_TOKEN": text}, files
+
 
 
 def env_file_vars(path: str | None) -> set:

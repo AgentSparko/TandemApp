@@ -51,16 +51,107 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-admin" (include "tandemapp.fullname" .)) .Values.auth.existingSecret -}}
 {{- end -}}
 
-{{/* TANDEM_CHAT and TANDEM_CONDUCTOR of the controller this release runs now (an upgrade), as
-JSON; {} on a new install and wherever the cluster is not asked (helm template, lint) */}}
+{{/* sign-in: legacy (the admin token in the env) or accounts (TANDEM_AUTH=accounts) */}}
+{{- define "tandemapp.authMode" -}}
+{{- toString (.Values.auth.mode | default "legacy") -}}
+{{- end -}}
+
+{{/* "true" when the chart makes the Secret <fullname>-admin: legacy as before; in accounts mode
+auth.bootstrap.create (empty: auth.create) while no Secret is named */}}
+{{- define "tandemapp.secretMade" -}}
+{{- $a := .Values.auth -}}
+{{- $b := $a.bootstrap | default dict -}}
+{{- if eq (include "tandemapp.authMode" .) "accounts" -}}
+{{- $create := $a.create -}}
+{{- if not (kindIs "invalid" $b.create) -}}{{- $create = $b.create -}}{{- end -}}
+{{- if and $create (not $a.existingSecret) (not $b.existingSecret) -}}true{{- end -}}
+{{- else -}}
+{{- if and $a.create (not $a.existingSecret) -}}true{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* accounts mode: the Secret whose file holds the setup code, empty when there is none */}}
+{{- define "tandemapp.setupSecret" -}}
+{{- $b := .Values.auth.bootstrap | default dict -}}
+{{- if $b.existingSecret -}}{{- $b.existingSecret -}}
+{{- else if .Values.auth.existingSecret -}}{{- .Values.auth.existingSecret -}}
+{{- else if include "tandemapp.secretMade" . -}}{{- include "tandemapp.secretName" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/* the key of that Secret: auth.bootstrap.secretKey belongs to auth.bootstrap.existingSecret */}}
+{{- define "tandemapp.setupKey" -}}
+{{- $b := .Values.auth.bootstrap | default dict -}}
+{{- if $b.existingSecret -}}{{- default .Values.auth.secretKey $b.secretKey -}}
+{{- else -}}{{- .Values.auth.secretKey -}}
+{{- end -}}
+{{- end -}}
+
+{{/* the ingress paths of each API protocol (proxy/service.py PROXY_PATHS and the cache routes;
+proxy/tokens.py MESSAGES). /v1/models is never among them: the page reads it */}}
+{{- define "tandemapp.apiPaths" -}}
+{{- toJson (dict "openai" (list "/v1/chat/completions" "/v1/completions" "/v1/embeddings" "/v1/responses" "/v1/cache") "anthropic" (list "/v1/messages")) -}}
+{{- end -}}
+
+{{/* {"openai": bool, "anthropic": bool}: does the ingress route the protocol's paths.
+ingress.api.<protocol> when set. Empty: legacy mode routes them (as before); accounts mode follows
+the running release on an upgrade (its TANDEM_INGRESS_API; a release without it that is not in
+accounts mode routed every path) and blocks them on a new install */}}
+{{- define "tandemapp.apiRouted" -}}
+{{- $out := dict -}}
+{{- $api := .Values.ingress.api | default dict -}}
+{{- $accounts := eq (include "tandemapp.authMode" .) "accounts" -}}
+{{- $run := dict -}}
+{{- if $accounts -}}{{- $run = include "tandemapp.runningEnv" . | fromJson -}}{{- end -}}
+{{- range $p := list "openai" "anthropic" -}}
+{{- $raw := get $api $p -}}
+{{- $v := "" -}}{{- if not (kindIs "invalid" $raw) -}}{{- $v = toString $raw -}}{{- end -}}
+{{- if eq $v "true" -}}{{- $_ := set $out $p true -}}
+{{- else if eq $v "false" -}}{{- $_ := set $out $p false -}}
+{{- else if not $accounts -}}{{- $_ := set $out $p true -}}
+{{- else if hasKey $run "TANDEM_INGRESS_API" -}}
+{{- $_ := set $out $p (has $p (splitList "," (toString (get $run "TANDEM_INGRESS_API")))) -}}
+{{- else if and (get $run "running") (ne (toString (get $run "TANDEM_AUTH")) "accounts") -}}
+{{- $_ := set $out $p true -}}
+{{- else -}}{{- $_ := set $out $p false -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
+{{/* TANDEM_INGRESS_API: the protocols the ingress routes, a comma list; "none" when it routes
+neither (an empty value would read as "not known") */}}
+{{- define "tandemapp.ingressApi" -}}
+{{- $r := include "tandemapp.apiRouted" . | fromJson -}}
+{{- $on := list -}}
+{{- range $p := list "openai" "anthropic" -}}{{- if get $r $p -}}{{- $on = append $on $p -}}{{- end -}}{{- end -}}
+{{- if $on -}}{{- join "," $on -}}{{- else -}}none{{- end -}}
+{{- end -}}
+
+{{/* ingress.blockedPaths plus the paths of each protocol the ingress does not route, as JSON */}}
+{{- define "tandemapp.blockedPaths" -}}
+{{- $r := include "tandemapp.apiRouted" . | fromJson -}}
+{{- $paths := include "tandemapp.apiPaths" . | fromJson -}}
+{{- $out := list -}}
+{{- range .Values.ingress.blockedPaths -}}{{- $out = append $out . -}}{{- end -}}
+{{- range $p := list "openai" "anthropic" -}}
+{{- if not (get $r $p) -}}{{- range get $paths $p -}}{{- $out = append $out . -}}{{- end -}}{{- end -}}
+{{- end -}}
+{{- toJson (uniq $out) -}}
+{{- end -}}
+
+{{/* TANDEM_CHAT, TANDEM_CONDUCTOR, TANDEM_AUTH and TANDEM_INGRESS_API of the controller this
+release runs now (an upgrade), as JSON, with "running": true; {} on a new install and wherever the
+cluster is not asked (helm template, lint) */}}
 {{- define "tandemapp.runningEnv" -}}
 {{- $out := dict -}}
 {{- $d := lookup "apps/v1" "Deployment" .Release.Namespace (include "tandemapp.fullname" .) -}}
 {{- if $d -}}
+{{- $_ := set $out "running" true -}}
 {{- range $d.spec.template.spec.containers -}}
 {{- if eq .name "controller" -}}
 {{- range .env -}}
-{{- if and (has .name (list "TANDEM_CHAT" "TANDEM_CONDUCTOR")) (hasKey . "value") -}}
+{{- if and (has .name (list "TANDEM_CHAT" "TANDEM_CONDUCTOR" "TANDEM_AUTH" "TANDEM_INGRESS_API")) (hasKey . "value") -}}
 {{- $_ := set $out .name .value -}}
 {{- end -}}
 {{- end -}}
@@ -142,7 +233,25 @@ an upgrade, else off (a new install starts bare) */}}
 {{- if and .Values.mcpBridge.enabled (not .Values.mcpBridge.command) -}}
 {{- fail "mcpBridge.enabled needs mcpBridge.command" -}}
 {{- end -}}
-{{- if and (not .Values.auth.existingSecret) (not .Values.auth.create) -}}
+{{- $mode := include "tandemapp.authMode" . -}}
+{{- if not (has $mode (list "legacy" "accounts")) -}}
+{{- fail "auth.mode is legacy or accounts" -}}
+{{- end -}}
+{{- if and (eq $mode "legacy") (not .Values.auth.existingSecret) (not .Values.auth.create) -}}
 {{- fail "auth: name an existingSecret or set create (a controller without an admin password answers anyone)" -}}
+{{- end -}}
+{{- if hasKey .Values.controller.env "TANDEM_AUTH" -}}
+{{- fail "controller.env: set auth.mode, not TANDEM_AUTH" -}}
+{{- end -}}
+{{- range .Values.controller.extraEnv -}}
+{{- if eq (toString .name) "TANDEM_AUTH" -}}
+{{- fail "controller.extraEnv: set auth.mode, not TANDEM_AUTH" -}}
+{{- end -}}
+{{- end -}}
+{{- range $p := list "openai" "anthropic" -}}
+{{- $raw := get ($.Values.ingress.api | default dict) $p -}}
+{{- if not (or (kindIs "invalid" $raw) (has (toString $raw) (list "" "true" "false"))) -}}
+{{- fail (printf "ingress.api.%s is true, false or empty" $p) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}

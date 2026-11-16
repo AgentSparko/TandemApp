@@ -1,5 +1,7 @@
 {{- if .Values.ingress.enabled }}
 {{- $full := include "tandemapp.fullname" . }}
+{{- /* ingress.blockedPaths plus the API paths of a protocol it does not route (ingress.api) */}}
+{{- $blocked := include "tandemapp.blockedPaths" . | fromJsonArray }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -22,7 +24,7 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          {{- range .Values.ingress.blockedPaths }}
+          {{- range $blocked }}
           # never routed to the controller: a Service with no endpoints answers 503
           - path: {{ . }}
             pathType: Prefix
@@ -39,7 +41,7 @@ spec:
                 name: {{ $full }}
                 port:
                   name: http
-{{- if .Values.ingress.blockedPaths }}
+{{- if $blocked }}
 ---
 # selects no pod: what the Ingress sends here has no endpoint and ends in a 503
 apiVersion: v1

@@ -91,13 +91,34 @@ controller:
       timeoutSeconds: 5
       failureThreshold: 3
 
-# -- the admin password (TANDEM_ADMIN_TOKEN, at least 32 characters). Without one every route of
-# the controller answers anyone who reaches it. Either name an existing Secret, or let the chart
-# make one with a random token (kept across upgrades). Never put a token in a values file.
+# -- sign-in. Never put a token or a code in a values file.
+#   legacy (the default for now): the admin password (TANDEM_ADMIN_TOKEN, at least 32
+#     characters) from the Secret below, in the controller's environment. Without one every
+#     route answers anyone who reaches it.
+#   accounts: user accounts, sessions and API tokens (TANDEM_AUTH=accounts). No auth secret goes
+#     into the pod's environment. The Secret is mounted as a file and holds a one-time setup code
+#     that makes the first owner; a release that had an admin token keeps that Secret, its value
+#     works once as the setup code and, once an owner exists, as an API token for scripts that
+#     ends after 30 days. Kubernetes never trusts the pod's loopback (kubectl port-forward).
 auth:
+  mode: legacy
+  # the admin token's Secret, or one the chart makes with a random value (kept across upgrades:
+  # 48 characters in legacy mode, a 20-character setup code in accounts mode)
   existingSecret: ""
   secretKey: admin-token
   create: true
+  # accounts mode only: the setup code's own Secret (secretKey: its key, empty: auth.secretKey).
+  # Empty: the Secret above, so an upgrade keeps its admin token working. create empty:
+  # auth.create. With no Secret at all the first code is in the controller's log, or
+  # `users setup-code` through kubectl exec (NOTES)
+  bootstrap:
+    existingSecret: ""
+    secretKey: ""
+    create: null
+  # the addresses of proxies in front whose X-Forwarded-Proto and X-Real-IP count
+  # (TANDEM_TRUSTED_PROXY, a comma list of exact addresses, no ranges): the ingress controller
+  # when it ends TLS, else every API token through it counts as sent without https
+  trustedProxy: ""
 
 # -- Chat: who runs chatd. off: nobody, the Chat tab says Chat is off until an admin switches it
 # on from the page (Settings, App, What runs here: chatd then runs in this pod with the env file
@@ -205,6 +226,15 @@ ingress:
   blockedPaths:
     - /chat-engine
     - /plugin-backends
+  # the API paths, per protocol: true routes them, false adds them to the blocked paths.
+  # openai: /v1/chat/completions, /v1/completions, /v1/embeddings, /v1/responses, /v1/cache.
+  # anthropic: /v1/messages (the Messages API). /v1/models is always routed (the page reads it).
+  # Empty: routed in legacy mode; in accounts mode blocked on a new install and as the running
+  # release had it on an upgrade (a release before accounts routed every path). The page's API
+  # exposure switch still decides who may call; this only says whether the ingress gets there.
+  api:
+    openai: ""
+    anthropic: ""
 
 # -- who may reach the controller's port. Off: anyone in the cluster.
 networkPolicy:
