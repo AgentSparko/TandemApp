@@ -156,7 +156,12 @@ def test_switched_on():
             st, out = change(px, own, "api", {"openai.exposure": "network"})
             assert st == 200, out
             assert chat(px, {**bearer(tok), **LAN}) == 200
-            st, out = j(px.post("/v1/messages", MSG, {**bearer(tok), **LAN}))
+            st, h, raw = px.post("/v1/messages", MSG, {**bearer(tok), **LAN})
+            out = json.loads(raw)
+            # the gate's refusal carries the request id of its header, as the handler's do
+            rid = out.pop("request_id", None)
+            hl = {k.lower(): v for k, v in h.items()}
+            assert rid and rid.startswith("req_") and hl.get("request-id") == rid, (rid, h)
             assert st == 403 and out == {"type": "error", "error": {
                 "type": "permission_error", "message": exposure_mod.NOT_EXPOSED}}, out
             # the models list: open with one exposed protocol the token holds

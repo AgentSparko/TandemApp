@@ -449,7 +449,6 @@ def test_both_key_headers_and_neither_upstream():
     srv, port = fake_backend.start(models=["fake-a"])
     with Proxy(_env(port)) as px:
         px.sync()
-        px.svc.auth.trusted_local = lambda *a, **k: False
         for h in (_hdr(), _hdr(**{"x-api-key": None, "Authorization": f"Bearer {KEY}"})):
             h["anthropic-beta"] = "some-beta-2026-01-01"
             st, _, data = px.post("/v1/messages", _msg(), headers=h)
@@ -458,8 +457,14 @@ def test_both_key_headers_and_neither_upstream():
             assert KEY not in json.dumps(srv.fake.last), "the client's key went upstream"
             assert not {"x-api-key", "authorization", "anthropic-version",
                         "anthropic-beta"} & set(sent), sent
-        st, _, _ = px.post("/v1/messages", _msg(), headers=_hdr(**{"x-api-key": "wrong" * 4}))
-        assert st == 401
+        # SEC-28: in local mode (this machine, no password) a key no token has is as none:
+        # served, and never sent upstream; through a proxy in front it is the gate's 401
+        st, _, data = px.post("/v1/messages", _msg(), headers=_hdr(**{"x-api-key": "wrong" * 4}))
+        assert st == 200, data
+        assert "wrong" * 4 not in json.dumps(srv.fake.last)
+        st, _, data = px.post("/v1/messages", _msg(), headers=_hdr(**{
+            "x-api-key": "wrong" * 4, "X-Forwarded-For": "192.0.2.7"}))
+        assert st == 401 and json.loads(data)["error"]["type"] == "authentication_error", data
     srv.shutdown()
 
 

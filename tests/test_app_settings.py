@@ -205,7 +205,10 @@ def test_write_guard():
         for h in ({"Origin": "https://evil.example"}, {"Sec-Fetch-Site": "cross-site"},
                   {"Origin": "null"}):
             st, _, err = _req(px, "PATCH", f"/v1/fleet/nodes/{nid}", {"alias": "X"}, h)
-            assert st == 403 and ok(err, "error")["error"]["type"] in ("cross_origin", "cross_site"), h
+            # SEC-28: the sign-in gate refuses it first (local mode's write rule): its code,
+            # type forbidden
+            assert st == 403 and err["error"].get("code") in ("cross_origin", "cross_site"), \
+                (h, err)
             assert _req(px, "PUT", "/v1/auth/password", {"password": PW}, h)[0] == 403
         # the configuration's and the conductor's writes: the same guard (an open controller on
         # this machine answers a page from anywhere otherwise)

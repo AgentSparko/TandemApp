@@ -390,6 +390,16 @@ def test_responses_passthrough_and_deepseek_usage_and_contract():
                            ("summary", "/v1/dashboard/summary"),
                            ("system", "/v1/dashboard/system")):
             doc = json.loads(px.get(path)[2])
+            if name == "usage":
+                # SEC-28: the accounts are always on: the fields they add (usage-tokens), then
+                # the engine's schema without them
+                errs = contract_check.validate(doc, contract_check.load("usage-tokens"))
+                assert not errs, ("usage-tokens", errs[:3])
+                doc = dict(doc, dimensions={k: v for k, v in doc["dimensions"].items()
+                                            if k != "tokens"},
+                           filters={k: v for k, v in doc["filters"].items() if k != "token"})
+                doc.pop("group", None)
+                doc.pop("groups", None)
             errs = contract_check.validate(doc, contract_check.load(name))
             assert not errs, (name, errs[:3])
         u = json.loads(px.get("/v1/dashboard/usage?backend=f1&bucket=day")[2])
