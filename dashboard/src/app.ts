@@ -42,7 +42,7 @@ import { registerWorker } from './lib/pwa';
 import { knownJob, rememberStatusPort } from './lib/restart';
 import { browserTz } from './lib/time';
 import { isTypingTarget, splitTabs } from './lib/phone';
-import { MENU, PHONE_BAR, SCOPED, crumb, sectionHref, sectionOf, subPages, type MenuItem, type Section } from './lib/menu';
+import { PHONE_BAR, SCOPED, crumb, menuNow, sectionHref, sectionOf, setRights, subPages, type MenuItem, type Section } from './lib/menu';
 import { CHAT_RAIL_MIN, CTX_W, RAIL_W, currentWidthClass, type WidthClass } from './lib/layout';
 import { clearSelection, contextFor, currentSelection, onContext, pageKey, panelFor, setDefaultContext, setPage, setSidebarControl, sidebarsChanged } from './lib/context';
 import { flush, onWorkspace, openWindowMenu, setTray, shownLayout, showPage, trayOpen, windowMenu, change, currentLayout, savedLayouts } from './lib/workspace';
@@ -68,7 +68,6 @@ const BETA = html`<span class="beta-pill" title="The Chat tab is in beta">Beta</
 const TYPING_SETTLE_MS = 60;
 /** how long a new page's blocks take to rise in (the stagger's last delay and its length) */
 const ENTER_MS = 900;
-const MENU_ITEMS: MenuItem[] = MENU.flatMap((g) => g.items);
 
 /** The Playground view is its own chunk; the element upgrades in place once the chunk has loaded. */
 let playgroundChunk: Promise<unknown> | null = null;
@@ -95,6 +94,9 @@ const loadFleetPages = () => (fleetChunk ??= import('./views/fleet-pages'));
 /** SEC-26: the controller's sign-in, first-run setup and password step, only with its accounts on. */
 let authChunk: Promise<typeof import('./auth/view')> | null = null;
 const loadAuth = () => (authChunk ??= import('./auth/view'));
+/** SRV-875: one's account and, for an admin, users, tokens, exposure and sessions; their own chunk */
+let accessChunk: Promise<unknown> | null = null;
+const loadAccess = () => (accessChunk ??= import('./views/access/area'));
 
 /** The three pages of Performance (VIS-254, concept §8.2): Live (the fleet's Now line and a strip
  *  per Spark, then the engine's own: the Live panel, the scatter), Requests (every request in flight
@@ -291,7 +293,8 @@ export class QseApp extends LightElement {
       }),
     );
     const onTheme = (e: Event) => (this.theme = (e as CustomEvent<Theme>).detail);
-    const onUnauth = () => (this.refused = true);
+    // SRV-875: with accounts a 401 on any call is a session that ended: who is signed in now?
+    const onUnauth = () => (this.accounts ? void this.checkAuth() : (this.refused = true));
     const onSignedIn = async () => {
       this.refused = false;
       if (this.accounts) {
@@ -602,7 +605,10 @@ export class QseApp extends LightElement {
     setCsrf(s?.csrf);
     this.authLocal = !!s?.local_mode;
     this.authWho = s?.account?.username ?? s?.principal?.name ?? '';
+    // SRV-875: the menu's entries follow the rights of who is signed in
+    setRights(s?.authenticated ? (s.permissions ?? []) : null);
     this.auth = m.needOf(s) as 'signin' | 'setup' | 'password' | null;
+    this.requestUpdate();
   }
 
   private async loadSummary(): Promise<void> {
@@ -645,7 +651,9 @@ export class QseApp extends LightElement {
   }
 
   render() {
-    if (this.accounts && (this.auth || location.hash.startsWith('#/account'))) {
+    // the sign-in's screens stand in for the page; #/account itself only in local mode, where it
+    // is the step that sets the first password (signed in, it is a page of its own: SRV-875)
+    if (this.accounts && (this.auth || (this.authLocal && location.hash.startsWith('#/account')))) {
       return html`<qse-auth .need=${this.auth ?? 'account'} .local=${this.authLocal} .who=${this.authWho}></qse-auth>`;
     }
     const st = this.status();
@@ -713,7 +721,7 @@ export class QseApp extends LightElement {
             <h2>Menu</h2>
             <button type="button" class="btn btn-ghost btn-icon" aria-label="Close" @click=${() => this.closeMore()}>${icon('x')}</button>
           </header>
-          ${MENU.map(
+          ${menuNow().map(
             (g) => html`${g.label ? html`<div class="eyebrow more-g">${g.label}</div>` : nothing}
               <nav class="more-grid" aria-label=${g.label ?? 'Chat'}>${g.items.map((it) => this.link(it, 'more-item', section))}</nav>`,
           )}
@@ -760,13 +768,13 @@ export class QseApp extends LightElement {
     return html`<nav class="lnav" aria-label="Main" ?inert=${leftInert}>
       <div class="istrip">
         <i class="ind" aria-hidden="true"></i>
-        ${MENU.map((g, i) => html`${i ? html`<span class="gsep" aria-hidden="true"></span>` : nothing}${g.items.map((it) => this.link(it, 'strip-i', section))}`)}
+        ${menuNow().map((g, i) => html`${i ? html`<span class="gsep" aria-hidden="true"></span>` : nothing}${g.items.map((it) => this.link(it, 'strip-i', section))}`)}
       </div>
       <div class="lpanel" ?inert=${panelInert}>
         <div class="lpanel-in">
           <div class="lp-scroll">
             ${own ??
-            MENU.map(
+            menuNow().map(
               (g) => html`${g.label ? html`<div class="nav-g eyebrow">${g.label}</div>` : nothing}
                 ${g.items.map(
                   (it) => html`${this.link(it, 'nav-i', section)}${it.id === section && subs.length && !this.setupMode
@@ -812,7 +820,7 @@ export class QseApp extends LightElement {
   }
 
   private renderBottomBar(section: Section): TemplateResult {
-    const split = splitTabs(MENU_ITEMS, PHONE_BAR, section);
+    const split = splitTabs(menuNow().flatMap((g) => g.items), PHONE_BAR, section);
     const wins = shownLayout().windows.filter((w) => w.at !== 'min').length;
     return html`<nav class="bottombar" aria-label="Main">
       ${split.bar.map((it) => this.link(it, 'bb-i', section))}
@@ -857,6 +865,10 @@ export class QseApp extends LightElement {
         void loadSetup();
         return html`${keyed(node ?? '', html`<qse-setup .path=${this.route.path} .node=${node}></qse-setup>`)}`;
       }
+      case 'account':
+      case 'access':
+        void loadAccess();
+        return html`<qse-access .view=${this.route.view} .path=${this.route.path} .params=${this.route.params}></qse-access>`;
       default:
         void loadFleetPages();
         return html`<qse-fleet-page .view=${this.route.view} .path=${this.route.path} .summary=${this.summary}></qse-fleet-page>`;

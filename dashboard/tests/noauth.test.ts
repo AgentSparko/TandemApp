@@ -102,8 +102,9 @@ describe('AU1: no password prompt in the source', () => {
       // (VIS-280: a backend's API key or a hook's token, set or removed and never shown); and a
       // decision provider's API key (VIS-282: the key of the user's own decision service, typed
       // once, staged and never shown again); and a plugin's secret (VIS-284: a value the plugin
-      // declared by name, typed once, staged and never shown again)
-      if (/type="password"/.test(text) && ![join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts'), join('views', 'settings', 'form.ts'), join('views', 'hooks', 'providers.ts'), join('views', 'plugins', 'plugin.ts')].includes(rel)) bad.push(`${rel}: a password input`);
+      // declared by name, typed once, staged and never shown again); and the Account page's own
+      // password change (SRV-875: only with the controller's accounts on, for who is signed in)
+      if (/type="password"/.test(text) && ![join('views', 'access', 'view.ts'), join('views', 'backends.ts'), join('views', 'fleet', 'start.ts'), join('setup', 'signin.ts'), join('views', 'fleet', 'wizard.ts'), join('views', 'fleet', 'app-settings.ts'), join('views', 'fleet', 'engine', 'connect.ts'), join('views', 'settings', 'form.ts'), join('views', 'hooks', 'providers.ts'), join('views', 'plugins', 'plugin.ts')].includes(rel)) bad.push(`${rel}: a password input`);
       for (const [re, what] of [
         [/Unlock editing|>Unlock<|'Unlock'/, 'an unlock step'],
         [/Admin token needed|Enter admin token|Enter the admin token/, 'a token prompt'],
@@ -114,6 +115,8 @@ describe('AU1: no password prompt in the source', () => {
         // SEC-26: the controller's sign-in, its first-run setup and the password step replace this
         // rule where the controller's accounts are on (TANDEM_AUTH=accounts, /health's X-Tandem-Auth)
         if (rel === join('auth', 'view.ts') && what === 'a sign-in screen') continue;
+        // SRV-875: the Account page of a signed-in person signs them out; it asks for no sign-in
+        if ([join('views', 'access', 'view.ts'), join('lib', 'access-flow.ts')].includes(rel) && what === 'a sign-in screen') continue;
         if (re.test(text)) bad.push(`${rel}: ${what}`);
       }
     }

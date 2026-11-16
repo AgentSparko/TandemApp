@@ -28,6 +28,7 @@ import { html } from 'lit';
 import { describe, expect, it } from 'vitest';
 import { HEALTH_FINDINGS, HEALTH_SCENARIOS, START_S, UPGRADE_IDLE_S } from '../mock/health.ts';
 import { FIX_WAIT_MS, FOLLOW_MS, NOTE_KEEP_MS, POLL_MS, REFRESH_GAP_MS } from '../src/lib/health-flow.ts';
+import { FINDING_PAGE } from '../src/lib/health.ts';
 import { MENU, crumb, sectionOf } from '../src/lib/menu.ts';
 import { parseHash } from '../src/lib/router.ts';
 import { healthView } from '../src/views/health/view.ts';
@@ -173,8 +174,10 @@ describe('Acceptance criteria (SRV-835)', () => {
           expect(f.sentence + f.fix, f.code).not.toMatch(/[{}]/);
           const want = HEALTH_FINDINGS[f.code][1];
           // a refused pairing is no target: its way on is Add engine; a host key that does not match gets none;
-          // a plugin's finding without a fix links to its page, which the plugins pages (VIS-284) hold
-          const button = c.kind === 'pairings' ? (['wrong_code', 'code_spent', 'no_window'].includes(f.code) ? ['open-add-engine'] : []) : want ? [want] : c.kind === 'plugins' && f.facts.plugin ? ['open-plugin'] : [];
+          // a plugin's finding without a fix links to its page, which the plugins pages (VIS-284) hold;
+          // a finding about the sign-in or the API to the page that settles it (SRV-875)
+          const button = c.kind === 'pairings' ? (['wrong_code', 'code_spent', 'no_window'].includes(f.code) ? ['open-add-engine'] : []) : want ? [want] : FINDING_PAGE[f.code] ? ['open-page'] : c.kind === 'plugins' && f.facts.plugin ? ['open-plugin'] : [];
+          if (button[0] === 'open-page') expect(t, f.code).toContain(`href=${FINDING_PAGE[f.code].href} data-act="open-page">${FINDING_PAGE[f.code].label}<`);
           if (button[0] === 'open-plugin') expect(t, f.code).toContain(`href=#/app/plugins/p/${encodeURIComponent(String(f.facts.plugin))}`);
           expect(acts(t), f.code).toEqual(button);
         }

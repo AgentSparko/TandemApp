@@ -252,7 +252,8 @@ describe('where the plugins show in the settings area', () => {
   it('a page of its own under Settings, a scope of its own that applies last', () => {
     expect(SETTINGS_TABS.map((t) => t.id)).toEqual(['app', 'backends', 'conductor', 'engines', 'hooks', 'plugins', 'history']);
     expect(SETTINGS_TABS.find((t) => t.id === 'plugins')!.scope).toBe('plugins');
-    expect(SCOPES).toEqual(['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins']);
+    // SRV-875: `auth` and `api` stand after `app` on a controller with accounts (settings-v1 1.2)
+    expect(SCOPES).toEqual(['app', 'auth', 'api', 'backends', 'conductor', 'engine', 'hooks', 'plugins']);
     expect(settingsHref('plugins')).toBe('#/app/plugins');
     const r = parseHash('#/app/plugins/p/hello-tool/panel/board');
     expect([r.view, r.path]).toEqual(['app', ['plugins', 'p', 'hello-tool', 'panel', 'board']]);

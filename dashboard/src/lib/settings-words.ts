@@ -7,7 +7,7 @@ import { RESTART_ENDED, type AuditRow, type Change, type Overview, type PartPlan
 import { grantLine } from './plugin-caps';
 import { shown } from './settings-form';
 
-export const SCOPE_NAME: Record<Scope, string> = { app: 'App', backends: 'Backends', conductor: 'Conductor', engine: 'Engine', hooks: 'Hooks', plugins: 'Plugins' };
+export const SCOPE_NAME: Record<Scope, string> = { app: 'App', auth: 'Sign-in', api: 'API', backends: 'Backends', conductor: 'Conductor', engine: 'Engine', hooks: 'Hooks', plugins: 'Plugins' };
 
 /** a target's name as the overview gives it; the id when it is not listed (any more) */
 export function targetLabel(o: Overview | null, scope: Scope, target: string): string {
@@ -302,6 +302,11 @@ export function errorWords(e: Pick<SettingsError, 'type' | 'message' | 'facts'>)
       return { title: 'This needs TandemApp’s admin password.', fix: 'Sign in below, then try again. Nothing was changed.', detail: null };
     case 'offline':
       return { title: 'TandemApp did not answer.', fix: 'Check that it still runs and that this device reaches it, then try again.', detail: null };
+    case 'owner_required':
+    case 'admin_required':
+      return { title: `Not allowed: only an ${e.type === 'owner_required' ? 'owner' : 'admin'} changes ${f.key ?? 'this setting'}.`, fix: 'Take it out of the change set. Nothing was changed.', detail: null };
+    case 'password_first':
+      return { title: `${f.key ?? 'This setting'} lets other devices in, and no password is set yet.`, fix: 'Set the owner’s password under Account first. Nothing was changed.', detail: null };
     case 'stale_plan':
       return { title: 'The settings changed since this plan was read.', fix: f.plan ? 'This is the plan as it is now. Check it, then apply.' : 'Review the changes again.', detail: null };
     case 'busy':

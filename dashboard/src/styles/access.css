@@ -1,0 +1,263 @@
+/* The account and access pages (SRV-875, views/access/). They draw with the page's own panels,
+   buttons, fields and dialog; here: the strip of pages, the rows of a list (a name with its facts
+   on the left, its buttons on the right, stacked on a narrow column), the forms and the block
+   that shows a token or a code once. A state is said in words in a tag, never by colour alone. */
+
+qse-access {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  max-width: 1080px;
+  container: ac / inline-size;
+}
+.ac-wrap {
+  overflow-wrap: anywhere;
+}
+.ac-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: -4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--rule);
+}
+.ac-tab {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ac-tab:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+.ac-tab.is-on {
+  color: var(--ink);
+  border-bottom-color: var(--cobalt);
+}
+qse-access .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+qse-access .panel-head {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+/* ---- a list's rows -------------------------------------------------------------------------------- */
+.ac-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ac-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule);
+}
+.ac-row:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.ac-row.is-off .ac-t > b {
+  color: var(--ink-2);
+}
+.ac-main {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ac-t {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.ac-main p {
+  margin: 0;
+}
+.ac-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tag.ac-on {
+  border-color: var(--cobalt);
+  color: var(--cobalt-hi);
+}
+.tag.ac-off {
+  border-style: dashed;
+}
+.tag.ac-warn {
+  border-color: var(--warn);
+  color: var(--warn-ink);
+}
+.ac-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.ac-acts .btn,
+.ac-acts select {
+  min-height: 36px;
+}
+.ac-audit time {
+  white-space: nowrap;
+}
+
+/* ---- forms ---------------------------------------------------------------------------------------- */
+.ac-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 460px;
+}
+.ac-dlg .ac-form {
+  max-width: none;
+}
+.ac-dlg {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.ac-dlg p {
+  margin: 0;
+}
+.ac-field input,
+.ac-field select {
+  width: 100%;
+  min-height: 38px;
+  font-size: 16px;
+}
+.ac-field input:focus-visible,
+.ac-field select:focus-visible,
+.ac-acts select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ac-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ac-set {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+.ac-set legend {
+  padding: 0 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+.ac-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 0;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.ac-check input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--cobalt);
+}
+.ac-limits summary {
+  min-height: 32px;
+  cursor: pointer;
+}
+.ac-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ---- a token or a code, shown once ---------------------------------------------------------------- */
+.ac-secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+}
+.ac-secret code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.ac-snips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.ac-snips dd {
+  margin: 4px 0 0;
+}
+
+/* ---- exposure ------------------------------------------------------------------------------------- */
+.ac-switch .seg-btn {
+  min-height: 36px;
+  padding-inline: 14px;
+}
+.ac-switch .seg-btn[disabled]:not(.is-on) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ac-finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+.ac-finding .icon {
+  flex: none;
+}
+.ac-finding.is-warning,
+.ac-finding.is-error {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+  color: var(--ink);
+}
+
+/* a narrow column (a phone, or the page between two sidebars): the buttons go under the facts */
+@container ac (max-width: 620px) {
+  .ac-row {
+    flex-direction: column;
+  }
+  .ac-main {
+    flex-basis: auto;
+  }
+  .ac-acts {
+    justify-content: flex-start;
+  }
+  .ac-audit time {
+    order: -1;
+  }
+}

@@ -55,12 +55,15 @@ import { MockHooks, type MockHook, type MockProvider } from './hooks.ts';
 import { MockPlugins, needsConfirm } from './plugins.ts';
 import { validateField } from '../src/lib/plugins.ts';
 import { schemaForm } from '../src/lib/schema-form.ts';
+import type { MockAuth } from './auth.ts';
 import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestartEstimate, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 
 const CONTRACT = '1.2';
+/** a controller without accounts; with them `auth` and `api` stand after `app` (settings-v1 1.2) */
 const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
+const WITH_ACCOUNTS: Scope[] = ['app', 'auth', 'api', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
 const OPS = ['schema', 'get', 'plan', 'apply', 'versions', 'restore'];
 const REPLAY_MS = 300_000;
 const RESTART_MS = 4000;
@@ -72,7 +75,7 @@ export const SETTINGS_ERRORS: Record<string, number> = {
   confirm_required: 428, fingerprint_confirm_required: 428, grant_confirm_required: 428, stale_plan: 409, busy: 409, read_only: 409, too_late: 409, ended: 409, engine_busy: 409,
   engine_refused: 409, host_key_changed: 409, no_http: 409, extension_missing: 409, unknown_key: 422, locked: 422, bad_value: 422, invalid_document: 422, restore_invalid: 422,
   store_refused: 422, engine_unreachable: 502, engine_failed: 502, engine_too_old: 502, engine_timeout: 504, unauthorized: 401, cross_site: 403,
-  cross_origin: 403, trust_required: 403, json_only: 415,
+  cross_origin: 403, trust_required: 403, json_only: 415, token_refused: 403, owner_required: 403, admin_required: 403, password_first: 409,
 };
 const SENTENCE: Record<string, string> = {
   busy: 'another change set is being applied: plan again when it is done',
@@ -330,6 +333,107 @@ class AppScope extends KeyValueScope {
     for (const k of unsets as ('chat' | 'conductor')[]) {
       this.parts.on[k] = false; // the install's choice
       this.parts.switched[k] = false;
+    }
+  }
+}
+
+// ---- auth, api (SRV-871, with accounts only) --------------------------------------------------------
+interface AccountKey {
+  type: KeyType;
+  def: unknown;
+  text: string;
+  values?: string[];
+  lo?: number;
+  hi?: number;
+  /** who writes it: an owner, but for the one key an admin switches */
+  admin?: boolean;
+  /** it lets other devices in: never from local mode */
+  password?: boolean;
+  restart?: RestartClass;
+}
+const days = (def: number, text: string, lo = 1, hi = 400): AccountKey => ({ type: 'integer', def, text, lo, hi });
+/** proxy/settingscopes.py AuthScope.KEYS and ApiScope.KEYS */
+export const ACCOUNT_KEYS: Record<'auth' | 'api', Record<string, AccountKey>> = {
+  auth: {
+    provider: { type: 'enum', def: 'local', values: ['local'], password: true, text: 'who answers who someone is: local (the accounts here); ldap, oidc and trusted-header come later' },
+    local_mode: { type: 'enum', def: 'auto', values: ['auto', 'off'], text: 'auto: a bare install bound to this machine with no owner password asks nothing on this machine; off: never' },
+    local_login: { type: 'enum', def: 'on', values: ['on', 'owners', 'hidden'], text: 'the page’s sign-in form: on, owners only, or hidden (a provider’s button alone)' },
+    chat_min_role: { type: 'enum', def: 'operator', values: ['operator', 'viewer'], text: 'who may use the Chat tab' },
+    'session.idle_days': days(30, 'a session ends after this many idle days'),
+    'session.absolute_days': days(180, 'a session ends this many days after the sign-in'),
+    'password.min_length': { type: 'integer', def: 12, lo: 12, hi: 256, text: 'a new password’s length at least' },
+  },
+  api: {
+    'openai.exposure': { type: 'enum', def: 'this-machine', values: ['this-machine', 'network'], password: true, text: 'who may use the OpenAI API with a token: this machine, or any device (network)' },
+    'anthropic.exposure': { type: 'enum', def: 'this-machine', values: ['this-machine', 'network'], password: true, text: 'who may use the Anthropic API with a token: this machine, or any device (network)' },
+    listen: { type: 'string', def: '127.0.0.1', password: true, restart: 'app', text: 'the address TandemApp listens on (TANDEM_HOST in its env file), applied at the next restart' },
+    'tokens.default_days': days(90, 'a new token’s days when none are asked', 1, 3650),
+    'tokens.max_days': days(0, 'a token lives at most this many days (0: no cap)', 0, 3650),
+    'tokens.max_days_external': days(30, 'the cap for an external provider’s accounts (later)', 0, 3650),
+    'tokens.viewers_may_create': { type: 'enum', def: 'off', values: ['on', 'off'], admin: true, text: 'viewers may make inference tokens' },
+  },
+};
+
+class AccountKeys extends KeyValueScope {
+  private at = 0;
+  constructor(
+    private which: 'auth' | 'api',
+    private auth: MockAuth,
+  ) {
+    super(which);
+  }
+  private get keys(): Record<string, AccountKey> {
+    return ACCOUNT_KEYS[this.which];
+  }
+  private def(k: string): unknown {
+    if (k === 'openai.exposure' && this.auth.hadLegacyKeys) return 'network';
+    return k === 'listen' ? this.auth.bind : this.keys[k].def;
+  }
+  spec() {
+    return Object.fromEntries(
+      Object.entries(this.keys).map(([k, d]) => {
+        const pod = k === 'listen' && this.auth.kubernetes;
+        return [k, spec(k, d.type, { values: d.values, default: this.def(k), restart: d.restart ?? 'none', text: d.text, writable: !pod, ...(pod ? { why: 'the pod listens on every address; the chart’s ingress decides who reaches it' } : {}) })];
+      }),
+    );
+  }
+  values() {
+    return Object.fromEntries(
+      Object.keys(this.keys).map((k): [string, Val] => {
+        const full = `${this.which}.${k}`;
+        if (full in this.auth.settings) return [k, { value: this.auth.settings[full], set: true, source: 'page' }];
+        return [k, { value: this.def(k), set: false, source: k === 'listen' ? 'install' : k === 'openai.exposure' && this.auth.hadLegacyKeys ? 'migration' : 'default' }];
+      }),
+    );
+  }
+  check(sets: Record<string, unknown>, unsets: string[]) {
+    const c = this.auth.caller;
+    const n = this.which;
+    if (c === null || c.kind === 'token') no('token_refused', `the ${n} settings take a signed-in owner, never an API token`);
+    for (const k of [...new Set([...Object.keys(sets), ...unsets])].sort()) {
+      const d = this.keys[k];
+      if (!this.auth.may(c, d.admin ? 'users' : 'owner')) no(d.admin ? 'admin_required' : 'owner_required', `${n}.${k} is changed by ${d.admin ? 'an admin' : 'an owner'}`, { key: k });
+      if (d.password && c!.kind === 'local') no('password_first', `${n}.${k} lets other devices in: set the owner’s password first`, { key: k });
+    }
+    for (const [k, v] of Object.entries(sets)) {
+      const d = this.keys[k];
+      if (d.type === 'enum' && !d.values!.includes(v as string)) no('bad_value', `${n}.${k} is one of ${d.values!.join(', ')}`, { key: k });
+      if (d.type === 'integer' && (typeof v !== 'number' || !Number.isInteger(v) || v < d.lo! || v > d.hi!)) no('bad_value', `${n}.${k} is a whole number from ${d.lo} to ${d.hi}`, { key: k });
+      if (d.type === 'string' && (typeof v !== 'string' || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(v))) no('bad_value', 'api.listen is an address: 127.0.0.1, 0.0.0.0, ::, or a name', { key: k });
+      if (k === 'listen' && this.auth.setupRequired()) no('password_first', 'api.listen lets other devices in: an owner with a password first', { key: k });
+    }
+  }
+  apply(t: string, p: ScopePlan, ctx: Ctx): Applied {
+    this.at = ctx.now;
+    return super.apply(t, p, ctx);
+  }
+  write(sets: Record<string, unknown>, unsets: string[]) {
+    for (const k of [...Object.keys(sets), ...unsets].sort()) {
+      const full = `${this.which}.${k}`;
+      const from = this.values()[k].value;
+      if (k in sets) this.auth.settings[full] = sets[k];
+      else delete this.auth.settings[full];
+      this.auth.wrote(this.at, full, from, k in sets ? sets[k] : this.def(k), k in sets);
     }
   }
 }
@@ -1290,11 +1394,15 @@ export interface MockSettingsOptions {
   hooks?: boolean | 'demo';
   /** the plugin registry holds hello-tool (true) or the demo set (mock/plugins.ts) */
   plugins?: boolean | 'demo';
+  /** the controller's accounts are on (mock/auth.ts): the `auth` and `api` scopes exist too */
+  accounts?: MockAuth;
   now?: number;
 }
 
 export class MockSettings {
-  private scopes: Record<Scope, ScopeImpl>;
+  private scopes: Partial<Record<Scope, ScopeImpl>>;
+  /** the scopes this controller has, in the order they apply */
+  private order: Scope[] = SCOPES;
   private engine: EngineScope;
   private hooks: HooksScope;
   /** the hooks and the decision providers: the settings' hooks scope and their own two APIs
@@ -1319,6 +1427,11 @@ export class MockSettings {
     this.plugins = new MockPlugins(t0);
     if (o.plugins) this.plugins.seed(o.plugins);
     this.scopes = { app: new AppScope(o.parts), backends: new BackendsScope(), conductor: new ConductorScope(o.parts, t0), engine: this.engine, hooks: this.hooks, plugins: new PluginsScope(this.plugins) };
+    if (o.accounts) {
+      this.scopes.auth = new AccountKeys('auth', o.accounts);
+      this.scopes.api = new AccountKeys('api', o.accounts);
+      this.order = WITH_ACCOUNTS;
+    }
     this.engine.onEnd = (r, state) => {
       this.audit(r.end!.at, r.who, 'settings.restart', `engine/${r.host.id}`, [], r.change_set, state);
       // a restart that did not end well: the result it belongs to holds no longer
@@ -1361,8 +1474,8 @@ export class MockSettings {
   }
 
   private scope(name: unknown): ScopeImpl {
-    if (typeof name !== 'string' || !SCOPES.includes(name as Scope)) no('no_scope', `no scope '${String(name)}' (one of ${SCOPES.join(', ')})`);
-    return this.scopes[name as Scope];
+    if (typeof name !== 'string' || !this.order.includes(name as Scope)) no('no_scope', `no scope '${String(name)}' (one of ${this.order.join(', ')})`);
+    return this.scopes[name as Scope]!;
   }
 
   private target(name: Scope, t: unknown): string {
@@ -1401,13 +1514,13 @@ export class MockSettings {
       if (both) no('bad_request', `changes[${i}]: ${both} is both set and unset`);
       return { scope, target, kind: 'set', version: null, sets, unsets };
     });
-    return out.sort((a, b) => SCOPES.indexOf(a.scope) - SCOPES.indexOf(b.scope) || (a.target < b.target ? -1 : a.target > b.target ? 1 : 0));
+    return out.sort((a, b) => this.order.indexOf(a.scope) - this.order.indexOf(b.scope) || (a.target < b.target ? -1 : a.target > b.target ? 1 : 0));
   }
 
   private planParts(parts: Part[]): Plan {
     for (const p of parts) {
       try {
-        p.plan = p.kind === 'restore' ? this.scopes[p.scope].planRestore(p.target, p.version!) : this.scopes[p.scope].plan(p.target, p.sets, p.unsets);
+        p.plan = p.kind === 'restore' ? this.scopes[p.scope]!.planRestore(p.target, p.version!) : this.scopes[p.scope]!.plan(p.target, p.sets, p.unsets);
       } catch (e) {
         // a part's refusal names its scope and target, and the key of a part of one key when it is about a value
         if (!(e instanceof Refuse)) throw e;
@@ -1484,7 +1597,7 @@ export class MockSettings {
         try {
           const forced = this.fails.get(`apply-${p.scope}`);
           if (forced) no(forced, SENTENCE[forced] ?? forced);
-          const got = this.scopes[p.scope].apply(p.target, p.plan!, ctx);
+          const got = this.scopes[p.scope]!.apply(p.target, p.plan!, ctx);
           const state = got.restart ? 'scheduled' : 'applied';
           results.push(this.result(p, state, got));
           this.audit(now, who, action, name, keys, cs, state);
@@ -1543,7 +1656,7 @@ export class MockSettings {
     const target = q.get('target');
     if (method === 'GET' && !parts.length) {
       this.forced('overview');
-      return { ...v, scopes: SCOPES.map((scope, order) => ({ scope, order, targets: this.scopes[scope].targets(), why: null })), order: SCOPES, operations: OPS };
+      return { ...v, scopes: this.order.map((scope, order) => ({ scope, order, targets: this.scopes[scope]!.targets(), why: null })), order: this.order, operations: OPS };
     }
     if (method === 'POST' && parts.join('/') === 'plan') {
       this.forced('plan');
@@ -1578,13 +1691,13 @@ export class MockSettings {
       }
       no('not_found', `no route ${method} /v1/settings/${parts.join('/')}`);
     }
-    if (parts.length && SCOPES.includes(parts[0] as Scope)) {
+    if (parts.length && this.order.includes(parts[0] as Scope)) {
       const scope = parts[0] as Scope;
       const rest = parts.slice(1).join('/');
       if (method === 'GET' && (rest === '' || rest === 'schema' || rest === 'versions')) {
         this.forced(rest === '' ? 'values' : rest);
         const t = this.target(scope, target);
-        const s = this.scopes[scope];
+        const s = this.scopes[scope]!;
         return { ...v, scope, target: t, ...(rest === '' ? s.get(t) : rest === 'schema' ? s.schema(t) : s.versions(t)) };
       }
       if (method === 'POST' && rest === 'plan') return this.planParts(this.parts(this.one(scope, body)));

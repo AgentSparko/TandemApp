@@ -2,7 +2,7 @@
 // of every view, the crumb, each section's sub-pages with the one you are on marked, and the scope
 // that travels with a link to another Monitor page.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONDUCTOR_SCREENS, MENU, MONITOR, PHONE_BAR, crumb, sectionHref, sectionOf, subPages } from '../src/lib/menu';
+import { ACCOUNT_MENU, CONDUCTOR_SCREENS, MENU, MONITOR, PHONE_BAR, crumb, sectionHref, sectionOf, subPages } from '../src/lib/menu';
 import { parseHash, VIEWS } from '../src/lib/router';
 
 const NODES = [
@@ -32,7 +32,8 @@ describe('the menu', () => {
     expect(PHONE_BAR).toEqual(['chat', 'overview', 'performance']);
   });
   it('every view belongs to a section of the menu; today’s System, Backends and setup guide to theirs', () => {
-    const ids = MENU.flatMap((g) => g.items.map((i) => i.id));
+    // SRV-875: Account and Users & access are entries only a controller with accounts adds
+    const ids = [...MENU.flatMap((g) => g.items.map((i) => i.id)), ...ACCOUNT_MENU.map((i) => i.id)];
     for (const v of VIEWS) expect(ids, v).toContain(sectionOf(v));
     expect(sectionOf('system')).toBe('hardware');
     expect(sectionOf('backends')).toBe('api');

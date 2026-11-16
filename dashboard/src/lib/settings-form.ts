@@ -124,7 +124,26 @@ const PROVIDER_LABEL: Record<string, string> = { enabled: 'On', mode: 'Mode', ab
 const HOOK_ORDER = ['enabled', 'mode', 'priority', 'payload', 'scope', 'policy', 'timeout_ms', 'secret'];
 const PROVIDER_ORDER = ['enabled', 'mode', 'ab_percent', 'sticky', 'questions', 'api_key'];
 
+/** SRV-875: the keys of the `auth` and the `api` scope by name */
+const ACCOUNT_LABEL: Record<string, string> = {
+  provider: 'Who checks a sign-in',
+  local_mode: 'Local mode',
+  local_login: 'The password form',
+  chat_min_role: 'Who may chat',
+  'session.idle_days': 'Idle days before a session ends',
+  'session.absolute_days': 'Longest session, in days',
+  'password.min_length': 'Shortest password',
+  'openai.exposure': 'OpenAI-compatible API',
+  'anthropic.exposure': 'Messages API',
+  listen: 'Listen address',
+  'tokens.default_days': 'A new token’s days',
+  'tokens.max_days': 'Longest token, in days',
+  'tokens.max_days_external': 'Longest token of an outside account, in days',
+  'tokens.viewers_may_create': 'Viewers create inference tokens',
+};
+
 export function labelOf(scope: Scope, key: string, held: KeyValue | null = null): { label: string; mono: boolean } {
+  if (scope === 'auth' || scope === 'api') return { label: ACCOUNT_LABEL[key] ?? humanize(key), mono: false };
   if (scope === 'app') return { label: key === 'chat' ? 'Chat' : key === 'conductor' ? 'Conductor' : humanize(key), mono: false };
   if (scope === 'engine') return key === MODE_KEY ? { label: 'Mode', mono: false } : key === EXT_KEY ? { label: 'Chat extension', mono: false } : { label: key, mono: true };
   if (scope === 'conductor') return { label: key.startsWith('profiles.') ? `Profile ${key.slice(9)}` : humanize(key), mono: false };
@@ -170,6 +189,8 @@ function chipsOf(scope: Scope, spec: KeySpec): Chip[] {
 
 const RESET: Record<Scope, string> = {
   app: 'Use the install’s setting',
+  auth: 'Use the default',
+  api: 'Use the default',
   backends: 'Clear',
   conductor: 'Back to the built-in one',
   engine: 'Use the engine’s own value',
@@ -213,6 +234,8 @@ function lockOf(schema: Pick<SchemaView, 'writable' | 'why'>, spec: KeySpec): { 
 function textOfKey(scope: Scope, spec: KeySpec): string | null {
   if (scope === 'engine' && spec.key === MODE_KEY) return MODE_NOTE;
   if (scope === 'engine' && spec.key === EXT_KEY) return EXT_NOTE;
+  // nothing reads it while the accounts here are the only way to sign in
+  if (scope === 'auth' && spec.key === 'local_login') return 'On, owners only, or hidden. It takes effect once another way to sign in exists: with the accounts here alone, the form always shows.';
   if (scope === 'conductor' || (scope === 'backends' && (spec.key.startsWith('users.') || spec.key.endsWith('.key')))) return null;
   return spec.text ?? null;
 }
@@ -327,6 +350,14 @@ export function groupsOf(scope: Scope, fields: Field[]): Group[] {
       of('settings', 'Settings', 'Each property of the plugin’s own schema.', (k) => k.startsWith('settings.')),
       of('secrets', 'Secrets', 'Write-only: set or removed, never shown.', (k) => k.startsWith('secrets.')),
       of('capabilities', 'Capabilities', 'On: granted. A grant takes pairing’s rights.', (k) => k.startsWith('capabilities.')),
+    ].filter((g) => g.fields.length);
+  }
+  if (scope === 'api') {
+    // SRV-875: who gets in, then the rules of the tokens that let them
+    const tokens = fields.filter((f) => f.key.startsWith('tokens.'));
+    return [
+      { id: 'api:exposure', title: 'Who may use the APIs', sub: 'The same switches as on the API exposure page, and the address TandemApp listens on.', fields: fields.filter((f) => !tokens.includes(f)) },
+      { id: 'api:tokens', title: 'API tokens', sub: 'How long a token may live, and whether viewers create their own.', fields: tokens },
     ].filter((g) => g.fields.length);
   }
   return fields.length ? [{ id: scope, title: scope === 'conductor' ? 'Documents' : '', sub: null, fields }] : [];

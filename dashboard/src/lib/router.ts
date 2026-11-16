@@ -1,7 +1,8 @@
 // Hash routing: #/usage?client=k:…&range=90d. Reload keeps the page and its filters. Every view has
 // a path below it: #/chat/<id>, #/chat/settings/<section> (VIS-99), #/sparks/<node> (VIS-242),
 // #/add-engine/<engine host> (VIS-278: the setup wizard's steps after pairing), #/health/<target>
-// (SRV-835: the health page, opened on one card). Three
+// (SRV-835: the health page, opened on one card), #/account/tokens and #/access/<page> (SRV-875:
+// one's own account, and the users, tokens, exposure and sessions an admin manages). Three
 // of today's views are sub-pages of a TandemApp section (concept §4) and live below it: the System
 // view at #/hardware/system, Backends at #/api/backends and the setup guide at #/models/serve, with
 // its own path below that (#/models/serve/<model>/<step>, VIS-78). The old hashes (#/system,
@@ -28,8 +29,10 @@ export type View =
   | 'add-engine'
   | 'add-spark'
   | 'start'
-  | 'app';
-export const VIEWS: View[] = ['chat', 'overview', 'performance', 'usage', 'hardware', 'system', 'events', 'health', 'sparks', 'models', 'setup', 'api', 'backends', 'conductor', 'playground', 'dev', 'add-engine', 'add-spark', 'start', 'app'];
+  | 'app'
+  | 'account'
+  | 'access';
+export const VIEWS: View[] = ['chat', 'overview', 'performance', 'usage', 'hardware', 'system', 'events', 'health', 'sparks', 'models', 'setup', 'api', 'backends', 'conductor', 'playground', 'dev', 'add-engine', 'add-spark', 'start', 'app', 'account', 'access'];
 /** the page an unknown or empty hash opens (Usage before VIS-242) */
 export const HOME: View = 'overview';
 

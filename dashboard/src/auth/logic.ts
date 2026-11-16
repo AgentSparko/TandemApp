@@ -7,6 +7,8 @@ export interface AuthSession {
   authenticated: boolean;
   account: { username: string; role: string; must_change: boolean } | null;
   principal: { kind: string; name: string } | null;
+  /** SRV-875: the rights of who is signed in: the menu shows what they open */
+  permissions?: string[];
   csrf: string | null;
   setup_required: boolean;
   local_mode: boolean;

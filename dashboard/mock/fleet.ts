@@ -94,6 +94,7 @@ import { MockSetupRelay } from './setup-relay.ts';
 import { MockOps } from './fleetops.ts';
 import { MockApp } from './appsettings.ts';
 import { MockSettings } from './settings.ts';
+import { MockAuth } from './auth.ts';
 import { MockDiscovery, MOCK_LAN } from './discovery.ts';
 
 export const FLEET_SCENARIOS = ['fleet1', 'fleet4', 'fleet2-split', 'node-down', 'alert-thermal', 'mixed', 'empty', 'gold3', 'quad'] as const;
@@ -593,6 +594,8 @@ export class MockFleet {
   /** the settings interface (/v1/settings/*, mock/settings.ts, VIS-280): the app scope is What runs
    *  here's switches, the engine scope's targets the engine hosts paired here */
   readonly settings: MockSettings;
+  /** SRV-875: the controller's accounts, when this mock runs with them (mock/auth.ts) */
+  readonly auth: MockAuth | null;
 
   /** `now` in Unix seconds: the scenario's start */
   /** SRV-749: the backends on no node (mock/backends.ts members), as the controller lists them */
@@ -602,7 +605,7 @@ export class MockFleet {
     return (this.extern?.(now, taken) ?? { nodes: [], deployments: [] }) as { nodes: { id: string; alias: string }[]; deployments: FleetDeployment[] };
   }
 
-  constructor(o: { seed?: number; scenario?: FleetScenario; now?: number } = {}) {
+  constructor(o: { seed?: number; scenario?: FleetScenario; now?: number; accounts?: boolean } = {}) {
     this.scenario = o.scenario ?? 'fleet4';
     this.t0 = Math.floor(o.now ?? Date.now() / 1000);
     this.f = build(this.scenario, this.t0);
@@ -617,7 +620,9 @@ export class MockFleet {
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
-    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', hooks: this.scenario !== 'empty' && 'demo', plugins: this.scenario !== 'empty' && 'demo', now: this.t0 * 1000 });
+    this.auth = o.accounts ? new MockAuth(this.t0 * 1000) : null;
+    this.auth?.seed();
+    this.settings = new MockSettings({ parts: this.app, engines: () => this.engines.paired(), seeded: this.scenario !== 'empty', hooks: this.scenario !== 'empty' && 'demo', plugins: this.scenario !== 'empty' && 'demo', accounts: this.auth ?? undefined, now: this.t0 * 1000 });
     if (this.scenario === 'mixed') this.ops.seed('r3', '0.15.1');
     const seed = o.seed ?? 42;
     this.ph = (key) => hash(`${seed}:${key}`);
@@ -1364,7 +1369,11 @@ export class MockFleet {
     if (parts[0] === 'discovery') return this.discovery.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'add') return this.wizard.handle(method, parts, body, nowMs);
     if (parts[0] === 'engines') return this.engines.handle(method, parts, q, body, nowMs);
-    if (parts[0] === 'health') return this.health.handle(method, parts, q, body, nowMs);
+    if (parts[0] === 'health') {
+      // with accounts, the controller's sign-in findings are what its accounts and switches say now
+      if (this.auth) this.health.controller.signIn = this.auth.findings(nowMs, this.auth.caller?.kind === 'local');
+      return this.health.handle(method, parts, q, body, nowMs);
+    }
     // VIS-282: the hooks and the decision providers, the registry the settings' hooks scope holds too
     if (parts[0] === 'hooks' || parts[0] === 'decision-providers') return this.settings.registry.handle(method, parts, q, body, nowMs);
     // VIS-284: the plugins, the registry the settings' plugins scope holds too

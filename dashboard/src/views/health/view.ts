@@ -11,7 +11,7 @@ import type { EngineFinding } from '../../api/engines';
 import type { UpgradeSide } from '../../api/health';
 import { SIGN_IN, segments } from '../../lib/engine-words';
 import type { DialogState, HealthFlow } from '../../lib/health-flow';
-import { SEVERITY_WORDS, actionOf, ago, busyWords, cardTarget, cardsOf, factsOf, fingerprintsOf, foldWords, guideLink, isGuide, pairAgain, reachOf, stateWords, traceOf, verdict, type Card, type Fact, type Note, type Row, type Stop, type StopState } from '../../lib/health';
+import { FINDING_PAGE, SEVERITY_WORDS, actionOf, ago, busyWords, cardTarget, cardsOf, factsOf, fingerprintsOf, foldWords, guideLink, isGuide, pairAgain, reachOf, stateWords, traceOf, verdict, type Card, type Fact, type Note, type Row, type Stop, type StopState } from '../../lib/health';
 import { SETTINGS_TABS } from '../../lib/menu';
 import { icon, skeleton } from '../../ui/bits';
 
@@ -113,6 +113,8 @@ function rowButton(f: HealthFlow, row: Row, card: Card, on: HealthHandlers): Tem
   }
   if (!a || row.target === null) {
     const plugin = row.finding.facts.plugin;
+    const pg = FINDING_PAGE[row.finding.code];
+    if (pg) return html`<a class="btn hl-act" href=${pg.href} data-act="open-page">${pg.label}</a>`;
     return PLUGIN_PAGES && plugin ? html`<a class="btn hl-act" href=${`#/app/plugins/p/${encodeURIComponent(plugin)}`} data-act="open-plugin">Open its page</a>` : nothing;
   }
   const busy = f.busy[row.target];

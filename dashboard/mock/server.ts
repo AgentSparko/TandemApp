@@ -41,6 +41,13 @@
 // first, all, silent, external), names the release an upgrade goes to, makes a fix refuse and changes one
 // condition of the controller or of an engine host. A fix needs the rights of its action: a check again and
 // the guides a read's, the others the token or a session once a password is set.
+// The controller's accounts (/v1/auth/*, mock/auth.ts, SRV-875): `?auth=<who>` on the page URL makes
+// the mock a controller with accounts (/health then sends X-Tandem-Auth: accounts) and signs this
+// browser in as one of its seeded accounts (kim the owner, sam an admin, ola an operator, vic a
+// viewer); `?auth=out` is nobody signed in, `?auth=local` local mode (no password set yet) and
+// `?auth=off` the mock without accounts again. Signed out, every /v1 route but the sign-in answers
+// 401. POST /__mock/auth {revoke: true} ends every session (a page signed out in the middle);
+// {viewers: "on"} sets api.tokens.viewers_may_create.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.
 
@@ -496,17 +503,28 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
   // the setup guide (/v1/setup/*, POST /__mock/setup): mock/setup.ts
   const setup = new MockSetup();
   // the fleet (/v1/fleet/*, mock/fleet.ts): one per scenario, its clock from its first request
-  const fleets = new Map<FleetScenario, MockFleet>();
+  const fleets = new Map<string, MockFleet>();
   let fleetDefault: FleetScenario = isFleetScenario(process.env.TANDEM_MOCK_FLEET) ? process.env.TANDEM_MOCK_FLEET : 'fleet4';
   let lanDefault: 'allow' | 'deny' = 'allow';
-  const fleetNamed = (name: FleetScenario): MockFleet => {
-    if (!fleets.has(name)) fleets.set(name, new MockFleet({ seed: seed + 31, scenario: name }));
-    return fleets.get(name)!;
+  /** `accounts`: the fleet of a controller with accounts (`on`), or of one in local mode */
+  const fleetNamed = (name: FleetScenario, accounts = ''): MockFleet => {
+    const key = accounts ? `${name}|${accounts}` : name;
+    if (!fleets.has(key)) {
+      const f = new MockFleet({ seed: seed + 31, scenario: name, accounts: !!accounts });
+      if (accounts === 'local') f.auth!.toLocal();
+      fleets.set(key, f);
+    }
+    return fleets.get(key)!;
+  };
+  /** SRV-875: the page's cookie says the mock runs with accounts (`on`) or in local mode */
+  const accountsOf = (req: IncomingMessage): string => {
+    const a = cookies(req).qse_auth;
+    return a === 'on' || a === 'local' ? a : '';
   };
   const fleetFor = (req: IncomingMessage): MockFleet => {
     const c = cookies(req);
     const name = isFleetScenario(c.qse_fleet) ? c.qse_fleet : fleetDefault;
-    const f = fleetNamed(name);
+    const f = fleetNamed(name, accountsOf(req));
     f.extern = (now, taken) => backends.members(now, taken);
     f.discovery.lanMode = c.qse_lan === 'deny' || c.qse_lan === 'allow' ? c.qse_lan : lanDefault;
     f.engines.lanMode = f.discovery.lanMode;
@@ -607,6 +625,51 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       }
       if ((path === '/dashboard' || path === '/' || path === '/index.html') && (q.get('lan') === 'deny' || q.get('lan') === 'allow')) {
         res.appendHeader('Set-Cookie', `qse_lan=${q.get('lan')}; Path=/; SameSite=Strict`);
+      }
+      // ?auth=<who>: a controller with accounts, this browser signed in as one of them (SRV-875)
+      if ((path === '/dashboard' || path === '/' || path === '/index.html') && q.has('auth')) {
+        const who = q.get('auth') ?? '';
+        const kind = who === 'off' ? '' : who === 'local' ? 'local' : 'on';
+        res.appendHeader('Set-Cookie', `qse_auth=${kind}; Path=/; SameSite=Strict${kind ? '' : '; Max-Age=0'}`);
+        let sid = '';
+        if (kind === 'on') {
+          const fq = q.get('fleet');
+          const c = cookies(req).qse_fleet;
+          const a = fleetNamed(isFleetScenario(fq) ? fq : isFleetScenario(c) ? c : fleetDefault, 'on').auth!;
+          const acc = a.accounts.find((x) => x.username === who && x.enabled);
+          if (acc) sid = a.open(acc, Date.now()).id;
+        }
+        res.appendHeader('Set-Cookie', `tandem_session=${sid}; HttpOnly; Path=/; SameSite=Strict${sid ? '' : '; Max-Age=0'}`);
+      }
+      const acc = accountsOf(req);
+      if (acc && (path === '/health' || path === '/__mock/auth' || path.startsWith('/v1/'))) {
+        const fleet = fleetFor(req);
+        const a = fleet.auth!;
+        const caller = acc === 'local' ? ({ kind: 'local' } as const) : a.bySession(cookies(req).tandem_session);
+        a.caller = caller;
+        if (path === '/health') res.setHeader('X-Tandem-Auth', 'accounts');
+        else if (path === '/__mock/auth') {
+          const b = JSON.parse((await readBody(req)) || '{}') as { revoke?: boolean; viewers?: string };
+          if (b.revoke) a.sessions = [];
+          if (b.viewers) a.settings['api.tokens.viewers_may_create'] = b.viewers;
+          return json(res, 200, { sessions: a.sessions.length });
+        } else if (path.startsWith('/v1/auth/')) {
+          let body: unknown = null;
+          try {
+            const raw = req.method === 'GET' ? '' : await readBody(req);
+            body = raw ? JSON.parse(raw) : null;
+          } catch {
+            return error(res, 400, 'bad_request', 'the body is not JSON');
+          }
+          const r = a.handle(req.method ?? 'GET', path, q, body, Date.now(), caller);
+          const gone = caller?.kind === 'account' && !a.bySession(caller.session);
+          const cookie: Record<string, string> = r.session ? { 'Set-Cookie': `tandem_session=${r.session}; HttpOnly; Path=/; SameSite=Strict` } : gone ? { 'Set-Cookie': 'tandem_session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0' } : {};
+          if (r.status === 204) {
+            res.writeHead(204, { 'Cache-Control': 'no-store', ...cookie });
+            return res.end();
+          }
+          return json(res, r.status, r.body, cookie);
+        } else if (!caller) return json(res, 401, { error: { type: 'unauthorized', code: 'sign_in_required', message: 'sign in, or send an API token' } });
       }
       if ((path === '/dashboard' || path === '/' || path === '/index.html') && q.has('mock')) {
         const m = q.get('mock') || 'ok';

@@ -11,8 +11,9 @@
 import { apiBase } from './client';
 import type { Send } from './engines';
 
-export type Scope = 'app' | 'backends' | 'conductor' | 'engine' | 'hooks' | 'plugins';
-export const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
+export type Scope = 'app' | 'auth' | 'api' | 'backends' | 'conductor' | 'engine' | 'hooks' | 'plugins';
+/** in the contract's order; `auth` and `api` exist on a controller with accounts only (settings-v1 1.2) */
+export const SCOPES: Scope[] = ['app', 'auth', 'api', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
 /** none: applied as it is; app: this controller restarts; hot: the running service reads it at
  *  once; engine: the engine restarts (scheduled, waits for idle) */
 export type RestartClass = 'none' | 'app' | 'hot' | 'engine';

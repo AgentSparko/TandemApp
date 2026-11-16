@@ -28,7 +28,7 @@
 import { html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { settings as api, type AuditRow, type Overview, type PartChange, type Result, type SchemaView, type Scope, type SettingsError, type Target, type ValuesView, type VersionsView } from '../../api/settings';
-import { SETTINGS_TABS, settingsHref, type SettingsTab } from '../../lib/menu';
+import { settingsHref, settingsTabs, type AnyTab } from '../../lib/menu';
 import { parseHash, setParams } from '../../lib/router';
 import { draft, refusedField, same } from '../../lib/settings-draft';
 import { ChangeSetFlow, RestartWatch, asError } from '../../lib/settings-flow';
@@ -59,8 +59,10 @@ interface VersionData {
 const HERE = 'controller';
 /** the plugins scope before the overview is read: one list, so the pages below see no change */
 const NO_TARGETS: Target[] = [];
-const HEAD: Record<SettingsTab, string> = {
+const HEAD: Record<AnyTab, string> = {
   app: 'What this TandemApp runs, where its controller runs, who may change the fleet, and its configuration.',
+  signin: 'How people sign in: local mode, who may chat, how long a session lasts, and how long a password must be.',
+  api: 'Whether other devices may use the APIs, the address TandemApp listens on, and the rules for API tokens.',
   backends: 'The servers behind the one API: each backend’s address, limits and key, the routing rules, and which users’ keys are on.',
   conductor: 'The conductor’s documents as this controller keeps them, each edited whole and versioned.',
   engines: 'Each engine host’s own settings. Some apply at once; the others restart the engine once, when it is idle.',
@@ -101,8 +103,8 @@ export class QseSettings extends LightElement {
   private flow = new ChangeSetFlow(api, () => this.onFlow());
   private watch = new RestartWatch(api, () => this.requestUpdate(), () => Date.now(), (r) => void this.reload('engine', r.host));
 
-  private get tab(): SettingsTab {
-    return SETTINGS_TABS.find((t) => t.id === this.path[0])?.id ?? 'app';
+  private get tab(): AnyTab {
+    return settingsTabs().find((t) => t.id === this.path[0])?.id ?? 'app';
   }
   private get targets(): Target[] {
     return this.overview?.scopes.find((s) => s.scope === 'engine')?.targets ?? [];
@@ -191,7 +193,7 @@ export class QseSettings extends LightElement {
       void this.loadAudit();
       return;
     }
-    const scope = SETTINGS_TABS.find((t) => t.id === tab)!.scope!;
+    const scope = settingsTabs().find((t) => t.id === tab)!.scope as Scope;
     const target = scope === 'engine' ? this.engine?.id : scope === 'plugins' ? this.plugin : HERE;
     if (target && !this.data.has(dkey(scope, target))) void this.reload(scope, target);
   }
@@ -509,6 +511,10 @@ export class QseSettings extends LightElement {
     switch (this.tab) {
       case 'app':
         return this.appPage();
+      case 'signin':
+        return this.scopePage('auth', HERE, { before: html`<p class="small muted st-lead">Only an owner changes these. Users, their roles and their sessions are under <a href="#/access">Users &amp; access</a>.</p>` });
+      case 'api':
+        return this.scopePage('api', HERE, { before: html`<p class="small muted st-lead">Only an owner changes these, but for the viewers’ switch, which an admin sets too. The two exposure switches with what is true now: <a href="#/access/exposure">API exposure</a>.</p>` });
       case 'backends':
         return this.scopePage('backends', HERE, {
           fold: (id) => id.startsWith('backend:'),
@@ -574,13 +580,14 @@ export class QseSettings extends LightElement {
 
   render() {
     const tab = this.tab;
-    const t = SETTINGS_TABS.find((x) => x.id === tab)!;
+    const tabs = settingsTabs();
+    const t = tabs.find((x) => x.id === tab)!;
     const s = this.flow.state;
     const gone = this.overviewErr?.status === 404;
     return html`<header class="page-head" data-page="app" data-settings-tab=${tab}><div class="eyebrow">Settings</div><h1>${t.label}</h1><p class="page-sub">${HEAD[tab]}</p><p class="small muted" data-health-link>Something does not work? <a href="#/health">Health</a> says what is wrong and how to fix it.</p></header>
       <nav class="st-tabs" aria-label="Settings pages">
-        ${SETTINGS_TABS.map((x) => {
-          const n = x.scope ? draft.count(x.scope) : 0;
+        ${tabs.map((x) => {
+          const n = x.scope ? draft.count(x.scope as Scope) : 0;
           return html`<a class="st-tab ${x.id === tab ? 'is-on' : ''}" href=${settingsHref(x.id)} aria-current=${x.id === tab ? 'page' : nothing} data-tab=${x.id}>${x.label}${n ? html`<span class="st-dot" title=${`${n} staged`}><span class="sr-only">, ${n} staged</span></span>` : nothing}</a>`;
         })}
       </nav>

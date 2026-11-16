@@ -455,6 +455,19 @@ export function signInWhat(a: ActionId | 'read'): string {
 }
 
 /** Where a guide's button goes: Add engine, or its model step for one engine host. */
+/** SRV-875: the page a finding about the sign-in or the API is settled on, named as its fix
+ *  sentence names it. The contract gives these findings no action: the way on is a page. */
+export const FINDING_PAGE: Record<string, { href: string; label: string }> = {
+  auth_owner_no_password: { href: '#/account', label: 'Set a password' },
+  local_mode_proxy_seen: { href: '#/account', label: 'Set a password' },
+  tokens_need_review: { href: '#/access/tokens', label: 'Open All tokens' },
+  legacy_admin_token: { href: '#/access/tokens', label: 'Open All tokens' },
+  exposure_no_tokens: { href: '#/account/tokens', label: 'Open My tokens' },
+  exposure_unreachable: { href: '#/access/exposure', label: 'Open API exposure' },
+  exposure_plain_http: { href: '#/access/exposure', label: 'Open API exposure' },
+  token_expiring: { href: '#/account/tokens', label: 'Open My tokens' },
+};
+
 export function guideLink(g: HealthGuide): { href: string; label: string } {
   if (g.open === 'model' && g.engine) return { href: `#/add-engine/${encodeURIComponent(g.engine)}`, label: 'Open the model step' };
   return { href: '#/add-engine', label: 'Open Add engine' };

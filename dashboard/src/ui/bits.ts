@@ -69,6 +69,9 @@ const ICONS: Record<string, TemplateResult> = {
   'add-spark': g(svg`<circle cx="10" cy="10" r="7"/><path d="M10 7v6M7 10h6"/>`),
   'add-engine': g(svg`<rect x="3.5" y="3.5" width="13" height="13" rx="2.5"/><path d="M10 7v6M7 10h6"/>`),
   start: g(svg`<path d="M4 16V4M4 5h10l-2.5 3L14 11H4"/>`),
+  // SRV-875: a person (one's own account), a key (who may get in)
+  account: g(svg`<circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c.6-3.4 3.2-5.2 6.5-5.2s5.9 1.8 6.5 5.2"/>`),
+  access: g(svg`<circle cx="6.8" cy="13.2" r="3.3"/><path d="m9.3 10.7 7.2-7.2M13.5 6.5l2.5 2.5M11.5 8.5l1.8 1.8"/>`),
   app: g(svg`<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/>`),
   'side-left': g(svg`<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M7.5 3.5v13"/>`),
   'side-right': g(svg`<rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M12.5 3.5v13"/>`),
