@@ -3,7 +3,8 @@ them (0.15, `pihooks-int5`), so a rollback finds its state (tests/int5_schema.py
 release's schema, frozen).
 
   1  with TANDEM_AUTH=accounts the accounts, sessions and group roles are new tables: the schema
-     number stays 2, and every table of that release has exactly the columns it expects
+     number stays 2, and every table of that release has exactly the columns it expects, then
+     only the in-place columns a later release adds (SRV-877, SRV-881)
                                                                    test_only_new_tables
   2  that release's migration runs on the database without an error, reads its users, audit
      and settings rows, and the integrity and foreign key checks pass; opened again with the
@@ -69,8 +70,15 @@ def test_only_new_tables():
     c.close()
     want = _expected()
     assert NEW <= set(got) and not NEW & set(want)
+    # a later release's own in-place columns (proxy/config.py ADDED, not in int5's) come after
+    # int5's, each nullable or with a default: int5 reads its columns by name (test 2 opens it)
+    old = {(t, c) for t, c, _ in int5_schema.ADDED}
+    later: dict = {}
+    for t, c, _ in config_mod.ADDED:
+        if (t, c) not in old:
+            later.setdefault(t, []).append(c)
     for t, cols in want.items():
-        assert got.get(t) == cols, (t, got.get(t), cols)
+        assert got.get(t) == cols + later.get(t, []), (t, got.get(t), cols)
     assert config_mod.SCHEMA_VERSION == int5_schema.SCHEMA_VERSION
     # the release's tables are this release's: the accounts add none of their own to config.py
     assert re.sub(r"\s+", " ", config_mod.DDL) == re.sub(r"\s+", " ", int5_schema.DDL)
