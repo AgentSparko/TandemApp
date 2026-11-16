@@ -1,7 +1,9 @@
 """`/v1/fleet/decision-providers/*`: the decision providers' admin API (SRV-851).
 
     GET    /v1/fleet/decision-providers              every provider (its keys' hints, its
-                                                     breakers), the question ids and the kinds
+                                                     breakers, its health from the last probes:
+                                                     nothing is probed), the question ids and
+                                                     the kinds
     POST   /v1/fleet/decision-providers              create (201)
     GET    /v1/fleet/decision-providers/report       ?hours=24&provider=: per provider and
                                                      question: calls, agreement, p50/p95,
@@ -61,7 +63,7 @@ def _route(ps, method: str, sub: list[str], body, who: str, q: dict) -> tuple[in
     if not sub:
         if method == "GET":
             return 200, {"contract_version": CONTRACT,
-                         "providers": [ps.view(p) for p in st.list()],
+                         "providers": [ps.view(p, health="cached") for p in st.list()],
                          "questions": {k: {"what": v} for k, v in
                                        providerstore.QUESTIONS.items()},
                          "kinds": list(providerstore.KINDS), "modes": list(providerstore.MODES),

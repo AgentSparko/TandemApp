@@ -102,7 +102,8 @@
           "description": "endpoint -> #/$defs/breaker"
         },
         "health": {
-          "$ref": "#/$defs/health"
+          "$ref": "#/$defs/health",
+          "description": "in the list: from the last probes, nothing probed; with ?health=1: probed (cached 10 s)"
         }
       },
       "required": [
@@ -272,7 +273,8 @@
           "enum": [
             "builtin",
             "systemone-http",
-            "hook"
+            "hook",
+            "plugin"
           ]
         },
         "status": {
@@ -280,7 +282,8 @@
             "ok",
             "failing",
             "down",
-            "off"
+            "off",
+            "unknown"
           ]
         },
         "endpoints": {
@@ -298,7 +301,15 @@
                 }
               },
               "probe": {
-                "$ref": "#/$defs/probe"
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/probe"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "null: never probed since the provider last changed (the list's view probes nothing)"
               },
               "breaker": {
                 "$ref": "#/$defs/breaker"
@@ -354,7 +365,8 @@
         "endpoints",
         "last_call"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "the provider's health: `GET .../{id}/health` and `?health=1` probe (cached 10 s); the list carries it from the last probes as they are, nothing probed (SRV-851): an endpoint never probed has `probe` null and makes `status` unknown unless another fact decides it"
     }
   }
 }

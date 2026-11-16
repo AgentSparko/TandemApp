@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "decision providers",
-  "description": "GET /v1/fleet/decision-providers (SRV-851): every provider, the question ids a provider may answer, the kinds, modes and sticky keys, whether recorded answers replace every provider (TANDEM_DECISION_REPLAY)",
+  "description": "GET /v1/fleet/decision-providers (SRV-851): every provider with its health from the last probes (nothing probed), the question ids a provider may answer, the kinds, modes and sticky keys, whether recorded answers replace every provider (TANDEM_DECISION_REPLAY)",
   "type": "object",
   "properties": {
     "contract_version": {

@@ -761,15 +761,25 @@ class Providers:
         self._health[ck] = (time.monotonic(), v)
         return dict(v, age_s=0.0)
 
-    def health(self, pid: str, force: bool = False) -> dict:
+    def _cached(self, p: dict, ep: str) -> dict | None:
+        """The last probe of an endpoint as it was, with its age; None when never probed (or
+        not since the provider changed)."""
+        h = self._health.get((p["id"], p["version"], ep))
+        return None if h is None else dict(h[1], age_s=round(time.monotonic() - h[0], 1))
+
+    def health(self, pid: str, force: bool = False, cached: bool = False,
+               p: dict | None = None) -> dict:
         """The provider's endpoints with their probe (/readyz, /v1/models; cached 10 s), their
         breaker and the questions on each; `status` ok, failing (a breaker not closed, or the
-        last call within a minute failed), down (a probe failed) or off."""
-        p = self.row(pid)
+        last call within a minute failed), down (a probe failed) or off. `cached`: probe nothing,
+        each endpoint's last probe as it is (null when there is none: `status` unknown unless
+        another fact decides it); the list's view (SRV-851)."""
+        p = p or self.row(pid)
         eps = []
         for ep, qids in self._targets(p):
             eps.append({"endpoint": ep, "questions": qids,
-                        "probe": self._probe(p, ep, qids[0], force),
+                        "probe": self._cached(p, ep) if cached else
+                        self._probe(p, ep, qids[0], force),
                         "breaker": self._breaker((pid, ep)).view()})
         last = next((r for r in reversed(self.ring) if r["provider"] == pid and
                      r.get("answer") is not None), None)
@@ -778,19 +788,23 @@ class Providers:
             "error": (last["answer"] or {}).get("error"), "ms": (last["answer"] or {}).get("ms")}
         if not p["enabled"]:
             status = "off"
-        elif any(not e["probe"].get("up") for e in eps):
+        elif any(e["probe"] is not None and not e["probe"].get("up") for e in eps):
             status = "down"
         elif any(e["breaker"]["state"] != "closed" for e in eps) or (
                 last_view is not None and last_view["error"] and
                 time.time() * 1000 - last_view["ts_ms"] < FAILING_WINDOW_S * 1000):
             status = "failing"
+        elif any(e["probe"] is None for e in eps):
+            status = "unknown"
         else:
             status = "ok"
         return {"provider": pid, "kind": p["kind"], "status": status, "endpoints": eps,
                 "last_call": last_view}
 
     # ------------------------------------------------------------------ the admin's views
-    def view(self, p: dict, health: bool = False) -> dict:
+    def view(self, p: dict, health: bool | str = False) -> dict:
+        """A provider as the API shows it; `health`: True probes (cached 10 s), "cached" the last
+        probes as they are, nothing probed (the list)."""
         hints = self.store.key_hints(p["id"])
         qs = {}
         for qid, spec in sorted(p["questions"].items()):
@@ -808,7 +822,9 @@ class Providers:
             else None
         out["breakers"] = {ep: self._breaker((p["id"], ep)).view()
                            for ep, _ in self._targets(p)}
-        if health:
+        if health == "cached":
+            out["health"] = self.health(p["id"], cached=True, p=p)
+        elif health:
             out["health"] = self.health(p["id"])
         return out
 
