@@ -95,6 +95,11 @@ def audits(reg, action: str, pid: str | None = None) -> list[dict]:
     return out
 
 
+def refusals(reg, pid: str | None = None) -> list[dict]:
+    """The registry's trust and integrity refusals (the host's capability refusals aside)."""
+    return [a for a in audits(reg, "refused", pid) if a["detail"] and "at" in a["detail"]]
+
+
 def trust_key(store, pub: str, fp: str, name: str = "Acme plugins", **limits) -> dict:
     return store.keys.add(pub, name, limits.get("plugins"), limits.get("levels"),
                           confirm=fp, who="admin")
@@ -126,7 +131,7 @@ def test_tampered_package_refused():
         assert "changed" in probs[0]["detail"] and "install it again" in probs[0]["detail"]
         r.store.set_enabled(pid, False, "admin")
         refused(lambda: r.store.set_enabled(pid, True, "admin"), 409, "integrity")
-        got = audits(r.reg, "refused", pid)
+        got = refusals(r.reg, pid)
         assert {a["detail"]["at"] for a in got} >= {"load", "enable"}, got
         assert all(a["detail"]["code"] == "integrity" for a in got), got
         assert any(a["detail"] and a["detail"].get("integrity") == "mismatch"
@@ -159,7 +164,7 @@ def test_tampered_package_refused():
         exc = refused(lambda: r.reg.install(src), 422, "plugin_refused")
         assert exc.extra["errors"][0]["code"] == "signature_invalid", exc.extra
         assert any(a["detail"]["at"] == "install" and a["detail"]["code"] == "signature_invalid"
-                   for a in audits(r.reg, "refused"))
+                   for a in refusals(r.reg))
     finally:
         r.close()
         shutil.rmtree(src, ignore_errors=True)
@@ -284,8 +289,8 @@ def test_host_level_needs_grant():
         assert tv["granted"] == "host" and tv["grant"]["basis"] == "typed" and tv["runs"], tv
         st = r.running(hid)
         assert st["runtime"] == "host"
-        refusals = [a["detail"]["code"] for a in audits(r.reg, "refused", hid)]
-        assert "typed_confirm_required" in refusals and "typed_confirm_mismatch" in refusals
+        codes = [a["detail"]["code"] for a in refusals(r.reg, hid)]
+        assert "typed_confirm_required" in codes and "typed_confirm_mismatch" in codes, codes
         grant = audits(r.reg, "trust", hid)[-1]
         assert grant["detail"] == {"level": "host", "basis": "typed", "key_id": None}, grant
         # signed by a key trusted for host: granted on the signature, no typed confirmation
@@ -392,7 +397,7 @@ def test_update_asks_for_more():
         st = r.host.status(pid)
         assert st["state"] == "running" and st["where"] == pid_before, st
         assert any(a["detail"]["code"] == "trust_confirm_needed"
-                   for a in audits(r.reg, "refused", pid))
+                   for a in refusals(r.reg, pid))
         refused(lambda: r.reg.install(v2, upgrade=True, confirm_trust="grow"), 422,
                 "typed_confirm_mismatch")
         p, note = r.reg.install(v2, upgrade=True, confirm_trust="grower")
@@ -489,7 +494,7 @@ def test_policy_require_signature():
         p, _ = reg.install(good)
         store.set_enabled(p["id"], True, "admin")
         assert store.load(p["id"])["trust_state"]["runs"]
-        codes = [a["detail"]["code"] for a in audits(reg, "refused")]
+        codes = [a["detail"]["code"] for a in refusals(reg)]
         assert codes.count("signature_required") >= 3, codes
         assert any(a["object_id"] == "plugins.require_signature_sandboxed"
                    for a in audits(reg, "set"))
