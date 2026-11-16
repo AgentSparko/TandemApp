@@ -1030,6 +1030,13 @@ class AccountsAuth:
                 extra: tuple = (), **facts) -> bool:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True          # its body stays unread
+        raw = handler.path.split("?", 1)[0]
+        if tokens_mod.anthropic(raw):
+            # the Messages API's routes refuse in its own shape, as its handler does
+            handler._json(status, tokens_mod.refusal(raw, status, code, message),
+                          extra_headers=tuple(extra) + (("request-id",
+                                                         tokens_mod.request_id()),))
+            return True
         handler._json(status, {"error": {"type": "unauthorized" if status == 401 else
                                          "forbidden" if status == 403 else code,
                                          "code": code, "message": message, **facts}},
@@ -1161,6 +1168,8 @@ class AccountsAuth:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True
         extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else ()
+        if tokens_mod.anthropic(raw):
+            extra += (("request-id", tokens_mod.request_id()),)
         handler._json(status, tokens_mod.refusal(raw, status, code, message, **facts),
                       extra_headers=extra)
         return True

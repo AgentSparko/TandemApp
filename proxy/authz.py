@@ -114,9 +114,9 @@ ROUTES: tuple = (
     (GET, "prefix", "/v1/models", "inference"),
     *((POST, "exact", p, "inference") for p in PROXY_PATHS),
     *((POST, "exact", p, "inference") for p in CACHE_PATHS),
-    # the Messages API (SRV-879; its routes come with that change, their rule is here already)
-    (POST, "exact", "/v1/messages", "inference"),
-    (POST, "exact", "/v1/messages/count_tokens", "inference"),
+    # the Messages API (SRV-879): a message, count_tokens; its handler answers any other path
+    # under it with a 404 in its own shape (proxy/messages.py)
+    (POST, "prefix", "/v1/messages", "inference"),
     (GET, "prefix", "/v1/library", "inference"),
     (("GET", "POST"), "prefix", "/v1/laya", "inference"),
     # families whose handlers check a route kind of their own (KIND_PERMISSION)

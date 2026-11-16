@@ -68,6 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from proxy import accounts as acc_mod  # noqa: E402
 from proxy import app as proxy_app  # noqa: E402
 from proxy import authlocal, authz, userscli  # noqa: E402
+from proxy import tokens as tokens_mod  # noqa: E402
 from proxy_util import Proxy, run  # noqa: E402
 
 ON = {"TANDEM_AUTH": "accounts"}
@@ -262,7 +263,12 @@ def test_network_start_closed():
             for method in methods:
                 st, h, out = px.request(method, path, {} if method != "GET" else None)
                 try:
-                    code = (json.loads(out).get("error") or {}).get("code")
+                    err = json.loads(out).get("error") or {}
+                    code = err.get("code")
+                    if tokens_mod.anthropic(path):
+                        # the Messages API's routes refuse in its own shape
+                        code = "sign_in_required" if err.get("type") == \
+                            "authentication_error" else None
                 except (ValueError, AttributeError):
                     code = None
                 gate = st == 401 and code == "sign_in_required"

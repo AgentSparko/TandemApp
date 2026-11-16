@@ -84,8 +84,8 @@ A token never exceeds its owner's role of now (`effective`, at each request): an
 counts only while the role may make inference tokens; the other scopes lose what the role lost.
 
 SEAMS. `exposure` (SRV-871, proxy/exposure.py), the `limits` field (SRV-873 enforces it),
-`/v1/auth/tokens/{id}/usage` (SRV-873), the Messages API's `/v1/messages` routes (their scope and
-refusal shape are here already).
+`/v1/auth/tokens/{id}/usage` (SRV-873). The Messages API's routes (/v1/messages and below, SRV-879)
+take `inference:anthropic` and refuse in their own shape.
 """
 
 from __future__ import annotations
@@ -218,7 +218,7 @@ def scope_for(method: str, path: str) -> tuple | None:
     read = method in ("GET", "HEAD")
     if p in PROXY_PATHS or p in deployments.CACHE_PATHS or p == authz.GATEWAY:
         return ("inference:openai",)
-    if p in MESSAGES:
+    if _under(p, MESSAGES[0]):
         return ("inference:anthropic",)
     if _under(p, "/v1/models"):
         return INFERENCE
@@ -246,16 +246,21 @@ def scope_for(method: str, path: str) -> tuple | None:
 
 
 def anthropic(path: str) -> bool:
-    return _norm(path) in MESSAGES
+    """A route of the Messages API (/v1/messages and every path under it)."""
+    return _under(_norm(path), MESSAGES[0])
+
+
+def request_id() -> str:
+    """The `request-id` header of a refusal on the Messages API's routes (its handler's form)."""
+    return "req_" + secrets.token_hex(12)
 
 
 def refusal(path: str, status: int, code: str, message: str, **facts) -> dict:
     """A token's refusal in the protocol of the route: the Messages API's shape on its routes,
     else the OpenAI shape (`invalid_api_key`, `permission_denied`, `api_not_exposed`)."""
     if anthropic(path):
-        kind = {401: "authentication_error", 429: "rate_limit_error"}.get(status,
-                                                                          "permission_error")
-        return {"type": "error", "error": {"type": kind, "message": message}}
+        from proxy.translate import anthropic as tr
+        return {"type": "error", "error": {"type": tr.error_type(status), "message": message}}
     return {"error": {"type": "invalid_request_error" if status == 401 else code, "code": code,
                       "message": message, **facts}}
 
