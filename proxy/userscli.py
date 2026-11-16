@@ -116,6 +116,8 @@ def run(a) -> int:
                 return 2
             row = store.create(a.name, a.role, None, display_name=a.display_name, actor=who,
                                must_change=True)
+            if a.role == "owner" and store.first_owner() is None:
+                store.set_state("first_owner", row["id"])   # admin.json follows it
             code = store.set_code(row["id"], actor=who, action="create")
             _say(f"account {row['username']} ({row['role']}) made. One-time code: {code}")
             _say("valid 24 hours: sign in with it as the password, then set a password.")

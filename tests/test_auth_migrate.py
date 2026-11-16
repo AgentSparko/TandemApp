@@ -287,6 +287,18 @@ def test_admin_json_follows():
         code = next(s for s in said if "Setup code" in s).split("Setup code: ", 1)[1][:20]
         signed(px.post("/v1/auth/setup", {"code": code, "username": "ann", "password": NEW_PW}))
         old_format(px, NEW_PW)
+    # an owner the CLI made on a new install is the first owner too: admin.json holds its code
+    with Proxy(env=ON) as px:
+        import contextlib
+        import io
+        from proxy import userscli
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert userscli.main(["add", "boss", "--role", "owner", "--config-db",
+                                  px.svc.cfg.path]) == 0
+        code = out.getvalue().split("One-time code: ", 1)[1][:20]
+        assert accounts().store.first_owner()["username"] == "boss"
+        old_format(px, code)
 
 
 # ---------------------------------------------------------------------------- AC c
