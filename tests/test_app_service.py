@@ -14,6 +14,11 @@ local build label (the fleet update's package).
   4  the command: `tandem-app service status` of a service that is not there exits 3 and says
      so, on this machine's real launchctl or systemctl, without touching any service
                                                                             test_command_status
+  OPS-298, with TANDEM_AUTH=accounts in the env file: `service install` beyond loopback while no
+  owner has a password is refused (exit 2, nothing installed) unless --setup-code, which installs
+  and prints a one-time code the server takes; with an owner it installs as before; without the
+  accounts the old warning stays. `tandem-app check` says the sign-in state instead of the admin
+  password                                                                   test_accounts_beyond_loopback
   5  pyproject's `app` extra: no engine, no torch; `pip install './app[app]'` gives tandem-app
                                                                             test_app_extra
   6  `tandem-app package --version 0.15.0+test`: the wheel's name and METADATA carry the label,
@@ -241,6 +246,75 @@ def test_refusals():
     assert sysf.calls[i + 1][:2] == ["launchctl", "bootstrap"]
     assert sysf.loaded["org.tandemllm.app"] != first
     svc.uninstall()
+
+
+def test_accounts_beyond_loopback(capsys=None):
+    import contextlib
+    import io
+    from proxy import authlocal, userscli
+    home = tempfile.mkdtemp(prefix="svc-home-")
+    sysf = FakeSys(mac=True)
+    orig = appservice.Service
+    port = _free_port()
+    envf = os.path.join(home, "app.env")
+    with open(envf, "w") as f:
+        f.write("TANDEM_HOST=0.0.0.0\nTANDEM_AUTH=accounts\n")
+    state = os.path.join(home, "state")
+    os.makedirs(state)
+    db = os.path.join(state, "config.sqlite3")
+
+    def run(*more):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = appservice.main(["install", "--host", "0.0.0.0", "--port", str(port),
+                                  "--state-dir", state, *more])
+        return rc, out.getvalue()
+
+    appservice.Service = lambda name=None: orig(name, platform="darwin", home=home, uid=501,
+                                                run=sysf, health=lambda h, p: True,
+                                                sleep=lambda s: None)
+    try:
+        rc, out = run("--env-file", envf)
+        assert rc == 2 and "REFUSED" in out and "--setup-code" in out, out
+        assert not sysf.loaded and not os.path.exists(os.path.join(
+            home, "Library", "LaunchAgents", "org.tandemllm.app.plist")), "nothing installed"
+        rc, out = run("--env-file", envf, "--setup-code")
+        assert rc == 0 and sysf.loaded, out
+        code = out.split("setup code: ", 1)[1].split()[0]
+        cfg, store, codes = userscli.open_store(db)
+        try:
+            assert len(code) == 20 and codes.use(code) == ("ok", 0)
+            row = store.create("kim", "owner", "the owner's long password", actor="test")
+            assert row["role"] == "owner"
+        finally:
+            cfg.close()
+        assert userscli.owner_ready(db)
+        rc, out = run("--env-file", envf)
+        assert rc == 0 and "setup code" not in out and "REFUSED" not in out, out
+        # the release before's rule without the accounts
+        with open(envf, "w") as f:
+            f.write("TANDEM_HOST=0.0.0.0\n")
+        rc, out = run()
+        assert rc == 0 and "WARN listening beyond this machine" in out, out
+    finally:
+        appservice.Service = orig
+        sysf.loaded.clear()
+    # `tandem-app check`: the sign-in line of the accounts
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TANDEM_", "QSE_"))}
+    env.update(HOME=home, TANDEM_AUTH="accounts")
+    fresh = os.path.join(home, "fresh", "config.sqlite3")
+    for host, extra, db_, words in (
+            ("0.0.0.0", {}, fresh, "sign-in accounts: no owner yet"),
+            ("127.0.0.1", {authlocal.DEPLOY_ENV: "bare"}, fresh, "local mode, this machine"),
+            ("127.0.0.1", {authlocal.LOCAL_ENV: "off"}, fresh, "sign-in accounts: no owner yet"),
+            ("0.0.0.0", {}, db, "sign-in accounts: an owner with a password")):
+        r = subprocess.run([sys.executable, "-m", "proxy", "check", "--host", host,
+                            "--config-db", db_, "--no-keychain"], cwd=ROOT,
+                           env={**env, **extra}, capture_output=True, text=True, timeout=60)
+        assert words in r.stdout, (host, extra, r.stdout[-800:], r.stderr[-400:])
+        assert ("auth_setup_pending" in r.stdout) == ("no owner yet" in words), r.stdout
+        assert "admin password" not in r.stdout
+    return "refused without --setup-code; with it a code the server takes; check says the state"
 
 
 def test_command_status():

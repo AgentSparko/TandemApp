@@ -47,6 +47,11 @@ stopped at the end.
      (file, enable, restart, the stop line) and its own unit is updated; a port held by another
      listener is refused, the install's own controller is not   test_unit_name_and_guards
 
+  OPS-298, with TANDEM_AUTH=accounts: no admin token is written; the summary prints a one-time
+  setup code only when local mode is off (an address beyond loopback, also with nothing started,
+  or --behind-proxy), never for a plain loopback install; the code makes the owner; with an
+  owner no code; the health check passes with the CLI token  test_accounts_setup_code
+
     python tests/test_app_install.py
 """
 
@@ -355,6 +360,53 @@ def test_rerun_update_rollback_listen(tmp_path):
     finally:
         box.stop()
     return "idempotent rerun, update, rollback, --listen with a token"
+
+
+def test_accounts_setup_code(tmp_path):
+    import re
+    for st, env, want in (({"accounts": True, "lan": True}, {}, True),
+                          ({"accounts": True, "lan": False}, {inst.LOCAL_ENV: "off"}, True),
+                          ({"accounts": True, "lan": False}, {}, False),
+                          ({"accounts": False, "lan": True}, {}, False)):
+        assert inst.wants_code(st, env) is want, (st, env)
+    box = Box(str(tmp_path))
+    envf = os.path.join(box.state, "app.env")
+    code_re = re.compile(r"Setup code: ([A-Z0-9]{20}) +\(single use")
+    env = box.env(TANDEM_AUTH="accounts")
+    try:
+        # loopback, no proxy: local mode, no code; the health check passed (cli.token)
+        out = ok_run(box.install("--port", str(box.port), "--service", "process", env=env))
+        got = inst.read_env(envf)
+        assert not code_re.search(out) and "Setup code" not in out, out
+        assert got.get("TANDEM_AUTH") == "accounts" and "TANDEM_ADMIN_TOKEN" not in got, got
+        assert inst.LOCAL_ENV not in got, got
+        box.stop()
+        # beyond loopback (nothing started: no listener on all addresses in a test): a code
+        out = ok_run(box.install("--listen", "0.0.0.0", "--service", "none", env=env))
+        got = inst.read_env(envf)
+        m = code_re.search(out)
+        assert m and "<this host's address>" in out, out
+        assert got[inst.LOCAL_ENV] == "off" and "TANDEM_ADMIN_TOKEN" not in got, got
+        assert "TANDEM_DASHBOARD_LOGIN" not in got
+        # behind a proxy on loopback: a code too, and it makes the owner in the running server
+        out = ok_run(box.install("--listen", "127.0.0.1", "--behind-proxy", "--service",
+                                 "process", env=env))
+        m = code_re.search(out)
+        assert m, out
+        c = http.client.HTTPConnection("127.0.0.1", box.port, timeout=10)
+        c.request("POST", "/v1/auth/setup", body=json.dumps(
+            {"code": m.group(1), "username": "owner", "password": "the owner's long password"}),
+            headers={"Content-Type": "application/json"})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        assert r.status == 201, r.status
+        # an owner exists: the next run prints no code
+        out = ok_run(box.install("--service", "process", env=env))
+        assert "Setup code" not in out, out
+    finally:
+        box.stop()
+    return "a code only with local mode off (beyond loopback, --behind-proxy); it makes the owner"
 
 
 # ---------------------------------------------------------------------------- 3 systemd
