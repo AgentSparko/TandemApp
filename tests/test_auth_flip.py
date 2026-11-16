@@ -98,6 +98,11 @@ def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def upstream(srv) -> dict:
+    """The headers of the fake backend's last request, lower-cased."""
+    return {k.lower(): v for k, v in srv.fake.last["headers"].items()}
+
+
 def env_for(port, **more) -> dict:
     return {"TANDEM_BACKENDS": "engine", "TANDEM_BACKEND_ENGINE_KIND": "tandemllm",
             "TANDEM_BACKEND_ENGINE_URL": f"http://127.0.0.1:{port}/v1",
@@ -483,17 +488,70 @@ def test_no_switch():
 # ---------------------------------------------------------------------------- local mode
 
 def test_local_mode_and_a_made_up_key():
-    """Local mode as SEC-26 built it: this machine with no credential is the owner `local`;
-    a request that carries a key is that key and nothing else, so a made-up one is 401 (an
-    OpenAI client on this machine sends none, or an API token)."""
+    """SEC-28: in local mode (this machine, no owner's password) a key no token has is as no
+    key: most local tools send one, made up, and act as the owner `local`; the key is checked
+    and never reaches the backend. A known token is itself (its scopes); a revoked, expired or
+    rotated-out one is refused, since the caller meant that token. Outside local mode (a proxy
+    in front, or once the owner has a password) a made-up key is 401 as before."""
     srv, port = fake(models=["small-1"], cache=False)
     try:
         with Proxy(env=env_for(port)) as px:
             px.sync()
-            assert accounts().local.on()
+            a = accounts()
+            assert a.local.on()
             assert px.post("/v1/chat/completions", CHAT)[0] == 200
-            st, _, out = px.post("/v1/chat/completions", CHAT, bearer("sk-anything-at-all"))
-            assert st == 401 and b"the token is not known" in out, out
+            made_up = ({"Authorization": "Bearer sk-anything-at-all"},
+                       {"x-api-key": "sk-ant-made-up-0000"},
+                       {"Authorization": "Bearer any-key", "x-api-key": "another-key"})
+            for h in made_up:
+                st, _, out = px.post("/v1/chat/completions", CHAT, h)
+                assert st == 200, (h, st, out)
+                up = upstream(srv)
+                assert "authorization" not in up and "x-api-key" not in up, up
+                assert px.get("/v1/settings", h)[0] == 200, h
+            # more than a wrong-key limit would let through: a local tool sends its key always
+            assert all(px.post("/v1/chat/completions", CHAT, made_up[0])[0] == 200
+                       for _ in range(25))
+            # a known token is that token: its scopes, not the owner's
+            ops = a.store.create("ops", "operator", "the operator's long password", actor="t")
+            assert a.local.on(), "an operator's password does not end local mode"
+            _, reader = a.tokens.create(ops, label="reader", scopes=["usage:read"], actor="t")
+            st, _, out = px.post("/v1/chat/completions", CHAT, bearer(reader))
+            assert st == 403 and b"permission_denied" in out, (st, out)
+            assert px.get("/v1/settings", bearer(reader))[0] == 403
+            row, chat = a.tokens.create(ops, label="chat", scopes=["inference:openai"], actor="t")
+            assert px.post("/v1/chat/completions", CHAT, bearer(chat))[0] == 200
+            assert upstream(srv).get("x-tandem-user") == "ops", upstream(srv)
+            # revoked, expired, rotated out: refused, saying which
+            a.tokens.revoke(row["id"], actor="t")
+            st, _, out = px.post("/v1/chat/completions", CHAT, bearer(chat))
+            assert st == 401 and b"revoked" in out, (st, out)
+            row2, late = a.tokens.create(ops, label="late", scopes=["inference:openai"],
+                                         actor="t")
+            with px.svc.cfg._lock:
+                px.svc.cfg._conn.execute("UPDATE api_tokens SET expires_at = 1 WHERE id = ?",
+                                         (row2["id"],))
+                px.svc.cfg._conn.commit()
+            st, _, out = px.post("/v1/chat/completions", CHAT, bearer(late))
+            assert st == 401 and b"expired" in out, (st, out)
+            row3, first = a.tokens.create(ops, label="rot", scopes=["inference:openai"],
+                                          actor="t")
+            _, second = a.tokens.rotate(row3["id"], grace_s=1, actor="t")
+            assert px.post("/v1/chat/completions", CHAT, bearer(first))[0] == 200   # its grace
+            time.sleep(1.1)
+            assert px.post("/v1/chat/completions", CHAT, bearer(first))[0] == 401
+            assert px.post("/v1/chat/completions", CHAT, bearer(second))[0] == 200
+            # outside local mode: through a proxy on this machine, a made-up key is 401
+            st, _, out = px.post("/v1/chat/completions", CHAT,
+                                 {**made_up[0], "X-Forwarded-For": "192.0.2.7"})
+            assert st == 401 and b"the token is not known" in out, (st, out)
+            # and once the owner has a password
+            a.store.create("own", "owner", NEW_PW, actor="t")
+            assert not a.local.on()
+            for h in made_up[:2]:
+                st, _, out = px.post("/v1/chat/completions", CHAT, h)
+                assert st == 401 and b"the token is not known" in out, (h, st, out)
+            assert px.post("/v1/chat/completions", CHAT)[0] == 401
     finally:
         srv.shutdown()
 

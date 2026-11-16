@@ -56,8 +56,9 @@ no open default any more; an older install's `TANDEM_ADMIN_TOKEN`, `TANDEM_AUTH=
 the like are named on the health page and can go once you will not roll back).
 
 - **This machine only** (the default address, no proxy): local mode. The page opens without a
-  password and offers "Set a password"; nothing else on the network reaches it. The installer
-  prints no code.
+  password and offers "Set a password"; nothing else on the network reaches it. A tool on this
+  machine needs no API key: a made-up one counts as none, and an API token as itself. The
+  installer prints no code.
 - **Beyond loopback** (`--listen`), or **behind a proxy** (`--behind-proxy`): no local mode
   (`TANDEM_LOCAL_MODE=off`). Nobody signs in until the first owner is made. The installer's
   summary prints a one-time setup code and the address; open the page and enter it with the

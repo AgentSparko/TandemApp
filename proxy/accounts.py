@@ -60,7 +60,9 @@ session's does (Streams).
 
 SRV-867 adds API tokens (proxy/tokens.py): `token_resolver` is the token store's. A request with
 an API credential is that token and nothing else: unknown, revoked, expired or of a disabled owner
-is a 401 saying which (an open route lets it through as anonymous); the route must take one of
+is a 401 saying which (an open route lets it through as anonymous; in local mode, SEC-28, an
+unknown one is as no credential, so a local tool's made-up key acts as the owner `local`, while a
+known token stays itself and a revoked or expired one stays a 401); the route must take one of
 the token's scopes (403 naming the scope); the token acts with its scopes cut to its owner's role
 of now. After the check `Authorization` and `x-api-key` are removed from the request, so no
 handler and no backend sees them. A disable or a removal revokes the account's tokens here in the
@@ -948,7 +950,16 @@ class AccountsAuth:
                 got = self.service_resolver(headers, peer)
                 if got is not None:
                     return got
-            return self.token_resolver(headers) if self.token_resolver is not None else None
+            got = self.token_resolver(headers) if self.token_resolver is not None else None
+            if isinstance(got, tokens_mod.Refused) and not got.known and \
+                    self.local_mode is not None:
+                # SEC-28: in local mode a key no token has (most local tools send one, made up)
+                # is as no key: this machine is the owner `local`. A known token stays itself,
+                # and a revoked or expired one stays refused: the caller meant that token
+                loc = self.local_mode(peer, headers)
+                if loc is not None:
+                    return loc
+            return got
         if path.startswith("/s/"):
             from tandemapp import session_tokens as st_mod
             _rest, tok = st_mod.strip(path)

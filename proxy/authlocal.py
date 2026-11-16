@@ -3,7 +3,9 @@
 LOCAL MODE. A bare process bound to loopback only, with no owner that has a password and
 `auth.local_mode` auto: a request that passes trusted-local (a loopback peer, no forwarding
 header, a loopback Host) acts as the owner `local`, with no prompt and no token. Every other
-request needs a session or a token. The address the process is bound to decides, never the peer:
+request needs a session or a token. A key such a request carries that no token has (SEC-28: most
+local tools send one, made up) is as none; a known token is itself, and a revoked or expired one
+is refused. The address the process is bound to decides, never the peer:
 a reverse proxy or a tunnel on the same host makes every client a loopback peer.
 
     on when    bound to 127.0.0.0/8, ::1 or localhost (proxy/app.py serve() says where), and

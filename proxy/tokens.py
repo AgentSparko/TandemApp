@@ -298,11 +298,14 @@ def effective(scopes, role: str | None, kind: str, policy=None, owned: bool = Tr
 
 @dataclass
 class Refused:
-    """A token the gate answers with 401: unknown, revoked, expired, or its owner disabled."""
+    """A token the gate answers with 401: unknown, revoked, expired, or its owner disabled.
+    `known`: the credential names a token this controller has (revoked, expired, rotated out,
+    its owner disabled): local mode refuses it as well, where an unknown one is as no key."""
     status: int
     code: str
     message: str
     facts: dict = field(default_factory=dict)
+    known: bool = False
 
 
 class TokenError(Exception):
@@ -755,20 +758,24 @@ class TokenStore:
             if r is None:
                 r = self._c.execute(sql + "t.prev_hash = ? AND t.prev_until > ?",
                                     (h, now)).fetchone()
+            # the secret a rotation replaced, past its grace: a token that is known
+            old = r is None and self._c.execute("SELECT 1 FROM api_tokens WHERE prev_hash = ?",
+                                                (h,)).fetchone() is not None
         if r is None:
-            return Refused(401, "invalid_api_key", "the token is not known")
+            return Refused(401, "invalid_api_key", "the token is not known", known=old)
         row = self._row(r[:len(COLS)])
         username, role, enabled = r[len(COLS):]
         st = self.state(row, now)
         if st == "revoked":
             return Refused(401, "invalid_api_key", "the token was revoked",
-                           {"state": "revoked"})
+                           {"state": "revoked"}, known=True)
         if st == "expired":
             return Refused(401, "invalid_api_key", f"the token expired at "
-                                                   f"{_iso(row['expires_at'])}", {"state": "expired"})
+                                                   f"{_iso(row['expires_at'])}", {"state": "expired"},
+                           known=True)
         if row["owner_id"] is not None and (username is None or not enabled):
             return Refused(401, "invalid_api_key", "the token's owner is disabled",
-                           {"state": "owner_disabled"})
+                           {"state": "owner_disabled"}, known=True)
         self._note(row["id"], now)
         from proxy.accounts import Principal
         kind = "service" if row["kind"] == "service" else "token"
