@@ -317,7 +317,7 @@ describe('one registry, three faces', () => {
     const keys = (fleet.settings.handle('GET', '/v1/settings/hooks/schema', new URLSearchParams(), null, T0).body as SchemaView).keys.map((k) => k.key);
     expect(keys).toContain('hooks.pii-guard.mode');
     expect((fleet.settings.handle('GET', '/v1/settings/hooks', new URLSearchParams(), null, T0).body as ValuesView).values.find((v) => v.key === 'providers.intent.ab_percent')!.value).toBe(30);
-    expect(fleet.handle('GET', '/v1/fleet/hooks/stages', new URLSearchParams(), null, T0).body).toEqual(STAGE_TABLE);
+    expect(fleet.handle('GET', '/v1/fleet/hooks/stages', new URLSearchParams(), null, T0).body).toEqual({ ...STAGE_TABLE, samples: expect.any(Object) });
     expect(new MockFleet({ scenario: 'empty', now: T0 / 1000 }).handle('GET', '/v1/fleet/hooks', new URLSearchParams(), null, T0).body).toMatchObject({ hooks: [] });
   });
 });
