@@ -551,12 +551,14 @@ CHANGED = {("GET", "/v1/auth/session"), ("GET", "/v1/auth/sessions"), ("GET", "/
 
 
 def test_old_routes_over_accounts():
-    import test_auth_switch_off as off
+    # SEC-28: local mode (this machine, no password: the owner `local`) and a signed-in owner
+    # answer every route the same
+    import test_auth_flip_matrix as off
     routes = [r for r in list(off.ROUTES) + SWEEP if (r[0], r[1]) not in CHANGED]
 
     def sweep(env: dict, owner: bool) -> dict:
         out = {}
-        with Proxy(env=env) as px:
+        with (Proxy if owner else _Proxy)(env=env) as px:
             h = {}
             if owner:
                 make("own", "owner")

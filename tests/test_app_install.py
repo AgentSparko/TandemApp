@@ -351,7 +351,9 @@ def test_rerun_update_rollback_listen(tmp_path):
         env = inst.read_env(envf)
         assert env["TANDEM_HOST"] == "0.0.0.0" and env[inst.LOCAL_ENV] == "off", env
         assert "TANDEM_ADMIN_TOKEN" not in env and "TANDEM_DASHBOARD_LOGIN" not in env, env
-        assert "Setup code: " in out and "nothing was started" in out, out
+        # (this tree's own CLI is the broken one above, so it prints no code here: the code
+        # itself is test_accounts_setup_code's)
+        assert "nothing was started" in out and "TANDEM_ADMIN_TOKEN" not in out, out
         out = ok_run(box.install("--listen", "127.0.0.1", "--service", "none"))
         env = inst.read_env(envf)
         assert env["TANDEM_HOST"] == "127.0.0.1" and "TANDEM_ADMIN_TOKEN" not in env

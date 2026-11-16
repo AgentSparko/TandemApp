@@ -126,8 +126,10 @@ def test_matrix_by_rule():
             assert (st, code) == (403, "unmapped_route"), (key, val)
         elif kind == "open":
             assert code != "sign_in_required", (key, val)
-        elif name == "open" and cred == "local":
-            # local mode: this machine is the owner `local`, nothing asks for a sign-in
+        elif name == "open" and cred == "local" and \
+                authz.permission_for(method, path) != authz.SESSION_ADDRESS:
+            # local mode: this machine is the owner `local`, nothing asks for a sign-in (a
+            # session address is its own credential, which local mode does not give)
             assert st != 401 and code != "sign_in_required", (key, val)
         else:
             assert st == 401, (key, val)

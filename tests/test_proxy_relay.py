@@ -21,7 +21,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from proxy_util import FIXTURE_KEYS, Proxy, api_key, fake, run  # noqa: E402
+from proxy_util import FIXTURE_KEYS, Proxy, api_key, fake, owner, run  # noqa: E402
 
 from tools import contract_check  # noqa: E402
 
@@ -462,14 +462,17 @@ def test_config_api_add_test_lock_delete():
         assert st == 422
         st, _, _ = px.request("DELETE", "/v1/config/backends/g2")
         assert st == 204 and px.svc.cfg.backend("g2") is None
-        # no admin password configured: a write from afar goes through (the admin rule waits for a
-        # password; with one set it needs the token, tests/test_auth.py)
+        # SEC-28: a write from afar needs a sign-in, even with no password set (local mode is
+        # this machine only); an operator's session from afar goes through
+        far = {"X-Forwarded-For": "192.0.2.7"}
         st, _, _ = px.request("POST", "/v1/config/backends", {"id": "x", "kind": "generic",
-                                                              "url": "http://h:1"},
-                              headers={"X-Forwarded-For": "192.0.2.7"})
+                                                              "url": "http://h:1"}, headers=far)
+        assert st == 401, st
+        far.update(owner(px, "ops", "operator"))
+        st, _, _ = px.request("POST", "/v1/config/backends", {"id": "x", "kind": "generic",
+                                                              "url": "http://h:1"}, headers=far)
         assert st == 201, st
-        st, _, _ = px.request("DELETE", "/v1/config/backends/x",
-                              headers={"X-Forwarded-For": "192.0.2.7"})
+        st, _, _ = px.request("DELETE", "/v1/config/backends/x", headers=far)
         assert st == 204
     srv.shutdown()
 

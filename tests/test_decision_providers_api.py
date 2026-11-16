@@ -361,22 +361,24 @@ def test_text_grant():
     lan = f"http://127.0.0.1:{eport}"
     far = "http://203.0.113.9:8720"
     try:
-        with Proxy({}) as px:                                     # no admin password
+        with Proxy({}) as px:
+            # SEC-28: from another device an operator: the writes, not pairing's rights
+            away = {**AWAY, **owner(px, "ops", "operator")}
             body = {"name": "Jev", "endpoint": lan, "questions": {"classify": {}}}
-            err = _j(px, "POST", BASE, body, 403, AWAY)
+            err = _j(px, "POST", BASE, body, 403, away)
             assert err["error"]["type"] == "trust_required" and "pairing" in \
                 err["error"]["message"], err
             # a builtin provider sends nothing away: the writes are enough
             _j(px, "POST", BASE, {"name": "Own", "kind": "builtin",
-                                  "questions": {"judge": {}}}, 201, AWAY)
+                                  "questions": {"judge": {}}}, 201, away)
             p = _j(px, "POST", BASE, body, 201)["provider"]          # this machine
             _ok({"provider": p}, "decision-provider")
             g = p["grant"]
             assert g["destinations"] == {"127.0.0.1": True} and g["confirmed_by"] is None, g
             assert g["by"] and g["at"] > 0
             # a switch is the writes' alone; a new place for the text is a grant
-            _j(px, "PATCH", BASE + "/jev", {"name": "Jev 2"}, 200, AWAY)
-            _j(px, "PATCH", BASE + "/jev", {"endpoint": far}, 403, AWAY)
+            _j(px, "PATCH", BASE + "/jev", {"name": "Jev 2"}, 200, away)
+            _j(px, "PATCH", BASE + "/jev", {"endpoint": far}, 403, away)
             err = _j(px, "PATCH", BASE + "/jev", {"endpoint": far}, 409)["error"]
             assert (err["type"], err["destination"], err["lan"], err["field"]) == \
                 ("confirm_needed", "203.0.113.9", False, "endpoint"), err
@@ -393,7 +395,7 @@ def test_text_grant():
             # the settings interface: a question's endpoint outside the LAN is a grant
             qs = {"classify": {"endpoint": "http://198.51.100.4:8720"}}
             st, _, out = px.request("POST", "/v1/settings/hooks/plan",
-                                    {"set": {"providers.jev.questions": qs}}, AWAY)
+                                    {"set": {"providers.jev.questions": qs}}, away)
             assert st == 403 and json.loads(out)["error"]["type"] == "trust_required", out
             st, _, out = px.request("POST", "/v1/settings/hooks/plan",
                                     {"set": {"providers.jev.questions": qs}})

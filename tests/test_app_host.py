@@ -444,7 +444,8 @@ def _job_done(ctl: Ctl, token: str, jid: str):
 
 
 def _token(ctl: Ctl, who: dict, label: str, scopes: list) -> str:
-    st, doc = ctl.send("POST", "/v1/auth/tokens", {"label": label, "scopes": scopes}, token=who)
+    body = {"label": label, "scopes": scopes, **({"days": 1} if "trust" in scopes else {})}
+    st, doc = ctl.send("POST", "/v1/auth/tokens", body, token=who)
     assert st == 201, (st, doc)
     return doc["token"]
 

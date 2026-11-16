@@ -171,7 +171,10 @@ def test_the_controller_answers_what_the_list_says():
             elif r["owner"] == "engine":
                 path = r["prefix"] + ("/x" if r["match"] == "prefix" else "")
                 st, text = ask(f"GET {path}")
-                assert st == 404, (r["prefix"], st, text[:200])
+                # SEC-28: the sign-in gate refuses a path the controller does not dispatch
+                # before any handler (403 unmapped_route): the controller does not answer it
+                assert st == 404 or (st == 403 and "unmapped_route" in text), \
+                    (r["prefix"], st, text[:200])
     return f"{len(seen)} prefixes answered by the controller"
 
 

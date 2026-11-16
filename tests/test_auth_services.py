@@ -617,9 +617,14 @@ def test_plugin_backends_need_the_relay():
         with sqlite3.connect(cfg.path) as con:
             assert not con.execute("SELECT 1 FROM backend_secrets WHERE backend_id = ?",
                                    ("plugin-p1-echo",)).fetchone()
-    # switched off: as before (loopback only), and key_for sends nothing
-    with Proxy() as px:
-        assert px.svc.cfg.service_key is None
+    # SEC-28: no switch: local mode (this machine, no password) gets no way in either; the
+    # relay's secret is always the only one
+    with _Proxy() as px:
+        assert px.svc.cfg.service_key is not None
+        assert px.get("/plugin-backends/p1/echo/v1/models")[0] == 403
+        st, out = j(px.get("/plugin-backends/p1/echo/v1/models",
+                           bearer(accounts().relay_secret)))
+        assert st == 503 and out["error"]["type"] == "plugin_down", (st, out)
     # the chart blocks the path at its ingress; the route list marks it internal (block)
     vals = open(os.path.join(ROOT, "charts", "tandemapp", "values.yaml")).read()
     blocked = vals.split("blockedPaths:", 1)[1].split("\n\n", 1)[0]

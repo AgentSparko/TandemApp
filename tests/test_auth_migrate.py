@@ -195,12 +195,10 @@ def test_malformed_variables():
         # ignored: a 10-character token is no setup code and guards nothing
         assert not a.local.legacy_guard
         assert a.codes.live() == []
-    # the same with the switch off still stops the start, as it did (nothing changes there)
-    try:
-        with Proxy(env={"TANDEM_ADMIN_TOKEN": "0123456789"}):
-            raise AssertionError("the old rule started with a short token")
-    except SystemExit:
-        pass
+    # SEC-28: no switch: the same short token without TANDEM_AUTH starts too, ignored
+    with Proxy(env={"TANDEM_ADMIN_TOKEN": "0123456789"}):
+        codes = {(f["code"], f["facts"].get("variable")) for f in accounts().findings()}
+        assert ("legacy_env_invalid", "TANDEM_ADMIN_TOKEN") in codes, codes
 
 
 # ---------------------------------------------------------------------------- Gherkin 5

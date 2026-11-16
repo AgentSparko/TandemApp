@@ -204,7 +204,7 @@ def test_examples_over_http():
             assert any("[host] started 0.1.0" in ln for ln in lines), lines
             st = _j(px, "POST", f"{BASE}/{hello}/stop", {})["status"]
             assert st["state"] == "stopped" and st["held"]
-            assert _j(px, "GET", "/chat-engine/v1/plugins/tools")["plugins"] == []
+            assert _j(px, "GET", "/chat-engine/v1/plugins/tools", headers=as_chatd)["plugins"] == []
             _j(px, "POST", f"{BASE}/{hello}/start", {})
             _running(px, hello)
             _j(px, "POST", f"{BASE}/{hello}/restart", {})

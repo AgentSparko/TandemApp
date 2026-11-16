@@ -329,7 +329,8 @@ def test_upload_run_and_confirm():
             _j(px, "POST", BASE + "/upload" + name, data, 415, {"Content-Type": "text/plain"})
             _j(px, "POST", BASE + "/upload" + name, b"not a zip", 422, octet)
             _j(px, "POST", BASE + "/upload" + name, b"", 400, octet)
-            err = _j(px, "POST", BASE + "/upload" + name, data, 403, dict(octet, **AWAY))
+            err = _j(px, "POST", BASE + "/upload" + name, data, 403,
+                     dict(octet, **AWAY, **owner(px, "ops", "operator")))
             assert err["error"]["type"] == "trust_required", err
             made = _ok(_j(px, "POST", BASE, {"source": up["source"]}, 201), "install")
             assert made["plugin"]["source"]["type"] == "wheel"

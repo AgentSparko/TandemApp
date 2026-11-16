@@ -467,9 +467,9 @@ def test_errors_keep_the_shape():
     """Gherkin: a missing key 401, an unknown model 404, a draining engine 529, each with a
     request-id; and the other refusals of ours."""
     srv, port = fake_backend.start(models=["fake-a"])
-    with Proxy(_env(port)) as px:
+    # SEC-28: not listening yet, so no local mode: a request without a key is the gate's 401
+    with Proxy(_env(port), local=False) as px:
         px.sync()
-        px.svc.auth.trusted_local = lambda *a, **k: False
 
         def check(st, h, data, status, etype):
             doc = json.loads(data)
@@ -494,12 +494,12 @@ def test_errors_keep_the_shape():
               400, "invalid_request_error")
         check(*px.post("/v1/messages/batches", {}, headers=_hdr()), 404, "not_found_error")
         rows = px.rows()
-        # the ledger keeps the pipeline's own status (503 drained); the client saw 529
-        assert [r["status"] for r in rows] == [401, 404, 503, 503, 400, 400, 400], \
+        # the ledger keeps the pipeline's own status (503 drained); the client saw 529. The
+        # gate's 401 comes before the pipeline: no row for it
+        assert [r["status"] for r in rows] == [404, 503, 503, 400, 400, 400], \
             [r["status"] for r in rows]
         assert {r["endpoint"] for r in rows} == {"messages"}
-        assert rows[0]["error_type"] == "invalid_api_key" and \
-            rows[1]["error_type"] == "model_not_found"
+        assert rows[0]["error_type"] == "model_not_found"
     srv.shutdown()
 
 

@@ -650,12 +650,12 @@ def test_scopes_rules():
         k = next(x for x in sch["keys"] if x["key"] == "listen")
         assert not k["writable"] and "chart" in k["why"], k
         assert change(px, own, "api", {"listen": "0.0.0.0"})[0] == 422
-    # switched off: neither scope exists
-    with Proxy() as px:
+    # SEC-28: no switch: both scopes are always there; local mode (the owner `local`) reads them
+    with _Proxy() as px:
         st, ov = j(px.get("/v1/settings"))
-        assert "auth" not in ov["order"] and "api" not in ov["order"], ov
-        assert px.get("/v1/settings/api")[0] == 404
-    return "local mode, listen, tokens, order, Kubernetes and the switch off"
+        assert ov["order"][:3] == ["app", "auth", "api"], ov
+        assert px.get("/v1/settings/api")[0] == 200
+    return "local mode, listen, tokens, order, Kubernetes; always there"
 
 
 if __name__ == "__main__":

@@ -432,16 +432,18 @@ def test_import():
         assert ops[("deployment", "wren")]["op"] == "conflict"
         assert ops[("node", "n-gold")]["op"] == "keep" and "release" in ops[("node", "n-gold")]["detail"]
         assert ops[("node", "n-loose")]["op"] == "remove"
-    # pairing's rights for the apply: from the LAN with no password, refused
+    # pairing's rights for the apply (SEC-28): an operator from the LAN plans, never applies
     with Proxy() as px:
         f = _fleet(px)
         _seed(px, f)
         doc = _req(px, "GET", "/v1/fleet/app/export")[2]
         doc["nodes"][0]["alias"] = "Renamed"
-        p = _req(px, "POST", "/v1/fleet/app/import", {"config": doc}, LAN)[2]
+        ops = {**LAN, **owner(px, "ops", "operator")}
+        assert _req(px, "POST", "/v1/fleet/app/import", {"config": doc}, LAN)[0] == 401
+        p = _req(px, "POST", "/v1/fleet/app/import", {"config": doc}, ops)[2]
         assert p["confirm"]
         assert _req(px, "POST", "/v1/fleet/app/import/apply",
-                    {"config": doc, "confirm": p["confirm"]}, LAN)[0] == 401
+                    {"config": doc, "confirm": p["confirm"]}, ops)[0] in (401, 403)
 
 
 # ---------------------------------------------------------------------------- 8

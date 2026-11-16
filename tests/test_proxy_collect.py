@@ -405,7 +405,7 @@ def test_launch_registers_the_backend_and_execs_the_engine():
     assert cfg.setting("launch:vllm8111")["pid"] == got["pid"]     # exec kept the pid
     # SEC-28: the backend's own collect identity (svc:collect:<id>), minted for this launch
     from proxy import tokens as tokens_mod
-    row = cfg._conn.execute("SELECT key_hash FROM api_tokens WHERE label = ?",
+    row = cfg._conn.execute("SELECT hash FROM api_tokens WHERE label = ?",
                             ("svc:collect:vllm8111",)).fetchone()
     assert row and row[0] == tokens_mod.key_hash(got["env"]["TANDEM_COLLECT_TOKEN"]), row
     said = [x for x in (r.stdout + r.stderr).splitlines() if not x.startswith("STANDIN ")]

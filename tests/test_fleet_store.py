@@ -603,9 +603,10 @@ def test_rule_edits_and_auth():
         assert get(px, "/v1/fleet/rules", lan)[0] == 401
         assert get(px, "/v1/fleet/rules", adm)[0] == 200
         assert send(px, "POST", "/v1/fleet/alerts/x/ack", None, lan)[0] == 401
-    with Proxy() as px:                                    # no password: open, as /v1/config
+    with Proxy() as px:                    # no password: local mode, this machine only
         fleet_on(px, local_node(fake_root()))
-        assert send(px, "PATCH", "/v1/fleet/rules/throttle", {"enabled": False}, lan)[0] == 200
+        assert send(px, "PATCH", "/v1/fleet/rules/throttle", {"enabled": False})[0] == 200
+        assert send(px, "PATCH", "/v1/fleet/rules/throttle", {"enabled": False}, lan)[0] == 401
 
 
 # ---------------------------------------------------------------------------- 9 logs

@@ -990,6 +990,8 @@ class AccountsAuth:
         p = getattr(handler, "_principal", None) or self.current(handler.headers)
         if p is None:
             return "anonymous"
+        if p.kind == "local":
+            return "local"                  # this machine in local mode, as the audit said before
         return p.name if p.kind == "account" else f"{p.kind}:{p.name}"
 
     # ------------------------------------------------------------------ a route kind's check

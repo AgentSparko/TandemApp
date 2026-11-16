@@ -114,7 +114,8 @@ def test_routes_rights_and_the_key():
             assert st == 401, (st, err)
             st, err = call(px, "POST", "/v1/settings/plan", {"changes": ch},
                            {**BEARER, "Sec-Fetch-Site": "cross-site"})
-            assert st == 403 and err["error"]["type"] == "cross_site", err
+            # the sign-in gate refuses it first (its code; type forbidden)
+            assert st == 403 and err["error"].get("code") == "cross_site", err
             st, err = call(px, "POST", "/v1/settings/plan", {"changes": ch},
                            {**BEARER, "Content-Type": "text/plain"})
             assert st == 415, (st, err)

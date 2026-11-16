@@ -412,7 +412,7 @@ def test_consent_is_a_write():
     lan_ip = {"X-Real-IP": "192.0.2.77"}
     for login in ("viewer", "owner"):
         # SEC-28: a scan is a write: another device without a sign-in reads nothing, a viewer
-        # reads but never scans, an owner scans
+        # neither reads the list nor scans, an owner does both
         with Proxy() as px:
             bearer = owner(px, login, login)
             f = tf.fleet_on(px, tf.local_node(tf.fake_root()))
@@ -424,13 +424,15 @@ def test_consent_is_a_write():
             st, err = tf.send(px, "POST", "/v1/fleet/discovery/scan",
                               {"subnet": "192.0.2.0/24"}, lan_ip)
             assert st == 401 and hosts.calls == [], login
-            st, snap = tf.get(px, "/v1/fleet/discovery", {**lan_ip, **bearer})
-            assert st == 200 and ok(snap, "discovery")["scan"]["state"] == "ask"
             if login == "viewer":
+                # the list is read with a write's rights too (SRV-727): a viewer gets neither
+                assert tf.get(px, "/v1/fleet/discovery", {**lan_ip, **bearer})[0] == 403
                 st, _ = tf.send(px, "POST", "/v1/fleet/discovery/scan",
                                 {"subnet": "192.0.2.0/24"}, {**lan_ip, **bearer})
                 assert st == 403 and hosts.calls == [], st
                 continue
+            st, snap = tf.get(px, "/v1/fleet/discovery", {**lan_ip, **bearer})
+            assert st == 200 and ok(snap, "discovery")["scan"]["state"] == "ask"
             st, snap = tf.send(px, "POST", "/v1/fleet/discovery/scan",
                                {"subnet": "192.0.2.0/24"}, {**lan_ip, **bearer})
             assert st == 200 and len(hosts.calls) == 254, (st, snap)

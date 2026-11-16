@@ -358,7 +358,7 @@ def test_the_admin_token_for_scripts():
                                  "metrics:read"] and "trust" not in row["scopes"], row
         assert row["owner_id"] == owner["id"] and row["needs_review"], row
         days = (row["expires_at"] - row["created_at"]) / 86_400_000
-        assert days == 30, days
+        assert abs(days - 30) < 0.001, days          # two clock reads apart
         h = bearer(ADMIN_TOKEN)
         assert px.get("/v1/settings", h)[0] == 200
         st, out = j(px.post("/v1/fleet/pair", {"address": "192.0.2.9"}, h))
