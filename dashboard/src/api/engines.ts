@@ -290,7 +290,9 @@ export const LOCAL_FIX = {
   error: 'Try again. If it keeps failing, look at TandemApp’s log.',
 } as const;
 
-function fail(endpoint: string, r: Sent): never {
+/** An answer that is not a 2xx, thrown as what the page shows for it (the health routes answer in the
+ *  same shape: api/health.ts). */
+export function fail(endpoint: string, r: Sent): never {
   const e = (r.body as { error?: Partial<EngineFinding> & { type?: string } } | null)?.error;
   if (e && typeof e.code === 'string' && typeof e.message === 'string' && typeof e.fix === 'string') {
     const { type: _type, ...finding } = e;
@@ -352,7 +354,7 @@ export function enginesApi(send: Send): EnginesApi {
 
 /** Same-origin fetch. A 401 is read here, not by the shared client: the page shows its own
  *  sign-in for it, and an engine's refused token (also a 401) is a finding, not a session's end. */
-const http: Send = async (method, path, body) => {
+export const http: Send = async (method, path, body) => {
   let res: Response;
   try {
     res = await fetch(apiBase() + path, {

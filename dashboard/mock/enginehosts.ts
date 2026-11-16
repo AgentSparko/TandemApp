@@ -258,6 +258,15 @@ export class MockEngineHosts {
     return [...this.hosts.values()].map((h) => ({ id: h.id, alias: h.alias }));
   }
 
+  /** The engine hosts paired here as the health page checks them (mock/health.ts, SRV-835): how
+   *  each is reached and what its status says now. */
+  healthRows(now: number): { id: string; alias: string; address: string; user: string; sshPort: number; httpPort: number; hostKey: string; version: string; mode: string; model: string | null; state: 'healthy' | 'loading'; token: EngineView['http']['token'] }[] {
+    return [...this.hosts.values()].map((h) => {
+      const st = this.status(h, now);
+      return { id: h.id, alias: h.alias, address: h.dev.address, user: h.user, sshPort: h.ssh_port, httpPort: h.dev.port, hostKey: h.dev.fp, version: h.dev.version, mode: h.dev.mode, model: h.dev.model, state: st.engine.state as 'healthy' | 'loading', token: this.view(h, null, null).http.token };
+    });
+  }
+
   /** A route answers `code` until it is cleared with null. */
   fail(route: FailRoute, code: string | null): void {
     if (code === null) this.fails.delete(route);

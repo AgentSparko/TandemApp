@@ -88,6 +88,7 @@ import type {
 import { EVENT_TYPES, FLEET_CONTRACT, METRICS, NODE_ACTIONS, RANGES, WINDOW_KINDS } from '../src/api/fleet.ts';
 import { MockWizard } from './addspark.ts';
 import { MockEngineHosts } from './enginehosts.ts';
+import { MockHealth } from './health.ts';
 import { MockDeploy, mockSplitPlan } from './deploy.ts';
 import { MockSetupRelay } from './setup-relay.ts';
 import { MockOps } from './fleetops.ts';
@@ -579,6 +580,8 @@ export class MockFleet {
   readonly wizard: MockWizard;
   /** adding an engine host: what the LAN advertises, pairing, the model step (mock/enginehosts.ts) */
   readonly engines: MockEngineHosts;
+  /** the health page: this controller's checks, each engine host's and the fixes (mock/health.ts, SRV-835) */
+  readonly health: MockHealth;
   /** the fleet update and the controller's host (mock/fleetops.ts) */
   readonly ops: MockOps;
   /** the deployment records, the placement planner and the weights (mock/deploy.ts, SRV-731) */
@@ -606,6 +609,11 @@ export class MockFleet {
     this.discovery = new MockDiscovery({ onMac: this.f.host.may_sleep, host: this.f.host.address, nodes: () => this.f.nodes.map((n) => n.node) });
     this.wizard = new MockWizard(this);
     this.engines = new MockEngineHosts(this);
+    this.health = new MockHealth(
+      { members: (now) => this.f.nodes.filter((n) => n.node.transport !== 'ssh').length + this.ext(now).nodes.length, paired: (now) => this.engines.healthRows(now) },
+      this.scenario === 'empty' ? 'first' : 'mixed',
+      this.t0,
+    );
     this.ops = new MockOps(this);
     this.deploy = new MockDeploy(this);
     this.app = new MockApp(this);
@@ -1356,6 +1364,7 @@ export class MockFleet {
     if (parts[0] === 'discovery') return this.discovery.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'add') return this.wizard.handle(method, parts, body, nowMs);
     if (parts[0] === 'engines') return this.engines.handle(method, parts, q, body, nowMs);
+    if (parts[0] === 'health') return this.health.handle(method, parts, q, body, nowMs);
     // VIS-282: the hooks and the decision providers, the registry the settings' hooks scope holds too
     if (parts[0] === 'hooks' || parts[0] === 'decision-providers') return this.settings.registry.handle(method, parts, q, body, nowMs);
     if (parts[0] === 'update') return this.ops.handleUpdate(method, parts, q, body, now);
