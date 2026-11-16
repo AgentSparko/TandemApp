@@ -507,6 +507,8 @@ class HooksAdapter:
         grants(sets) -> [grant]       the full payload each set grants: {key, hook, destination,
                                       lan, version}; empty when none
         empty_why() -> str | None     why there is no key yet
+        keys_for(sets) -> [key_spec]  the keys a change's own sets make (a question's key in the
+                                      change that adds the question); none by default
         write(sets, unsets, who, grants=None)
                                       the change into the registry's own tables; `grants` the
                                       grants outside the LAN whose second confirm was given
@@ -533,6 +535,9 @@ class HooksAdapter:
     def empty_why(self) -> str | None:
         return None
 
+    def keys_for(self, sets) -> list:
+        return []
+
     def write(self, sets, unsets, who) -> None:
         return None
 
@@ -557,6 +562,13 @@ class HooksScope(KeyValueScope):
         if self.adapter is None:
             return {}
         return {k["key"]: k for k in self.adapter.keys()}
+
+    def spec_for(self, target, sets):
+        out = self.spec(target)
+        if self.adapter is not None and sets:
+            for k in self.adapter.keys_for(sets):
+                out.setdefault(k["key"], k)
+        return out
 
     def values(self, target):
         if self.adapter is None:

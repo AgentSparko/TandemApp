@@ -27,7 +27,8 @@ THE KEYS, one set a decision provider (proxy/providerstore.py; `<id>` the provid
                                 endpoint?, timeout_ms?} (its keys are keys of their own)
     providers.<id>.api_key      secret: the provider's own key (systemone-http only)
     providers.<id>.questions.<question>.api_key
-                                secret: one question's key (systemone-http only)
+                                secret: one question's key (systemone-http only); a change set
+                                that adds the question to `questions` may set its key too
 
 A key is write-only: set it with a string, clear it with an unset (or null); an answer says only
 whether one is set, with its hint. One enabled provider serves a question on or ab: a change set
@@ -50,6 +51,8 @@ Reads and checks go through the stores' public reads and `_check`; writes throug
 """
 
 from __future__ import annotations
+
+import re
 
 from proxy.hookstore import HookError
 from proxy.providerstore import MODES, QUESTION_FIELDS, QUESTIONS, STICKY, ProviderError
@@ -89,6 +92,8 @@ PROVIDER_KEYS = {
                                         "timeout_ms?}"),
 }
 SECRET_WHY = "made by the hooks' API and answered there once: rotate it there"
+#: a question's own key: `providers.<id>.questions.<question>.api_key` (an id may hold dots)
+QUESTION_KEY = re.compile(r"^providers\.(.+)\.questions\.([a-z_]+)\.api_key$")
 
 
 def _refused(exc, key: str | None) -> SettingsError:
@@ -133,6 +138,39 @@ class RegistryHooks(HooksAdapter):
                 for q in p["questions"]:
                     out[f"providers.{p['id']}.questions.{q}.api_key"] = ("provider", p["id"],
                                                                          "questions." + q)
+        return out
+
+    def _where(self, idx: dict, k: str):
+        """(kind, id, field) of a key: the keys now, and a question's key of a systemone-http
+        provider for a question it does not answer yet (the change set that adds the question
+        may set its key; `_provider_plan` refuses it otherwise, on that key)."""
+        got = idx.get(k)
+        if got is not None:
+            return got
+        m = QUESTION_KEY.match(k)
+        if m and m.group(2) in QUESTIONS:
+            p = self.providers.get(m.group(1)) if self.providers is not None and \
+                self.providers.ready() else None
+            if p is not None and p["kind"] == "systemone-http":
+                return ("provider", p["id"], "questions." + m.group(2))
+        raise KeyError(k)
+
+    def keys_for(self, sets) -> list:
+        """The key of each question a change's `providers.<id>.questions` adds to a
+        systemone-http provider: set in the same change set as the question (SRV-851)."""
+        out = []
+        rows = {p["id"]: p for p in self._provider_rows()}
+        for k, v in (sets or {}).items():
+            if not (k.startswith("providers.") and k.endswith(".questions")) or \
+                    not isinstance(v, dict):
+                continue
+            p = rows.get(k[len("providers."):-len(".questions")])
+            if p is None or p["kind"] != "systemone-http":
+                continue
+            for q in sorted(set(v) - set(p["questions"])):
+                if q in QUESTIONS:
+                    out.append(key_spec(f"{k}.{q}.api_key", "string", secret=True,
+                                        nullable=True, text=f"the API key for {q} alone"))
         return out
 
     def keys(self) -> list:
@@ -216,7 +254,7 @@ class RegistryHooks(HooksAdapter):
         idx = self._index()
         out: dict = {}
         for k in list(sets) + list(unsets):
-            kind, oid, f = idx[k]
+            kind, oid, f = self._where(idx, k)
             if kind != "hook":
                 continue
             if k in sets:
@@ -303,7 +341,7 @@ class RegistryHooks(HooksAdapter):
         fields: dict = {}                    # id -> {field: value}
         keys: dict = {}                      # id -> {"*" | question: key or None}
         for k in list(sets) + list(unsets):
-            kind, pid, f = idx[k]
+            kind, pid, f = self._where(idx, k)
             if kind != "provider":
                 continue
             if f == "api_key" or f.startswith("questions."):

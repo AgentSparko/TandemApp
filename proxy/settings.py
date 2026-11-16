@@ -266,6 +266,11 @@ class KeyValueScope(Scope):
     def writable(self, target: str) -> tuple[bool, str | None]:
         return True, None
 
+    def spec_for(self, target: str, sets: dict) -> dict:
+        """The keys a change may name: the keys now, and those its own sets make (the hooks
+        scope: a question's key beside the question it adds). Default: the keys now."""
+        return self.spec(target)
+
     # ------------------------------------------------------------------ the six operations
     def schema(self, target: str) -> dict:
         ok, why = self.writable(target)
@@ -316,7 +321,7 @@ class KeyValueScope(Scope):
         ok, why = self.writable(target)
         if not ok:
             raise SettingsError(409, "read_only", why or f"the {self.name} scope is read-only here")
-        spec = self.spec(target)
+        spec = self.spec_for(target, sets)
         unknown = [k for k in list(sets) + list(unsets) if k not in spec]
         if unknown:
             raise SettingsError(422, "unknown_key", f"not a key of the {self.name} scope: "

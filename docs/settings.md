@@ -220,7 +220,7 @@ The decision providers are keys of the same scope. They sit beside the hooks bec
 | `providers.<id>.sticky` | in `ab`, what the share sticks to: `session`, `user` or `request` |
 | `providers.<id>.questions` | the questions it answers, each `{model?, endpoint?, timeout_ms?}` |
 | `providers.<id>.api_key` | a `systemone-http` provider's own key |
-| `providers.<id>.questions.<question>.api_key` | the key for one question alone |
+| `providers.<id>.questions.<question>.api_key` | the key for one question alone; a change set that adds the question to `questions` may set it in the same change |
 
 A key is write-only. A string sets it and an unset clears it. An answer says only whether one is set, with its hint, and a version never holds it. A question's key exists once the provider answers that question: add the question first, then its key.
 

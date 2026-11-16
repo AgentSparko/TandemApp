@@ -46,6 +46,10 @@ to contracts/settings-v1 (tools/contract_check.py).
                                                         test_provider_refusals_and_moves
   8  No provider key in any answer, version, audit row or log line
                                                         test_no_provider_key_anywhere
+  9  Given a systemone-http provider, When one change set adds a question and sets that
+     question's key, Then both apply and the key is sealed under that question; a key for a
+     question the change set does not add stays unknown, and a builtin provider takes no key
+                                                        test_question_and_its_key_at_once
 
 CPU only. Run: python tests/test_settings_hooks.py
 """
@@ -484,6 +488,47 @@ def test_provider_refusals_and_moves():
     finally:
         r.close()
     return "refused on their key; a question moves between providers in one change set"
+
+
+# ---------------------------------------------------------------------------- 9 a question and its key
+
+def test_question_and_its_key_at_once():
+    r = Rig("qkey")
+    try:
+        r.provider(name="Classes", id="s1.x", questions={"classify": {}})
+        r.provider(name="Own", id="own", kind="builtin", questions={"memory_gate": {}})
+        sets = {"providers.s1.x.questions": {"classify": {}, "judge": {"timeout_ms": 900}},
+                "providers.s1.x.questions.judge.api_key": KEY_Q}
+        p = r.plan(sets)
+        ch = {c["key"]: c for c in p["parts"][0]["changes"]}
+        assert ch["providers.s1.x.questions.judge.api_key"]["secret"], ch
+        assert KEY_Q not in json.dumps(p)
+        res = r.apply(sets, plan=p)
+        assert res["state"] == "applied", res
+        assert r.providers.get("s1.x")["questions"] == {"classify": {},
+                                                        "judge": {"timeout_ms": 900}}
+        assert r.providers.key_for("s1.x", "judge") == KEY_Q
+        assert r.providers.key_for("s1.x", "*") is None
+        st, vals = r.call("GET", "hooks")
+        assert {v["key"]: v["set"] for v in vals["values"]}[
+            "providers.s1.x.questions.judge.api_key"] is True
+        # a key for a question the change set does not add is no key of the scope
+        err = r.plan({"providers.s1.x.questions.deliverable.api_key": KEY_B},
+                     status=422)["error"]
+        assert err["type"] == "unknown_key", err
+        err = r.plan({"providers.s1.x.questions": {"classify": {}, "judge": {}},
+                      "providers.s1.x.questions.packages.api_key": KEY_B},
+                     status=422)["error"]
+        assert err["type"] == "unknown_key", err
+        # a builtin provider sends no key, whatever question it adds
+        err = r.plan({"providers.own.questions": {"memory_gate": {}, "judge": {}},
+                      "providers.own.questions.judge.api_key": KEY_B}, status=422)["error"]
+        assert err["type"] == "unknown_key", err
+        blob = json.dumps(r.answers, default=str) + json.dumps(r.audit_rows(), default=str)
+        assert KEY_Q not in blob and KEY_B not in blob
+    finally:
+        r.close()
+    return "a question and its key in one change set; other keys unknown"
 
 
 # ---------------------------------------------------------------------------- 8 no key
