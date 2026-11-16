@@ -287,6 +287,11 @@
       "message": "{node} does not need that fix now.",
       "fix": "Check again, then use a button the health page shows."
     },
+    "job_not_found": {
+      "status": 404,
+      "message": "{node} has no job {job} any more.",
+      "fix": "A newer job took its place, or the host started again: check again to see how things stand."
+    },
     "too_many_fixes": {
       "status": 429,
       "message": "{node} had too many fixes in the last minute.",

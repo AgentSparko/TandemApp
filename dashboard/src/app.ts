@@ -35,6 +35,7 @@ import type { Summary, LiveStatus } from './api/types';
 import { duration, shortHash } from './lib/format';
 import { modeWord } from './lib/supervisor';
 import { poll, type Poller } from './lib/poll';
+import { watchHealthBadge, type HealthBadge } from './lib/menu-badge';
 import { fixHash, navigate, onRoute, parseHash, type Route } from './lib/router';
 import { currentTheme, toggleTheme, watchSystemTheme, type Theme } from './lib/theme';
 import { registerWorker } from './lib/pwa';
@@ -115,6 +116,8 @@ const START_HASH = location.hash;
 export class QseApp extends LightElement {
   /** OPS-234: the controller moved to another host: the banner points there */
   @state() private movedTo: ControllerView['moved_to'] = null;
+  /** SRV-835: the Health entry's badge (the controller's last state, nothing checked) */
+  @state() private healthBadge: HealthBadge | null = null;
   private landed = false;
   /** a 401 came back: the server has an admin password set (never while none is) */
   @state() private refused = false;
@@ -527,6 +530,7 @@ export class QseApp extends LightElement {
         }
       });
       this.unsub.push(watchAlerts());
+      this.unsub.push(watchHealthBadge((b) => (this.healthBadge = b)));
     }
   }
   /** OPS-131: a page the worker served from its cache (the proxy answered 502, 503 or 504) says the
@@ -706,10 +710,11 @@ export class QseApp extends LightElement {
     const off = this.off(it.id);
     const on = section === it.id;
     const alerts = it.id === 'events' && this.fleet ? readout(this.fleet).alerts : 0;
+    const hb = it.id === 'health' ? this.healthBadge : null;
     const extra =
       cls === 'strip-i'
-        ? html`${alerts ? html`<i class="strip-dot" aria-hidden="true"></i>` : nothing}${it.id === 'sparks' && this.fleet ? html`<i class="strip-nodes" aria-hidden="true">${sparksOf(this.fleet.nodes).map((n) => html`<b style="--c:${nodeColour(n.colour)}"></b>`)}</i>` : nothing}`
-        : html`<span class="nav-label">${it.label}</span>${it.id === 'chat' ? BETA : nothing}${alerts && cls === 'nav-i' ? html`<span class="nav-badge warn-ink num">${alerts}</span>` : nothing}`;
+        ? html`${alerts || hb ? html`<i class="strip-dot" aria-hidden="true"></i>` : nothing}${it.id === 'sparks' && this.fleet ? html`<i class="strip-nodes" aria-hidden="true">${sparksOf(this.fleet.nodes).map((n) => html`<b style="--c:${nodeColour(n.colour)}"></b>`)}</i>` : nothing}`
+        : html`<span class="nav-label">${it.label}</span>${it.id === 'chat' ? BETA : nothing}${alerts && cls === 'nav-i' ? html`<span class="nav-badge warn-ink num">${alerts}</span>` : nothing}${hb && cls === 'nav-i' ? html`<span class="nav-badge ${hb.tone}-ink num" title=${hb.label} data-health-badge=${hb.tone}>${hb.n}</span>` : nothing}`;
     const href = this.href(it.id);
     return html`<a class="${cls} ${on ? 'is-on' : ''} ${off ? 'is-off' : ''}" href=${href} data-section=${it.id} aria-disabled=${off ? 'true' : nothing} title=${off ? S.setupModeTab : cls === 'strip-i' ? it.label : nothing} aria-label=${cls === 'strip-i' ? it.label : nothing} aria-current=${on ? 'page' : nothing} @click=${(e: Event) => cls === 'more-item' && !off && this.goMore(e, href as string)}>${icon(it.id)}${extra}</a>`;
   }

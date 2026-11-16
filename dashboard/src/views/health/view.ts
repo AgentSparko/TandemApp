@@ -268,7 +268,7 @@ export function dialogView(d: DialogState | null, on: HealthHandlers, signIn: Te
     body = html`${d.note ? note(d.note, 0, null) : nothing}
       <footer class="act-foot"><button type="button" class="btn btn-primary" data-act="dlg-close" @click=${on.close}>Close</button></footer>`;
   else if (d.phase === 'plan' || d.phase === 'applying')
-    body = html`${p
+    body = html`${d.planRef ? html`<p class="small" data-plan-ref=${d.refSource ?? 'asked'}>Release <b class="num">${d.planRef}</b>${d.refSource === 'default' ? ', the one this TandemApp is set to (TANDEM_ENGINE_REF)' : d.defaultRef ? `; this TandemApp is set to ${d.defaultRef}` : ''}.</p>` : nothing}${p
         ? html`<dl class="hl-plan" data-plan>
               ${p.from || p.to ? html`<div><dt>From</dt><dd>${side(p.from)}</dd></div><div><dt>To</dt><dd>${side(p.to)}</dd></div>` : nothing}
               ${p.venv ? html`<div><dt>Python environment</dt><dd>${p.venv === 'synced' ? 'installed again for the new release' : 'kept as it is'}</dd></div>` : nothing}

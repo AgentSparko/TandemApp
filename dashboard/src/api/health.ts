@@ -8,6 +8,10 @@
 //   GET  /v1/fleet/health/{id}[?fresh=1]   one of them (`controller`: this TandemApp)
 //   POST /v1/fleet/health/{id}/fix         {action, ref?, confirm?, when?}: one fix, then that
 //                                          target checked again
+//   GET  /v1/fleet/health/{id}/jobs/{job}  a fix's job read again, until it ends (404
+//                                          job_not_found once a newer job took its place)
+//   GET  /v1/fleet/health?view=state       the menu's badge: the last state and the counts,
+//                                          nothing checked
 //
 // A finding is a code of the engine codes table with its severity, one sentence, its fix, the
 // facts it names and the action its button runs. A refusal of these routes has the shape of the
@@ -190,8 +194,11 @@ export interface FixResult {
   rotated?: boolean;
   stored?: boolean | null;
   hint?: Partial<TokenHint> | string | null;
-  /** Upgrade: the release asked for and its plan */
+  /** Upgrade: the release, whether it was asked for or is this TandemApp's default, the default
+   *  (TANDEM_ENGINE_REF, null when unset), and its plan */
   ref?: string;
+  ref_source?: 'asked' | 'default';
+  default_ref?: string | null;
   plan?: UpgradePlan | null;
 }
 
@@ -223,10 +230,31 @@ export interface FixBody {
   instance?: string;
 }
 
+/** A fix's job read again. */
+export interface HealthJob {
+  contract_version: string;
+  id: string;
+  job: FixJob;
+  ended: boolean;
+}
+
+/** The menu's badge: the kept answers' state, nothing checked; `unknown` before any check. */
+export interface HealthStateView {
+  contract_version: string;
+  state: HealthState | 'unknown';
+  counts: Record<Severity, number>;
+  targets: { total: number; checked: number };
+  pairings: number;
+  checked_at: number | null;
+  age_s: number | null;
+}
+
 export interface HealthApi {
   all(fresh?: boolean): Promise<HealthView>;
   target(id: string, fresh?: boolean): Promise<HealthTarget>;
   fix(id: string, body: FixBody): Promise<HealthFix>;
+  job(id: string, job: string): Promise<HealthJob>;
+  state(): Promise<HealthStateView>;
 }
 
 export const HEALTH_ROOT = '/v1/fleet/health';
@@ -245,6 +273,8 @@ export function healthApi(send: Send): HealthApi {
     all: (fresh) => call('GET', q(fresh)),
     target: (id, fresh) => call('GET', one(id) + q(fresh)),
     fix: (id, body) => call('POST', `${one(id)}/fix`, body),
+    job: (id, job) => call('GET', `${one(id)}/jobs/${encodeURIComponent(job)}`),
+    state: () => call('GET', '?view=state'),
   };
 }
 

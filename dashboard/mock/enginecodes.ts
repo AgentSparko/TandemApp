@@ -70,6 +70,7 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   plugin_tampered: [409, "The plugin {plugin} changed since its install: {detail}", "Install it again from its source; do not enable a plugin whose files changed under it."],
   plugin_untrusted: [409, "The plugin {plugin} is not trusted to run as it asks: {detail}", "Its trust page says what a grant takes: a trusted publisher key or its id typed."],
   not_offered: [409, "{node} does not need that fix now.", "Check again, then use a button the health page shows."],
+  job_not_found: [404, "{node} has no job {job} any more.", "A newer job took its place, or the host started again: check again to see how things stand."],
   too_many_fixes: [429, "{node} had too many fixes in the last minute.", "Wait {retry_after} seconds, then try again."],
 };
 
@@ -92,7 +93,7 @@ export type Facts = Partial<Pick<EngineFinding, Exclude<(typeof FACTS)[number], 
 const GENERIC: Record<string, string> = {
   tries_left: 'some', retry_after: '60', port: 'its port', address: 'the address', host: 'the engine host', user: 'the user', dir: "the engine's folder",
   detail: 'no reason given', expected: 'one', offered: 'another', pinned: 'another', model: 'asked for', node: 'This node',
-  state: 'starting', path: 'its folder', image: 'tandem-sandbox:1', free_gb: 'a few', need_gb: '5', backend: 'named', engine_api: 'another version', speaks: 'another', plugin: 'named',
+  state: 'starting', path: 'its folder', image: 'tandem-sandbox:1', free_gb: 'a few', need_gb: '5', backend: 'named', engine_api: 'another version', speaks: 'another', plugin: 'named', job: 'by that id',
 };
 
 const fill = (text: string, f: Record<string, unknown>): string => text.replace(/\{(\w+)\}/g, (_m, k: string) => (f[k] != null ? String(f[k]) : (GENERIC[k] ?? '?')));

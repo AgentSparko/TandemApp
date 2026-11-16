@@ -27,6 +27,9 @@ injected. The health service's clock is a test clock, so the cache and the limit
   4b the sandbox as chatd reports it: kubernetes ready (no sandbox_off), podman ready (the socket
      not probed), chat off, chat external, the runtime truly missing (sandbox_off)
                                                                   test_controller_sandbox_as_chatd_says
+  4c the state view (no check, the counts), a fix's job read again (a later failure; 404 once
+     replaced), the default release named in the upgrade's plan, the plugins' worst finding
+                                                                  test_state_view_chatd_job_and_worst_plugin
   5  the cache and the limits: a second read is cached with its age, fresh=1 within 3 s is
      limited, an action not offered is 409, six fixes a minute then 429 with retry_after, bad
      bodies 400
@@ -244,11 +247,47 @@ def test_engine_findings(tmp_path, monkeypatch):
         assert st == 200 and d["needs_confirm"] and not d["done"] and d["job"] is None, d
         confirm = d["result"]["plan"]["confirm"]
         assert d["result"]["plan"]["to"]["ref"] == "v0.16.0"
+        assert (d["result"]["ref"], d["result"]["ref_source"], d["result"]["default_ref"]) == \
+            ("v0.16.0", "asked", None), d["result"]
+        # the default release (TANDEM_ENGINE_REF) when the call names none, named in the plan
+        r.fleet.health().env = {"TANDEM_ENGINE_REF": "v0.16.1"}
+        st, d2 = fix(r, hid, "upgrade")
+        assert st == 200 and d2["needs_confirm"], d2
+        assert (d2["result"]["ref"], d2["result"]["ref_source"], d2["result"]["default_ref"]) == \
+            ("v0.16.1", "default", "v0.16.1"), d2["result"]
+        st, d2 = fix(r, hid, "upgrade", ref="v0.16.0")
+        assert (d2["result"]["ref_source"], d2["result"]["default_ref"]) == ("asked", "v0.16.1")
+        r.fleet.health().env = {}
+        clk.tick(61)                                     # past the fixes' minute
         st, d = fix(r, hid, "upgrade", ref="v0.16.0", confirm=confirm)
         assert st == 200 and d["job"]["kind"] == "upgrade" and d["job"]["when"]["mode"] == "idle", d
+        assert d["result"]["ref_source"] == "asked"
         assert ["upgrade", "apply", "--ref", "v0.16.0", "--confirm", confirm, "--when", "idle"] in \
             [c["tokens"] for c in r.calls()]
         assert [x for x in r.cfg.audit(50) if x["action"] == "upgrade"], "audited"
+        # the job read again: its later failure, from the host's status
+        jid = d["job"]["id"]
+        failed = dict(d["job"], state="failed", message="the engine did not answer after the "
+                                                        "upgrade; rolled back")
+        ftr.set_state(r.engine_dir, script={"status": {"exit": 0, "stdout": json.dumps(
+            dict(doc, job=failed))}})
+        n0 = len(r.calls())
+        st, j = req(r, "GET", f"/v1/fleet/health/{hid}/jobs/{jid}")
+        assert st == 200 and ok(j, "health-job.schema.json")["ended"] is True, j
+        assert j["job"]["id"] == jid and j["job"]["state"] == "failed" and \
+            "rolled back" in j["job"]["message"], j
+        st, j2 = req(r, "GET", f"/v1/fleet/health/{hid}/jobs/{jid}")
+        assert st == 200 and j2 == j and len(r.calls()) == n0 + 1, "within 3 s: the kept answer"
+        # another id within 3 s: answered from the same status, no second SSH call
+        st, e = req(r, "GET", f"/v1/fleet/health/{hid}/jobs/20261116T080000-abcdef")
+        assert st == 404 and e["error"]["code"] == "job_not_found" and len(r.calls()) == n0 + 1
+        clk.tick(4)
+        ftr.set_state(r.engine_dir, script={"status": {"exit": 0, "stdout": json.dumps(
+            dict(doc, job=dict(failed, id="20261116T090000-abcdef", state="waiting")))}})
+        st, e = req(r, "GET", f"/v1/fleet/health/{hid}/jobs/{jid}")
+        assert st == 404 and e["error"]["code"] == "job_not_found" and jid in e["error"]["message"]
+        st, e = req(r, "GET", f"/v1/fleet/health/{hid}/jobs/bad%20id")
+        assert st == 400 and e["error"]["code"] == "bad_request", e
         # another major: no button
         doc["engine_api"] = doc["engine"]["engine_api"] = "2.0"
         doc["version"] = "1.1"
@@ -655,6 +694,79 @@ def test_controller_sandbox_as_chatd_says(tmp_path, monkeypatch):
             r.close()
     return "kubernetes ready/unknown/failed, podman ready/no image/chatd says no, missing, " \
         "off, external"
+
+
+class FakePluginHost:
+    def __init__(self, probs):
+        self.probs = probs
+
+    def problems(self):
+        return list(self.probs)
+
+
+def test_state_view_chatd_job_and_worst_plugin(tmp_path, monkeypatch):
+    """SRV-835: the menu's state view checks nothing and counts the kept answers; chatd's
+    restart read again by its id, its later failure too; the plugins check names its worst."""
+    with Proxy(env={"QSE_CHAT_URL": "http://127.0.0.1:9"}) as px:
+        f = tf.fleet_on(px, tf.local_node(tf.fake_root()))
+        r = Rig(px, f, str(tmp_path), monkeypatch)
+        try:
+            h = f.health()
+            clk = Clock()
+            h.clock = clk
+            h.env = {"QSE_CHAT_URL": "http://127.0.0.1:9"}
+            st, sv = req(r, "GET", "/v1/fleet/health?view=state")
+            assert st == 200 and ok(sv, "health-state.schema.json")["state"] == "unknown", sv
+            assert sv["targets"] == {"total": 1, "checked": 0} and sv["checked_at"] is None
+            assert sv["counts"] == {"error": 0, "warning": 0, "info": 0}
+            v = health(r, "controller")
+            n = len(v["findings"])
+            st, sv = req(r, "GET", "/v1/fleet/health?view=state")
+            ok(sv, "health-state.schema.json")
+            assert sv["state"] == v["state"] == "warning" and sv["targets"]["checked"] == 1, sv
+            assert sum(sv["counts"].values()) == n and sv["counts"]["warning"] == 1, sv
+            clk.tick(100)                       # old answers still count; nothing is checked
+            st, sv2 = req(r, "GET", "/v1/fleet/health?view=state")
+            assert sv2["state"] == "warning" and sv2["age_s"] == 100.0, sv2
+            assert h._cache["controller"][0] == sv["checked_at"], "the state view checked nothing"
+            st, e = req(r, "GET", "/v1/fleet/health?view=other")
+            assert st == 400, e
+            # the plugins check names the worst of its findings, not the first
+            monkeypatch.setattr(px.svc, "plugin_host", FakePluginHost([
+                {"code": "plugin_failed", "plugin": "a", "detail": "it ended"},
+                {"code": "plugin_tampered", "plugin": "b", "detail": "a file changed"},
+                {"code": "plugin_untrusted", "plugin": "c", "detail": "not signed"}]),
+                raising=False)
+            v = health(r, "controller", clk)
+            row = next(c for c in v["checks"] if c["check"] == "plugins")
+            assert row == {"check": "plugins", "ok": False, "code": "plugin_tampered"}, row
+            assert v["state"] == "error"
+            monkeypatch.setattr(px.svc, "plugin_host", None, raising=False)
+            # chatd's restart, read again by its id: done, then a later failure
+            chat = FakeChat(str(tmp_path))
+            f.chat = chat
+            v = health(r, "controller", clk)
+            st, d = fix(r, "controller", "restart_chatd")
+            assert st == 200 and d["job"]["state"] == "done", d
+            jid = d["job"]["id"]
+            clk.tick(4)
+            st, j = req(r, "GET", f"/v1/fleet/health/controller/jobs/{jid}")
+            assert st == 200 and ok(j, "health-job.schema.json")["ended"], j
+            assert j["job"]["state"] == "done" and j["id"] == "controller"
+            chat.job.update(state="failed", rc=1, message="chatd ended at once")
+            clk.tick(4)
+            st, j = req(r, "GET", f"/v1/fleet/health/controller/jobs/{jid}")
+            assert st == 200 and j["job"]["state"] == "failed" and j["ended"], j
+            assert j["job"]["message"] == "chatd ended at once"
+            clk.tick(4)
+            st, e = req(r, "GET", "/v1/fleet/health/controller/jobs/chat-999")
+            assert st == 404 and e["error"]["code"] == "job_not_found", e
+            st, e = req(r, "GET", "/v1/fleet/health/nope/jobs/chat-1")
+            assert st == 404, e
+        finally:
+            r.close()
+    return "state view: unknown, counts, nothing checked; chatd job read, failed later; " \
+        "plugins worst"
 
 
 def tf_free_port() -> int:

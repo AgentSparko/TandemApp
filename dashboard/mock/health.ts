@@ -349,6 +349,8 @@ export class MockHealth {
   private fixes = new Map<string, number[]>();
   private fails = new Map<ActionId, string>();
   private seq = 0;
+  /** each target's latest fix job: it ends as `end` at `at` (the mock's clock), unless failed by hand */
+  private jobs = new Map<string, { job: Record<string, unknown>; at: number; end: string; message: string | null }>();
 
   constructor(
     private fleet: HealthHooks,
@@ -369,6 +371,13 @@ export class MockHealth {
     this.cache.clear();
     this.fixes.clear();
     this.fails.clear();
+    this.jobs.clear();
+  }
+
+  /** A fix's job that has not ended fails later, with the host's words (a test's or the control's). */
+  failJob(target: string, message: string): void {
+    const j = this.jobs.get(target);
+    if (j) Object.assign(j, { at: 0, end: 'failed', message });
   }
 
   /** A simulated engine host, to change one of its conditions. */
@@ -429,7 +438,10 @@ export class MockHealth {
     const sub = parts.slice(1).map((p) => decodeURIComponent(p));
     const fresh = ['1', 'true', 'yes'].includes(q.get('fresh') ?? '');
     try {
-      if (method === 'GET' && sub.length === 0) return { status: 200, body: this.all(fresh, now) };
+      const view = q.get('view');
+      if (method === 'GET' && sub.length === 0 && view !== null && view !== 'state') no('bad_request', {}, 'view is state, or none for everything');
+      if (method === 'GET' && sub.length === 0) return { status: 200, body: view === 'state' ? this.stateView(now) : this.all(fresh, now) };
+      if (method === 'GET' && sub.length === 3 && sub[1] === 'jobs') return { status: 200, body: this.readJob(sub[0], sub[2], now) };
       if (method === 'GET' && sub.length === 1) return { status: 200, body: { contract_version: CONTRACT, ...this.target(sub[0], now, { fresh }) } };
       if (method === 'POST' && sub.length === 2 && sub[1] === 'fix') return { status: 200, body: this.fix(sub[0], body, now) };
       return refusal('not_found', {}, null, 404);
@@ -478,6 +490,32 @@ export class MockHealth {
       contract_version: CONTRACT, checked_at: now, state: every.includes('error') ? 'error' : every.includes('warning') ? 'warning' : 'ok', setup: this.setup(now), controller: ctl, engines, pairings,
       actions: Object.fromEntries((Object.keys(HEALTH_ACTIONS) as ActionId[]).map((k) => [k, actionView(k)])),
     };
+  }
+
+  /** The menu's badge: the kept answers' state and counts; nothing is checked. */
+  private stateView(now: number): Record<string, unknown> {
+    const ids = this.rows(now).map((h) => h.id);
+    const kept = [...this.cache.entries()].filter(([k]) => k === CONTROLLER || ids.includes(k)).map(([, c]) => c);
+    const pairings = this.pairings(now);
+    const found = [...kept.flatMap((c) => c.view.findings), ...pairings.map((p) => p.finding)];
+    const count = (s: Severity) => found.filter((f) => f.severity === s).length;
+    const oldest = kept.length ? Math.min(...kept.map((c) => c.at)) : null;
+    return {
+      contract_version: CONTRACT, state: kept.length || pairings.length ? stateOf(found) : 'unknown', counts: { error: count('error'), warning: count('warning'), info: count('info') },
+      targets: { total: ids.length + 1, checked: kept.length }, pairings: pairings.length, checked_at: oldest, age_s: oldest === null ? null : Math.round((now - oldest) * 10) / 10,
+    };
+  }
+
+  /** A fix's job read again: the target's latest, as it stands on the clock. */
+  private readJob(id: string, jid: string, now: number): Record<string, unknown> {
+    const alias = id === CONTROLLER ? 'TandemApp' : this.row(id, now).alias;
+    const j = this.jobs.get(id);
+    if (!j || j.job.id !== jid) no('job_not_found', { node: alias, job: jid }, null, 404);
+    const rec = j as NonNullable<typeof j>;
+    const live = ['waiting', 'acting', 'running'].includes(String(rec.job.state));
+    if (live && now >= rec.at) Object.assign(rec.job, { state: rec.end, phase: 'end', ended_at: new Date(now * 1000).toISOString(), ...(rec.message ? { message: rec.message } : {}) });
+    const ended = !['waiting', 'acting', 'running'].includes(String(rec.job.state));
+    return { contract_version: CONTRACT, id, job: { ...rec.job }, ended };
   }
 
   /** One target's view: the kept one while it is young (CACHE_S; MIN_GAP_S with `fresh`), else
@@ -632,7 +670,9 @@ export class MockHealth {
     for (const b of c.backendsDown) found.push(healthFinding('backend_down', { backend: b.label }, b.error.slice(0, 200)));
     checks.push(check('backends', !c.backendsDown.length, c.backendsDown.length ? 'backend_down' : null));
     for (const p of c.plugins) found.push(healthFinding(p.code, { plugin: p.plugin }, p.detail.slice(0, 300)));
-    checks.push(check('plugins', !c.plugins.length, c.plugins[0]?.code ?? null));
+    const rank = (code: string) => (['error', 'warning', 'info'] as Severity[]).indexOf(HEALTH_FINDINGS[code]?.[0] ?? 'error');
+    const worst = [...c.plugins].sort((a, b) => rank(a.code) - rank(b.code))[0];
+    checks.push(check('plugins', !c.plugins.length, worst?.code ?? null));
     const setup = this.setup(now);
     if (setup.needs_setup) found.push(healthFinding('no_engine'));
     checks.push(check('engines', !setup.needs_setup, setup.needs_setup ? 'no_engine' : null));
@@ -703,6 +743,12 @@ export class MockHealth {
         out.result = { rotated: true, stored: true, hint: { set: true, last4: hex(`tok:${h.id}:${h.tokenSeq}`, 4), sha256_6: hex(`sha:${h.id}:${h.tokenSeq}`, 6), rotated_at: Math.floor(now) } };
       } else Object.assign(out, this.upgrade(h, b, when as 'now' | 'idle', now));
     }
+    if (out.job && typeof out.job === 'object') {
+      const j = out.job as Record<string, unknown>;
+      const h = row as HostSim | null;
+      const at = action === 'start' ? (h?.readyAt ?? now) : action === 'upgrade' ? (h?.upgrade?.at ?? now) : now;
+      this.jobs.set(id, { job: { ...j }, at, end: 'done', message: null });
+    }
     const after = this.target(id, now, { force: true });
     const still = after.findings.filter(isFor);
     const instances = forKeys.map(([code, instance]) => ({ code, instance, cleared: !still.some((f) => f.code === code && instanceOf(f) === instance) }));
@@ -727,8 +773,9 @@ export class MockHealth {
   }
 
   private upgrade(h: HostSim, b: Record<string, unknown>, when: 'now' | 'idle', now: number): Record<string, unknown> {
-    const ref = b.ref ?? this.engineRef;
+    const ref = b.ref || this.engineRef;
     if (typeof ref !== 'string' || !REF_RE.test(ref)) no('bad_request', {}, 'ref is the engine release to upgrade to (a tag such as v0.16.0), or set TANDEM_ENGINE_REF');
+    const named = { ref, ref_source: b.ref ? 'asked' : 'default', default_ref: this.engineRef };
     const to = (ref as string).replace(/^v/, '');
     const confirm = hex(`plan:${h.id}:${ref}`, 16);
     const plan: UpgradePlan & Record<string, unknown> = {
@@ -738,11 +785,11 @@ export class MockHealth {
       steps: ['Fetch the release', 'Install it beside the one that runs', 'Restart the engine with it', 'Check that it answers'], rollback: 'the release that runs now',
       warnings: h.model ? [`${h.model} is loaded again after the restart: some minutes without answers`] : [], confirm,
     };
-    if (b.confirm == null) return { done: false, needs_confirm: true, result: { ref, plan } };
+    if (b.confirm == null) return { done: false, needs_confirm: true, result: { ...named, plan } };
     if (typeof b.confirm !== 'string' || !CONFIRM_RE.test(b.confirm)) no('bad_request', {}, 'confirm is the plan’s confirm token');
     if (b.confirm !== confirm) no('ctl_failed', { host: h.address }, 'the confirm token is not this plan’s');
     h.upgrade = { at: now + (when === 'idle' ? UPGRADE_IDLE_S : UPGRADE_S), version: to };
-    return { job: { ...this.job('upgrade', now, when === 'idle' ? 'waiting' : 'acting', when), upgrade: { source: 'ref', ref } }, result: { ref, plan } };
+    return { job: { ...this.job('upgrade', now, when === 'idle' ? 'waiting' : 'acting', when), upgrade: { source: 'ref', ref } }, result: { ...named, plan } };
   }
 
   private guide(action: ActionId, row: HostSim | null, view: HealthTarget): HealthGuide {

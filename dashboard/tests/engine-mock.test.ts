@@ -36,8 +36,8 @@ async function pairDesk(r: Rig): Promise<PairedView> {
 describe('the codes', () => {
   const contract = JSON.parse(readFileSync(join(CONTRACTS, 'fleet-v1', 'engine-codes.json'), 'utf8')) as { version: string; codes: Record<string, { status: number; message: string; fix: string }> };
   it('the mock’s table is the contract’s, code by code', () => {
-    // 58 since the health page's codes (SRV-835): an engine host's state, the controller's own (chatd's sandboxes included), the plugin host, a fix refused
-    expect(Object.keys(ENGINE_CODES)).toHaveLength(58);
+    // 59 since the health page's codes (SRV-835): an engine host's state, the controller's own (chatd's sandboxes included), the plugin host, a fix refused, a job replaced
+    expect(Object.keys(ENGINE_CODES)).toHaveLength(59);
     expect(contract.version.split('.')[0]).toBe(ENGINE_CODES_VERSION.split('.')[0]);
     for (const [code, [status, message, fix]] of Object.entries(ENGINE_CODES)) expect(contract.codes[code], code).toEqual({ status, message, fix });
   });

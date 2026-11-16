@@ -375,6 +375,8 @@ export interface Note {
   codes: string[];
   /** the page's clock, ms */
   at: number;
+  /** the job a working fix started: the page reads it again until it ends */
+  job?: string;
 }
 
 /** a token's hint in words: never the token */
@@ -417,9 +419,17 @@ export function noteOf(fix: HealthFix, action: HealthAction, was: HealthFinding,
           : action.id === 'restart_chatd'
             ? 'chatd is still restarting.'
             : `${action.label} is under way.`;
-    return { ...base, kind: 'working', text: `${text} This page checks again by itself.`, more: job };
+    return { ...base, kind: 'working', text: `${text} This page checks again by itself.`, more: job, ...(fix.job?.id ? { job: fix.job.id } : {}) };
   }
   return { ...base, kind: 'still', text: action.id === 'retry' ? 'Checked again: still the same.' : `${action.label} did not fix it. What it says now is above.`, more: job };
+}
+
+/** A working note after its job was read again: still under way (the job's line), or ended badly
+ *  (the fix failed, in the host's words); null once it ended well, when the target is read again. */
+export function jobNote(n: Note, j: FixJob, now: number): Note | null {
+  if (jobLive(j)) return { ...n, more: jobWords(j) };
+  if (j.state === 'done') return null;
+  return { ...n, kind: 'still', text: `${n.label} did not finish.`, more: jobWords(j), job: undefined, at: now };
 }
 
 /** A refusal of a fix as a note: the controller's sentence, its fix below. */

@@ -6,9 +6,15 @@ words, and the fixes TandemApp can run itself.
 
     GET  /v1/fleet/health[?fresh=1]                      the controller, every engine host and
                                                          the pairing codes refused lately
+    GET  /v1/fleet/health?view=state                     the last state and the counts of the
+                                                         kept answers, nothing checked (the
+                                                         menu's badge)
     GET  /v1/fleet/health/{id}[?fresh=1]                 one of them (`controller`: this one)
     POST /v1/fleet/health/{id}/fix {action, ref?, confirm?, when?, instance?}
                                                          one fix, then that target checked again
+    GET  /v1/fleet/health/{id}/jobs/{job}                a fix's job read again: the engine
+                                                         host's latest job (its status) or
+                                                         chatd's restart, while it is that job
 
 A FINDING is one code of proxy/enginecodes.py (contracts/fleet-v1/engine-codes.json, `findings`
 there gives each its severity and action):
@@ -71,12 +77,21 @@ THE FIXES. `retry` checks again (and probes the down backends); `start`, `rotate
 `add_engine` change nothing and answer how (`guide`). An action is run only when the target's
 current findings offer it (`retry` always), else 409 not_offered. `upgrade` without `confirm`
 answers the engine's plan (`needs_confirm` true); with the plan's `confirm` it applies, idle-gated
-unless `when` is now. Each fix that changes something is audited. A fix answers for each
+unless `when` is now. Its `result` names the release (`ref`), whether it was asked for or is this
+controller's default (`ref_source`: asked or default) and that default (`default_ref`,
+TANDEM_ENGINE_REF, null when unset). A fix that started a job answers it in `job`; GET
+.../jobs/{job} reads it again until it ends (done, failed with its message, cancelled), 404
+job_not_found once a newer job took its place; one read a target every MIN_GAP_S, the rest the
+kept answer. Each fix that changes something is audited. A fix answers for each
 INSTANCE it was for, a finding of its code and, where a target has several of one code, the
 backend or plugin it names (`instances`: each with `cleared`); `instance` in the body narrows the
 fix's `cleared` and `finding` to that one (two backends down, one back: that one cleared). The
 rights (proxy/app.py) are ACTIONS' `route`: a read's for retry and the guides, the Setup Guide's
 for Start, pairing's for the token and an upgrade, the conductor's writes for chatd.
+
+THE STATE VIEW (`?view=state`) runs no check: the worst state of the kept answers and the refused
+pairing codes, the findings counted by severity, how many targets have an answer and when the
+oldest was made; `unknown` before any target was checked.
 
 LIMITS. A target's result is kept CACHE_S and answered `cached` with its `age_s`; `fresh=1` checks
 again unless the last check is younger than MIN_GAP_S (then `limited`). One check of a target runs
@@ -120,6 +135,7 @@ DISK_WARN_GB = 5.0
 DISK_ERROR_GB = 1.0
 CHATD_WAIT_S = 45.0
 SEVERITIES = ("error", "warning", "info")
+JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 
 #: action -> (the button's label, it changes something, it needs a confirm, the rights it needs)
 ACTIONS: dict[str, tuple[str, bool, bool, str]] = {
@@ -373,6 +389,7 @@ class Health:
         self._cache: dict[str, tuple[float, dict]] = {}
         self._running: dict[str, threading.RLock] = {}
         self._fixes: dict[str, collections.deque] = {}
+        self._job_reads: dict[str, tuple[float, dict | None]] = {}
         self._lock = threading.Lock()
 
     @property
@@ -403,9 +420,14 @@ class Health:
         sub = parts[1:]
         fresh = str(q.get("fresh") or "") in ("1", "true", "yes")
         if method == "GET" and sub == []:
-            return self.all(fresh=fresh)
+            v = q.get("view")
+            if v is not None and v != "state":
+                raise ERR("bad_request", "view is state, or none for everything")
+            return self.state_view() if v == "state" else self.all(fresh=fresh)
         if method == "GET" and len(sub) == 1:
             return {"contract_version": CONTRACT, **self.target(sub[0], fresh=fresh)}
+        if method == "GET" and len(sub) == 3 and sub[1] == "jobs":
+            return self.job(sub[0], sub[2])
         if method == "POST" and len(sub) == 2 and sub[1] == "fix":
             return self.fix(sub[0], body, who)
         raise ERR("not_found", status=404)
@@ -431,6 +453,21 @@ class Health:
                 "setup": setup_state(self.fleet), "controller": out[CONTROLLER],
                 "engines": engines, "pairings": pairings,
                 "actions": {k: action_view(k) for k in ACTIONS}}
+
+    def state_view(self) -> dict:
+        """The kept answers' state and counts; nothing is checked (the menu's badge)."""
+        ids = [r["id"] for r in self.onboarding._ssh_rows()]
+        with self._lock:
+            kept = [(c[0], c[1]) for k, c in self._cache.items() if k == CONTROLLER or k in ids]
+        pairings = self.pairings()
+        found = [f for _, v in kept for f in v["findings"]] + [p["finding"] for p in pairings]
+        counts = {s: sum(1 for f in found if f["severity"] == s) for s in SEVERITIES}
+        state = state_of(found) if kept or pairings else "unknown"
+        return {"contract_version": CONTRACT, "state": state, "counts": counts,
+                "targets": {"total": len(ids) + 1, "checked": len(kept)},
+                "pairings": len(pairings),
+                "checked_at": min((t for t, _ in kept), default=None),
+                "age_s": (round(self.clock() - min(t for t, _ in kept), 1) if kept else None)}
 
     def pairings(self) -> list[dict]:
         return [{"address": r["address"], "port": r["port"], "at": r["at"],
@@ -711,7 +748,9 @@ class Health:
         for pr in probs:
             found.append(finding(pr["code"], (pr.get("detail") or "")[:300] or None,
                                  plugin=pr["plugin"]))
-        checks.append(_check("plugins", not probs, probs[0]["code"] if probs else None))
+        worst = min(probs, key=lambda pr: SEVERITIES.index(
+            FINDINGS.get(pr["code"], ("error", None))[0])) if probs else None
+        checks.append(_check("plugins", not probs, worst["code"] if worst else None))
         # the first run
         setup = setup_state(self.fleet)
         if setup["needs_setup"]:
@@ -871,21 +910,63 @@ class Health:
     def _audit(self, who: str, action: str, row: dict, text: str, **detail) -> None:
         self.cfg.log_audit(who, action, "node", row["id"], detail={"text": text, **detail})
 
+    def default_ref(self) -> str | None:
+        """The release an upgrade goes to when the call names none: TANDEM_ENGINE_REF."""
+        ref = (self.env.get("TANDEM_ENGINE_REF") or "").strip()
+        return ref if ref and enginectl.REF_RE.match(ref) else None
+
     def _upgrade(self, row: dict, b: dict, when: str, who: str) -> dict:
-        ref = b.get("ref") or self.env.get("TANDEM_ENGINE_REF") or None
+        default = self.default_ref()
+        asked = b.get("ref") or None
+        ref = asked or default
         if ref is None or not isinstance(ref, str) or not enginectl.REF_RE.match(ref):
             raise ERR("bad_request", "ref is the engine release to upgrade to (a tag such as "
                                      "v0.16.0), or set TANDEM_ENGINE_REF")
+        named = {"ref": ref, "ref_source": "asked" if asked else "default", "default_ref": default}
         confirm = b.get("confirm")
         if confirm is None:
             doc = self._ctl_call(row, lambda c: c.upgrade_plan(ref=ref))
-            return {"done": False, "needs_confirm": True, "result": {"ref": ref,
+            return {"done": False, "needs_confirm": True, "result": {**named,
                                                                      "plan": doc.get("plan")}}
         if not isinstance(confirm, str) or not enginectl.CONFIRM_RE.match(confirm):
             raise ERR("bad_request", "confirm is the plan's confirm token")
         doc = self._ctl_call(row, lambda c: c.upgrade_apply(confirm=confirm, ref=ref, when=when))
         self._audit(who, "upgrade", row, f"engine upgrade to {ref} ({when})", ref=ref, when=when)
-        return {"job": doc.get("job"), "result": {"ref": ref, "plan": doc.get("upgrade")}}
+        return {"job": doc.get("job"), "result": {**named, "plan": doc.get("upgrade")}}
+
+    # ------------------------------------------------------------------ a fix's job, read again
+    def job(self, tid: str, jid: str) -> dict:
+        """A fix's job as it stands now: the engine host's latest job (`tandem remote status`)
+        or chatd's restart, while it is the one asked for (404 job_not_found else). One status a
+        target every MIN_GAP_S, whatever id is asked; within it the kept one."""
+        if not JOB_ID_RE.match(jid or ""):
+            raise ERR("bad_request", "job is the id a fix answered")
+        row = None if tid == CONTROLLER else self.onboarding._row(tid)
+        alias = "TandemApp" if row is None else row["alias"]
+        if row is None:
+            chat = self.chat
+            cur = chat.job if chat is not None else None
+            cur = {k: cur.get(k) for k in ("id", "action", "state", "started_at", "ended_at",
+                                           "rc", "message")} if isinstance(cur, dict) else None
+        else:
+            # the host's latest job, whatever id is asked: one status over SSH a target every
+            # MIN_GAP_S, so reads of other ids cannot drive more calls
+            with self._busy(tid):
+                now = self.clock()
+                with self._lock:
+                    kept = self._job_reads.get(tid)
+                if kept is not None and now - kept[0] < MIN_GAP_S:
+                    cur = kept[1]
+                else:
+                    status = self._ctl_call(row, lambda c: c.status())
+                    cur = status.get("job") if isinstance(status.get("job"), dict) else None
+                    with self._lock:
+                        self._job_reads[tid] = (now, cur)
+        job = cur if cur is not None and cur.get("id") == jid else None
+        if job is None:
+            raise ERR("job_not_found", node=alias, job=jid)
+        return {"contract_version": CONTRACT, "id": tid, "job": job,
+                "ended": job.get("state") not in ("waiting", "acting", "running")}
 
     def _restart_chatd(self, who: str) -> dict:
         chat = self.chat

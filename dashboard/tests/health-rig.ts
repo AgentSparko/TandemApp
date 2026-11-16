@@ -59,7 +59,8 @@ export function rig(scenario: HealthScenario = 'mixed', o: { fleet?: FleetScenar
     if (r.locked.has(needs === 'dashboard' ? 'read' : needs)) return { status: 401, body: { error: { type: 'unauthorized', message: 'a session or an admin token is required' } } };
     const a = fleet.handle(method, p, new URLSearchParams(qs), body ?? null, now);
     seen.push(JSON.stringify(a.body));
-    if (a.status === 200) valid(fix ? 'health-fix' : p === '/v1/fleet/health' ? 'health' : 'health-target', a.body);
+    const kind = fix ? 'health-fix' : p.includes('/jobs/') ? 'health-job' : p !== '/v1/fleet/health' ? 'health-target' : qs.includes('view=state') ? 'health-state' : 'health';
+    if (a.status === 200) valid(kind, a.body);
     else valid('engine-error', a.body);
     // a copy, as JSON over the wire is: the page can never reach into the mock's state
     return { status: a.status, body: JSON.parse(JSON.stringify(a.body)) };

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-job.schema.json",
+  "title": "GET /v1/fleet/health/{id}/jobs/{job}: a fix's job read again, the engine host's latest job (engine-ctl-v1 job, from its status) or chatd's restart, while it is the one asked for (404 job_not_found once a newer one took its place); ended once it is done, failed, cancelled or lost",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string"
+    },
+    "job": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "state"
+      ]
+    },
+    "ended": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "id",
+    "job",
+    "ended"
+  ],
+  "additionalProperties": false
+}

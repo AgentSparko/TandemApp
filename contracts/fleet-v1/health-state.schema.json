@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qwen38-spark-engine/contract/fleet-v1/health-state.schema.json",
+  "title": "GET /v1/fleet/health?view=state: the menu's badge, nothing checked: the worst state of the kept answers and the pairing codes refused lately (unknown before any target was checked), the findings counted by severity, how many targets there are and how many have an answer, and when the oldest answer was made",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "state": {
+      "enum": [
+        "ok",
+        "warning",
+        "error",
+        "unknown"
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "error",
+        "warning",
+        "info"
+      ],
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checked": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total",
+        "checked"
+      ],
+      "additionalProperties": false
+    },
+    "pairings": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "checked_at": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "age_s": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "required": [
+    "contract_version",
+    "state",
+    "counts",
+    "targets",
+    "pairings",
+    "checked_at",
+    "age_s"
+  ],
+  "additionalProperties": false
+}

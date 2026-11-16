@@ -10,7 +10,7 @@
 import { EngineError, SignInNeeded, type EngineFinding } from '../api/engines';
 import { CONTROLLER, type ActionId, type FixBody, type HealthAction, type HealthApi, type HealthFix, type HealthGuide, type HealthTarget, type HealthView, type UpgradePlan } from '../api/health';
 import { SIGN_IN, findingOf } from './engine-words';
-import { actionOf, cardsOf, instanceOf, isGuide, merged, noteOf, refusalNote, withTarget, type Card, type Note, type Row } from './health';
+import { actionOf, cardsOf, instanceOf, isGuide, jobNote, merged, noteOf, refusalNote, withTarget, type Card, type Note, type Row } from './health';
 
 /** `fresh=1` is taken once every 3 s a target */
 export const REFRESH_GAP_MS = 3000;
@@ -43,8 +43,10 @@ export interface DialogState {
   ref: string;
   when: 'idle' | 'now';
   plan: UpgradePlan | null;
-  /** the release the plan is for */
+  /** the release the plan is for, whether it was typed or is this TandemApp's default, and that default */
   planRef: string | null;
+  refSource: 'asked' | 'default' | null;
+  defaultRef: string | null;
   error: EngineFinding | null;
   note: Note | null;
 }
@@ -225,7 +227,7 @@ export class HealthFlow {
     if (!a || id === null || this.busy[id] || this.waitLeft(id) > 0) return;
     if (isGuide(a)) return this.guide(row, a);
     if (a.confirm) {
-      this.dialog = { row, action: a, title, phase: 'ask', ref: '', when: 'idle', plan: null, planRef: null, error: null, note: null };
+      this.dialog = { row, action: a, title, phase: 'ask', ref: '', when: 'idle', plan: null, planRef: null, refSource: null, defaultRef: null, error: null, note: null };
       this.changed();
       return;
     }
@@ -317,7 +319,7 @@ export class HealthFlow {
     this.dialog = { ...d, phase: 'planning', error: null };
     const fix = await this.dialogCall(d, { action: d.action.id, ...(ref ? { ref } : {}) }, 'ask');
     if (!fix || !this.dialog) return;
-    if (fix.needs_confirm) this.dialog = { ...this.dialog, phase: 'plan', plan: fix.result?.plan ?? null, planRef: fix.result?.ref ?? (ref || null) };
+    if (fix.needs_confirm) this.dialog = { ...this.dialog, phase: 'plan', plan: fix.result?.plan ?? null, planRef: fix.result?.ref ?? (ref || null), refSource: fix.result?.ref_source ?? null, defaultRef: fix.result?.default_ref ?? null };
     else this.dialog = { ...this.dialog, phase: 'done', note: this.left(d.row, d.action, fix) };
     this.changed();
   }
@@ -356,7 +358,7 @@ export class HealthFlow {
   /** From the plan back to the question (another release, another time). */
   dialogBack(): void {
     if (this.dialog?.phase !== 'plan') return;
-    this.dialog = { ...this.dialog, phase: 'ask', plan: null, planRef: null, error: null };
+    this.dialog = { ...this.dialog, phase: 'ask', plan: null, planRef: null, refSource: null, error: null };
     this.changed();
   }
 
@@ -382,9 +384,37 @@ export class HealthFlow {
       if (now >= f.until || !this.unsettled(id)) delete this.follows[id];
       else if (now >= f.next && !this.busy[id] && !this.checking.has(id)) {
         f.next = now + FOLLOW_MS;
-        void this.recheck(id, true);
+        const k = Object.keys(this.notes).find((x) => this.notes[x].kind === 'working' && this.notes[x].target === id && this.notes[x].job);
+        void (k ? this.followJob(id, k) : this.recheck(id, true));
       }
     }
+  }
+
+  /** A working fix's job read again: its line while it runs; a failure in its own words; once it
+   *  ended well, a newer job took its place or the read failed, the target is checked again. */
+  private async followJob(id: string, key: string): Promise<void> {
+    const n = this.notes[key];
+    if (!n?.job) return;
+    this.checking.add(id);
+    let again = false;
+    try {
+      const got = await this.api.job(id, n.job);
+      const next = jobNote(n, got.job, this.now());
+      if (next === null) again = true;
+      else {
+        this.notes[key] = next;
+        if (next.kind === 'still') delete this.follows[id];
+      }
+    } catch (e) {
+      // a newer job took its place: the target says how things stand; any other failure reads
+      // the target too, so the card never stays on a job nobody reads
+      if (e instanceof EngineError && e.status === 404) this.notes[key] = { ...n, job: undefined };
+      again = true;
+    } finally {
+      this.checking.delete(id);
+      this.changed();
+    }
+    if (again) await this.recheck(id, true);
   }
 
   /** a target that still changes: an engine that loads, a fix whose job has not ended */

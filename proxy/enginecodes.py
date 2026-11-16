@@ -179,6 +179,9 @@ CATALOG: dict[str, tuple[int, str, str]] = {
                          "id typed."),
     "not_offered": (409, "{node} does not need that fix now.",
                     "Check again, then use a button the health page shows."),
+    "job_not_found": (404, "{node} has no job {job} any more.",
+                      "A newer job took its place, or the host started again: check again to see "
+                      "how things stand."),
     "too_many_fixes": (429, "{node} had too many fixes in the last minute.",
                        "Wait {retry_after} seconds, then try again."),
 }
@@ -196,7 +199,7 @@ _GENERIC = {"tries_left": "some", "retry_after": "60", "port": "its port", "addr
             "pinned": "another", "model": "asked for", "node": "This node",
             "state": "starting", "path": "its folder", "image": "tandem-sandbox:1", "free_gb": "a few", "need_gb": "5",
             "backend": "named", "engine_api": "another version", "speaks": "another",
-            "plugin": "named"}
+            "plugin": "named", "job": "by that id"}
 
 
 class _Facts(dict):
