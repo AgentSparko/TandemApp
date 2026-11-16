@@ -28,6 +28,12 @@
     "type": "string"
    }
   },
+  "grant_keys": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
   "needs_confirm": {
    "type": "boolean"
   },
@@ -42,6 +48,12 @@
     "string",
     "null"
    ]
+  },
+  "confirm_grant": {
+   "type": [
+    "string",
+    "null"
+   ]
   }
  },
  "required": [
@@ -52,11 +64,13 @@
   "restart",
   "restart_needed",
   "fingerprint_keys",
+  "grant_keys",
   "needs_confirm",
   "confirm",
-  "confirm_fingerprint"
+  "confirm_fingerprint",
+  "confirm_grant"
  ],
  "additionalProperties": false,
- "description": "a change set's plan: nothing written; one confirm for all parts, a second one when a key feeds an engine's disk-cache fingerprint",
+ "description": "a change set's plan: nothing written; one confirm for all parts, a second one when a key feeds an engine's disk-cache fingerprint, and one when a key grants a hook the full payload to a destination outside the LAN (grant_keys, confirm_grant)",
  "$id": "settings-v1/plan"
 }

@@ -18,6 +18,11 @@ answer is held to contracts/settings-v1.
   3  The app scope switches the conductor on live (its /v1/conductor/* answers at once), the
      conductor scope then edits the running conductor's documents, which it reads at the next
      request; off again through the app scope           test_app_and_conductor_live
+  4  SRV-845 x SEC-16: the hooks scope is the registry's: a hook made on /v1/fleet/hooks has its
+     keys in /v1/settings/hooks; with no admin password a change from another machine applies,
+     but the full payload from there is 403 trust_required; from this machine it is planned with
+     its warning and granted, and the runner sees the change
+                                                        test_hooks_scope_and_pairing_rights
 
 CPU only. Run: python tests/test_settings_http.py
 """
@@ -240,6 +245,31 @@ def test_app_and_conductor_live():
         assert any(v["value"]["journal"]["retention_days"] == 11 for v in vals["values"]
                    if v["key"] == "settings")
     return "conductor on through the app scope, its document changed live, off again"
+
+
+
+# ---------------------------------------------------------------------------- 4 the hooks scope
+
+def test_hooks_scope_and_pairing_rights():
+    away = {"X-Forwarded-For": "203.0.113.50"}                    # not this machine
+    with Proxy({}) as px:                                          # no admin password
+        st, out = call(px, "POST", "/v1/fleet/hooks", {
+            "name": "Near", "id": "near", "endpoint": "http://192.168.1.20:9300/",
+            "role": "observer", "stages": ["request.finished"]})
+        assert st == 201, (st, out)
+        st, sch = call(px, "GET", "/v1/settings/hooks/schema", headers=away)
+        assert st == 200 and "hooks.near.payload" in {k["key"] for k in ok(sch, "schema")["keys"]}
+        _, res = apply(px, [{"scope": "hooks", "set": {"hooks.near.mode": "shadow"}}], away)
+        assert res["state"] == "applied" and px.svc.hooks.store.get("near")["mode"] == "shadow"
+        assert px.svc.hooks.hooks()[0]["mode"] == "shadow"
+        full = [{"scope": "hooks", "set": {"hooks.near.payload": "full"}}]
+        st, err = call(px, "POST", "/v1/settings/plan", {"changes": full}, away)
+        assert st == 403 and ok(err, "error")["error"]["type"] == "trust_required", (st, err)
+        p, res = apply(px, full)                                   # from this machine
+        assert any("full payload" in w for w in p["parts"][0]["warnings"]), p
+        g = px.svc.hooks.store.get("near")["grant"]
+        assert res["state"] == "applied" and g and g["lan"], (res, g)
+    return "the registry's keys; the full payload only with pairing's rights"
 
 
 if __name__ == "__main__":

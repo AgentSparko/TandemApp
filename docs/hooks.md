@@ -200,6 +200,8 @@ The answer holds the hook and, once, its `secret`. Then:
 
 The routes need the admin's rights. Granting `full`, moving a full hook to another endpoint and rotating a secret need pairing's rights (with no admin password set: from the controller's own machine).
 
+A hook's switches (enabled, mode, priority, scope, policy, timeout and payload level) are also keys of the settings interface's `hooks` scope (`hooks.<id>.<field>`, [settings](settings.md#hooks)). There a change is planned, versioned and can be restored with the other settings. The full payload keeps the same rules there: pairing's rights, and a second confirm (`confirm_grant`) for a destination outside the LAN.
+
 A builtin hook names its `target` and `options`, for example a guard that refuses one model for one user:
 
 ```json

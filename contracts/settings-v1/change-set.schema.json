@@ -57,6 +57,9 @@
   "confirm_fingerprint": {
    "type": "string"
   },
+  "confirm_grant": {
+   "type": "string"
+  },
   "when": {
    "type": "string"
   },
@@ -71,6 +74,6 @@
   "changes"
  ],
  "additionalProperties": false,
- "description": "the body of POST /v1/settings/plan and /apply: parts, at most one a scope and target; apply adds the plan's confirm (and confirm_fingerprint), and for engine parts when (now, idle, at=<ISO time>) and deadline_s",
+ "description": "the body of POST /v1/settings/plan and /apply: parts, at most one a scope and target; apply adds the plan's confirm (and confirm_fingerprint, confirm_grant), and for engine parts when (now, idle, at=<ISO time>) and deadline_s",
  "$id": "settings-v1/change-set"
 }

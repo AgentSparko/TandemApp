@@ -259,6 +259,12 @@
       "type": "string"
      }
     },
+    "grant_keys": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
     "warnings": {
      "type": "array",
      "items": {
@@ -276,6 +282,7 @@
     "restart",
     "restart_needed",
     "fingerprint_keys",
+    "grant_keys",
     "warnings"
    ],
    "additionalProperties": false

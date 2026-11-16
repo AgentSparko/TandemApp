@@ -12,7 +12,7 @@ The contract is [`contracts/settings-v1`](../contracts/settings-v1/README.md).
 | `backends` | `controller` | the config database: `backends.<id>.<field>`, `backends.<id>.key`, `routes`, `users.<id>.enabled` | none |
 | `conductor` | `controller` | this controller's conductor documents: `settings`, `router`, `roles`, `packages`, `monitor`, `residency`, `deciders`, `profiles.<name>` | hot |
 | `engine` | an engine host's id | the engine's managed overlay, through `tandem remote settings` over SSH | per key: hot or engine |
-| `hooks` | `controller` | the hook registry, through an adapter | none; an in-process hook needs an engine restart |
+| `hooks` | `controller` | the hook registry, through its adapter: `hooks.<id>.<field>` | none; an in-process hook needs an engine restart |
 
 They apply in this order. A change to the backends lands before a conductor document that may name one, and both land before an engine restart.
 
@@ -33,7 +33,7 @@ Every scope answers:
 GET  /v1/settings/{scope}/schema[?target=]      each key: type, default, restart class, fingerprint flag, secret, writable
 GET  /v1/settings/{scope}[?target=]             each key's value and where it comes from
 POST /v1/settings/{scope}/plan     {target?, set?, unset?}
-POST /v1/settings/{scope}/apply    {target?, set?, unset?, confirm, confirm_fingerprint?, when?, deadline_s?, note?}
+POST /v1/settings/{scope}/apply    {target?, set?, unset?, confirm, confirm_fingerprint?, confirm_grant?, when?, deadline_s?, note?}
 GET  /v1/settings/{scope}/versions[?target=]
 POST /v1/settings/{scope}/restore  {target?, version, confirm?, ...}     without confirm: the plan
 ```
@@ -48,7 +48,7 @@ POST /v1/settings/{scope}/restore  {target?, version, confirm?, ...}     without
 
 ```
 POST /v1/settings/plan  {changes: [{scope, target?, set?, unset?}, {scope, target?, restore: "<version>"}, ...]}
-POST /v1/settings/apply {changes, confirm, confirm_fingerprint?, when?, deadline_s?, note?}
+POST /v1/settings/apply {changes, confirm, confirm_fingerprint?, confirm_grant?, when?, deadline_s?, note?}
 ```
 
 A change set has at most one part per scope and target.
@@ -180,16 +180,32 @@ Every write must come from the page itself: a JSON body, not from another site o
 
 ## Hooks
 
-The hooks scope is an adapter. Until the hook registry plugs one in (`HooksScope.plug`, `settingscopes.HooksAdapter`), it answers an empty schema.
+The hooks scope is an adapter (`settingscopes.HooksAdapter`). The controller plugs in the hook registry's (`proxy/hooksettings.py`). Without one, the scope answers an empty schema.
 
-The registry gives:
+Each hook has these keys:
 
-- its keys, with their types, restart classes and secrets;
-- their values;
-- a check;
-- a write.
+| key | what |
+|-|-|
+| `hooks.<id>.enabled` | whether it is called at all |
+| `hooks.<id>.mode` | `off`, `shadow` or `on` |
+| `hooks.<id>.priority` | its order among the hooks of a stage, low first |
+| `hooks.<id>.scope` | the requests it runs on: lists of patterns under `models`, `backends`, `profiles`, `users`, `sessions`, `client_kinds`. Unset: every request. |
+| `hooks.<id>.policy` | `open` or `closed` when it fails. Unset: the stage's default. |
+| `hooks.<id>.timeout_ms` | its own time limit. Unset: the stage's budget. |
+| `hooks.<id>.payload` | `meta`, `redacted` or `full` |
+| `hooks.<id>.secret` | an http hook's signing secret, shown only as set or unset |
 
-The scope does the plan, the confirm, the versions, the restore and the audit.
+Each value carries the hook's name as its `label`. The checks are the registry's own. A change is written through the registry and audited there, and the hook runner reads it at the next request. The settings interface keeps a version after each change.
+
+Adding or removing a hook, where and when it runs, and a new secret stay on the hooks' API (`/v1/fleet/hooks`, [hooks](hooks.md)). That API makes the secret and shows it once, so the settings interface never writes one.
+
+### The full payload
+
+Setting `payload` to `full` grants the hook the prompts and answers as they are. It keeps the rules of the hooks' API:
+
+- Only a caller with pairing's rights may plan it: the admin, or this machine while no admin password is set. Anyone else gets 403 `trust_required`.
+- The plan warns with the destination's host.
+- A destination outside the LAN needs a second confirm. The plan lists the key under `grant_keys` and gives `confirm_grant`. Apply without it is 428 `grant_confirm_required`. The grant records who confirmed it.
 
 ## The pages
 

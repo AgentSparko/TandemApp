@@ -19,6 +19,9 @@
   "confirm_fingerprint": {
    "type": "string"
   },
+  "confirm_grant": {
+   "type": "string"
+  },
   "when": {
    "type": "string"
   },

@@ -770,7 +770,10 @@ class Handler(BaseHTTPRequestHandler):
                                                   "message": f"bad json: {exc}"}})
         parts = [unquote(x) for x in path.rstrip("/").split("/")[3:]]
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
-        code, out = st.handle(method, parts, q, body, config_api._who(self, STATE["svc"]))
+        # pairing's rights (a hook's full payload is granted only with them, SEC-16)
+        trust = STATE["auth"].decide("fleet_trust", self._peer(), self.headers) == "ok"
+        code, out = st.handle(method, parts, q, body, config_api._who(self, STATE["svc"]),
+                              trust=trust)
         return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
 
     # ----------------------------------------------------------------- the admin password (6.3b)
@@ -1265,6 +1268,7 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
     """SRV-845: the settings interface over this controller's stores (proxy/settings.py). The
     keyword arguments replace a part for a test (an engine host's control, its backends, the
     warm-up, the hot route, the chat extension's wheel); each default is the fleet's own."""
+    from proxy import hooksettings
     from proxy import settings as settings_mod
     from proxy import settingscopes, settingsengine
 
@@ -1333,7 +1337,8 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
             rows=rows or (lambda: fleet().engines()._ssh_rows()), ctl_for=ctl_for,
             restarts=restarts, http_only=http_only, http_read=http_read,
             hot_patch=hot_patch or patch_hot, ext_wheel=ext_wheel or own_wheel),
-        "hooks": settingscopes.HooksScope(cfg),
+        # the hook registry's switches (proxy/hooksettings.py)
+        "hooks": settingscopes.HooksScope(cfg, hooksettings.RegistryHooks(svc.hooks)),
     }
     return settings_mod.Settings(cfg, scopes, restarts=restarts,
                                  log=lambda m: print(m, flush=True))

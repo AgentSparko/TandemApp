@@ -41,7 +41,7 @@
   {
    "name": "hooks",
    "order": 4,
-   "store": "the hook registry's tables, through an adapter (empty until it is plugged in)",
+   "store": "the hook registry's tables (proxy/hookstore.py) through its adapter (proxy/hooksettings.py): each hook's switches; the full payload is granted with pairing's rights, outside the LAN with a second confirm",
    "targets": "controller",
    "restart": [
     "none",
@@ -173,6 +173,7 @@
   "no_restart": 404,
   "confirm_required": 428,
   "fingerprint_confirm_required": 428,
+  "grant_confirm_required": 428,
   "stale_plan": 409,
   "busy": 409,
   "read_only": 409,
@@ -196,6 +197,7 @@
   "unauthorized": 401,
   "cross_site": 403,
   "cross_origin": 403,
+  "trust_required": 403,
   "json_only": 415
  }
 }

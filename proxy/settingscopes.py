@@ -35,7 +35,12 @@ version at the next request. While the conductor is off the documents are still 
 it would use, and read when it is switched on. A version's id is `<key>@<n>`.
 
 HOOKS (target `controller`): an adapter the hook registry plugs into (HooksAdapter below); until one
-is given the scope answers an empty schema and refuses every key.
+is given the scope answers an empty schema and refuses every key. proxy/hooksettings.py is the
+registry's: each hook's switches and each decision provider's (proxy/app.py plugs it in). A key
+that grants a hook the full payload is planned for a caller with pairing's rights only (403
+`trust_required`), and one whose destination is outside the LAN adds the second confirm
+(`grant_keys`, `confirm_grant`; SEC-16). Restart class none: the runner reads the registry again at
+the next request.
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ import copy
 from proxy import appparts
 from proxy import config as config_mod
 from proxy import schema as schema_mod
+from proxy import settings as settings_mod
 from proxy.settings import (KeyValueScope, Scope, SettingsError, change, digest, key_spec,
                             part_plan)
 
@@ -490,10 +496,19 @@ class HooksAdapter:
         keys() -> [key_spec]          its settings: a hook's mode, priority, scope, failure
                                       policy, a plugin's options (secrets marked `secret`); the
                                       restart class `engine` for an in-process hook
-        values() -> {key: value}      the values now (a secret: None)
+        values() -> {key: value}      the values now (a secret: None); a key that holds nothing
+                                      is left out (unset)
+        extras() -> {key: {...}}      what a value row adds: a `label` (the hook's name), a
+                                      secret's `hint`
         is_set(key) -> bool           a secret's set or unset
-        check(sets, unsets) -> [str]  refusals in words, empty when the change may be written
-        write(sets, unsets, who)      the change into the registry's own tables
+        check(sets, unsets) -> [str]  refusals in words, empty when the change may be written (or
+                                      raise SettingsError naming the key)
+        grants(sets) -> [grant]       the full payload each set grants: {key, hook, destination,
+                                      lan, version}; empty when none
+        empty_why() -> str | None     why there is no key yet
+        write(sets, unsets, who, grants=None)
+                                      the change into the registry's own tables; `grants` the
+                                      grants outside the LAN whose second confirm was given
     """
 
     def keys(self) -> list:
@@ -502,11 +517,20 @@ class HooksAdapter:
     def values(self) -> dict:
         return {}
 
+    def extras(self) -> dict:
+        return {}
+
     def is_set(self, key: str) -> bool:
         return False
 
     def check(self, sets, unsets) -> list:
         return []
+
+    def grants(self, sets) -> list:
+        return []
+
+    def empty_why(self) -> str | None:
+        return None
 
     def write(self, sets, unsets, who) -> None:
         return None
@@ -524,6 +548,8 @@ class HooksScope(KeyValueScope):
     def writable(self, target):
         if self.adapter is None:
             return True, "no hook is registered yet: the hooks scope has no key"
+        if not self.adapter.keys():
+            return True, self.adapter.empty_why()
         return True, None
 
     def spec(self, target):
@@ -536,12 +562,14 @@ class HooksScope(KeyValueScope):
             return {}
         spec = self.spec(target)
         vals = self.adapter.values()
+        extras = self.adapter.extras()
         out = {}
         for k, s in spec.items():
+            source = k.partition(".")[0] if k.startswith(("hooks.", "providers.")) else "hooks"
             if s.get("secret"):
-                out[k] = (None, self.adapter.is_set(k), "hooks", None)
+                out[k] = (None, self.adapter.is_set(k), source, extras.get(k))
             else:
-                out[k] = (vals.get(k), k in vals, "hooks", None)
+                out[k] = (vals.get(k), k in vals, source, extras.get(k))
         return out
 
     def check(self, target, sets, unsets, spec):
@@ -550,5 +578,45 @@ class HooksScope(KeyValueScope):
             raise SettingsError(422, "bad_value", errs[0], errors=errs[:20])
         return []
 
+    def plan(self, target, sets, unsets):
+        """The plan of KeyValueScope, and the grants of the full payload it makes: only for a
+        caller with pairing's rights; one outside the LAN needs the second confirm. The grants'
+        destinations and the hooks' versions are bound into the confirm."""
+        p = super().plan(target, sets, unsets)
+        if self.adapter is None:
+            return p
+        changed = {c["key"] for c in p["changes"]}
+        grants = self.adapter.grants({k: v for k, v in sets.items() if k in changed})
+        if not grants:
+            return p
+        if not settings_mod.trusted():
+            raise SettingsError(403, "trust_required", (
+                f"{grants[0]['key']}: the full payload takes pairing's rights: set an admin "
+                f"password (App settings) to grant it from another machine, or grant it from "
+                f"this one"), key=grants[0]["key"])
+        for g in grants:
+            where = g["destination"] or "this controller"
+            p["warnings"].append(
+                f"{g['key']}: the hook {g['hook']} gets the full payload (prompts and answers as "
+                f"they are) at {where}" + ("" if g["lan"] else ", outside the LAN: apply asks "
+                                                              "a second time"))
+        p["grant_keys"] = sorted(g["key"] for g in grants if not g["lan"])
+        p["grants"] = {g["key"]: g for g in grants}
+        p["state"] = digest([p["state"], sorted(grants, key=lambda g: g["key"])])
+        return p
+
+    def apply(self, target, plan, ctx):
+        # the grants outside the LAN go to the registry only when the second confirm was given
+        self._confirmed = {k: g for k, g in (plan.get("grants") or {}).items()
+                           if not g["lan"] and ctx.get("grant_ok")}
+        try:
+            return super().apply(target, plan, ctx)
+        finally:
+            self._confirmed = {}
+
     def write(self, target, sets, unsets, who):
-        self.adapter.write(sets, unsets, who)
+        g = getattr(self, "_confirmed", None)
+        if g:
+            self.adapter.write(sets, unsets, who, grants=g)
+        else:
+            self.adapter.write(sets, unsets, who)

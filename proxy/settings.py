@@ -11,12 +11,14 @@ versions, restore and audit. contracts/settings-v1 is its truth; docs/settings.m
     GET  /v1/settings/{scope}[?target=]                  the values and where each comes from
     POST /v1/settings/{scope}/plan {target?, set?, unset?}
     POST /v1/settings/{scope}/apply {target?, set?, unset?, confirm, confirm_fingerprint?,
-                                     when?, deadline_s?, note?}
+                                     confirm_grant?, when?, deadline_s?, note?}
     GET  /v1/settings/{scope}/versions[?target=]
-    POST /v1/settings/{scope}/restore {target?, version, confirm?, confirm_fingerprint?, when?,
-                                       deadline_s?, note?}    without confirm: the plan
+    POST /v1/settings/{scope}/restore {target?, version, confirm?, confirm_fingerprint?,
+                                       confirm_grant?, when?, deadline_s?, note?}
+                                                         without confirm: the plan
     POST /v1/settings/plan {changes: [{scope, target?, set?, unset?} | {scope, target?, restore}]}
-    POST /v1/settings/apply {changes, confirm, confirm_fingerprint?, when?, deadline_s?, note?}
+    POST /v1/settings/apply {changes, confirm, confirm_fingerprint?, confirm_grant?, when?,
+                             deadline_s?, note?}
     GET  /v1/settings/restarts[/{id}]                    engine restarts a change scheduled,
                                                          with their countdown
     POST /v1/settings/restarts/{id}/cancel
@@ -36,8 +38,10 @@ restarts an engine says how long the restart itself takes, `restart_estimate`), 
 one `confirm`: an HMAC, keyed with this process's random secret, over each part's changes and the
 state its scope planned against (values, versions, the engine's own plan token). A part whose keys
 feed an engine's disk-cache fingerprint adds `confirm_fingerprint`, a second token the apply must
-carry as well. Apply plans again: a confirm that does not match the state now is 409 `stale_plan`,
-one missing 428 `confirm_required` (and `fingerprint_confirm_required`). The parts then apply in
+carry as well; a part that grants a hook the full payload to a destination outside the LAN adds
+`confirm_grant` the same way (its keys in `grant_keys`, SEC-16). Apply plans again: a confirm that
+does not match the state now is 409 `stale_plan`, one missing 428 `confirm_required` (and
+`fingerprint_confirm_required`, `grant_confirm_required`). The parts then apply in
 dependency order (app, backends, conductor, engine, hooks; targets by id within a scope) under one
 lock (a second change set meanwhile is 409 `busy`), and the first failure stops the set: the answer
 lists each part as applied, scheduled (an engine restart runs it), unchanged, failed or not_run,
@@ -47,7 +51,11 @@ only what is still different. Unsetting a key that is unset already is no change
 it, in every scope. A refusal while a part is planned names that part's `scope` and
 `target` (and its `key` when the refusal is about one key's value), so the page marks that field.
 
-SECRETS (a backend's API key) are write-only: a value is never in an answer, a version, a log line,
+THE CALLER. `handle(..., trust=)` says whether the caller has pairing's rights (`fleet_trust`: the
+admin, or this machine while no admin password is set); a scope asks `trusted()` while it plans.
+The hooks scope grants the full payload only to such a caller (403 `trust_required`).
+
+SECRETS (a backend's API key, a decision provider's) are write-only: a value is never in an answer, a version, a log line,
 an audit row or an export; an answer says `set` true or false. A plan shows a secret's change as
 set or unset, and its confirm binds the value through its hash only. A restore leaves secrets as
 they are.
@@ -90,6 +98,8 @@ DEFAULT_DEADLINE_S = 600
 TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,159}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./@:-]{0,159}$")
+#: whether this request's caller has pairing's rights (`Settings.handle` sets it, `trusted()` reads)
+_CALLER = threading.local()
 #: the refusals about one key's value: a part of one key names it (`Settings._placed`)
 KEY_ERRORS = ("unknown_key", "locked", "bad_value", "invalid_document", "extension_missing")
 
@@ -126,6 +136,11 @@ def feeds(keys) -> str:
     """`A feeds`, `A, B feed`: the verb agrees with the number of keys."""
     keys = list(keys)
     return f"{', '.join(keys)} {'feeds' if len(keys) == 1 else 'feed'}"
+
+
+def trusted() -> bool:
+    """The caller of the request being handled has pairing's rights (`fleet_trust`)."""
+    return bool(getattr(_CALLER, "trust", False))
 
 
 def max_restart(classes) -> str:
@@ -166,9 +181,9 @@ class Scope:
         plan_restore(target, version) -> a part plan
         restore(target, plan, ctx) -> as apply
 
-    A part plan: {changes: [change], restart, fingerprint_keys, warnings, state (what the plan
-    read, bound into the confirm; never shown), native (the scope's own, never shown)}.
-    `ctx`: {who, change_set, when, deadline_s, note, fingerprint_ok}.
+    A part plan: {changes: [change], restart, fingerprint_keys, grant_keys, warnings, state (what
+    the plan read, bound into the confirm; never shown), native (the scope's own, never shown)}.
+    `ctx`: {who, change_set, when, deadline_s, note, fingerprint_ok, grant_ok}.
     """
 
     name = "?"
@@ -209,12 +224,14 @@ def change(key: str, before, after, *, was_set: bool, is_set: bool, restart: str
 
 
 def part_plan(changes: list, *, state, warnings=(), native=None, restart: str | None = None,
-              fingerprint_keys=None, estimate: dict | None = None) -> dict:
-    """`estimate`: how long an engine restart itself takes, {seconds, source}."""
+              fingerprint_keys=None, estimate: dict | None = None, grant_keys=()) -> dict:
+    """`estimate`: how long an engine restart itself takes, {seconds, source}. `grant_keys`: the
+    keys that grant the full payload outside the LAN (the second confirm, `confirm_grant`)."""
     return {"changes": changes,
             "restart": restart or max_restart(c["restart"] for c in changes),
             "fingerprint_keys": sorted(fingerprint_keys if fingerprint_keys is not None else
                                        {c["key"] for c in changes if c["fingerprint"]}),
+            "grant_keys": sorted(grant_keys),
             "warnings": list(warnings), "state": state, "native": native or {},
             "estimate": estimate}
 
@@ -597,10 +614,12 @@ class Settings:
                  [c["key"] for c in p["plan"]["changes"]]] for p in parts]
         msg = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()
         confirm = hmac.new(self._secret, b"confirm\0" + msg, hashlib.sha256).hexdigest()[:32]
-        fp = None
+        fp = cg = None
         if any(p["plan"]["fingerprint_keys"] for p in parts):
             fp = hmac.new(self._secret, b"fingerprint\0" + msg, hashlib.sha256).hexdigest()[:32]
-        return confirm, fp
+        if any(p["plan"].get("grant_keys") for p in parts):
+            cg = hmac.new(self._secret, b"grant\0" + msg, hashlib.sha256).hexdigest()[:32]
+        return confirm, fp, cg
 
     @staticmethod
     def _part_view(p: dict) -> dict:
@@ -611,7 +630,8 @@ class Settings:
                 "restart_needed": bool(pl["changes"]) and pl["restart"] in ("app", "engine"),
                 "restart_estimate": pl.get("estimate") if pl["changes"] and pl["restart"] == "engine"
                 else None,
-                "fingerprint_keys": pl["fingerprint_keys"], "warnings": pl["warnings"]}
+                "fingerprint_keys": pl["fingerprint_keys"],
+                "grant_keys": pl.get("grant_keys") or [], "warnings": pl["warnings"]}
 
     def plan(self, body) -> dict:
         parts = self._parts(body)
@@ -619,7 +639,7 @@ class Settings:
         return self._plan_view(parts)
 
     def _plan_view(self, parts: list[dict]) -> dict:
-        confirm, fp = self._tokens(parts)
+        confirm, fp, cg = self._tokens(parts)
         views = [self._part_view(p) for p in parts]
         changed = any(v["changed"] for v in views)
         return {"contract_version": CONTRACT, "change_set": "cs-" + confirm[:12],
@@ -628,20 +648,24 @@ class Settings:
                 "restart_needed": any(v["restart_needed"] for v in views),
                 "fingerprint_keys": sorted({f"{v['scope']}/{v['target']}:{k}" for v in views
                                             for k in v["fingerprint_keys"]}),
+                "grant_keys": sorted({f"{v['scope']}/{v['target']}:{k}" for v in views
+                                      for k in v["grant_keys"]}),
                 "needs_confirm": changed, "confirm": confirm if changed else None,
-                "confirm_fingerprint": fp if changed else None}
+                "confirm_fingerprint": fp if changed else None,
+                "confirm_grant": cg if changed else None}
 
     # ------------------------------------------------------------------ apply
     def apply(self, body, who: str) -> dict:
         parts = self._parts(body)
         confirm = body.get("confirm")
         cfp = body.get("confirm_fingerprint")
+        cgr = body.get("confirm_grant")
         when, deadline = _parse_when(body)
         note = body.get("note")
         if note is not None and (not isinstance(note, str) or len(note) > NOTE_MAX):
             raise _bad(f"note is text of at most {NOTE_MAX} characters")
-        extra = set(body) - {"changes", "confirm", "confirm_fingerprint", "when", "deadline_s",
-                             "note"}
+        extra = set(body) - {"changes", "confirm", "confirm_fingerprint", "confirm_grant", "when",
+                             "deadline_s", "note"}
         if extra:
             raise _bad(f"unknown field {sorted(extra)[0]!r}")
         if confirm is not None and not isinstance(confirm, str):
@@ -680,6 +704,16 @@ class Settings:
                         cfp, view["confirm_fingerprint"]):
                     raise SettingsError(409, "stale_plan", "confirm_fingerprint is not this "
                                                            "plan's: plan again", plan=view)
+            if view["confirm_grant"]:
+                if not cgr:
+                    raise SettingsError(428, "grant_confirm_required",
+                                        f"{', '.join(view['grant_keys'])}: the full payload "
+                                        f"(prompts and answers as they are) would go to a "
+                                        f"destination outside the LAN; apply needs confirm_grant "
+                                        f"as well", plan=view)
+                if not isinstance(cgr, str) or not hmac.compare_digest(cgr, view["confirm_grant"]):
+                    raise SettingsError(409, "stale_plan", "confirm_grant is not this plan's: "
+                                                           "plan again", plan=view)
             out = self._run(parts, view, who=who, when=when, deadline=deadline, note=note)
             self._done[confirm] = (same, out, self.clock())
             while len(self._done) > REPLAY_KEEP:
@@ -723,7 +757,8 @@ class Settings:
     def _run(self, parts: list[dict], view: dict, *, who: str, when, deadline, note) -> dict:
         cs = view["change_set"]
         ctx = {"who": who, "change_set": cs, "when": when, "deadline_s": deadline, "note": note,
-               "fingerprint_ok": bool(view["confirm_fingerprint"])}
+               "fingerprint_ok": bool(view["confirm_fingerprint"]),
+               "grant_ok": bool(view["confirm_grant"])}
         results, failed = [], None
         for p in parts:
             name = f"{p['scope']}/{p['target']}"
@@ -806,7 +841,8 @@ class Settings:
     def _one(self, scope: str, body, restore: bool = False) -> dict:
         if not isinstance(body, dict):
             raise _bad("the body is an object")
-        known = {"target", "confirm", "confirm_fingerprint", "when", "deadline_s", "note"}
+        known = {"target", "confirm", "confirm_fingerprint", "confirm_grant", "when",
+                 "deadline_s", "note"}
         known |= {"version"} if restore else {"set", "unset"}
         extra = set(body) - known
         if extra:
@@ -823,17 +859,21 @@ class Settings:
                 if k in body:
                     c[k] = body[k]
         out = {"changes": [c]}
-        for k in ("confirm", "confirm_fingerprint", "when", "deadline_s", "note"):
+        for k in ("confirm", "confirm_fingerprint", "confirm_grant", "when", "deadline_s", "note"):
             if k in body:
                 out[k] = body[k]
         return out
 
-    def handle(self, method: str, parts: list[str], q: dict, body, who: str) -> tuple[int, dict]:
-        """`parts`: the path after /v1/settings."""
+    def handle(self, method: str, parts: list[str], q: dict, body, who: str,
+               trust: bool = False) -> tuple[int, dict]:
+        """`parts`: the path after /v1/settings. `trust`: the caller has pairing's rights."""
+        _CALLER.trust = bool(trust)
         try:
             return 200, self._route(method, parts, q, body, who)
         except SettingsError as exc:
             return exc.status, exc.body()
+        finally:
+            _CALLER.trust = False
 
     def _route(self, method, parts, q, body, who) -> dict:
         target = q.get("target")

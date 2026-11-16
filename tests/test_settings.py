@@ -858,11 +858,12 @@ def test_contract_files():
                     assert f in docs, (r, f)
     # every error type the code raises is listed, with the status it raises
     raised = {}
-    for mod in ("settings", "settingscopes", "settingsengine"):
+    for mod in ("settings", "settingscopes", "settingsengine", "hooksettings"):
         src = open(os.path.join(ROOT, "proxy", f"{mod}.py")).read()
         for st, kind in re.findall(r'SettingsError\(\s*(\d{3}),\s*"([a-z_]+)"', src):
             raised.setdefault(kind, set()).add(int(st))
     raised.setdefault("confirm_required", {428})
+    raised.setdefault("grant_confirm_required", {428})
     for kind, sts in raised.items():
         assert kind in scopes["errors"], kind
         assert scopes["errors"][kind] in sts or len(sts) > 1, (kind, sts)
