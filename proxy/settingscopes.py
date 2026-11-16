@@ -660,7 +660,7 @@ class AccountsScope(KeyValueScope):
     """SRV-871: the `auth` and `api` scopes (TANDEM_AUTH=accounts only; proxy/app.py adds them),
     flat keys over the config database's settings `auth.<key>` and `api.<key>`, the keys
     proxy/authz.py Policy, proxy/authlocal.py and proxy/exposure.py read. Owner-only for writes
-    (but `api.tokens.viewers_may_create`, which an admin switches: decision 4 of 2026-11-16) and
+    (but `api.tokens.viewers_may_create`, which an admin switches) and
     never with an API token, not even to read. A change that lets other devices in (the exposure
     switches, `api.listen`, the provider) needs the owner's password first: never from local mode
     (409 password_first). Every change is an audit row with the old and the new value. Restart

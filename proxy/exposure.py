@@ -21,8 +21,8 @@ routes, the cache routes and the gateway (openai), /v1/messages and its count_to
 (settings, fleet, metrics, the ledger's views) follow the token's scopes alone.
 
 THE FIRST VALUE. An install whose migration imported legacy API keys (auth_state
-`had_legacy_keys`) starts with openai at network, so its clients keep working (decision 7 of
-2026-11-16); anthropic, and every other install, at this-machine. A value set on the page wins.
+`had_legacy_keys`) starts with openai at network, so its clients keep working; anthropic, and
+every other install, at this-machine. A value set on the page wins.
 
 SINGLE COMPUTER. The switch is the rule plus the listen address: `api.listen` (the api settings
 scope, proxy/settingscopes.py) writes TANDEM_HOST to the env file, applied at the next restart.
