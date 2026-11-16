@@ -22,6 +22,13 @@ stricter than a rule that drops what it sends. `fetch()` is the same check for c
 web_fetch tool. `request()` is the general form: a host list (only those hosts, redirects
 included), and for a host on that list the user configured (a SearXNG instance), a private address
 allowed. Logs carry counts, never a host or a path.
+
+A PLUGIN'S SANDBOX (SRV-859) uses the same proxy with a host list instead of the internet: its
+`mode()` answers an `Allow` (the hosts of the plugin's granted `network:` capabilities). Then only
+those hosts (and ports, when the capability names one) are reached, a granted host may be on the
+LAN, and nothing else is: no other LAN address, no public host it was not granted. A loopback,
+link-local, unspecified or multicast address, and the Kubernetes API's address, are refused even
+when a capability names them: they are this box, the cloud's metadata or the cluster itself.
 """
 
 from __future__ import annotations
@@ -45,6 +52,41 @@ MAX_FETCH = 4 * 1024 * 1024
 
 class Refused(Exception):
     pass
+
+
+def never(addr: str) -> bool:
+    """An address no grant opens: loopback, link-local (the cloud's metadata), unspecified,
+    multicast, and the Kubernetes API's own address."""
+    try:
+        ip = ipaddress.ip_address(addr.split("%")[0])
+    except ValueError:
+        return True
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
+        return True
+    api = (os.environ.get("KUBERNETES_SERVICE_HOST") or "").strip("[]")
+    return bool(api) and str(ip) == api
+
+
+class Allow:
+    """A plugin sandbox's way out: only these `host` or `host:port` names (its granted
+    `network:` capabilities), a private address allowed for them, `never` addresses refused."""
+
+    def __init__(self, hosts):
+        self.hosts = frozenset(str(h).lower() for h in hosts or ())
+
+    def permits(self, host: str, port: int) -> bool:
+        host = (host or "").lower().strip("[]").rstrip(".")
+        return host in self.hosts or f"{host}:{port}" in self.hosts
+
+    def connect(self, host: str, port: int) -> socket.socket:
+        if not self.permits(host, port):
+            raise Refused(f"{host}:{port} is not a host this plugin was granted")
+        for fam, _, _, _, sa in resolve(host, port, private_ok=True):
+            if never(sa[0]):
+                raise Refused(f"{host} resolves to an address no plugin may reach")
+        return connect(host, port, private_ok=True)
 
 
 def allowed(addr: str) -> bool:
@@ -265,7 +307,8 @@ class TcpProxy:
 
 def serve(c: socket.socket, mode, stats: dict) -> None:
     """One client connection of a sandbox: its request line checked, then tunnelled or passed
-    on (see the module's doc). `mode()` is the chat's network: on, or everything refused."""
+    on (see the module's doc). `mode()` is the chat's network: on, everything refused, or a
+    plugin's `Allow` (only its granted hosts)."""
     stats["connections"] += 1
     up = None
     try:
@@ -280,11 +323,14 @@ def serve(c: socket.socket, mode, stats: dict) -> None:
                 return
         line, _, rest = head.partition(b"\r\n")
         method, target, _ = (line.decode("latin-1").split(" ") + ["", "", ""])[:3]
-        if mode() != "on":
+        m = mode()
+        allow = m if isinstance(m, Allow) else None
+        if allow is None and m != "on":
             raise Refused("the network is off for this chat")
+        dial = allow.connect if allow is not None else connect
         if method == "CONNECT":
             host, _, port = target.rpartition(":")
-            up = connect(host.strip("[]"), int(port or 443))
+            up = dial(host.strip("[]"), int(port or 443))
             c.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
             extra = rest.split(b"\r\n\r\n", 1)[1] if b"\r\n\r\n" in rest else b""
             if extra:
@@ -293,7 +339,7 @@ def serve(c: socket.socket, mode, stats: dict) -> None:
             u = urllib.parse.urlsplit(target)
             if u.scheme != "http" or not u.hostname:
                 raise Refused("send absolute http:// URLs or CONNECT")
-            up = connect(u.hostname, u.port or 80)
+            up = dial(u.hostname, u.port or 80)
             hdrs, _, body = rest.partition(b"\r\n\r\n")
             keep = [h for h in hdrs.split(b"\r\n") if h and not h.lower().startswith(
                 (b"proxy-", b"connection:", b"keep-alive:"))]
