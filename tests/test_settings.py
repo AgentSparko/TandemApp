@@ -433,7 +433,9 @@ def test_every_scope_six_operations():
     r = Rig("six", hooks=hooks)
     try:
         st, ov = r.call("GET", "")
-        assert st == 200 and ok(ov, "overview")["order"] == list(settings_mod.SCOPES), ov
+        # the auth and api scopes exist with TANDEM_AUTH=accounts only (SRV-871)
+        assert st == 200 and ok(ov, "overview")["order"] == [
+            x for x in settings_mod.SCOPES if x not in ("auth", "api")], ov
         cases = {
             "app": ({}, {"conductor": "on"}),
             "backends": ({}, {"backends.eng.enabled": False}),
