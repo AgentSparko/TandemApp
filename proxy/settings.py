@@ -55,10 +55,10 @@ THE CALLER. `handle(..., trust=)` says whether the caller has pairing's rights (
 admin, or this machine while no admin password is set); a scope asks `trusted()` while it plans.
 The hooks scope grants the full payload only to such a caller (403 `trust_required`).
 
-SECRETS (a backend's API key, a decision provider's) are write-only: a value is never in an answer, a version, a log line,
-an audit row or an export; an answer says `set` true or false. A plan shows a secret's change as
-set or unset, and its confirm binds the value through its hash only. A restore leaves secrets as
-they are.
+SECRETS (a backend's API key, a decision provider's) are write-only: a value is never in an
+answer, a version, a log line, an audit row or an export; an answer says `set` true or false. A
+plan shows a secret's change as set or unset, and its confirm binds the value through its hash
+only. A restore leaves secrets as they are.
 
 AUDIT. Every part's apply or restore, a cancelled restart, and the change set as a whole are rows of
 the config database's audit table (proxy/config.py) with the change set's id, the scope and target,

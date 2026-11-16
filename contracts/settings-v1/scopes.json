@@ -41,7 +41,7 @@
   {
    "name": "hooks",
    "order": 4,
-   "store": "the hook registry's tables (proxy/hookstore.py) through its adapter (proxy/hooksettings.py): each hook's switches; the full payload is granted with pairing's rights, outside the LAN with a second confirm",
+   "store": "the hook registry's and the decision providers' tables (proxy/hookstore.py, proxy/providerstore.py) through their adapter (proxy/hooksettings.py): each hook's and each provider's switches, a provider's API keys write-only; the full payload is granted with pairing's rights, outside the LAN with a second confirm",
    "targets": "controller",
    "restart": [
     "none",

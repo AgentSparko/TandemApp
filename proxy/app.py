@@ -1337,8 +1337,9 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
             rows=rows or (lambda: fleet().engines()._ssh_rows()), ctl_for=ctl_for,
             restarts=restarts, http_only=http_only, http_read=http_read,
             hot_patch=hot_patch or patch_hot, ext_wheel=ext_wheel or own_wheel),
-        # the hook registry's switches (proxy/hooksettings.py)
-        "hooks": settingscopes.HooksScope(cfg, hooksettings.RegistryHooks(svc.hooks)),
+        # the hook registry's and the decision providers' switches (proxy/hooksettings.py)
+        "hooks": settingscopes.HooksScope(cfg, hooksettings.RegistryHooks(
+            svc.hooks, svc.providers.store)),
     }
     return settings_mod.Settings(cfg, scopes, restarts=restarts,
                                  log=lambda m: print(m, flush=True))

@@ -88,6 +88,8 @@ curl -X POST http://127.0.0.1:8080/v1/fleet/decision-providers \
 - One enabled provider may answer a question `on` or `ab`; any number may watch it in `shadow`.
 - `POST .../{id}/test` asks it once with a sample question; `GET .../{id}/health` probes it; `GET .../report` has the numbers below.
 
+A provider's switches and keys are also keys of the settings interface's `hooks` scope (`providers.<id>.<field>`, [settings](settings.md#decision-providers)). There a change is planned, versioned and can be restored with the other settings. Its keys stay write-only there.
+
 ## Modes
 
 - **`on`**: the provider answers its questions. On any failure the built-in answer is used.

@@ -21,8 +21,8 @@ THE RIGHTS. Every route takes the configuration's writes (`conductor_write`), as
 the backends' (a backend's key is set the same way). No answer, log line or audit row holds a
 key: the views carry its hint (set, last 4 characters, a sha256 prefix).
 
-The settings interface (D1, settings-v1) reads and writes these through this module's store; the
-adapter is its work, not this one's.
+The settings interface (settings-v1) reads and writes a provider's switches and keys as keys of
+its hooks scope (`providers.<id>.*`, proxy/hooksettings.py), through this module's store.
 """
 
 from __future__ import annotations

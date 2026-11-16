@@ -1,6 +1,7 @@
-"""SRV-845 (D1 x E1): the settings interface's hooks scope over the real hook registry
-(proxy/hooksettings.py over proxy/hookstore.py and the runner of proxy/hooks.py), in a temporary
-config database. Every answer is held to contracts/settings-v1 (tools/contract_check.py).
+"""SRV-845, SRV-851 (D1 x E1, E2): the settings interface's hooks scope over the real hook registry
+and decision providers (proxy/hooksettings.py over proxy/hookstore.py, the runner of
+proxy/hooks.py and proxy/providerstore.py), in a temporary config database. Every answer is held
+to contracts/settings-v1 (tools/contract_check.py).
 
   Gherkin and the acceptance criteria:
   1  Given an http hook and a builtin hook in the registry, When the hooks scope's schema is read,
@@ -26,6 +27,26 @@ config database. Every answer is held to contracts/settings-v1 (tools/contract_c
   4  No hook secret in any answer, version or audit row of the settings interface
                                                         test_no_secret_anywhere
 
+  Gherkin (SRV-851) and the acceptance criteria:
+  5  Given a systemone-http provider and a builtin one, When the hooks scope's schema is read,
+     Then each has enabled, mode, ab_percent, sticky and questions, and the systemone-http one
+     its own API key and one per question it answers, write-only and nullable; a key's value is
+     never answered, only set and its hint; the questions' mapping holds no key
+                                                        test_provider_keys
+  6  Given a provider, When mode ab, its share, sticky and a new question with a model are
+     applied, Then the provider store holds them (audited there with the change set's id) and a
+     version is recorded; When a question's key and the provider's key are set, Then the store
+     holds them sealed and a version does not; When a key is unset, Then it is cleared; a restore
+     brings the switches back and says the keys stay as they are
+                                                        test_provider_apply_and_keys
+  7  Refusals on their key: a share over 100, an unknown question, a key inside the questions'
+     mapping, a key for a question it does not answer, an unset of a switch; one enabled provider
+     a question on or ab: taking a question another serves on is refused, moving it from one to
+     the other in one change set applies (the one that lets it go first)
+                                                        test_provider_refusals_and_moves
+  8  No provider key in any answer, version, audit row or log line
+                                                        test_no_provider_key_anywhere
+
 CPU only. Run: python tests/test_settings_hooks.py
 """
 
@@ -44,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from proxy import config as config_mod  # noqa: E402
 from proxy import hooks as hooks_mod  # noqa: E402
 from proxy import hooksettings  # noqa: E402
+from proxy import providerstore  # noqa: E402
 from proxy import settings as settings_mod  # noqa: E402
 from proxy import settingscopes  # noqa: E402
 from tools import contract_check  # noqa: E402
@@ -51,6 +73,10 @@ from tools import contract_check  # noqa: E402
 CON = os.path.join(ROOT, "contracts", "settings-v1")
 LAN_URL = "http://192.168.1.20:9300/hook"
 AWAY_URL = "http://203.0.113.7:9300/hook"
+S1_URL = "http://192.168.1.30:8720"
+KEY_A = "sk-" + "Pa7" * 12
+KEY_Q = "sk-" + "Qb8" * 12
+KEY_B = "sk-" + "Rc9" * 12
 
 
 def ok(doc, name: str):
@@ -68,8 +94,10 @@ class Rig:
                                        use_keychain=False).open()
         self.runner = hooks_mod.Runner(self.cfg)
         self.store = self.runner.store
+        self.providers = providerstore.ProviderStore(self.cfg, hook=self.store.get)
         self.logs: list[str] = []
-        self.scope = settingscopes.HooksScope(self.cfg, hooksettings.RegistryHooks(self.runner))
+        self.scope = settingscopes.HooksScope(
+            self.cfg, hooksettings.RegistryHooks(self.runner, self.providers))
         self.s = settings_mod.Settings(self.cfg, {"hooks": self.scope}, log=self.logs.append)
         self.answers: list = []
 
@@ -79,6 +107,12 @@ class Rig:
             base["endpoint"] = LAN_URL
         h, secret = self.store.create({**base, **doc}, who="t")
         return h, secret
+
+    def provider(self, **doc):
+        base = {"kind": "systemone-http", "endpoint": S1_URL}
+        if doc.get("kind") and doc["kind"] != "systemone-http":
+            base = {}
+        return self.providers.create({**base, **doc}, who="t")
 
     def call(self, method: str, path: str, body=None, q=None, trust: bool = False):
         parts = [p for p in path.strip("/").split("/") if p]
@@ -120,7 +154,8 @@ def test_keys_from_the_registry():
     r = Rig("keys")
     try:
         st, sch = r.call("GET", "hooks/schema")
-        assert st == 200 and ok(sch, "schema")["keys"] == [] and "no hook yet" in sch["why"], sch
+        assert st == 200 and ok(sch, "schema")["keys"] == [], sch
+        assert "no hook and no decision provider yet" in sch["why"], sch
         h, _ = r.hook(name="Audit log", id="audit")
         r.hook(name="No guests", id="guard", kind="builtin", target="deny", role="guard",
                stages=["request.received"], priority=5)
@@ -134,8 +169,9 @@ def test_keys_from_the_registry():
         assert keys["hooks.audit.mode"]["default"] == "on"
         assert keys["hooks.audit.payload"]["values"] == ["meta", "redacted", "full"]
         assert keys["hooks.audit.priority"]["type"] == "integer"
-        assert keys["hooks.audit.scope"]["type"] == "object" and keys["hooks.audit.scope"]["nullable"]
-        assert keys["hooks.audit.policy"]["nullable"] and keys["hooks.audit.policy"]["default"] is None
+        scope, policy = keys["hooks.audit.scope"], keys["hooks.audit.policy"]
+        assert scope["type"] == "object" and scope["nullable"]
+        assert policy["nullable"] and policy["default"] is None
         sec = keys["hooks.audit.secret"]
         assert sec["secret"] and sec["write_only"] and not sec["writable"] and sec["why"], sec
         assert all(k["restart"] == "none" for k in keys.values())
@@ -319,6 +355,156 @@ def test_no_secret_anywhere():
     finally:
         r.close()
     return f"{len(r.answers)} answers, the audit, the versions and the log: no hook secret"
+
+
+
+# ---------------------------------------------------------------------------- 5 provider keys
+
+def test_provider_keys():
+    r = Rig("pkeys")
+    try:
+        r.provider(name="Classes", id="s1", questions={"classify": {}, "judge": {"model": "j2"}},
+                   api_key=KEY_A, mode="on")
+        r.provider(name="Own decider", id="own", kind="builtin", questions={"memory_gate": {}})
+        st, sch = r.call("GET", "hooks/schema")
+        keys = {k["key"]: k for k in ok(sch, "schema")["keys"]}
+        fields = ("ab_percent", "enabled", "mode", "questions", "sticky")
+        assert sorted(keys) == sorted(
+            [f"providers.own.{f}" for f in fields] + [f"providers.s1.{f}" for f in fields]
+            + ["providers.s1.api_key", "providers.s1.questions.classify.api_key",
+               "providers.s1.questions.judge.api_key"]), sorted(keys)
+        assert keys["providers.s1.mode"]["values"] == ["on", "shadow", "ab"]
+        assert keys["providers.s1.sticky"]["values"] == ["session", "user", "request"]
+        for k in ("providers.s1.api_key", "providers.s1.questions.judge.api_key"):
+            assert keys[k]["secret"] and keys[k]["write_only"] and keys[k]["nullable"] and \
+                keys[k]["writable"], keys[k]
+        st, vals = r.call("GET", "hooks")
+        rows = {v["key"]: v for v in ok(vals, "values")["values"]}
+        assert rows["providers.s1.questions"]["value"] == {"classify": {}, "judge": {"model": "j2"}}
+        assert rows["providers.s1.mode"]["value"] == "on" and rows["providers.s1.mode"]["label"] \
+            == "Classes" and rows["providers.s1.mode"]["source"] == "providers"
+        k = rows["providers.s1.api_key"]
+        hint = r.providers.key_hints("s1")["*"]
+        assert k["value"] is None and k["set"] and k["hint"] == hint["sha256_6"], k
+        q = rows["providers.s1.questions.judge.api_key"]
+        assert q["value"] is None and not q["set"], q
+        st, err = r.call("POST", "hooks/plan", {"set": {"providers.own.api_key": KEY_B}})
+        assert st == 422 and err["error"]["type"] == "unknown_key", err   # a builtin sends none
+    finally:
+        r.close()
+    return "a provider's switches, its keys write-only and per question"
+
+
+# ---------------------------------------------------------------------------- 6 apply and keys
+
+def test_provider_apply_and_keys():
+    r = Rig("papply")
+    try:
+        r.provider(name="Classes", id="s1", questions={"classify": {}})
+        sets = {"providers.s1.mode": "ab", "providers.s1.ab_percent": 25,
+                "providers.s1.sticky": "user",
+                "providers.s1.questions": {"classify": {}, "judge": {"model": "j2",
+                                                                     "timeout_ms": 900}}}
+        p = r.plan(sets)
+        res = r.apply(sets, plan=p)
+        assert res["state"] == "applied", res
+        row = r.providers.get("s1")
+        assert (row["mode"], row["ab_percent"], row["sticky"], row["questions"]) == \
+            ("ab", 25, "user", {"classify": {}, "judge": {"model": "j2", "timeout_ms": 900}}), row
+        upd = [a for a in r.audit_rows() if a["object"] == "decision_provider"
+               and a["action"] == "update"]
+        assert upd and upd[-1]["change_set"] == p["change_set"], upd
+        first = res["parts"][0]
+        # the keys: the provider's and the new question's, sealed in the store
+        p = r.plan({"providers.s1.api_key": KEY_A, "providers.s1.questions.judge.api_key": KEY_Q})
+        ch = {c["key"]: c for c in p["parts"][0]["changes"]}
+        assert ch["providers.s1.api_key"]["secret"] and ch["providers.s1.api_key"]["to"] is None
+        r.apply({"providers.s1.api_key": KEY_A, "providers.s1.questions.judge.api_key": KEY_Q},
+                plan=p)
+        assert r.providers.key_for("s1", "*") == KEY_A
+        assert r.providers.key_for("s1", "judge") == KEY_Q
+        assert r.providers.get("s1")["questions"]["judge"] == {"model": "j2", "timeout_ms": 900}
+        st, vals = r.call("GET", "hooks")
+        assert {v["key"]: v["set"] for v in vals["values"]}["providers.s1.api_key"] is True
+        # the same key again is a change (a key is never read back), nothing on nothing is not
+        assert r.plan({"providers.s1.api_key": KEY_A})["changed"]
+        r.apply(unsets=["providers.s1.questions.judge.api_key"])
+        assert r.providers.key_for("s1", "judge") is None
+        assert r.providers.key_for("s1", "*") == KEY_A
+        assert not r.plan(unsets=["providers.s1.questions.judge.api_key"])["changed"]
+        # the restore of the version before the first change: the switches, the keys as they are
+        st, rp = r.call("POST", "hooks/restore", {"version": first["version_before"]})
+        assert st == 200 and any("secrets are not kept" in w
+                                 for w in ok(rp, "plan")["parts"][0]["warnings"]), rp
+        st, rr = r.call("POST", "hooks/restore", {"version": first["version_before"],
+                                                  "confirm": rp["confirm"]})
+        assert st == 200 and rr["state"] == "applied", rr
+        row = r.providers.get("s1")
+        assert (row["mode"], row["ab_percent"], row["sticky"], row["questions"]) == \
+            ("shadow", 0, "session", {"classify": {}}), row
+        assert r.providers.key_for("s1", "*") == KEY_A
+    finally:
+        r.close()
+    return "mode, share, sticky and questions applied; keys set and cleared; restore"
+
+
+# ---------------------------------------------------------------------------- 7 refusals, moves
+
+def test_provider_refusals_and_moves():
+    r = Rig("prefuse")
+    try:
+        r.provider(name="A", id="a", questions={"classify": {}}, mode="on")
+        r.provider(name="B", id="b", questions={"classify": {}, "judge": {}})
+        r.provider(name="Own", id="own", kind="builtin", questions={"memory_gate": {}})
+        for sets, key in (({"providers.b.ab_percent": 150}, "providers.b.ab_percent"),
+                          ({"providers.b.questions": {"weather": {}}}, "providers.b.questions"),
+                          ({"providers.b.questions": {"judge": {"api_key": KEY_B}}},
+                           "providers.b.questions"),
+                          ({"providers.b.questions": {"judge": {"model": "bad model"}}},
+                           "providers.b.questions"),
+                          ({"providers.own.questions": {"memory_gate": {"endpoint": S1_URL}}},
+                           "providers.own.questions"),
+                          ({"providers.b.mode": "on"}, "providers.b.mode")):
+            err = r.plan(sets, status=422)["error"]
+            assert err["type"] == "bad_value" and err["key"] == key and err["scope"] == "hooks", \
+                (sets, err)
+        err = r.plan(unsets=["providers.b.mode"], status=422)["error"]
+        assert err["type"] == "bad_value" and err["key"] == "providers.b.mode", err
+        err = r.plan({"providers.b.questions": {"judge": {}},
+                      "providers.b.questions.classify.api_key": KEY_B}, status=422)["error"]
+        assert err["key"] == "providers.b.questions.classify.api_key", err
+        assert "taken" not in err["message"]
+        # moving classify from a to b in one change set: a lets it go first
+        res = r.apply({"providers.a.mode": "shadow", "providers.b.mode": "on"})
+        assert res["state"] == "applied", res
+        assert (r.providers.get("a")["mode"], r.providers.get("b")["mode"]) == ("shadow", "on")
+        # and back, the other way round
+        res = r.apply({"providers.a.mode": "on", "providers.b.enabled": False})
+        assert res["state"] == "applied" and r.providers.get("a")["mode"] == "on"
+    finally:
+        r.close()
+    return "refused on their key; a question moves between providers in one change set"
+
+
+# ---------------------------------------------------------------------------- 8 no key
+
+def test_no_provider_key_anywhere():
+    r = Rig("pkey")
+    try:
+        r.provider(name="Classes", id="s1", questions={"classify": {}}, api_key=KEY_A)
+        r.apply({"providers.s1.api_key": KEY_B, "providers.s1.questions.classify.api_key": KEY_Q,
+                 "providers.s1.mode": "on"})
+        for path in ("hooks/schema", "hooks", "hooks/versions", "audit", ""):
+            r.call("GET", path)
+        blob = json.dumps(r.answers, default=str) + json.dumps(r.audit_rows(), default=str) + \
+            json.dumps(r.cfg.settings_versions("hooks", "controller"), default=str) + \
+            "\n".join(r.logs)
+        for k in (KEY_A, KEY_B, KEY_Q):
+            assert k not in blob
+        assert r.providers.key_for("s1", "*") == KEY_B
+    finally:
+        r.close()
+    return f"{len(r.answers)} answers, the audit, the versions and the log: no provider key"
 
 
 if __name__ == "__main__":

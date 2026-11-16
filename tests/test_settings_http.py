@@ -21,7 +21,8 @@ answer is held to contracts/settings-v1.
   4  SRV-845 x SEC-16: the hooks scope is the registry's: a hook made on /v1/fleet/hooks has its
      keys in /v1/settings/hooks; with no admin password a change from another machine applies,
      but the full payload from there is 403 trust_required; from this machine it is planned with
-     its warning and granted, and the runner sees the change
+     its warning and granted, and the runner sees the change. SRV-851: a decision provider made
+     on /v1/fleet/decision-providers has its keys there too, and a change reaches the runtime
                                                         test_hooks_scope_and_pairing_rights
 
 CPU only. Run: python tests/test_settings_http.py
@@ -269,7 +270,17 @@ def test_hooks_scope_and_pairing_rights():
         assert any("full payload" in w for w in p["parts"][0]["warnings"]), p
         g = px.svc.hooks.store.get("near")["grant"]
         assert res["state"] == "applied" and g and g["lan"], (res, g)
-    return "the registry's keys; the full payload only with pairing's rights"
+        st, out = call(px, "POST", "/v1/fleet/decision-providers", {
+            "name": "Classes", "id": "s1", "endpoint": "http://192.168.1.30:8720",
+            "questions": {"classify": {}}})
+        assert st == 201, (st, out)
+        st, vals = call(px, "GET", "/v1/settings/hooks")
+        assert {v["key"]: v["value"] for v in ok(vals, "values")["values"]}[
+            "providers.s1.mode"] == "shadow", vals
+        _, res = apply(px, [{"scope": "hooks", "set": {"providers.s1.mode": "on"}}], away)
+        assert res["state"] == "applied" and [p["id"] for p in px.svc.providers.rows()] == ["s1"]
+        assert px.svc.providers.rows()[0]["mode"] == "on"
+    return "the registry's keys and the providers'; the full payload only with pairing's rights"
 
 
 if __name__ == "__main__":

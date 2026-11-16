@@ -36,7 +36,8 @@ it would use, and read when it is switched on. A version's id is `<key>@<n>`.
 
 HOOKS (target `controller`): an adapter the hook registry plugs into (HooksAdapter below); until one
 is given the scope answers an empty schema and refuses every key. proxy/hooksettings.py is the
-registry's: each hook's switches and each decision provider's (proxy/app.py plugs it in). A key
+registry's: each hook's switches and each decision provider's, its API keys write-only
+(proxy/app.py plugs it in). A key
 that grants a hook the full payload is planned for a caller with pairing's rights only (403
 `trust_required`), and one whose destination is outside the LAN adds the second confirm
 (`grant_keys`, `confirm_grant`; SEC-16). Restart class none: the runner reads the registry again at

@@ -12,7 +12,7 @@ The contract is [`contracts/settings-v1`](../contracts/settings-v1/README.md).
 | `backends` | `controller` | the config database: `backends.<id>.<field>`, `backends.<id>.key`, `routes`, `users.<id>.enabled` | none |
 | `conductor` | `controller` | this controller's conductor documents: `settings`, `router`, `roles`, `packages`, `monitor`, `residency`, `deciders`, `profiles.<name>` | hot |
 | `engine` | an engine host's id | the engine's managed overlay, through `tandem remote settings` over SSH | per key: hot or engine |
-| `hooks` | `controller` | the hook registry, through its adapter: `hooks.<id>.<field>` | none; an in-process hook needs an engine restart |
+| `hooks` | `controller` | the hook registry and the decision providers, through their adapter: `hooks.<id>.<field>`, `providers.<id>.<field>` | none; an in-process hook needs an engine restart |
 
 They apply in this order. A change to the backends lands before a conductor document that may name one, and both land before an engine restart.
 
@@ -206,6 +206,26 @@ Setting `payload` to `full` grants the hook the prompts and answers as they are.
 - Only a caller with pairing's rights may plan it: the admin, or this machine while no admin password is set. Anyone else gets 403 `trust_required`.
 - The plan warns with the destination's host.
 - A destination outside the LAN needs a second confirm. The plan lists the key under `grant_keys` and gives `confirm_grant`. Apply without it is 428 `grant_confirm_required`. The grant records who confirmed it.
+
+### Decision providers
+
+The decision providers are keys of the same scope. They sit beside the hooks because a `hook` provider is a decision.ask hook. Each provider has these keys:
+
+| key | what |
+|-|-|
+| `providers.<id>.enabled` | whether it is asked at all |
+| `providers.<id>.mode` | `on`, `shadow` or `ab` |
+| `providers.<id>.ab_percent` | in `ab`, the share it answers, 0 to 100 |
+| `providers.<id>.sticky` | in `ab`, what the share sticks to: `session`, `user` or `request` |
+| `providers.<id>.questions` | the questions it answers, each `{model?, endpoint?, timeout_ms?}` |
+| `providers.<id>.api_key` | a `systemone-http` provider's own key |
+| `providers.<id>.questions.<question>.api_key` | the key for one question alone |
+
+A key is write-only. A string sets it and an unset clears it. An answer says only whether one is set, with its hint, and a version never holds it. A question's key exists once the provider answers that question: add the question first, then its key.
+
+One enabled provider serves a question `on` or `ab`. A change set may move a question from one provider to another. The provider that lets it go is written first.
+
+Adding or removing a provider and its kind stay on its API (`/v1/fleet/decision-providers`, [decision providers](decision-providers.md)).
 
 ## The pages
 
