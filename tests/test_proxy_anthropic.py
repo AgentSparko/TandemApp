@@ -459,7 +459,10 @@ def test_settings_of_the_kind():
                                  {"anthropic": {"thinking_shape": "off"}})
         assert st == 422 and "TANDEM_BACKEND_ANTH_ANTHROPIC_THINKING_SHAPE" in data.decode()
         st, _, data = px.get("/v1/config")
-        assert json.loads(data)["kinds"]["anthropic"]["cloud"] is True
+        k = json.loads(data)["kinds"]["anthropic"]
+        assert k["cloud"] is True and k["url"] is None, "a base URL is always given"
+        st, _, data = px.post("/v1/config/backends", {"id": "a3", "kind": "anthropic"})
+        assert st == 422, data
         # the settings scope lists a kind's own keys on that kind's backends only
         from proxy import settingscopes
         spec = settingscopes.BackendsScope(px.svc.cfg).spec("controller")

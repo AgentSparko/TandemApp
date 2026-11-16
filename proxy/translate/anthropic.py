@@ -47,7 +47,7 @@ are not passed on (pass-through, SRV-881, keeps them).
 
 THE STREAM. `message_start` -> the role chunk; text, thinking and tool blocks -> `delta.content`,
 `delta.reasoning_content` and `tool_calls` fragments (a call's index counts the calls, not the
-blocks); `message_delta` -> the finish chunk, then the usage chunk (input and cache counts from
+blocks; a call that streamed no input gets `{}` at its block's end); `message_delta` -> the finish chunk, then the usage chunk (input and cache counts from
 `message_start`, merged with the cumulative ones of `message_delta`); `message_stop` -> `[DONE]`;
 `ping` dropped; `error` -> an error frame and `[DONE]`.
 """
@@ -476,6 +476,7 @@ class StreamToChat:
         self.usage: dict | None = None
         self.blocks: dict = {}           # block index -> ("text" | "thinking" | "tool", n)
         self.ntools = 0
+        self.args_sent: set = set()      # the calls whose arguments went out (some or all)
         self.done = False
         self.error = None
         self.rest = bytearray()          # the relay's unfinished upstream event
@@ -522,6 +523,7 @@ class StreamToChat:
                                                        "arguments": ""}))
                 if isinstance(b.get("input"), dict) and b["input"]:
                     out += self._chunk(self._tool(n, function={"arguments": _args(b["input"])}))
+                    self.args_sent.add(n)
                 return out
             self.blocks[idx] = ("skip", None)
             return b""
@@ -534,9 +536,17 @@ class StreamToChat:
             if dt == "thinking_delta" and kind_n[0] == "thinking" and d.get("thinking"):
                 return self._chunk({"reasoning_content": d["thinking"]})
             if dt == "input_json_delta" and kind_n[0] == "tool" and d.get("partial_json"):
+                self.args_sent.add(kind_n[1])
                 return self._chunk(self._tool(kind_n[1],
                                               function={"arguments": d["partial_json"]}))
             return b""                   # signature_delta, citations_delta, an unknown delta
+        if kind == "content_block_stop":
+            kind_n = self.blocks.get(obj.get("index"), ("skip", None))
+            if kind_n[0] == "tool" and kind_n[1] not in self.args_sent:
+                # a call that streamed no input: `{}`, as a whole answer writes it
+                self.args_sent.add(kind_n[1])
+                return self._chunk(self._tool(kind_n[1], function={"arguments": "{}"}))
+            return b""
         if kind == "message_delta":
             u = obj.get("usage")
             if isinstance(u, dict):
@@ -561,7 +571,7 @@ class StreamToChat:
             body = {"error": {"message": err.get("message") or "the backend sent an error",
                               "type": etype, "param": None, "code": etype}}
             return b"data: " + json.dumps(body, **_JSON).encode() + b"\n\ndata: [DONE]\n\n"
-        return b""                       # ping, content_block_stop, an unknown event
+        return b""                       # ping, an unknown event
 
 
 # ----------------------------------------------------------------------------- the model list

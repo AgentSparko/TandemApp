@@ -2216,6 +2216,121 @@
     "reasoning_tokens": null
    }
   },
+  "tool_without_input": {
+   "row": "tool calls",
+   "events": [
+    "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"id\": \"msg_fixture_01\", \"type\": \"message\", \"role\": \"assistant\", \"model\": \"model-a\", \"content\": [], \"stop_reason\": null, \"stop_sequence\": null, \"usage\": {\"input_tokens\": 12, \"cache_creation_input_tokens\": 0, \"cache_read_input_tokens\": 0, \"output_tokens\": 1}}}",
+    "event: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"toolu_fixture_06\", \"name\": \"now\", \"input\": {}}}",
+    "event: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}",
+    "event: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\", \"stop_sequence\": null}, \"usage\": {\"output_tokens\": 3}}",
+    "event: message_stop\ndata: {\"type\": \"message_stop\"}"
+   ],
+   "want": [
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "role": "assistant",
+        "content": ""
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "id": "toolu_fixture_06",
+          "type": "function",
+          "function": {
+           "name": "now",
+           "arguments": ""
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {
+        "tool_calls": [
+         {
+          "index": 0,
+          "function": {
+           "arguments": "{}"
+          }
+         }
+        ]
+       },
+       "logprobs": null,
+       "finish_reason": null
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [
+      {
+       "index": 0,
+       "delta": {},
+       "logprobs": null,
+       "finish_reason": "tool_calls"
+      }
+     ]
+    },
+    {
+     "id": "msg_fixture_01",
+     "object": "chat.completion.chunk",
+     "created": 1763280000,
+     "model": "model-a",
+     "choices": [],
+     "usage": {
+      "prompt_tokens": 12,
+      "completion_tokens": 3,
+      "total_tokens": 15,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      }
+     }
+    },
+    "[DONE]"
+   ],
+   "ledger": {
+    "prompt_tokens": 12,
+    "completion_tokens": 3,
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": null
+   }
+  },
   "cache_usage": {
    "row": "cache control",
    "events": [

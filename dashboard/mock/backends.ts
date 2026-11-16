@@ -14,7 +14,7 @@ const KINDS = {
   sglang: { cloud: false, url: null, inject_usage: true, timeouts: { connect: 5, first_byte: 600, idle: 120 } },
   openai: { cloud: true, url: 'https://api.openai.com/v1', inject_usage: true, timeouts: { connect: 10, first_byte: 120, idle: 60 } },
   deepseek: { cloud: true, url: 'https://api.deepseek.com/v1', inject_usage: true, timeouts: { connect: 10, first_byte: 120, idle: 60 } },
-  anthropic: { cloud: true, url: 'https://api.anthropic.com', inject_usage: false, timeouts: { connect: 10, first_byte: 120, idle: 60 } },
+  anthropic: { cloud: true, url: null, inject_usage: false, timeouts: { connect: 10, first_byte: 120, idle: 60 } },
 } as const;
 type Kind = keyof typeof KINDS;
 const GROUPS = ['mode', 'class', 'effort', 'packages', 'side', 'loops', 'e1', 'tools', 'compaction', 'states', 'memory'];

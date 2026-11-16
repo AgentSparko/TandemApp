@@ -143,8 +143,8 @@ KINDS = {
     "sglang": {"cloud": False, "url": None, "inject_usage": True},
     "openai": {"cloud": True, "url": "https://api.openai.com/v1", "inject_usage": True},
     "deepseek": {"cloud": True, "url": "https://api.deepseek.com/v1", "inject_usage": True},
-    # SRV-877: any Messages API server; the base URL with or without its /v1
-    "anthropic": {"cloud": True, "url": "https://api.anthropic.com", "inject_usage": False},
+    # SRV-877: any Messages API server, by its base URL (with or without its /v1), no default
+    "anthropic": {"cloud": True, "url": None, "inject_usage": False},
 }
 # the defaults of a kind anthropic backend's own settings
 ANTHROPIC = anthropic_tr.DEFAULTS
