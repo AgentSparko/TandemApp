@@ -16,10 +16,9 @@
 # TANDEM_SECRETS_KEY is given), the engine hosts' SSH keys and pins, chatd's env file and chats. The
 # OpenSSH client is inside: engine hosts are controlled over SSH with keys TandemApp keeps there.
 # The server binds 0.0.0.0 inside the container; what is reachable is what `-p` publishes, or with
-# --network host every address of the machine: then set TANDEM_HOST=127.0.0.1 or an admin password
-# (TANDEM_ADMIN_TOKEN). With no admin password every route is open (docs/proxy.md). With
-# -e TANDEM_AUTH=accounts nothing is open: the first log lines hold a one-time setup code that
-# makes the owner (`docker logs`), and `tandem-app users setup-code` prints another.
+# --network host every address of the machine. Nothing answers without a sign-in or an API token:
+# while no owner exists the first log lines hold a one-time setup code that makes one (`docker
+# logs`), and `tandem-app users setup-code` prints another.
 #
 # A new container runs bare (OPS-288): the gateway in front of the engines it pairs, Chat and the
 # conductor off until an admin switches them on in Settings, App. Chat then runs in the container

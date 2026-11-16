@@ -51,26 +51,22 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-admin" (include "tandemapp.fullname" .)) .Values.auth.existingSecret -}}
 {{- end -}}
 
-{{/* sign-in: legacy (the admin token in the env) or accounts (TANDEM_AUTH=accounts) */}}
+{{/* sign-in: accounts, the only mode (SEC-28) */}}
 {{- define "tandemapp.authMode" -}}
-{{- toString (.Values.auth.mode | default "legacy") -}}
+{{- toString (.Values.auth.mode | default "accounts") -}}
 {{- end -}}
 
-{{/* "true" when the chart makes the Secret <fullname>-admin: legacy as before; in accounts mode
-auth.bootstrap.create (empty: auth.create) while no Secret is named */}}
+{{/* "true" when the chart makes the Secret <fullname>-admin: auth.bootstrap.create (empty:
+auth.create) while no Secret is named */}}
 {{- define "tandemapp.secretMade" -}}
 {{- $a := .Values.auth -}}
 {{- $b := $a.bootstrap | default dict -}}
-{{- if eq (include "tandemapp.authMode" .) "accounts" -}}
 {{- $create := $a.create -}}
 {{- if not (kindIs "invalid" $b.create) -}}{{- $create = $b.create -}}{{- end -}}
 {{- if and $create (not $a.existingSecret) (not $b.existingSecret) -}}true{{- end -}}
-{{- else -}}
-{{- if and $a.create (not $a.existingSecret) -}}true{{- end -}}
-{{- end -}}
 {{- end -}}
 
-{{/* accounts mode: the Secret whose file holds the setup code, empty when there is none */}}
+{{/* the Secret whose file holds the setup code, empty when there is none */}}
 {{- define "tandemapp.setupSecret" -}}
 {{- $b := .Values.auth.bootstrap | default dict -}}
 {{- if $b.existingSecret -}}{{- $b.existingSecret -}}
@@ -222,18 +218,18 @@ an upgrade, else off (a new install starts bare) */}}
 {{- fail "mcpBridge.enabled needs mcpBridge.command" -}}
 {{- end -}}
 {{- $mode := include "tandemapp.authMode" . -}}
-{{- if not (has $mode (list "legacy" "accounts")) -}}
-{{- fail "auth.mode is legacy or accounts" -}}
+{{- if eq $mode "legacy" -}}
+{{- fail "auth.mode legacy (the admin token in the environment) is gone: remove auth.mode, or set it to accounts. The Secret is kept and its admin token works once as the setup code" -}}
 {{- end -}}
-{{- if and (eq $mode "legacy") (not .Values.auth.existingSecret) (not .Values.auth.create) -}}
-{{- fail "auth: name an existingSecret or set create (a controller without an admin password answers anyone)" -}}
+{{- if ne $mode "accounts" -}}
+{{- fail "auth.mode is accounts" -}}
 {{- end -}}
 {{- if hasKey .Values.controller.env "TANDEM_AUTH" -}}
-{{- fail "controller.env: set auth.mode, not TANDEM_AUTH" -}}
+{{- fail "controller.env: TANDEM_AUTH is no longer read; remove it" -}}
 {{- end -}}
 {{- range .Values.controller.extraEnv -}}
 {{- if eq (toString .name) "TANDEM_AUTH" -}}
-{{- fail "controller.extraEnv: set auth.mode, not TANDEM_AUTH" -}}
+{{- fail "controller.extraEnv: TANDEM_AUTH is no longer read; remove it" -}}
 {{- end -}}
 {{- end -}}
 {{- range $p := list "openai" "anthropic" -}}

@@ -24,7 +24,7 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $full }} 8091:{{ .Values.service.port }}
    then http://127.0.0.1:8091/dashboard/
 {{- end }}
-{{ if eq (include "tandemapp.authMode" .) "accounts" }}
+
 4. Sign-in: accounts. Nobody signs in until the first owner is made, not even through
    kubectl port-forward: on Kubernetes the pod never trusts its own loopback.
 {{- $setup := include "tandemapp.setupSecret" . }}
@@ -37,7 +37,7 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
    and once an owner exists, as an API token for scripts that ends after 30 days.
 {{- end }}
    Once the owner exists the health page asks to delete the Secret (bootstrap_secret_left). Keep
-   it while you may still roll back to a release in legacy mode: its admin token signs in there.
+   it while you may still roll back to an older release: its admin token signs in there.
 {{- else }}
    No setup code Secret: the controller's log has a code at each start while no owner exists.
 {{- end }}
@@ -62,11 +62,6 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
    chatd on another host needs its key (QSE_CHAT_ENGINE_KEY) from here; the one before stops:
      {{ $cli }} tokens chatd-key /tmp/chatd.key {{ $db }}
      kubectl -n {{ .Release.Namespace }} exec deploy/{{ $full }} -c controller -- sh -c 'cat /tmp/chatd.key; rm /tmp/chatd.key'
-{{- end }}
-{{- else }}
-4. The admin password (TANDEM_ADMIN_TOKEN) is in Secret {{ include "tandemapp.secretName" . }}, key {{ .Values.auth.secretKey }}.
-   Read it into your password manager, never into a log:
-   kubectl -n {{ .Release.Namespace }} get secret {{ include "tandemapp.secretName" . }} -o jsonpath='{.data.{{ .Values.auth.secretKey }}}' | base64 -d | pbcopy
 {{- end }}
 
 {{- $chat := include "tandemapp.chatMode" . }}

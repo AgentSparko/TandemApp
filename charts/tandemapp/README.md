@@ -34,11 +34,9 @@ In short:
 
 3. `helm test tandemapp -n tandemapp` checks `/health` and the page through the Service.
 
-The admin password is a Secret the chart makes with a random token (kept across upgrades), or one
-you name with `auth.existingSecret`. Values files never hold a token.
-
-With `auth.mode: accounts` (user accounts, sessions, API tokens) no auth secret goes into the pod's
-environment. The same Secret is mounted into the controller as a file holding a one-time setup code
+The sign-in is user accounts, sessions and API tokens. No auth secret goes into the pod's
+environment, and values files never hold a token. The chart makes a Secret (kept across upgrades),
+or you name one with `auth.existingSecret`; it is mounted into the controller as a file holding a one-time setup code
 that makes the first owner; a release that had an admin token keeps it, and the token works once as
 the setup code and then, for 30 days, as an API token for scripts. The pod never trusts its own
 loopback, so `kubectl port-forward` needs a sign-in like any client. NOTES prints where the code is,
@@ -64,9 +62,9 @@ controller, or its pods' CIDR range, when it ends TLS. docs/install-kubernetes.m
 | `controller.env`, `.extraEnv`, `.extraEnvFrom` | `TANDEM_NODE_AGENT: "off"` | the controller's variables (docs/proxy.md); keys never go here |
 | `controller.conductor` | empty | the conductor's documents: a path under the volume, an absolute path, or `off`. Empty: off on a new install, the running release's on an upgrade |
 | `controller.resources`, `.probes` | | the controller's requests, limits and probes (`/health`) |
-| `auth.mode` | `legacy` | `legacy`: the admin token in the controller's env; `accounts`: TANDEM_AUTH=accounts, the setup code as a file |
-| `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the admin token's Secret; in accounts mode the setup code's (made with 20 characters) |
-| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty | accounts mode: a Secret of its own for the setup code; empty: the one above. No Secret at all is allowed: the code is then in the log |
+| `auth.mode` | `accounts` | the only value; `legacy` (the admin token in the env, older charts) is refused |
+| `auth.existingSecret`, `.secretKey`, `.create` | empty, `admin-token`, true | the setup code's Secret (made with 20 characters), or a release before's admin token |
+| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty | a Secret of its own for the setup code; empty: the one above. No Secret at all is allowed: the code is then in the log |
 | `auth.trustedProxy` | empty | TANDEM_TRUSTED_PROXY: addresses and CIDR ranges (IPv4, IPv6) of the proxies whose forwarded headers count, e.g. `192.0.2.0/24` |
 | `chat.mode` | empty | `off`, `own` (chatd in this pod), `external` (another host's). Empty: off on a new install, the running release's on an upgrade. The page's switch wins once used |
 | `chat.dataDir`, `chat.env` | `data/chat`, {} | chatd's data folder under the volume, more lines of its env file |

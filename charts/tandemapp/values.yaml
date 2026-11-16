@@ -91,23 +91,21 @@ controller:
       timeoutSeconds: 5
       failureThreshold: 3
 
-# -- sign-in. Never put a token or a code in a values file.
-#   legacy (the default for now): the admin password (TANDEM_ADMIN_TOKEN, at least 32
-#     characters) from the Secret below, in the controller's environment. Without one every
-#     route answers anyone who reaches it.
-#   accounts: user accounts, sessions and API tokens (TANDEM_AUTH=accounts). No auth secret goes
-#     into the pod's environment. The Secret is mounted as a file and holds a one-time setup code
-#     that makes the first owner; a release that had an admin token keeps that Secret, its value
-#     works once as the setup code and, once an owner exists, as an API token for scripts that
-#     ends after 30 days. Kubernetes never trusts the pod's loopback (kubectl port-forward).
+# -- sign-in: user accounts, sessions and API tokens. Never put a token or a code in a values file.
+#   No auth secret goes into the pod's environment. The Secret is mounted as a file and holds a
+#   one-time setup code that makes the first owner; a release that had an admin token keeps that
+#   Secret, its value works once as the setup code and, once an owner exists, as an API token for
+#   scripts that ends after 30 days. Kubernetes never trusts the pod's loopback (kubectl
+#   port-forward). `mode` has one value, accounts; the admin-token mode of older charts (legacy)
+#   is gone and is refused.
 auth:
-  mode: legacy
-  # the admin token's Secret, or one the chart makes with a random value (kept across upgrades:
-  # 48 characters in legacy mode, a 20-character setup code in accounts mode)
+  mode: accounts
+  # the Secret, or one the chart makes with a random value (kept across upgrades: a 20-character
+  # setup code, or the admin token a release before had)
   existingSecret: ""
   secretKey: admin-token
   create: true
-  # accounts mode only: the setup code's own Secret (secretKey: its key, empty: auth.secretKey).
+  # the setup code's own Secret (secretKey: its key, empty: auth.secretKey).
   # Empty: the Secret above, so an upgrade keeps its admin token working. create empty:
   # auth.create. With no Secret at all the first code is in the controller's log, or
   # `users setup-code` through kubectl exec (NOTES)
