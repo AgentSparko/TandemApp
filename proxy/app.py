@@ -224,10 +224,12 @@ class Handler(BaseHTTPRequestHandler):
     def handle_one_request(self):
         self.connection.settimeout(self.timeout)          # the request phase (IDLE_TIMEOUT_S)
         self._body_done = False
-        super().handle_one_request()
-        acc = STATE.get("accounts")
-        if acc is not None:
-            acc.done(self)              # SEC-24: no longer one of its session's open streams
+        try:
+            super().handle_one_request()
+        finally:
+            acc = STATE.get("accounts")
+            if acc is not None:
+                acc.done(self)          # SEC-24: no longer one of its session's open streams
         # a chunked body the handler never read stayed on the wire and the next request on
         # the keep-alive connection was parsed from the middle of it (the size line as a
         # request line). A body this handler never touched at all closes the connection,
@@ -251,8 +253,8 @@ class Handler(BaseHTTPRequestHandler):
     def end_headers(self):
         # SEC-24: a session's renewed cookie (at most once a day), unless the answer sets its own
         cookie = self.__dict__.pop("_set_cookie", None)
-        if cookie is not None and not any(
-                line[:11].lower() == b"set-cookie:" for line in getattr(self, "_headers_buffer", ())):
+        sent = getattr(self, "_headers_buffer", ())
+        if cookie is not None and not any(line[:11].lower() == b"set-cookie:" for line in sent):
             self.send_header("Set-Cookie", cookie)
         super().end_headers()
 

@@ -22,6 +22,9 @@
      own hash column                                                  test_no_secret_anywhere
   9  the provider interface: the local provider's capabilities, the base answers nothing, the
      legacy secrets (the admin token, admin.json, trusted-local) open nothing   test_provider_and_legacy
+ 10  every existing route runs over the accounts: an owner's session gets what an open controller
+     of the old rule answers, but for the routes the accounts change on purpose; nothing drops
+     or answers 5xx                                                   test_old_routes_over_accounts
 
     python tests/test_auth_accounts.py
 """
@@ -98,7 +101,7 @@ def test_role_matrix():
     # each role holds the ones below it
     for lo, hi in zip(authz.ROLES, authz.ROLES[1:]):
         assert want[lo] < want[hi]
-    # decision 4 (2026-11-16): a viewer's inference tokens follow the admin switch, default off
+    # SEC-22: a viewer's inference tokens follow the admin switch, off by default
     v = acc_mod.Principal(kind="account", id="v", name="v", role="viewer")
     o = acc_mod.Principal(kind="account", id="o", name="o", role="operator")
     for state, viewer_may in ((None, False), (False, False), ("off", False), (True, True),
@@ -517,6 +520,50 @@ def test_provider_and_legacy():
         assert j(px.get("/v1/fleet/session"))[1]["authenticated"] is False
         assert px.get("/v1/dashboard/session")[0] == 401
         assert "auth: accounts" in accounts().describe()
+
+
+
+# ---------------------------------------------------------------------------- 10
+
+SWEEP = [("GET", p, None) for p in (
+    "/v1/fleet/health", "/v1/dashboard/system", "/v1/dashboard/usage", "/v1/dashboard/requests",
+    "/v1/fleet/ledger/summary", "/v1/config", "/v1/fleet/plugins", "/v1/fleet/hooks",
+    "/v1/fleet/decision-providers", "/v1/fleet/plugin-trust", "/v1/fleet/engines",
+    "/v1/fleet/deployments", "/v1/fleet/chat", "/v1/fleet/app/parts", "/v1/settings/app",
+    "/v1/fleet/discovery", "/v1/fleet/app/export", "/v1/dashboard/logs?follow=0",
+    "/v1/fleet/layouts/fleet", "/v1/settings/backends", "/v1/settings/hooks",
+    "/v1/settings/conductor", "/v1/settings/engine")] + [
+    ("POST", "/v1/fleet/placement", {}), ("POST", "/v1/fleet/app/parts/chat", {"on": False}),
+    ("POST", "/v1/fleet/gateway/chat/completions", {"model": "m", "messages": []})]
+# what the accounts change on purpose: their own routes, a route without an entry, an unknown
+# session address, and the old password's writes
+CHANGED = {("GET", "/v1/auth/session"), ("GET", "/v1/auth/sessions"), ("GET", "/v1/auth/users"),
+           ("POST", "/v1/auth/session"), ("GET", "/v1/no-such-route"),
+           ("GET", "/s/abcdefabcdef/v1/library")}
+
+
+def test_old_routes_over_accounts():
+    import test_auth_switch_off as off
+    routes = [r for r in list(off.ROUTES) + SWEEP if (r[0], r[1]) not in CHANGED]
+
+    def sweep(env: dict, owner: bool) -> dict:
+        out = {}
+        with Proxy(env=env) as px:
+            h = {}
+            if owner:
+                make("own", "owner")
+                h = sign_in(px, "own")
+            for method, path, body in routes:
+                try:
+                    out[(method, path)] = px.request(method, path, body, h)[0]
+                except Exception as exc:                           # noqa: BLE001
+                    out[(method, path)] = f"dropped: {type(exc).__name__}"
+        return out
+    old, new = sweep({}, False), sweep(ON, True)
+    diff = {k: (old[k], new[k]) for k in old if old[k] != new[k]}
+    assert not diff, diff
+    assert not any(isinstance(v, str) or v >= 500 and v != old[k] for k, v in new.items())
+    return f"{len(routes)} routes"
 
 
 if __name__ == "__main__":

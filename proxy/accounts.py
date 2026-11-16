@@ -17,15 +17,14 @@ its SHA-256, never the id. The CSRF token is an HMAC of the id, so it is never s
 hash is). A session ends when it is revoked, when it was idle for `auth.session.idle_days` (30), or
 `auth.session.absolute_days` (180) after it began, whichever comes first; both are settings, at
 most 400 days, and a shorter value applies to sessions already open. A request renews the idle
-time at most once a day, and the cookie with it. The table is the truth: a restart ends nothing,
-and an end needs no restart. A stream or a WebSocket of a session that ends is closed: at once
-when this process ends it, within STREAM_CHECK_S otherwise.
+time at most once a day (twice with an idle time of one day), and the cookie with it. The table
+is the truth: a restart ends nothing, and an end needs no restart. A stream or a WebSocket of a
+session that ends is closed: at once when this process ends it, within STREAM_CHECK_S otherwise.
 
 THE COOKIE. `__Host-tandem_session` over https, `tandem_session` over http (each read only on
-its own scheme); HttpOnly,
-SameSite=Strict, Path=/, no Domain, Secure over https, Max-Age the idle time. Https is known from
-the listener's own TLS, or from X-Forwarded-Proto sent by a loopback peer or a TANDEM_TRUSTED_PROXY
-peer; from any other peer the header counts for nothing.
+its own scheme); HttpOnly, SameSite=Strict, Path=/, no Domain, Secure over https, Max-Age the
+idle time. Https is known from the listener's own TLS, or from X-Forwarded-Proto sent by a
+loopback peer or a TANDEM_TRUSTED_PROXY peer; from any other peer the header counts for nothing.
 
 THE GATE (one rule for every route, AccountsAuth.gate):
   1. a path with no entry in proxy/authz.py's table is refused (403 `unmapped_route`), logged once;
@@ -147,7 +146,7 @@ def _clean(text, n: int = 200) -> str:
 
 
 def public_id(id_hash: str) -> str:
-    """A session's name in the lists and the routes: a prefix of its hash (the id is never shown)."""
+    """A session's name in the lists and the routes: a prefix of its hash (never the id)."""
     return id_hash[:16]
 
 
@@ -398,7 +397,7 @@ class AccountStore:
         is sent again)."""
         now = self.now_ms()
         idle = self.policy.idle_days * DAY_MS
-        renew = row["idle_until"] - now < idle - DAY_MS
+        renew = row["idle_until"] - now < idle - min(DAY_MS, idle // 2)
         if not renew and now - row["last_seen_at"] < TOUCH_MS:
             return False
         with self.cfg._lock:
@@ -548,6 +547,9 @@ class Streams:
                     pass
             if dead:
                 self.close(dead)
+                with self._lock:
+                    for h in dead:
+                        self._open.pop(h, None)
 
 
 # ======================================================================================== limits

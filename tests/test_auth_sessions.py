@@ -525,8 +525,16 @@ def test_timeouts():
         cfg.set_setting("auth.session.idle_days", 0, who="test")
         pol = accounts().policy
         assert pol.absolute_days == 400 and pol.idle_days == 1
-        _, cookie, _ = sign_in(px, "view")
+        h2, cookie, sid = sign_in(px, "view")
         assert "Max-Age=86400" in cookie
+        # an idle time of one day renews after half of it, so an active session lives on
+        ih2 = hashlib.sha256(sid.encode()).hexdigest()
+        with cfg._lock:
+            cfg._conn.execute("UPDATE sessions SET idle_until = ? WHERE id_hash = ?",
+                              (accounts().store.now_ms() + int(0.4 * day), ih2))
+            cfg._conn.commit()
+        st, rh, _ = px.get("/v1/settings", ro(h2))
+        assert st == 200 and "Max-Age=86400" in rh.get("Set-Cookie", ""), rh
         # rows of sessions that ended more than a day ago go
         n = len(px.svc.cfg._conn.execute("SELECT * FROM sessions").fetchall())
         with cfg._lock:
@@ -649,6 +657,23 @@ def test_races_and_leftovers():
                     pass
         b = Bare()
         assert px.svc.authorize(b) == (False, None) and b.sent == [401]
+    # the watcher shuts the streams of an ended session and forgets them
+
+    class Gone:
+        @staticmethod
+        def valid(_h):
+            return False
+    streams = acc_mod.Streams(Gone(), check_s=0.05)
+    left, right = socket.socketpair()
+    streams.add("h1", left)
+    right.settimeout(5)
+    assert right.recv(10) == b""
+    t0 = time.monotonic()
+    while streams._open and time.monotonic() - t0 < 5:
+        time.sleep(0.05)
+    assert not streams._open
+    left.close()
+    right.close()
 
 
 if __name__ == "__main__":
