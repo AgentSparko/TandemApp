@@ -5,6 +5,8 @@
 # dashboard job built; then each tests/test_*.py through tests/script_suite.py, two files at a
 # time. A file that fails or runs no test fails the job. The checkout gets the same page after the
 # install, for the tests that read it.
+# plugin-examples: the plugin SDK's two examples and a scaffold of each kind installed and run
+# through the plugin host, from the checkout (SRV-861); the app suite runs the same file too.
 name: tests
 
 on:
@@ -69,4 +71,35 @@ jobs:
         with:
           name: app-suite-logs
           path: results/app-suite
+          retention-days: 7
+
+  plugin-examples:
+    name: plugin examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Dependencies (no torch)
+        run: python -m pip install "cryptography>=42" psutil jsonschema pyyaml
+
+      - name: The SDK's examples through the plugin host
+        run: |
+          set -o pipefail
+          mkdir -p results/plugin-examples
+          python tests/script_suite.py --all --out results/plugin-examples/logs \
+            tests/test_plugin_sdk.py | tee results/plugin-examples/RESULT
+
+      - name: Keep the logs
+        if: failure()
+        uses: actions/upload-artifact@v4.4.3
+        with:
+          name: plugin-examples-logs
+          path: results/plugin-examples
           retention-days: 7
