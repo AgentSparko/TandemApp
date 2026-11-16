@@ -6,7 +6,7 @@
 import { request } from './client';
 import type { EngineBlock } from './types';
 
-export type BackendKind = 'generic' | 'tandemllm' | 'vllm' | 'sglang' | 'openai' | 'deepseek';
+export type BackendKind = 'generic' | 'tandemllm' | 'vllm' | 'sglang' | 'openai' | 'deepseek' | 'anthropic';
 export type FeatureValue = 'inherit' | 'off' | 'shadow' | 'on';
 
 export interface KeyHint {
