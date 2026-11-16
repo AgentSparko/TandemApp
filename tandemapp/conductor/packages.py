@@ -178,15 +178,24 @@ class Library:
         self._files: dict[str, tuple[float, str]] = {}
         self._lock = threading.Lock()
         self._req = threading.local()          # the request's address (`at`), per thread
+        # SRV-859: fn() -> more skill folders after the document's (a running plugin's, read
+        # from its installed tree; the controller's plugin host sets it)
+        self.extra_dirs = None
 
     def at(self, url: str | None) -> None:
         """The address of the request this thread plans now: `{tandem_url}` in a text."""
         self._req.url = url
 
     def _dirs(self, doc: dict) -> list[str]:
-        return [os.path.expanduser(d.replace(REPO_TOKEN, SHIPPED_ROOT, 1) if d.startswith(REPO_TOKEN)
-                                   else d)
-                for d in doc.get("skill_dirs") or []]
+        out = [os.path.expanduser(d.replace(REPO_TOKEN, SHIPPED_ROOT, 1) if d.startswith(REPO_TOKEN)
+                                  else d)
+               for d in doc.get("skill_dirs") or []]
+        if self.extra_dirs is not None:
+            try:
+                out += [d for d in self.extra_dirs() if d not in out]
+            except Exception:                                      # noqa: BLE001
+                pass
+        return out
 
     def path(self, doc: dict, name: str) -> str | None:
         p = (doc.get("packages") or {}).get(name)
