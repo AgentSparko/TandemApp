@@ -85,13 +85,14 @@ import time
 from proxy import http1, passthrough
 from proxy import stash as stash_mod
 from proxy.adapters import ENDPOINTS, Stamps
+from proxy.adapters import anthropic as anthropic_adapter
 from proxy.adapters.base import CHAT, COMPLETIONS
 from proxy.measure import RelayRecord
 from proxy.translate.anthropic import TranslateError
 from tandemapp.parallel import _fetch_json
 
 RETRYABLE = (429, 502, 503)      # the default; an adapter may add its own (`retryable`)
-MESSAGES_PATHS = ("/v1/messages",)  # SRV-881: a stream that passes through
+MESSAGES_PATHS = (anthropic_adapter.MESSAGES,)  # SRV-881: a stream that passes through
 MAX_RETRIES = 2
 RETRY_AFTER_CAP = 30.0
 DRAIN_RETRY_S = 30
