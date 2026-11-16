@@ -39,6 +39,8 @@ hello-tool/
 }
 ```
 
+In Python, the [plugin SDK](plugins-sdk.md) writes this reader for you: a plugin is a few decorated functions, and `tandemapp-plugin new` starts one.
+
 Check it the way an install does, without installing it:
 
 ```
@@ -327,7 +329,7 @@ A panel is served at `/plugin-panels/<id>/<panel>/` (its HTML; the files beside 
 - Read your settings from `TANDEM_PLUGIN_SETTINGS`; keep files in `TANDEM_PLUGIN_DATA`.
 - Ask for `network:<host>[:<port>]` for each host you call; HTTP clients that honour `HTTPS_PROXY` (urllib, requests, curl) go through the proxy as they are.
 - Write logs to stderr; stdout is the protocol.
-- `examples/hello-tool`, `audit-hook` and `classify-provider` are complete plugins; the tests run each of them.
+- `examples/hello-tool`, `audit-hook` and `classify-provider` are complete plugins written against the protocol itself; `note-webhook` and `keyword-router` are built on the [SDK](plugins-sdk.md). The tests run each of them.
 
 ## Debugging
 
