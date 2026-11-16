@@ -24,6 +24,10 @@
   TANDEM_ADMIN_TOKEN_FILE: 32 characters or more count as the admin token, named by its file; a
   shorter value is a setup code only; a missing file is nothing; the environment's own wins
                                                                  test_admin_token_file
+  the docs: install-kubernetes.md, install-linux.md, the chart's README, app.env.example and the
+  Dockerfile say accounts mode, the setup code, the exec reset, exposure and the trusted proxy;
+  every auth.* and ingress.api.* value is in the README's table; the doc's kubectl exec lines are
+  the ones NOTES prints                                          test_docs
 
 helm on PATH (skipped without it). Run: python tests/test_chart_accounts.py
 """
@@ -300,6 +304,59 @@ def test_admin_token_file():
     assert authlegacy.token_from_file({"TANDEM_ADMIN_TOKEN_FILE": path}, {})[0] == \
         {"TANDEM_ADMIN_TOKEN_FILE": path}
     return "a long value is the admin token named by its file; short, missing, env: unchanged"
+
+
+def _read(*parts) -> str:
+    with open(os.path.join(ROOT, *parts)) as f:
+        return f.read()
+
+
+def test_docs():
+    import re
+    k8s = _read("docs", "install-kubernetes.md")
+    for words in ("auth.mode: accounts", "setup code", "TANDEM_SETUP_CODE_FILE",
+                  "kubectl port-forward", "loopback is never trusted", "users setup-code",
+                  "users reset-password NAME", "bootstrap_secret_left",
+                  "auth.bootstrap.existingSecret",
+                  "ingress.api.openai", "ingress.api.anthropic", "/v1/models` is always routed",
+                  "TANDEM_INGRESS_API", "exposure_unreachable", "auth.trustedProxy",
+                  "TANDEM_TRUSTED_PROXY", "exposure_plain_http", "30 days", "helm rollback",
+                  "tokens chatd-key FILE"):
+        assert words in k8s, words
+    linux = _read("docs", "install-linux.md")
+    for words in ("TANDEM_AUTH=accounts", "--behind-proxy", "local mode", "setup code",
+                  "tandem-app users setup-code", "tandem-app users reset-password NAME",
+                  "API exposure", "TANDEM_TRUSTED_PROXY", "--setup-code", "tandem-app check",
+                  "30 days"):
+        assert words in linux, words
+    readme = _read("charts", "tandemapp", "README.md")
+    values = _read("charts", "tandemapp", "values.yaml")
+    block = values.split("\nauth:\n", 1)[1].split("\n\n", 1)[0]
+    for key in ("mode", "existingSecret", "secretKey", "create", "bootstrap", "trustedProxy"):
+        assert re.search(rf"(?m)^  {key}:", block), key
+        assert f"`auth.{key}" in readme or f"`.{key}`" in readme or f", `.{key}`" in readme, key
+    assert "`auth.bootstrap.existingSecret`, `.secretKey`, `.create`" in readme
+    assert "`ingress.api.openai`, `.anthropic`" in readme
+    env = _read("packaging", "app.env.example")
+    for words in ("#TANDEM_AUTH=accounts", "#TANDEM_TRUSTED_PROXY=", "tandem-app users",
+                  "tandem-app tokens"):
+        assert words in env, words
+    assert "TANDEM_AUTH=accounts" in _read("packaging", "Dockerfile.app")
+    # no host of this project's own network in the public text
+    for text in (k8s, linux, readme, env):
+        assert not re.search(r"\b(192\.168|10\.\d+\.\d+\.\d+)\b", text)
+    # the doc's kubectl exec lines are NOTES' own (release and namespace tandemapp)
+    tcd = _chart()
+    argv = [shutil.which("helm"), "install", "tandemapp", tcd.CHART, "-n", "tandemapp",
+            "--dry-run=client", "--set", "release.id=0123456789ab", "--set", "auth.mode=accounts"]
+    r = subprocess.run(argv, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-400:]
+    joined = re.sub(r" \\\n\s+", " ", k8s)
+    for k in ("A new setup code:", "A lost password:"):
+        line = next(x for x in r.stdout.splitlines() if x.strip().startswith(k))
+        cmd = line.split(k, 1)[1].strip()
+        assert cmd in joined, (k, cmd)
+    return "the docs say accounts, the code, the reset, exposure, the proxy; NOTES' lines match"
 
 
 def authlocal_env() -> str:

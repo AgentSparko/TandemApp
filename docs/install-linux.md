@@ -30,7 +30,8 @@ restarted, and switched back when it does not come up. `app.env` keeps what it h
 
 | option | what |
 |-|-|
-| `--listen ADDR` | the address to bind: `0.0.0.0`, `::` or one of the host's. An address beyond loopback writes an admin token (`TANDEM_ADMIN_TOKEN`, never printed) into `app.env` and turns the page's sign-in on |
+| `--listen ADDR` | the address to bind: `0.0.0.0`, `::` or one of the host's. An address beyond loopback writes an admin token (`TANDEM_ADMIN_TOKEN`, never printed) into `app.env` and turns the page's sign-in on; with accounts (below) it writes no secret and prints a setup code |
+| `--behind-proxy` | a reverse proxy or tunnel on this host sends other devices here: with accounts, this machine's browser is never trusted without a password (`TANDEM_LOCAL_MODE=off`) and the summary prints a setup code |
 | `--port N` | default 8080 |
 | `--chat off\|own\|external` | who runs chatd. A new `app.env` gets `off`; the page switches it later. `own` here runs chatd on this host from the start |
 | `--with-sandbox` | Linux, sudo once: rootless Podman for chat's sandboxes (below). It switches nothing on |
@@ -48,13 +49,46 @@ when another listener holds the port: the install stops (exit 2) and names both.
 On Linux a user unit stops at logout unless the user lingers; the install prints the one command
 (`sudo loginctl enable-linger <user>`).
 
+### Sign-in with accounts
+
+`TANDEM_AUTH=accounts` (in the environment of the install command, or in `app.env`) turns on user
+accounts with roles, sessions and API tokens in place of the admin token; the installer keeps it
+in `app.env`.
+
+- **This machine only** (the default address, no proxy): local mode. The page opens without a
+  password and offers "Set a password"; nothing else on the network reaches it. The installer
+  prints no code.
+- **Beyond loopback** (`--listen`), or **behind a proxy** (`--behind-proxy`): no local mode
+  (`TANDEM_LOCAL_MODE=off`). Nobody signs in until the first owner is made. The installer's
+  summary prints a one-time setup code and the address; open the page and enter it with the
+  owner's name and password. The code is single use, valid 24 hours and spent after 5 wrong
+  tries. While no owner exists each start of the controller logs a fresh one, and
+  `tandem-app users setup-code` prints another.
+- **A lost password:** `tandem-app users reset-password NAME` on this machine prints a one-time
+  code; sign in with it as the password, then set one. Whoever can read the state directory can
+  do this, so no password is asked.
+- **API exposure.** The OpenAI-compatible API and the Messages API each have a switch on the page:
+  "this machine" (the default) or "network". Other devices need a token and the switch on
+  network; an install that had API keys starts with the OpenAI switch on network so its clients
+  keep working. A controller on loopback is not reachable from other devices whatever the switch
+  says: change the listen address too.
+- **A proxy that ends TLS** on another address: name it in `TANDEM_TRUSTED_PROXY` (exact
+  addresses, comma separated), or every API token through it counts as sent over plain HTTP.
+- `tandem-app service install --host 0.0.0.0` refuses while no owner has a password, unless
+  `--setup-code`, which prints a code. `tandem-app check` says where the sign-in stands.
+- An install that had the admin token keeps it working for scripts for 30 days, as an API token
+  marked for review. It never signs in to the page. Remove `TANDEM_ADMIN_TOKEN`,
+  `TANDEM_API_KEYS` and `TANDEM_DASHBOARD_LOGIN` from `app.env` once you will not go back to an
+  older release; the health page names each one still set.
+
 ### Behind a reverse proxy
 
 Keep the controller on loopback and let the proxy end TLS. Forward everything to
 `http://127.0.0.1:8080`, with streaming on and long timeouts (an answer can take minutes): in
 nginx `proxy_buffering off`, `proxy_read_timeout 3600s`, `proxy_set_header X-Real-IP $remote_addr`,
 `client_max_body_size 200m`. Do not route `/chat-engine`: that is chatd's way to the gateway on
-the same host. Set an admin password before the page is reachable from another machine.
+the same host. Set an admin password before the page is reachable from another machine; with
+accounts install with `--behind-proxy`, so the proxy's requests are never taken for this machine.
 A proxy that forwards only some paths must still send TandemApp every prefix in
 [install.md](install.md#behind-a-reverse-proxy); [proxy.md](proxy.md#through-a-reverse-proxy) has the rest.
 
@@ -110,6 +144,8 @@ stage) and the OpenSSH client, and no compiler or torch:
 (`-p 127.0.0.1:8080:8080`) you type the engine's address instead. Inside the container the server
 binds 0.0.0.0 unless `TANDEM_HOST` says otherwise: set an admin password, or
 `TANDEM_DASHBOARD_LOGIN=on` with `TANDEM_ADMIN_TOKEN`, before anything but loopback reaches it.
+With `-e TANDEM_AUTH=accounts` a container never gets local mode: the first log lines hold a
+setup code that makes the owner (`docker logs tandem-app`).
 
 Everything it keeps is in `/data`. A new `/data` starts bare: Chat and the conductor off. The start
 script records its choice once in `/data/container.env`; `-e TANDEM_CHAT=own` overrides it, and the

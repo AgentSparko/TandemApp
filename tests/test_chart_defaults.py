@@ -1,5 +1,5 @@
-"""OPS-288, OPS-292, OPS-298: the Helm chart's bare defaults, every mode it renders, an upgrade that
-keeps what the running release has, the release archive built twice to the same bytes, and the
+"""OPS-288, OPS-292, OPS-298: the Helm chart's bare defaults, every mode it renders, an upgrade
+that keeps what the running release has, the release archive built twice to the same bytes, and the
 sign-in of accounts (auth.mode) with the ingress's API paths.
 
   Gherkin:
@@ -480,8 +480,8 @@ def changes(old: list, new: list) -> tuple[list, list]:
     return gone, added
 
 
-DEPLOY_LINES = ["            # never local mode: kubectl port-forward reaches the pod on its loopback",
-                "            - {name: TANDEM_DEPLOY, value: kubernetes}"]
+DEPLOY_LINES = [" " * 12 + "# never local mode: kubectl port-forward reaches the pod on its loopback",
+                " " * 12 + "- {name: TANDEM_DEPLOY, value: kubernetes}"]
 ENV_SECRET = ["            - name: TANDEM_ADMIN_TOKEN", "              valueFrom:",
               "                secretKeyRef:", "                  name: t-tandemapp-admin",
               "                  key: admin-token"]

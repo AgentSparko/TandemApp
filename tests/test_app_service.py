@@ -18,7 +18,7 @@ local build label (the fleet update's package).
   owner has a password is refused (exit 2, nothing installed) unless --setup-code, which installs
   and prints a one-time code the server takes; with an owner it installs as before; without the
   accounts the old warning stays. `tandem-app check` says the sign-in state instead of the admin
-  password                                                                   test_accounts_beyond_loopback
+  password                                                       test_accounts_beyond_loopback
   5  pyproject's `app` extra: no engine, no torch; `pip install './app[app]'` gives tandem-app
                                                                             test_app_extra
   6  `tandem-app package --version 0.15.0+test`: the wheel's name and METADATA carry the label,

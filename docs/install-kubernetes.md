@@ -72,6 +72,36 @@ Keep the token in a password manager: it signs in to the page and is the admin t
 (Leaving `auth.existingSecret` empty makes the chart create a Secret with a random token, kept
 across upgrades.)
 
+**Sign-in with accounts (`auth.mode: accounts`).** User accounts with roles, sessions and API
+tokens replace the admin token. The chart then puts no auth secret into the pod's environment:
+
+- The Secret is mounted into the controller as a file (`TANDEM_SETUP_CODE_FILE`) that holds a
+  one-time setup code. Leave `auth.existingSecret` empty and the chart makes it with a 20-character
+  code; or name your own with `auth.bootstrap.existingSecret` (and `.secretKey`). Read it once:
+
+      kubectl -n tandemapp get secret tandemapp-admin -o jsonpath='{.data.admin-token}' | base64 -d; echo
+
+  Open the page, enter the code with the first owner's name and password. The code is single use
+  and spent after 5 wrong tries. With no Secret at all (`auth.create: false`) each start logs a
+  fresh code while no owner exists.
+- Nobody signs in before the owner exists: every route but `/health` and the page shell answers
+  401. That includes `kubectl port-forward`, which reaches the pod on its own loopback: on
+  Kubernetes (`TANDEM_DEPLOY=kubernetes`, which the chart sets) loopback is never trusted.
+- A new code, and a lost password, through `kubectl exec` (`helm install` prints both lines):
+
+      kubectl -n tandemapp exec deploy/tandemapp -c controller -- env PYTHONPATH=/var/lib/tandemapp/current \
+        /var/lib/tandemapp/current/venv/bin/python -m proxy users setup-code --config-db /var/lib/tandemapp/state/config.sqlite3
+      kubectl -n tandemapp exec deploy/tandemapp -c controller -- env PYTHONPATH=/var/lib/tandemapp/current \
+        /var/lib/tandemapp/current/venv/bin/python -m proxy users reset-password NAME --config-db /var/lib/tandemapp/state/config.sqlite3
+
+  `reset-password` prints a one-time code, valid 24 hours: sign in with it as the password, then
+  set one.
+- Once the owner exists the health page asks to delete the Secret (`bootstrap_secret_left`). The
+  mount is optional, so the pod starts without it; set `auth.create: false` (or
+  `auth.bootstrap.create: false`) so an upgrade does not make it again.
+- A chatd on another host (`chat.mode: external`) needs a key of its own: `tokens chatd-key FILE`
+  through the same `kubectl exec`, then give that chatd the key as `QSE_CHAT_ENGINE_KEY`.
+
 **Extra CAs.** When the controller calls services with a private CA (engines over https, MCP
 servers), give it the CA: `--set-file trust.extraCA=ca.pem`.
 
@@ -140,6 +170,23 @@ and open `https://tandemapp.example.com/`: the setup wizard (pairing an engine h
   long one takes minutes. A proxy in front needs the same.
 - Behind an ingress every client reaches the controller from the ingress pod's address, so the
   sign-in limit (5 wrong passwords a minute) is shared by all clients.
+- **The API paths** (accounts mode). `ingress.api.openai` routes or blocks the OpenAI-compatible
+  routes (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/responses`,
+  `/v1/cache`), `ingress.api.anthropic` the Messages API (`/v1/messages`). A blocked path goes to
+  the Service with no endpoints (503). `/v1/models` is always routed: the page reads it. Empty, a
+  new install blocks both and an upgrade keeps what the running release did (a release before
+  accounts mode routed every path, so its clients keep working). `helm template` and a client-side
+  dry run see no running release: pin `ingress.api.openai: true` in the values of a release whose
+  clients use the API. The chart tells the controller what it routes (`TANDEM_INGRESS_API`); the
+  page's API exposure switch still decides who may call, and the health page says when the switch
+  is on for a path the ingress blocks (`exposure_unreachable`). In legacy mode every path is routed
+  unless a value says otherwise.
+- **The trusted proxy.** With TLS ended at the ingress, set `auth.trustedProxy` to the ingress
+  controller's address (`TANDEM_TRUSTED_PROXY`, a comma list of exact addresses). Only then do its
+  `X-Forwarded-Proto` and `X-Real-IP` count; without it every API token through the ingress is
+  taken as sent over plain HTTP (`exposure_plain_http`) and every client shares one sign-in limit.
+  The list takes no ranges: an ingress controller whose pod address changes needs the value
+  changed with it.
 - `networkPolicy.enabled` admits the controller's port from `ingressNamespaces` and this release's
   pods only (`extraFrom` adds more). The kubelet's probes still pass.
 
@@ -151,7 +198,11 @@ The full table is the [chart's README](../charts/tandemapp/README.md). The ones 
 |-|-|-|
 | `release.id`, `release.archive.url`, `.sha256` | required, empty, empty | the release the pod runs |
 | `persistence.storageClass`, `.size`, `.existingClaim`, `.hostPath.path` | the cluster's default, 20Gi | the volume; kept on uninstall (`persistence.keep`) |
-| `auth.existingSecret`, `.secretKey` | a Secret the chart makes | the admin token |
+| `auth.mode` | `legacy` | `legacy` (the admin token in the env) or `accounts` (section 3) |
+| `auth.existingSecret`, `.secretKey` | a Secret the chart makes | the admin token; in accounts mode the setup code |
+| `auth.bootstrap.existingSecret`, `.secretKey`, `.create` | empty: the Secret above | accounts mode: the setup code's own Secret |
+| `auth.trustedProxy` | empty | the ingress controller's address when it ends TLS (section 5) |
+| `ingress.api.openai`, `.anthropic` | empty: see section 5 | route or block each API's paths |
 | `chat.mode` | empty: off on a new install, the running release's on an upgrade | `off`, `own` (chatd in this pod), `external` (another host's chatd) |
 | `sandbox.mode` | `off` | `off`, `podman-socket`, `kubernetes` (section 7) |
 | `controller.conductor` | empty: off on a new install, the running release's on an upgrade | a folder under the volume, an absolute path, or `off` |
@@ -285,6 +336,15 @@ after an install or upgrade with an MCP `initialize` and `tools/list` from the c
 5. Check: `rollout status`, `helm test`, the pod's containers all Ready with 0 restarts, and watch it
    for a few minutes (the same pod, restarts unchanged, the page answering).
 
+**From the admin token to accounts.** Upgrade with `auth.mode: accounts` and leave `auth.bootstrap`
+empty. The Secret keeps its name, key and value: the old admin token works once as the setup code,
+and once an owner exists (made with it, or from the controller's admin password) it is an API token
+for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
+Secret while you may roll back: `helm rollback` to the revision before brings back the template
+that reads it into `TANDEM_ADMIN_TOKEN`, and the admin token signs in there as before. A network-
+reachable release with no admin password answers 401 everywhere after this upgrade until the
+setup code is used.
+
 `helm rollback tandemapp <revision> -n tandemapp` goes back. The old release's folder is still on
 the volume, so no archive is needed. Releases are never removed by the chart: remove old
 `releases/<id>` folders by hand once you will not roll back to them.
@@ -299,4 +359,7 @@ the volume, so no archive is needed. Releases are never removed by the chart: re
 | chats run without sandbox tools | `sandbox.mode` is off, or chatd's start check found isolation missing: the controller's log and `<volume>/state/logs/chatd.log` say which (NetworkPolicy not enforced, a runtimeClass that does not exist, the image not on the node) |
 | a moved chat's first sandbox start is slow | the one ACL pass over its files (section 7) |
 | every client is throttled after a few wrong passwords | they share the ingress's address (section 5) |
+| accounts mode: every route answers 401, also through `kubectl port-forward` | no owner yet: use the setup code (section 3); `users setup-code` through `kubectl exec` makes a new one |
+| the health page says `exposure_plain_http` behind a TLS ingress | `auth.trustedProxy` is not the ingress controller's address (section 5) |
+| an OpenAI client gets 503 through the ingress after the upgrade | `ingress.api.openai` is false, or a dry run rendered a new install: set it to true |
 | `/chat-engine` answers from outside | the Ingress is not the chart's, or a proxy in front routes around it: block the path there too |
