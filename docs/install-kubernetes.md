@@ -84,6 +84,11 @@ tokens replace the admin token. The chart then puts no auth secret into the pod'
   Open the page, enter the code with the first owner's name and password. The code is single use
   and spent after 5 wrong tries. With no Secret at all (`auth.create: false`) each start logs a
   fresh code while no owner exists.
+- On a new install, do not make the admin token's Secret above. A Secret named by
+  `auth.existingSecret` (or the one the chart made in legacy mode) is the old admin token as well
+  (`TANDEM_ADMIN_TOKEN_FILE`): a value of 32 characters or more there becomes an API token for
+  scripts for 30 days once the owner exists. Let the chart make the code, or give your own in a
+  Secret named by `auth.bootstrap.existingSecret`, which is only ever a setup code.
 - Nobody signs in before the owner exists: every route but `/health` and the page shell answers
   401. That includes `kubectl port-forward`, which reaches the pod on its own loopback: on
   Kubernetes (`TANDEM_DEPLOY=kubernetes`, which the chart sets) loopback is never trusted.
@@ -177,7 +182,10 @@ and open `https://tandemapp.example.com/`: the setup wizard (pairing an engine h
   new install blocks both and an upgrade keeps what the running release did (a release before
   accounts mode routed every path, so its clients keep working). `helm template` and a client-side
   dry run see no running release: pin `ingress.api.openai: true` in the values of a release whose
-  clients use the API. The chart tells the controller what it routes (`TANDEM_INGRESS_API`); the
+  clients use the API. The page's Playground on a backend (not a deployment), its model windows
+  and the developer view post to `/v1/chat/completions` too: with that path blocked they answer
+  503 through the ingress, so set `ingress.api.openai: true` when the page uses them. The chart
+  tells the controller what it routes (`TANDEM_INGRESS_API`); the
   page's API exposure switch still decides who may call, and the health page says when the switch
   is on for a path the ingress blocks (`exposure_unreachable`). In legacy mode every path is routed
   unless a value says otherwise.

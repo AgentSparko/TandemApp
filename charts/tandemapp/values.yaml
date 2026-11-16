@@ -232,6 +232,7 @@ ingress:
   # Empty: routed in legacy mode; in accounts mode blocked on a new install and as the running
   # release had it on an upgrade (a release before accounts routed every path). The page's API
   # exposure switch still decides who may call; this only says whether the ingress gets there.
+  # The page's Playground on a backend posts to /v1/chat/completions too: openai false blocks it.
   api:
     openai: ""
     anthropic: ""

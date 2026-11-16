@@ -47,6 +47,9 @@ TandemApp {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}), release {{ .Valu
 {{- $r := include "tandemapp.apiRouted" . | fromJson }}
    The ingress routes the OpenAI-compatible API: {{ if $r.openai }}yes{{ else }}no{{ end }}; the Messages API: {{ if $r.anthropic }}yes{{ else }}no{{ end }}
    (ingress.api.openai, ingress.api.anthropic). Who may call it is the page's API exposure switch.
+{{- if not $r.openai }}
+   The page's Playground on a backend posts to /v1/chat/completions: it answers 503 here.
+{{- end }}
 {{- if not .Values.auth.trustedProxy }}
 {{- if .Values.ingress.tls }}
    Set auth.trustedProxy to the ingress controller's address, or every API token through it

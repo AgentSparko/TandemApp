@@ -8,10 +8,10 @@ kind: NetworkPolicy
 metadata:
   name: t-tandemapp
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 spec:
   podSelector:
@@ -43,10 +43,10 @@ kind: NetworkPolicy
 metadata:
   name: t-tandemapp-sandbox
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 spec:
   podSelector:
@@ -79,10 +79,10 @@ kind: NetworkPolicy
 metadata:
   name: t-tandemapp-egress
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 spec:
   podSelector:
@@ -113,10 +113,10 @@ kind: ServiceAccount
 metadata:
   name: t-tandemapp-sandbox
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: chat-sandbox
 automountServiceAccountToken: false
@@ -127,10 +127,10 @@ kind: ServiceAccount
 metadata:
   name: t-tandemapp
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 # the controller needs no API access; sandbox.mode kubernetes binds a Role to it (sandbox.yaml)
 automountServiceAccountToken: false
@@ -142,10 +142,10 @@ kind: Secret
 metadata:
   name: t-tandemapp-admin
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
   annotations:
     helm.sh/resource-policy: keep
@@ -160,10 +160,10 @@ kind: ConfigMap
 metadata:
   name: t-tandemapp-config
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 data:
   init.sh: |-
@@ -204,10 +204,10 @@ kind: ConfigMap
 metadata:
   name: t-tandemapp-trust
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 data:
   ca.pem: |
@@ -223,10 +223,10 @@ kind: PersistentVolume
 metadata:
   name: t-tandemapp-ns-data
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
   annotations:
     helm.sh/resource-policy: keep
@@ -257,10 +257,10 @@ kind: PersistentVolumeClaim
 metadata:
   name: t-tandemapp-data
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
   annotations:
     helm.sh/resource-policy: keep
@@ -282,10 +282,10 @@ kind: Role
 metadata:
   name: t-tandemapp-sandbox
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 rules:
   - apiGroups: [""]
@@ -304,10 +304,10 @@ kind: RoleBinding
 metadata:
   name: t-tandemapp-sandbox
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -325,10 +325,10 @@ kind: Service
 metadata:
   name: t-tandemapp-blocked
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -347,10 +347,10 @@ kind: Service
 metadata:
   name: t-tandemapp
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
@@ -371,10 +371,10 @@ kind: Deployment
 metadata:
   name: t-tandemapp
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: controller
 spec:
@@ -592,10 +592,10 @@ kind: Ingress
 metadata:
   name: t-tandemapp
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 200m
@@ -639,10 +639,10 @@ kind: Pod
 metadata:
   name: t-tandemapp-test
   labels:
-    helm.sh/chart: tandemapp-0.1.0
+    helm.sh/chart: <chart>
     app.kubernetes.io/name: tandemapp
     app.kubernetes.io/instance: t
-    app.kubernetes.io/version: "0.15.0"
+    app.kubernetes.io/version: <version>
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: test
   annotations:

@@ -384,18 +384,20 @@ def test_accounts_setup_code(tmp_path):
         # beyond loopback (nothing started: no listener on all addresses in a test): a code
         out = ok_run(box.install("--listen", "0.0.0.0", "--service", "none", env=env))
         got = inst.read_env(envf)
-        m = code_re.search(out)
-        assert m and "<this host's address>" in out, out
+        first = code_re.search(out)
+        assert first and "<this host's address>" in out, out
         assert got[inst.LOCAL_ENV] == "off" and "TANDEM_ADMIN_TOKEN" not in got, got
         assert "TANDEM_DASHBOARD_LOGIN" not in got
-        # behind a proxy on loopback: a code too, and it makes the owner in the running server
+        # behind a proxy on loopback: a code too; the one printed with nothing started makes the
+        # owner in the server started now
         out = ok_run(box.install("--listen", "127.0.0.1", "--behind-proxy", "--service",
                                  "process", env=env))
         m = code_re.search(out)
-        assert m, out
+        assert m and m.group(1) != first.group(1), out
         c = http.client.HTTPConnection("127.0.0.1", box.port, timeout=10)
         c.request("POST", "/v1/auth/setup", body=json.dumps(
-            {"code": m.group(1), "username": "owner", "password": "the owner's long password"}),
+            {"code": first.group(1), "username": "owner",
+             "password": "the owner's long password"}),
             headers={"Content-Type": "application/json"})
         r = c.getresponse()
         r.read()

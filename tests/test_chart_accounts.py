@@ -4,8 +4,9 @@
   Gherkin (the scenarios of OPS-298 that need a running controller):
   1  A new release: Given the chart's env and its Secret's setup code as the mounted file, When
      the controller is up, Then every route but /health and the page shell answers 401, from
-     another device and from the pod's own loopback (what kubectl port-forward delivers), And the
-     code from the Secret makes the owner, once                  test_new_release
+     another device and from the pod's own loopback (what kubectl port-forward delivers), the
+     chart's `helm test` script passes, And the code from the Secret makes the owner, once
+                                                                 test_new_release
   2  An upgrade: Given the Secret of the release before holds its admin token, When the
      controller starts in accounts mode, Then it starts, the token works once as the setup code,
      and after the next start it is an API token for scripts (30 days) that never signs in
@@ -147,6 +148,10 @@ def test_new_release():
                 assert st == 401, (extra, method, path, st)
         st, _, out = ask(port, "GET", "/v1/auth/session")
         assert st == 200 and json.loads(out)["local_mode"] is False, out[:200]
+        # `helm test`: the chart's test pod's own script passes with no credential
+        r = subprocess.run([sys.executable, "-c", hook_script(tcd, port)], capture_output=True,
+                           text=True, timeout=60)
+        assert r.returncode == 0 and "health ok" in r.stdout, r.stdout + r.stderr
         # the Secret's code makes the owner, once
         st, _, out = ask(port, "POST", "/v1/auth/setup", {"code": code, "username": "owner",
                                                          "password": PW})
@@ -306,6 +311,17 @@ def test_admin_token_file():
     return "a long value is the admin token named by its file; short, missing, env: unchanged"
 
 
+def hook_script(tcd, port: int) -> str:
+    """The Python of the chart's test pod (templates/tests/test-health.yaml), aimed at `port`."""
+    rc, out = tcd.render("auth.mode=accounts")
+    pod = next(d for d in out.split("\n---\n") if "helm.sh/hook: test" in d)
+    body = pod.split("        - |\n", 1)[1]
+    code = "\n".join(x[10:] for x in body.splitlines() if x.startswith(" " * 10) or not x.strip())
+    want = 'base = "http://t-tandemapp:80"'
+    assert want in code, code
+    return code.replace(want, f'base = "http://127.0.0.1:{port}"')
+
+
 def _read(*parts) -> str:
     with open(os.path.join(ROOT, *parts)) as f:
         return f.read()
@@ -347,13 +363,10 @@ def test_docs():
         assert not re.search(r"\b(192\.168|10\.\d+\.\d+\.\d+)\b", text)
     # the doc's kubectl exec lines are NOTES' own (release and namespace tandemapp)
     tcd = _chart()
-    argv = [shutil.which("helm"), "install", "tandemapp", tcd.CHART, "-n", "tandemapp",
-            "--dry-run=client", "--set", "release.id=0123456789ab", "--set", "auth.mode=accounts"]
-    r = subprocess.run(argv, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr[-400:]
+    n = tcd.notes("auth.mode=accounts", name="tandemapp", namespace="tandemapp")
     joined = re.sub(r" \\\n\s+", " ", k8s)
     for k in ("A new setup code:", "A lost password:"):
-        line = next(x for x in r.stdout.splitlines() if x.strip().startswith(k))
+        line = next(x for x in n.splitlines() if x.strip().startswith(k))
         cmd = line.split(k, 1)[1].strip()
         assert cmd in joined, (k, cmd)
     return "the docs say accounts, the code, the reset, exposure, the proxy; NOTES' lines match"

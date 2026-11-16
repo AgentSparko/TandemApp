@@ -372,6 +372,15 @@ def test_upgrade_keeps_the_secret(tmp_path):
     # legacy mode on the same release: unchanged
     rc, out = render(chart=chart, values=running)
     assert secret_value(out) == OLD_TOKEN and controller_env(out)["TANDEM_ADMIN_TOKEN"] is None
+    # a setup code an accounts install made: kept in accounts mode; replaced by a 48-character
+    # token in legacy mode, which stops on a token under 32 characters
+    code = "ABCDEFGHJKMNPQRSTVWX"
+    made = _running(str(tmp_path), [{"name": "TANDEM_AUTH", "value": "accounts"}], secret=code)
+    rc, out = render("auth.mode=accounts", chart=chart, values=made)
+    assert secret_value(out) == code
+    rc, out = render(chart=chart, values=made)
+    got = secret_value(out)
+    assert rc == 0 and len(got) == 48 and got != code, got
     return "an upgrade keeps the Secret (name, key, value); the chart before reads it back"
 
 
@@ -447,10 +456,13 @@ def test_api_paths():
 
 
 def normalized(text: str) -> list:
-    """A render with what changes on each run blanked: the Secret's random value, the config
-    checksum, and the bodies of the two files the ConfigMap carries (files/)."""
+    """A render with what changes on each run or release blanked: the Secret's random value, the
+    config checksum, the chart's and the app's versions, and the bodies of the two files the
+    ConfigMap carries (files/)."""
     text = re.sub(r"(?m)^(  admin-token: )\S+$", r"\1<random>", text)
     text = re.sub(r"(?m)^(\s+checksum/config: )\S+$", r"\1<sha256>", text)
+    text = re.sub(r"(?m)^(\s+helm\.sh/chart: )\S+$", r"\1<chart>", text)
+    text = re.sub(r"(?m)^(\s+app\.kubernetes\.io/version: )\S+$", r"\1<version>", text)
     out, skip = [], False
     for line in text.splitlines():
         if skip and (line.startswith("    ") or not line.strip()):
@@ -521,14 +533,38 @@ def test_single_node_render(tmp_path):
     return "the single-node values: the objects of before plus only the auth lines"
 
 
-def notes(*sets: str) -> str:
-    argv = [_helm(), "install", "t", CHART, "-n", "ns", "--dry-run=client", "--set",
-            "release.id=0123456789ab"]
+NOTES_WRAP = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notes
+data:
+  notes: |
+{{ include "test.notes" . | indent 4 }}
+"""
+
+
+def notes(*sets: str, name: str = "t", namespace: str = "ns") -> str:
+    """NOTES.txt as `helm install` prints it, rendered by `helm template` alone (no cluster, no
+    kubeconfig): a copy of the chart whose NOTES is the body of a ConfigMap."""
+    tmp = tempfile.mkdtemp(prefix="notes-")
+    chart = os.path.join(tmp, "tandemapp")
+    shutil.copytree(CHART, chart)
+    with open(os.path.join(chart, "templates", "NOTES.txt")) as f:
+        body = f.read()
+    with open(os.path.join(chart, "templates", "_notes_test.tpl"), "w") as f:
+        f.write('{{- define "test.notes" -}}\n' + body + "{{- end -}}\n")
+    with open(os.path.join(chart, "templates", "notes-test.yaml"), "w") as f:
+        f.write(NOTES_WRAP)
+    argv = [_helm(), "template", name, chart, "-n", namespace, "--show-only",
+            "templates/notes-test.yaml", "--set", "release.id=0123456789ab"]
     for s in sets:
         argv += ["--set", s]
-    r = subprocess.run(argv, capture_output=True, text=True)
+    env = dict(os.environ, KUBECONFIG=os.path.join(tmp, "no-cluster"))
+    r = subprocess.run(argv, capture_output=True, text=True, env=env)
+    shutil.rmtree(tmp, ignore_errors=True)
     assert r.returncode == 0, r.stderr[-600:]
-    return r.stdout.split("NOTES:\n", 1)[1]
+    text = r.stdout.split("  notes: |\n", 1)[1]
+    return "\n".join(x[4:] for x in text.splitlines()) + "\n"
 
 
 def test_notes():
@@ -547,6 +583,7 @@ def test_notes():
                   "/var/lib/tandemapp/state/config.sqlite3",
                   "API token for scripts that ends after 30 days", "bootstrap_secret_left",
                   "roll back", "OpenAI-compatible API: no; the Messages API: no",
+                  "Playground on a backend posts to /v1/chat/completions",
                   "auth.trustedProxy", f"{cli} tokens chatd-key /tmp/chatd.key",
                   "/v1/messages is not routed"):
         assert words in n, (words, n)
@@ -555,6 +592,7 @@ def test_notes():
               "ingress.api.openai=true", "auth.trustedProxy=192.0.2.10")
     assert "Secret code, key admin-token" in n and "30 days" not in n
     assert "OpenAI-compatible API: yes" in n and "auth.trustedProxy" not in n
+    assert "Playground" not in n
     n = notes("auth.mode=accounts", "auth.create=false")
     assert "the controller's log has a code" in n and "kubectl -n ns get secret" not in n
     return "legacy NOTES as before; accounts: the code, kubectl exec lines, API paths, chatd key"
