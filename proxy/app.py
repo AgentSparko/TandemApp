@@ -1321,6 +1321,12 @@ def build(args, env=None) -> Service:
     Handler.timeout = getattr(args, "idle_timeout", IDLE_TIMEOUT_S) or None
     mode = (env.get("TANDEM_AUTH") or "").strip().lower()
     legacy = []
+    files: dict = {}
+    # OPS-298: addresses and CIDR ranges; an entry that reads as neither is ignored, never a stop
+    proxies = auth_mod.TrustedProxies.from_env(env)
+    if proxies.bad:
+        print(f"[auth] {auth_mod.TRUSTED_PROXY_ENV}: ignored {', '.join(proxies.bad)[:300]!r} "
+              f"(neither an address nor a CIDR range)", flush=True)
     if mode == "accounts":
         # SRV-865: a legacy variable that does not read is a health finding, never a stop
         from proxy import authlegacy
@@ -1352,10 +1358,11 @@ def build(args, env=None) -> Service:
         from proxy import accounts as accounts_mod
         from proxy import authlegacy
         a = accounts = accounts_mod.AccountsAuth(
-            cfg, trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
+            cfg, trusted_proxies=proxies,
             log=lambda m: STATE["svc"].log(m), env=env)
         accounts.session_tokens = lambda: STATE.get("session_tokens")
         accounts.legacy = legacy
+        accounts.trusted_proxy_file = files.get(auth_mod.TRUSTED_PROXY_ENV)
         # SRV-865: admin.json's password becomes the owner; the admin token alone, the setup code
         did = authlegacy.migrate(accounts, os.path.dirname(cfg.path))
         if did["owner"]:
@@ -1373,7 +1380,7 @@ def build(args, env=None) -> Service:
         from proxy import adminpw
         a = auth_mod.Auth(admin, env.get("QSE_METRICS_TOKEN") or None, login=login,
                           trust_loopback=args.trust_loopback == "on", local_host_only=True,
-                          trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
+                          trusted_proxies=proxies,
                           password=adminpw.Password(os.path.join(os.path.dirname(cfg.path),
                                                                  "admin.json")))
     registry = metrics_mod.Registry()

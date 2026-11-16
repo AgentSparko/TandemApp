@@ -72,8 +72,10 @@ in `app.env`.
   network; an install that had API keys starts with the OpenAI switch on network so its clients
   keep working. A controller on loopback is not reachable from other devices whatever the switch
   says: change the listen address too.
-- **A proxy that ends TLS** on another address: name it in `TANDEM_TRUSTED_PROXY` (exact
-  addresses, comma separated), or every API token through it counts as sent over plain HTTP.
+- **A proxy that ends TLS** on another address: name it in `TANDEM_TRUSTED_PROXY` (addresses
+  and CIDR ranges, IPv4 and IPv6, comma separated, e.g. `192.0.2.10,2001:db8::/64`), or every API
+  token through it counts as sent over plain HTTP. A bad entry is ignored and named on the health
+  page.
 - `tandem-app service install --host 0.0.0.0` refuses while no owner has a password, unless
   `--setup-code`, which prints a code. `tandem-app check` says where the sign-in stands.
 - An install that had the admin token keeps it working for scripts for 30 days, as an API token

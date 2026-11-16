@@ -312,6 +312,11 @@
       "message": "{variable} in {file} has a value TandemApp cannot read. It is ignored.",
       "fix": "Remove the line, or correct it while an older version still needs it."
     },
+    "trusted_proxy_invalid": {
+      "status": 409,
+      "message": "{variable} in {file} has entries that are neither an address nor a range. They are ignored.",
+      "fix": "Write each entry as an address or a CIDR range, separated by commas, then restart TandemApp."
+    },
     "legacy_users_from_unreadable": {
       "status": 409,
       "message": "{variable} in {file} names a database TandemApp cannot read.",
@@ -527,6 +532,10 @@
     },
     "legacy_env_invalid": {
       "severity": "error",
+      "action": null
+    },
+    "trusted_proxy_invalid": {
+      "severity": "warning",
       "action": null
     },
     "legacy_users_from_unreadable": {

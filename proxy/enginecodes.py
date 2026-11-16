@@ -194,6 +194,8 @@ CATALOG: dict[str, tuple[int, str, str]] = {
         "Remove {variable} from {file} once the way back to the release before is no longer needed."),
     "legacy_env_invalid": (409, "{variable} in {file} has a value TandemApp cannot read. It is ignored.",
         "Remove the line, or correct it while an older version still needs it."),
+    "trusted_proxy_invalid": (409, "{variable} in {file} has entries that are neither an address nor a range. They are ignored.",
+        "Write each entry as an address or a CIDR range, separated by commas, then restart TandemApp."),
     "legacy_users_from_unreadable": (409, "{variable} in {file} names a database TandemApp cannot read.",
         "Correct the path or remove the line: sign-in and API tokens replace it."),
     "bootstrap_secret_left": (409, "An owner exists and the setup code's Secret is still mounted at {path}.",
