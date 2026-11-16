@@ -1,0 +1,116 @@
+{
+ "plugin_api": "1.0",
+ "name": "keyword-router",
+ "version": "0.1.0",
+ "title": "Keyword router",
+ "description": "A decision provider that answers the conductor's classify and judge questions from keyword rules.",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "hooks_api": "1.0",
+ "entry": {
+  "command": [
+   "python3",
+   "main.py"
+  ]
+ },
+ "contributes": {
+  "decision_providers": [
+   {
+    "name": "rules",
+    "questions": [
+     "classify",
+     "judge"
+    ],
+    "description": "the first rule of the question whose word the text holds"
+   }
+  ]
+ },
+ "capabilities": [
+  "prompts:redacted",
+  "settings:read"
+ ],
+ "settings": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+   "rules": {
+    "type": "array",
+    "title": "Rules, in order",
+    "maxItems": 50,
+    "items": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "question": {
+       "enum": [
+        "classify",
+        "judge"
+       ]
+      },
+      "label": {
+       "type": "string",
+       "maxLength": 40
+      },
+      "words": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "maxLength": 40
+       },
+       "maxItems": 50
+      }
+     },
+     "required": [
+      "question",
+      "label",
+      "words"
+     ]
+    },
+    "default": [
+     {
+      "question": "classify",
+      "label": "code",
+      "words": [
+       "traceback",
+       "compile",
+       "function"
+      ]
+     },
+     {
+      "question": "classify",
+      "label": "research",
+      "words": [
+       "compare",
+       "sources",
+       "paper"
+      ]
+     },
+     {
+      "question": "judge",
+      "label": "failure",
+      "words": [
+       "traceback",
+       "error",
+       "failed"
+      ]
+     },
+     {
+      "question": "judge",
+      "label": "clean",
+      "words": [
+       "passed",
+       "built"
+      ]
+     }
+    ]
+   },
+   "confidence": {
+    "type": "number",
+    "minimum": 0,
+    "maximum": 1,
+    "default": 0.7,
+    "description": "the confidence a matching rule answers with"
+   }
+  }
+ }
+}

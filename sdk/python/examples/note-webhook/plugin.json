@@ -1,0 +1,90 @@
+{
+ "plugin_api": "1.0",
+ "name": "note-webhook",
+ "version": "0.1.0",
+ "title": "Note to webhook",
+ "description": "Sends short notes to a webhook: one for each finished request (an observer hook), and any note a chat asks for (a tool).",
+ "license": "AGPL-3.0-only",
+ "tandemapp": ">=0.15",
+ "hooks_api": "1.0",
+ "entry": {
+  "command": [
+   "python3",
+   "main.py"
+  ]
+ },
+ "contributes": {
+  "hooks": [
+   {
+    "name": "finished",
+    "stages": [
+     "request.finished"
+    ],
+    "role": "observer",
+    "payload": "meta",
+    "description": "a note for each finished request: its id, model, tokens and time"
+   }
+  ],
+  "tools": [
+   {
+    "name": "send_note",
+    "description": "Send a short note to the team's webhook.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "text": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 2000
+      }
+     },
+     "required": [
+      "text"
+     ],
+     "additionalProperties": false
+    },
+    "annotations": {
+     "readOnlyHint": false,
+     "destructiveHint": false,
+     "idempotentHint": false,
+     "openWorldHint": true
+    }
+   }
+  ]
+ },
+ "capabilities": [
+  "prompts:meta",
+  "secrets:WEBHOOK_TOKEN",
+  "network:hooks.example.com"
+ ],
+ "secrets": [
+  {
+   "name": "WEBHOOK_TOKEN",
+   "description": "sent as the bearer when it is set"
+  }
+ ],
+ "settings": {
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+   "url": {
+    "type": "string",
+    "maxLength": 500,
+    "default": "https://hooks.example.com/notes",
+    "description": "where the notes go: a host the plugin may reach (its network: capability)"
+   },
+   "on_finished": {
+    "type": "boolean",
+    "default": true,
+    "description": "a note for each finished request"
+   },
+   "timeout_s": {
+    "type": "number",
+    "minimum": 0.5,
+    "maximum": 10,
+    "default": 3,
+    "description": "how long a post may take"
+   }
+  }
+ }
+}
