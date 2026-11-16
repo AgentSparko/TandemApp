@@ -379,16 +379,22 @@ class Service:
             return None
 
     def serve(self, handler, path: str, raw: bytes, body: dict, route, user: str | None,
-              t_arrival: float | None = None) -> RelayRecord:
+              t_arrival: float | None = None, endpoint: str | None = None,
+              client: tuple | None = None) -> RelayRecord:
+        """`endpoint` and `client` (SRV-879): the ledger's endpoint and (client id, kind) of a
+        request that came in another protocol (the Messages API: `messages`, its key's hash),
+        when the path and the handler's headers would say otherwise."""
         rid = ("chatcmpl-px-" if path.endswith("chat/completions") else "px-") + \
             uuid.uuid4().hex[:24]
-        rec = RelayRecord(rid, relay_mod.endpoint_of(path),
+        rec = RelayRecord(rid, endpoint or relay_mod.endpoint_of(path),
                           bool(body.get("stream")) and path != "/v1/embeddings",
                           t_arrival=t_arrival)
+        # the inbound protocol: the ledger's `api` column comes with the token schema (SRV-867)
+        rec.api = "messages" if endpoint == "messages" else "openai"
         rec.model = route.public
         rec.model_served = route.public
         rec.user = user
-        rec.client_id, rec.client_kind = ledger_mod.client_of(handler.headers, body)
+        rec.client_id, rec.client_kind = client or ledger_mod.client_of(handler.headers, body)
         rec.sock = getattr(handler, "connection", None)
         try:                        # the session a client names (opencode's x-session-id)
             sess = handler.headers.get("x-session-id") or handler.headers.get("X-Session-Id")

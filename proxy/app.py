@@ -6,6 +6,9 @@ serves on one port:
 
     POST /v1/chat/completions, /v1/completions, /v1/embeddings, /v1/responses
                                    relayed to the backend the model routes to (proxy/route.py)
+    POST /v1/messages, /v1/messages/count_tokens
+                                   the Messages API, translated to and from the chat shape the
+                                   pipeline runs on (proxy/messages.py, SRV-879)
     GET  /v1/models, /v1/models/{id}
                                    each fleet deployment once under its API id (SRV-731,
                                    proxy/deployments.py), then every backend's real models,
@@ -487,10 +490,15 @@ class Handler(BaseHTTPRequestHandler):
         t_arrival = time.perf_counter()
         if self._fleet_too_big(path):
             return
+        from proxy import messages as messages_mod
         try:
             raw = self._read_raw()
         except BodyError as exc:
+            if messages_mod.is_messages(path):
+                return messages_mod.body_error(self, exc)
             return self._body_error(exc)
+        if messages_mod.is_messages(path):          # SRV-879: the Messages API, its own shapes
+            return messages_mod.handle(self, STATE["svc"], path, raw, t_arrival)
         if path.startswith("/v1/collect/"):          # P6: a plugin's batch, its own token
             from proxy import collect_api
             return collect_api.handle(self, STATE["svc"], path, raw)

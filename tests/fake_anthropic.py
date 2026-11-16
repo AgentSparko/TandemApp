@@ -21,6 +21,8 @@ A stream is sent as the API sends it: `message_start`, a `ping`, each block's st
 in two pieces, tool input JSON in two `input_json_delta` pieces) and stop, `message_delta` with
 the stop reason and the output count, `message_stop`; chunked.
 
+`POST /v1/messages/count_tokens` answers `{input_tokens}` from `fake.count` (SRV-879; None: 404).
+
 `GET /v1/models` lists `fake.models` in pages of 2 (`has_more`, `first_id`, `last_id`,
 `after_id`), with `display_name`, `max_input_tokens`, `max_tokens` and `capabilities`.
 """
@@ -47,6 +49,7 @@ class Fake:
         self.requests: list[dict] = []
         self.model_pages = 0
         self.tool_turns = 2
+        self.count = None            # POST /v1/messages/count_tokens: an int or fn(body); None 404
         self.usage = {"input_tokens": 10, "cache_creation_input_tokens": 0,
                       "cache_read_input_tokens": 0}
         self.lock = threading.Lock()
@@ -191,9 +194,25 @@ def make_handler(fake: Fake):
                              "first_id": page[0] if page else None,
                              "last_id": page[-1] if page else None})
 
+        def _count(self, raw: bytes):
+            """SRV-879: `POST /v1/messages/count_tokens` -> {input_tokens}: `fake.count`, an int
+            or fn(body); None: 404, a server without the route."""
+            body = json.loads(raw or b"{}")
+            with fake.lock:
+                fake.requests.append({"path": self.path, "headers": dict(self.headers.items()),
+                                      "body": body})
+            if not self._authorized():
+                return self._error(401, "authentication_error", "invalid x-api-key")
+            if fake.count is None:
+                return self._error(404, "not_found_error", "no such route")
+            n = fake.count(body) if callable(fake.count) else fake.count
+            return self._json(200, {"input_tokens": n})
+
         def do_POST(self):
             n = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(n)
+            if urlsplit(self.path).path == "/v1/messages/count_tokens":
+                return self._count(raw)
             if urlsplit(self.path).path != "/v1/messages":
                 return self._error(404, "not_found_error", "no such route")
             try:
