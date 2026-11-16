@@ -338,6 +338,72 @@ def test_a_hook_that_wants_to_rewrite():
         hs.shutdown()
 
 
+def test_a_hook_that_moves_the_request_off_the_messages_api():
+    """A hook that moves a request that passes through to a backend of another kind (a model
+    patch at request.received, a route.select decision) refuses it, 409 protocol_native in the
+    Messages shape, nothing upstream; a request.error fallback of another kind is not tried and
+    the backend's own failure stands. Parameter patches land whatever their order."""
+    srv, port = fake_anthropic.start(key=BACKEND_KEY)
+    gen, gport = fake_backend.start(models=["fake-a"])
+    env = _env(port, {"TANDEM_BACKENDS": "anth,gen", "TANDEM_BACKEND_GEN_KIND": "generic",
+                      "TANDEM_BACKEND_GEN_URL": f"http://127.0.0.1:{gport}/v1"})
+    body = {"model": "model-a", "max_tokens": 10, "messages": [{"role": "user", "content": "x"}]}
+    with Proxy(env) as px:
+        px.sync()
+
+        def hook(doc):
+            st, _, out = px.post("/v1/fleet/hooks", dict(doc, kind="builtin", priority=1))
+            assert st == 201, out
+            return json.loads(out)["hook"]["id"]
+
+        def off(hid):
+            st, _, out = px.request("DELETE", f"/v1/fleet/hooks/{hid}")
+            assert st in (200, 204), out
+        for doc in ({"name": "m", "target": "set", "role": "transform",
+                     "stages": ["request.received"], "options": {"set": {"model": "fake-a"}}},
+                    {"name": "r", "target": "route", "role": "decider",
+                     "stages": ["route.select"], "options": {"backend": "gen"}}):
+            hid = hook(doc)
+            n = len(srv.fake.requests) + len(gen.fake.bodies)
+            st, h, data = px.post("/v1/messages", body, headers=_hdr())
+            d = json.loads(data)
+            assert st == 409 and d["type"] == "error" and "Messages API" in \
+                d["error"]["message"] and h["request-id"] == d["request_id"], data
+            assert len(srv.fake.requests) + len(gen.fake.bodies) == n, "nothing upstream"
+            off(hid)
+        hid = hook({"name": "fb", "target": "fallback", "role": "decider",
+                    "stages": ["request.error"], "options": {"backend": "gen"}})
+        srv.fake.queue.append({"status": 400, "body": {"type": "error", "error": {
+            "type": "invalid_request_error", "message": "nope"}}})
+        for _ in range(3):
+            srv.fake.queue.append({"status": 529, "body": {"type": "error", "error": {
+                "type": "overloaded_error", "message": "busy"}}})
+        st, _, data = px.post("/v1/messages", body, headers=_hdr())
+        assert st == 400, data                        # not retried: the backend's own 400
+        st, _, data = px.post("/v1/messages", body, headers=_hdr())
+        assert st == 529 and json.loads(data)["error"]["message"] == "busy", data
+        assert len(srv.fake.queue) == 2, "one try: the fallback hook's pick was not tried"
+        srv.fake.queue.clear()
+        assert gen.fake.bodies == [] or all(b.get("model") != "model-a"
+                                            for b in gen.fake.bodies)
+        off(hid)
+        hid = hook({"name": "p", "target": "set", "role": "transform",
+                    "stages": ["request.before_engine"], "options": {"set": {
+                        "response_format": {"type": "json_schema",
+                                            "json_schema": {"schema": {"type": "object"}}},
+                        "reasoning_effort": "high", "parallel_tool_calls": False,
+                        "tool_choice": "auto"}}})
+        st, _, data = px.post("/v1/messages", body, headers=_hdr())
+        assert st == 200, data
+        assert srv.fake.last["body"] == dict(
+            body, tool_choice={"type": "auto", "disable_parallel_tool_use": True},
+            output_config={"effort": "high", "format": {"type": "json_schema",
+                                                        "schema": {"type": "object"}}}), \
+            srv.fake.last["body"]
+    srv.shutdown()
+    gen.shutdown()
+
+
 def test_hooks_name_the_protocols():
     """hooks-v1 1.1: request.protocol is {openai, openai} for an OpenAI client on an OpenAI
     backend, {openai, messages} on a Messages API backend, {messages, openai} for a Messages

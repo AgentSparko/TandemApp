@@ -23,7 +23,9 @@ transform's patch of a parameter is written into the native body (`PARAMS`); a p
 content field (`messages`, `tools`, ...), of an answer, or of a parameter that has no field in
 the Messages API is refused: journaled `refused` with `protocol_native`, and the hook's failure
 policy applies (closed: 503 `hook_unavailable`). A hook that moves the request to a backend of
-another kind (a new model, route.select) is refused the same way (409 `protocol_native`).
+another kind (a new model, route.select) is refused the same way (409 `protocol_native`); a
+request.error fallback of another kind is not tried (proxy/relay.py), and the backend's own
+failure stands.
 """
 
 from __future__ import annotations
@@ -156,7 +158,9 @@ def check(patch: dict) -> None:
 
 
 def _native_fields(p: dict, body: dict) -> dict:
-    """One chat-shape patch (checked) as a merge patch of the native body."""
+    """One chat-shape patch (checked) as a merge patch of the native body. `tool_choice` and
+    `parallel_tool_calls` make one `tool_choice`, `reasoning_effort` and `response_format` one
+    `output_config`, whatever their order in the patch."""
     out: dict = {}
     for k, v in p.items():
         if k in ("model", "temperature", "top_p", "top_k", "metadata"):
@@ -165,31 +169,31 @@ def _native_fields(p: dict, body: dict) -> dict:
             out["max_tokens"] = v
         elif k == "stop":
             out["stop_sequences"] = None if v is None else ([v] if isinstance(v, str) else v)
-        elif k == "tool_choice":
-            out["tool_choice"] = None if v is None else tr._tool_choice(v, None)
-        elif k == "parallel_tool_calls":
-            tc = out.get("tool_choice") or body.get("tool_choice") or {"type": "auto"}
-            tc = dict(tc)
-            if v is False:
+    if "tool_choice" in p or "parallel_tool_calls" in p:
+        tc = tr._tool_choice(p["tool_choice"], None) if p.get("tool_choice") is not None \
+            else (None if "tool_choice" in p else body.get("tool_choice"))
+        if "parallel_tool_calls" in p:
+            tc = dict(tc or {"type": "auto"})
+            if p["parallel_tool_calls"] is False:
                 tc["disable_parallel_tool_use"] = True
             else:
                 tc.pop("disable_parallel_tool_use", None)
-            out["tool_choice"] = tc
-        elif k == "reasoning_effort":
-            oc = dict(body.get("output_config") or {})
-            if v is None:
+        out["tool_choice"] = tc
+    if "reasoning_effort" in p or "response_format" in p:
+        oc = dict(body.get("output_config") or {})
+        if "reasoning_effort" in p:
+            if p["reasoning_effort"] is None:
                 oc.pop("effort", None)
             else:
-                oc["effort"] = tr.EFFORT[v]
-            out["output_config"] = oc or None
-        elif k == "response_format":
-            oc = dict(out.get("output_config") or body.get("output_config") or {})
+                oc["effort"] = tr.EFFORT[p["reasoning_effort"]]
+        if "response_format" in p:
+            v = p["response_format"]
             if v is None:
                 oc.pop("format", None)
             else:
                 oc["format"] = {"type": "json_schema",
                                 "schema": (v.get("json_schema") or {}).get("schema")}
-            out["output_config"] = oc or None
+        out["output_config"] = oc or None
     return out
 
 

@@ -244,6 +244,11 @@ class Relay:
                 continue
             adapter = self.svc.adapter(backend)
             if path not in adapter.routes():
+                if path in MESSAGES_PATHS and last is not None:
+                    # SRV-881: a fallback a hook picked that does not speak the Messages API is
+                    # not tried; the failure before it stands
+                    i += 1
+                    continue
                 last = (404, "Not Found", [], json.dumps(_error_body(
                     f"backend '{bid}' ({backend['kind']}) does not serve {path}",
                     "invalid_request_error", "unsupported_route")).encode())
