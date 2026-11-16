@@ -1,0 +1,56 @@
+/* ---- the controller's sign-in, first-run setup and password step (SEC-26, src/auth/view.ts) ---- */
+.au-wrap {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--bg);
+}
+.au-card {
+  width: 100%;
+  max-width: 420px;
+  display: grid;
+  gap: 12px;
+}
+.au-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.au-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+.au-card .au-note {
+  font-size: var(--fs-xs);
+}
+.au-field {
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+.au-field input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  color: var(--ink);
+  font-size: 16px;
+}
+.au-field input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.au-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}

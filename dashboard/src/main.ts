@@ -1,3 +1,5 @@
+// SEC-26: the session's CSRF header on every write, before any view fetches
+import './lib/csrf';
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/shell.css';

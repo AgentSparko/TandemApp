@@ -58,6 +58,7 @@ import { icon } from './ui/bits';
 import { nodeColour, isHollow } from './ui/node-chip';
 import './ui/scope-bar';
 import { S } from './setup/strings';
+import { setCsrf } from './lib/csrf';
 
 /** the Chat tab is in beta in 0.8.0 (docs/chat.md "known limitations"): a small pill beside it */
 const BETA = html`<span class="beta-pill" title="The Chat tab is in beta">Beta</span>`;
@@ -91,6 +92,9 @@ const loadParallel = () => (parallelChunk ??= import('./views/parallel'));
 /** TandemApp's new pages (VIS-242) with the fleet chart and its modes, one chunk. */
 let fleetChunk: Promise<unknown> | null = null;
 const loadFleetPages = () => (fleetChunk ??= import('./views/fleet-pages'));
+/** SEC-26: the controller's sign-in, first-run setup and password step, only with its accounts on. */
+let authChunk: Promise<typeof import('./auth/view')> | null = null;
+const loadAuth = () => (authChunk ??= import('./auth/view'));
 
 /** The three pages of Performance (VIS-254, concept §8.2): Live (the fleet's Now line and a strip
  *  per Spark, then the engine's own: the Live panel, the scatter), Requests (every request in flight
@@ -121,6 +125,12 @@ export class QseApp extends LightElement {
   private landed = false;
   /** a 401 came back: the server has an admin password set (never while none is) */
   @state() private refused = false;
+  /** SEC-26: the controller's accounts are on (/health's X-Tandem-Auth); `auth` is the screen the
+   *  page shows instead of itself (signin, setup, password), null once signed in */
+  private accounts = false;
+  @state() private auth: 'signin' | 'setup' | 'password' | null = null;
+  @state() private authWho = '';
+  @state() private authLocal = false;
   @state() private route: Route = (fixHash(), parseHash());
   @state() private theme: Theme = currentTheme();
   @state() private summary: Loadable<Summary> = { state: 'loading' };
@@ -271,7 +281,8 @@ export class QseApp extends LightElement {
     this.unsub.push(() => window.removeEventListener('pointerup', this.onDragEnd));
     this.unsub.push(
       onApi((ev) => {
-        if (ev === 'unauthorized') this.refused = true;
+        if (ev === 'unauthorized' && this.accounts) void this.checkAuth();
+        else if (ev === 'unauthorized') this.refused = true;
         else if (ev === 'offline') {
           this.offline = true;
           if (knownJob() && this.route.view !== 'setup') navigate('setup');
@@ -281,8 +292,13 @@ export class QseApp extends LightElement {
     );
     const onTheme = (e: Event) => (this.theme = (e as CustomEvent<Theme>).detail);
     const onUnauth = () => (this.refused = true);
-    const onSignedIn = () => {
+    const onSignedIn = async () => {
       this.refused = false;
+      if (this.accounts) {
+        await this.checkAuth();
+        if (this.auth) return;
+        if (!this.setupMode) return this.start(); // the polls start (or start again) signed in
+      }
       if (!this.setupMode) {
         void this.loadSummary();
         void this.loadVersion();
@@ -298,9 +314,10 @@ export class QseApp extends LightElement {
     this.unsub.push(() => window.removeEventListener('qse-unauthorized', onUnauth));
     this.unsub.push(() => window.removeEventListener('qse-signed-in', onSignedIn));
     this.unsub.push(() => window.removeEventListener('job-final', onJobFinal));
-    void this.checkSetupMode().then(() => {
+    void this.checkSetupMode().then(async () => {
+      if (this.accounts) await this.checkAuth();
       this.booted = true;
-      if (!this.setupMode) this.start();
+      if (!this.setupMode && !this.auth) this.start();
     });
   }
   disconnectedCallback(): void {
@@ -554,7 +571,10 @@ export class QseApp extends LightElement {
   private async checkSetupMode(): Promise<void> {
     let h: { mode?: string } | null;
     try {
-      h = await fetch(apiBase() + '/health', { cache: 'no-store', credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null));
+      h = await fetch(apiBase() + '/health', { cache: 'no-store', credentials: 'same-origin' }).then((r) => {
+        if (r.headers.get('X-Tandem-Auth') === 'accounts') this.accounts = true;
+        return r.ok ? r.json() : null;
+      });
     } catch {
       // unreachable (an install restarts the engine): setup mode stays as it was
       return;
@@ -573,6 +593,16 @@ export class QseApp extends LightElement {
       this.setupPoll = null;
       this.start();
     }
+  }
+
+  /** SEC-26: who is signed in, and the screen the page needs first (the route is kept) */
+  private async checkAuth(): Promise<void> {
+    const m = await loadAuth();
+    const s = await m.readSession();
+    setCsrf(s?.csrf);
+    this.authLocal = !!s?.local_mode;
+    this.authWho = s?.account?.username ?? s?.principal?.name ?? '';
+    this.auth = m.needOf(s) as 'signin' | 'setup' | 'password' | null;
   }
 
   private async loadSummary(): Promise<void> {
@@ -615,6 +645,9 @@ export class QseApp extends LightElement {
   }
 
   render() {
+    if (this.accounts && (this.auth || location.hash.startsWith('#/account'))) {
+      return html`<qse-auth .need=${this.auth ?? 'account'} .local=${this.authLocal} .who=${this.authWho}></qse-auth>`;
+    }
     const st = this.status();
     const live = this.summary.state === 'ready' ? this.summary.data.live : null;
     const section = sectionOf(this.route.view);
@@ -663,7 +696,7 @@ export class QseApp extends LightElement {
               ${this.newBuild && !this.setupJob && !this.restarting && !this.offline ? html`<div class="banner" role="status" data-update>${icon('refresh')} The dashboard on the box was updated. Reload to use the new version. <button type="button" class="btn btn-sm" @click=${() => this.newBuild?.()}>Reload</button></div>` : nothing}
               ${this.restarting && !knownJob() ? html`<div class="banner banner-offline" role="status" data-engine-restarting>${icon('refresh')} ${restartText(this.restarting.status)}</div>` : nothing}
               ${this.offline && !this.restarting && !knownJob() ? html`<div class="banner banner-offline" role="alert" data-engine-away=${engineAway()?.state ?? 'unreachable'}>${icon('warn')} ${awayText(engineAway())} — panels keep their last data and say which endpoint failed.</div>` : nothing}
-              ${this.refused && this.route.view !== 'setup' ? html`<div class="banner banner-offline" role="status" data-refused>${icon('warn')} The server answered 401: an admin password is set on it, and the dashboard has no sign-in yet. Unset QSE_ADMIN_TOKEN to open it again (docs/server.md).</div>` : nothing}
+              ${this.refused && !this.accounts && this.route.view !== 'setup' ? html`<div class="banner banner-offline" role="status" data-refused>${icon('warn')} The server answered 401: an admin password is set on it, and the dashboard has no sign-in yet. Unset QSE_ADMIN_TOKEN to open it again (docs/server.md).</div>` : nothing}
               ${this.setupMode ? html`<div class="banner setup-mode-banner" role="status" data-setup-mode>${icon('info')} ${S.setupModeBanner}</div>` : nothing}
               ${this.movedTo && this.route.view !== 'app' ? html`<div class="banner" role="status" data-moved-banner>${icon('info')} TandemApp’s controller moved to ${this.movedTo.name}; its API is ${this.movedTo.api_url}/v1. <a class="btn btn-sm" href=${followUrl(this.movedTo, location.hash)}>Open it</a></div>` : nothing}
               ${this.renderView()}
