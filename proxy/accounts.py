@@ -1050,11 +1050,12 @@ class AccountsAuth:
             handler.close_connection = True          # its body stays unread
         raw = handler.path.split("?", 1)[0]
         if _messages_shape(handler, raw):
-            # the Messages API's routes refuse in its own shape, as its handler does
-            handler._json(status, tokens_mod.refusal(raw, status, code, message,
-                                                     shape="messages"),
-                          extra_headers=tuple(extra) + (("request-id",
-                                                         tokens_mod.request_id()),))
+            # the Messages API's routes refuse in its own shape, as its handler does: the same
+            # request id in the body and the header
+            rid = tokens_mod.request_id()
+            body = tokens_mod.refusal(raw, status, code, message, shape="messages")
+            handler._json(status, {**body, "request_id": rid},
+                          extra_headers=tuple(extra) + (("request-id", rid),))
             return True
         handler._json(status, {"error": {"type": "unauthorized" if status == 401 else
                                          "forbidden" if status == 403 else code,
@@ -1187,13 +1188,12 @@ class AccountsAuth:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True
         extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else ()
-        shape = None
+        shape, rid = None, None
         if _messages_shape(handler, raw):
-            shape = "messages"
-            extra += (("request-id", tokens_mod.request_id()),)
-        handler._json(status, tokens_mod.refusal(raw, status, code, message, shape=shape,
-                                                 **facts),
-                      extra_headers=extra)
+            shape, rid = "messages", tokens_mod.request_id()
+            extra += (("request-id", rid),)
+        body = tokens_mod.refusal(raw, status, code, message, shape=shape, **facts)
+        handler._json(status, {**body, "request_id": rid} if rid else body, extra_headers=extra)
         return True
 
     def _local_csrf(self, handler, method: str, path: str):

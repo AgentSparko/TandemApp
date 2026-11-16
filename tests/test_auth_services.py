@@ -341,12 +341,13 @@ def test_imported_metrics_and_collect_tokens():
 
 def test_the_controller_move():
     import test_app_host as ah
-    a = ah.Ctl("giver", lines=["TANDEM_AUTH=accounts"])
+    a = ah.Ctl("giver")
     b = ah.Ctl("taker", lines=[f"TANDEM_ADMIN_TOKEN={ah.ADMIN_B}"])
     adminpw.Password(os.path.join(a.state, "admin.json")).set(PW["own"])
     try:
         a.start()
         b.start()
+        wb = b.owner(ah.ADMIN_B)            # SEC-28: the taker's admin token of before, once
         # the giver: the owner (made from admin.json) signs in once and makes a trust token
         st, h, out = _raw(a.url, "POST", "/v1/auth/session",
                           {"username": "owner", "password": PW["own"]})
@@ -360,9 +361,9 @@ def test_the_controller_move():
         assert os.path.exists(tokens_mod.cli_token_path(a.state)), "minted at the start"
         # the taker starts the move with the token: no password
         st, job = b.send("POST", "/v1/fleet/controller/take", {"url": a.url, "token": trust},
-                         token=ah.ADMIN_B)
+                         token=wb)
         assert st == 200 and job["direction"] == "pull", job
-        done = ah._until(lambda: ah._job_done(b, ah.ADMIN_B, job["id"]), 90)
+        done = ah._until(lambda: ah._job_done(b, wb, job["id"]), 90)
         assert done and done["state"] == "done", (done, b.tail(), a.tail())
         st, va = a.get("/v1/fleet/controller", token=trust)
         assert st == 200 and va["moved_to"]["api_url"] == b.url, va

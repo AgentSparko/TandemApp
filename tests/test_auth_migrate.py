@@ -365,13 +365,11 @@ def test_variables_and_files():
             schema_ok(one, "health-finding.schema.json")
         dump = json.dumps(list(f.values()))
         assert TOKEN not in dump and "0123456789abcdef0123" not in dump
-    # the switch off: the old rule, unchanged (a malformed key list still stops it)
-    from proxy import config as config_mod
-    try:
-        with Proxy(env={"TANDEM_API_KEYS": "broken"}):
-            raise AssertionError("the old rule read a broken TANDEM_API_KEYS")
-    except config_mod.ConfigError:
-        pass
+    # SEC-28: no switch: a malformed key list never stops the start, and imports nothing
+    with Proxy(env={"TANDEM_API_KEYS": "broken"}):
+        codes = {(f["code"], f["facts"].get("variable")) for f in accounts().findings()}
+        assert ("legacy_env_invalid", "TANDEM_API_KEYS") in codes, codes
+        assert accounts().tokens.all() == []
 
 
 def test_old_flags_ignored():

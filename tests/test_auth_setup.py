@@ -155,7 +155,7 @@ def test_bare_local_use():
         assert "backends" in j(px.get("/health"))[1]
         # the owner `local` writes the audit
         assert accounts().who_of(type("H", (), {"headers": {}, "_principal": accounts().resolve(
-            {"Host": "127.0.0.1"}, "127.0.0.1")})()) == "local:local"
+            {"Host": "127.0.0.1"}, "127.0.0.1")})()) == "local"
         # setting the password ends local mode at once, with no restart
         h = signed(setup(px, None, "own", PW))
         assert px.get("/v1/settings")[0] == 401

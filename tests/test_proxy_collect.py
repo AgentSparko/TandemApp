@@ -74,6 +74,9 @@ def _chat(px, model, **extra):
 def test_the_route_needs_the_token_and_a_backend():
     srv, port = fake(models=["m-v"], dialect="vllm")
     with Proxy(_env("vllm", port)) as px:
+        # SEC-28: a collect identity's route: this machine alone (local mode) is refused
+        assert _collect(px, "eng1", _batch(), token=None)[0] == 403
+    with Proxy(_env("vllm", port), local=False) as px:
         st, h, _ = _collect(px, "eng1", _batch(), token=None)
         assert st == 401 and "Bearer" in h.get("WWW-Authenticate", "")
         assert _collect(px, "eng1", _batch(), token="wrong-token-wrong-token")[0] == 401
