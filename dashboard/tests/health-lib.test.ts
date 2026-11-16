@@ -116,7 +116,7 @@ describe('the order of a card’s findings', () => {
   });
   it('the controller’s findings of the worst scenario: chatd and the disk first', async () => {
     const ctl = cardsOf(await view('all'))[0];
-    expect(ctl.rows.map((r) => `${r.finding.severity} ${r.finding.code}`)).toEqual(['error chatd_down', 'error disk_low', 'warning sandbox_no_image', 'warning no_memory_cgroup', 'warning backend_down', 'warning backend_down']);
+    expect(ctl.rows.map((r) => `${r.finding.severity} ${r.finding.code}`)).toEqual(['error chatd_down', 'error disk_low', 'warning sandbox_no_image', 'warning no_memory_cgroup', 'warning backend_down', 'warning backend_down', 'warning harness_unsupported']);
   });
 });
 

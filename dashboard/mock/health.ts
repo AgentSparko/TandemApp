@@ -101,6 +101,7 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   no_memory_cgroup: ['warning', null],
   disk_low: ['warning', null],
   backend_down: ['warning', 'retry'],
+  harness_unsupported: ['warning', null],
   // the plugin host
   plugin_failed: ['warning', null],
   plugin_no_sandbox: ['warning', null],
@@ -214,6 +215,8 @@ export interface ControllerSim {
   freeGb: number;
   statePath: string;
   backendsDown: { label: string; error: string; back: boolean }[];
+  /** SRV-879: a backend whose kind the harness cannot run on, with what still asks for it */
+  harnessOff?: { backend: string; detail: string }[];
   plugins: PluginProblem[];
   /** the next Restart does not bring chatd back */
   restartFails?: boolean;
@@ -285,6 +288,7 @@ function build(name: HealthScenario, t0: number): Sim {
             { label: 'DeepSeek', error: 'HTTP 401 from /v1/models: the key is not valid', back: false },
             { label: 'rack-gpu', error: 'connection refused at 192.0.2.44:8001', back: false },
           ],
+          harnessOff: [{ backend: 'messages-gw', detail: 'its harness mode is on' }],
           plugins: [
             { code: 'plugin_failed', plugin: 'web-notes', detail: 'it exited five times within an hour (exit 1)' },
             { code: 'plugin_no_sandbox', plugin: 'pdf-reader', detail: 'no container runtime answers' },
@@ -669,6 +673,7 @@ export class MockHealth {
     checks.push(check('disk', !low, low ? 'disk_low' : null));
     for (const b of c.backendsDown) found.push(healthFinding('backend_down', { backend: b.label }, b.error.slice(0, 200)));
     checks.push(check('backends', !c.backendsDown.length, c.backendsDown.length ? 'backend_down' : null));
+    for (const h of c.harnessOff ?? []) found.push(healthFinding('harness_unsupported', { backend: h.backend }, h.detail));
     for (const p of c.plugins) found.push(healthFinding(p.code, { plugin: p.plugin }, p.detail.slice(0, 300)));
     const rank = (code: string) => (['error', 'warning', 'info'] as Severity[]).indexOf(HEALTH_FINDINGS[code]?.[0] ?? 'error');
     const worst = [...c.plugins].sort((a, b) => rank(a.code) - rank(b.code))[0];
