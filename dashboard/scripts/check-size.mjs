@@ -108,6 +108,12 @@
 // chunk grows by 0.2 KB for the import and the page that holds them. Room looked for first: the pages use the
 // settings area's draft, run sheet, refusals and row styles, not copies of their own, and read the stage table
 // from the controller; the budget counts every file, so a further split saves nothing.
+// 731 KB with the health page (SRV-835, 2026-11-16: 729.9 KB, 747,368 bytes, from 714.4 KB): the verdict, a card a
+// target with its line of checks, the findings with their fixes, the dialog of Upgrade and the notes a fix leaves,
+// with the health routes' client, the flow and the page's words. It is a chunk of its own (11.8 KB js, 3.0 KB css)
+// that loads when Monitor → Health opens. The entry chunk stays at 106.0 KB (33 bytes more: the route, the menu
+// entry and its icon). Room looked for first: the page uses the engine routes' refusals and the sign-in card, not
+// copies of its own; the budget counts every file, so a further split saves nothing.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

@@ -33,6 +33,11 @@
 // VIS-282) are the same registry the settings' hooks scope shows: POST /__mock/hooks {fail, trust, race,
 // behave, provider, requests, asks, replay} makes a route refuse, takes pairing's rights away, lets a
 // hook change on another screen, sets how a receiver answers and sends made-up traffic through.
+// The health page (/v1/fleet/health, mock/health.ts, SRV-835): `?health=<scenario>` on the page URL, or
+// POST /__mock/health {scenario, reset, ref, fail, controller, host}, picks what its checks find (mixed, ok,
+// first, all, silent, external), names the release an upgrade goes to, makes a fix refuse and changes one
+// condition of the controller or of an engine host. A fix needs the rights of its action: a check again and
+// the guides a read's, the others the token or a session once a password is set.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.
 
@@ -57,6 +62,7 @@ import { longSession } from './memory.ts';
 import { MockSetup } from './setup.ts';
 import { isFleetScenario, MockFleet, type FleetScenario } from './fleet.ts';
 import { FAIL_ROUTES, type FailRoute } from './enginehosts.ts';
+import { isHealthScenario, rightsOf } from './health.ts';
 
 type Next = (err?: unknown) => void;
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: Next) => void;
@@ -481,11 +487,14 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
   const fleets = new Map<FleetScenario, MockFleet>();
   let fleetDefault: FleetScenario = isFleetScenario(process.env.TANDEM_MOCK_FLEET) ? process.env.TANDEM_MOCK_FLEET : 'fleet4';
   let lanDefault: 'allow' | 'deny' = 'allow';
+  const fleetNamed = (name: FleetScenario): MockFleet => {
+    if (!fleets.has(name)) fleets.set(name, new MockFleet({ seed: seed + 31, scenario: name }));
+    return fleets.get(name)!;
+  };
   const fleetFor = (req: IncomingMessage): MockFleet => {
     const c = cookies(req);
     const name = isFleetScenario(c.qse_fleet) ? c.qse_fleet : fleetDefault;
-    if (!fleets.has(name)) fleets.set(name, new MockFleet({ seed: seed + 31, scenario: name }));
-    const f = fleets.get(name)!;
+    const f = fleetNamed(name);
     f.extern = (now, taken) => backends.members(now, taken);
     f.discovery.lanMode = c.qse_lan === 'deny' || c.qse_lan === 'allow' ? c.qse_lan : lanDefault;
     f.engines.lanMode = f.discovery.lanMode;
@@ -573,6 +582,13 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       // The page itself: pick up ?fleet=<scenario> and ?mock=<mode> and remember them in cookies.
       if ((path === '/dashboard' || path === '/' || path === '/index.html') && isFleetScenario(q.get('fleet'))) {
         res.appendHeader('Set-Cookie', `qse_fleet=${q.get('fleet')}; Path=/; SameSite=Strict`);
+      }
+      // ?health=<scenario>: what the health page's checks find, on the fleet this page load names
+      const hs = q.get('health');
+      if ((path === '/dashboard' || path === '/' || path === '/index.html') && isHealthScenario(hs)) {
+        const fq = q.get('fleet');
+        const c = cookies(req).qse_fleet;
+        fleetNamed(isFleetScenario(fq) ? fq : isFleetScenario(c) ? c : fleetDefault).health.load(hs);
       }
       if ((path === '/dashboard' || path === '/' || path === '/index.html') && (q.get('gateway') === 'on' || q.get('gateway') === 'off')) {
         res.appendHeader('Set-Cookie', `qse_gateway=${q.get('gateway')}; Path=/; SameSite=Strict`);
@@ -994,6 +1010,14 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
           return error(res, 400, 'bad_request', (e as Error).message);
         }
       }
+      // SRV-835: what no click produces on the health page (mock/health.ts)
+      if (path === '/__mock/health' && req.method === 'POST') {
+        try {
+          return json(res, 200, fleetFor(req).health.control(JSON.parse((await readBody(req)) || '{}')));
+        } catch (e) {
+          return error(res, 400, 'bad_request', (e as Error).message);
+        }
+      }
       if (path === '/v1/settings' || path.startsWith('/v1/settings/')) {
         const write = req.method !== 'GET';
         if (ctlPassword() && write && !authed(req)) return error(res, 401, 'unauthorized', 'a session or an admin token is required');
@@ -1018,7 +1042,11 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         }
         // SRV-731: the placement planner is a read in a POST
         // the LAN's engines are read with a write's rights too, as discovery's list is
-        const write = path.startsWith('/v1/fleet/discovery') || path === '/v1/fleet/engines/discover' || (req.method !== 'GET' && !(req.method === 'PUT' && path.startsWith('/v1/fleet/layouts/')) && !(req.method === 'POST' && path === '/v1/fleet/placement'));
+        // SRV-835: a fix of the health page needs its action's rights: a check again and the guides a read's
+        const healthFix = req.method === 'POST' && /^\/v1\/fleet\/health\/[^/]+\/fix$/.test(path);
+        const write = healthFix
+          ? rightsOf(body) !== 'dashboard'
+          : path.startsWith('/v1/fleet/discovery') || path === '/v1/fleet/engines/discover' || (req.method !== 'GET' && !(req.method === 'PUT' && path.startsWith('/v1/fleet/layouts/')) && !(req.method === 'POST' && path === '/v1/fleet/placement'));
         // 6.3b: the export (the whole registry) needs write rights; the App page's own view is a read
         const appWrite = write || path === '/v1/fleet/app/export';
         if (ctlPassword() && appWrite && !authed(req)) return error(res, 401, 'unauthorized', 'a session or an admin token is required');

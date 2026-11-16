@@ -62,6 +62,7 @@ const ICONS: Record<string, TemplateResult> = {
   overview: g(svg`<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/>`),
   hardware: g(svg`<rect x="5" y="5" width="10" height="10" rx="1.5"/><path d="M8 2v3M12 2v3M8 15v3M12 15v3M2 8h3M2 12h3M15 8h3M15 12h3"/>`),
   events: g(svg`<path d="M10 3a4.5 4.5 0 0 0-4.5 4.5V11L4 13.5h12L14.5 11V7.5A4.5 4.5 0 0 0 10 3zM8.3 16a1.8 1.8 0 0 0 3.4 0"/>`),
+  health: g(svg`<path d="M2.5 10.5h3.2l1.9-5 3.4 9.5 2-4.5h4.5"/>`),
   sparks: g(svg`<rect x="3" y="4" width="14" height="5" rx="1"/><rect x="3" y="11" width="14" height="5" rx="1"/><path d="M6 6.5h.01M6 13.5h.01"/>`),
   models: g(svg`<path d="M10 2.5 17 6v8l-7 3.5L3 14V6z"/><path d="M3 6l7 3.5L17 6M10 9.5v8"/>`),
   api: g(svg`<path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0zM10 15v3"/>`),
