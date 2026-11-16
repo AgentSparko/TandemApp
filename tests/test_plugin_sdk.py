@@ -226,7 +226,7 @@ def _run_examples(r: Rig, base: str, trust: str | None) -> str:
         assert hook.got[-1]["auth"] == "Bearer tok-test-4711"
         assert hook.got[-1]["body"]["plugin"] == "note-webhook"
         try:
-            r.host.tool_call(nid, "send_note", {"text": ""})
+            r.host.tool_call(nid, "send_note", {"text": "x", "channel": "ops"})
             raise AssertionError("an argument outside the schema went through")
         except PluginError as exc:
             assert exc.code == "bad_arguments"
