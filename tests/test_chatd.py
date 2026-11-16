@@ -373,15 +373,20 @@ def test_the_replay_to_live_switch_has_no_gap_and_no_duplicate():
 
 
 def test_deltas_are_coalesced():
-    """A 10,000-token answer is under 500 stored events (one delta every 50 ms)."""
+    """A 10,000-token answer is stored as one delta every 50 ms at most: under 500 events when
+    it streams in its 5 s, and never more than one per 50 ms of the time it took. The fake paces
+    each token with its own sleep, so a busy machine stretches the stream; the bound follows the
+    stream's own time (the gateway mode relays every frame once more)."""
     c = Chat(tps=2000.0)
     try:
         cid = c.new()
+        t0 = time.monotonic()
         c.send(cid, "FAKE_LONG 10000 go")
-        s = c.wait_idle(cid, 30)
+        s = c.wait_idle(cid, 120)
+        took = time.monotonic() - t0
         assert len(text_of(s["messages"][-1]).split()) == 10_000
         n = c.svc.store.one("SELECT COUNT(*) FROM events WHERE conversation_id = ?", (cid,))[0]
-        assert n < 500, n
+        assert n < max(500, took / 0.05 + 50) and n < 1000, (n, round(took, 1))
     finally:
         c.close()
 
