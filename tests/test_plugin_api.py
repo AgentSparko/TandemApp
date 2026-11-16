@@ -41,6 +41,7 @@ from plugin_util import example, example_files, folder, repo, wheel  # noqa: E40
 from proxy_util import Proxy, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
+from proxy import hookstages  # noqa: E402
 from tools import contract_check  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -82,7 +83,8 @@ def test_lifecycle_over_http():
         with Proxy({}) as px:
             listed = _ok(_j(px, "GET", BASE), "plugins")
             assert listed["plugins"] == [] and listed["plugin_api"] == "1.0"
-            assert listed["hooks_api"] == "1.0" and listed["tandemapp"] == _versions()
+            assert listed["hooks_api"] == hookstages.VERSION and \
+                listed["tandemapp"] == _versions()
             ins = _ok(_j(px, "POST", BASE + "/inspect", {"source": {"type": "folder",
                                                                     "path": src}}), "inspect")
             assert ins["ok"] and ins["manifest"]["name"] == "hello-tool" and ins["installed"] is None

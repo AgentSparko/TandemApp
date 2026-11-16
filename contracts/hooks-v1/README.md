@@ -1,6 +1,6 @@
 # Hooks contract v1
 
-A remote hook is code outside TandemApp that the controller calls at a stage of a request: before routing, before the engine, on the answer, on an error, after the ledger row. These files are the contract between the controller's hook runner (`proxy/hooks.py`) and a hook's author; TandemApp owns them. Its version is `1.0`, independent of the release. docs/hooks.md explains the concepts and how to write a webhook.
+A remote hook is code outside TandemApp that the controller calls at a stage of a request: before routing, before the engine, on the answer, on an error, after the ledger row. These files are the contract between the controller's hook runner (`proxy/hooks.py`) and a hook's author; TandemApp owns them. Its version is `1.1`, independent of the release. docs/hooks.md explains the concepts and how to write a webhook.
 
 | file | what |
 |-|-|
@@ -9,6 +9,7 @@ A remote hook is code outside TandemApp that the controller calls at a stage of 
 | `events/<stage>.schema.json` | `event` per stage; `content` appears only at payload `redacted` or `full` |
 | `result.schema.json` | what a hook answers: `{action: continue\|modify\|deny\|decide, patch, decision, reason, labels}` |
 | `examples/<stage>.<payload>.json` | one call per stage as a `meta` hook gets it, and as a `full` one where the stage has content |
+| `compat-1.0/` | the same calls as version 1.0 sent them (no `request.protocol`): they still validate, and a hook written for them keeps working |
 | `fake_server.py` | a receiver for tests and trying hooks by hand: it checks every call's signature, timestamp and replay as a receiver must |
 | `hooks.schema.json`, `hook.schema.json`, `hook-one.schema.json`, `hook-new.schema.json`, `hook-patch.schema.json`, `hook-created.schema.json`, `hook-test.schema.json`, `hook-calls.schema.json`, `hook-trace.schema.json`, `error.schema.json` | the controller's admin API, `/v1/fleet/hooks/*` (below) |
 
@@ -32,6 +33,7 @@ A remote hook is code outside TandemApp that the controller calls at a stage of 
 - **Streams.** `stream.chunk` observes each event. On a streamed answer `tool_call.detected` and `response.after_engine` run after the stream ended, as observers: a `modify` or `deny` there is journaled as `refused` and nothing is applied.
 - **One retry.** `response.after_engine` may `decide` `{retry: true}` once per request: the same request is sent again and the new answer passes the stage again.
 - **No hook, no change.** With no hook enabled the controller relays every request byte for byte as without the runner; a hook that answers `continue` changes no byte either.
+- **Protocols** (1.1). `request.protocol` names the client's protocol (`inbound`) and the backend's (`upstream`): `openai` or `messages` (the Messages API). Every stage sees the request and the answer in the chat shape whatever the protocols. When both are `messages` the request passes through in its own shape: guards, deciders and observers work as always (they see a canonical copy), a patch of a parameter with a Messages API field (`model`, `max_tokens`, `temperature`, `top_p`, `top_k`, `stop`, `metadata`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, `response_format` json_schema) is written into the request, and any other patch (a content field, the answer, a parameter without such a field) is not applied: the call is journaled `refused` with `protocol_native` and the hook's failure policy applies. A hook that moves such a request to a backend of another protocol refuses it (409 `protocol_native`).
 
 ## Kinds
 
@@ -79,4 +81,4 @@ Errors are `error.schema.json`. A grant of `full` outside the LAN answers 409 `c
 
 ## The version
 
-MINOR adds a stage, an action, an event field, a decision key, a kind that runs, or a route; a hook written for 1.0 keeps working. MAJOR removes or renames one, or changes a meaning. `stages.json` `wired` says which stages the controller calls in this version: the others are called by the work that owns them (decision providers, chatd's tool and session stages, the memory writer, engine control) in a minor that keeps their event shape.
+MINOR adds a stage, an action, an event field, a decision key, a kind that runs, or a route; a hook written for 1.0 keeps working. 1.1 (SRV-881) adds `request.protocol`; the `hooks` field says which version sent a call. MAJOR removes or renames one, or changes a meaning. `stages.json` `wired` says which stages the controller calls in this version: the others are called by the work that owns them (decision providers, chatd's tool and session stages, the memory writer, engine control) in a minor that keeps their event shape.

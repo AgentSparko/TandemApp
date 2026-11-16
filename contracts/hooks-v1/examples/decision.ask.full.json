@@ -1,5 +1,5 @@
 {
-  "hooks": "1.0",
+  "hooks": "1.1",
   "id": "hd-0123456789abcdef0123456789abcdef",
   "hook": "example-hook",
   "stage": "decision.ask",
@@ -16,7 +16,11 @@
     "user": "owner",
     "session": "s-1",
     "client_kind": "unknown",
-    "stream": false
+    "stream": false,
+    "protocol": {
+      "inbound": "openai",
+      "upstream": "openai"
+    }
   },
   "event": {
     "question": {

@@ -29,7 +29,7 @@ the hooks pages); tests/test_hooks_contract.py holds the two equal (`export()`).
 
 from __future__ import annotations
 
-VERSION = "1.0"
+VERSION = "1.1"                   # 1.1 (SRV-881): the request block names its `protocol`
 CAP_MS = 800                      # sync hooks before the first token, per request
 ASYNC_TIMEOUT_MS = 5000           # an observer's default timeout off the request's path
 MAX_TIMEOUT_MS = 30000

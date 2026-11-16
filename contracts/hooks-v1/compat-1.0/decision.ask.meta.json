@@ -1,0 +1,35 @@
+{
+  "hooks": "1.0",
+  "id": "hd-0123456789abcdef0123456789abcdef",
+  "hook": "example-hook",
+  "stage": "decision.ask",
+  "ts": 1763200000.0,
+  "payload": "meta",
+  "mode": "on",
+  "request": {
+    "request_id": "chatcmpl-px-0123456789abcdef01234567",
+    "endpoint": "chat",
+    "model": "example-model",
+    "upstream_model": "example-model",
+    "backend": "local",
+    "profile": null,
+    "user": "owner",
+    "session": "s-1",
+    "client_kind": "unknown",
+    "stream": false
+  },
+  "event": {
+    "question": {
+      "id": "classify",
+      "type": "choice",
+      "instructions": "Which kind of task is this message?",
+      "options": {
+        "code_edit": "change code in the project",
+        "chat": "a question or a conversation"
+      },
+      "model": "auto",
+      "deadline_ms": 400,
+      "state_chars": 63
+    }
+  }
+}
