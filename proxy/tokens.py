@@ -83,7 +83,7 @@ chatd makes there), plugin-backend /plugin-backends/* alone.
 A token never exceeds its owner's role of now (`effective`, at each request): an inference scope
 counts only while the role may make inference tokens; the other scopes lose what the role lost.
 
-SEAMS. `exposure` (SRV-871: the protocol's exposure switch), the `limits` field (SRV-873 enforces it),
+SEAMS. `exposure` (SRV-871, proxy/exposure.py), the `limits` field (SRV-873 enforces it),
 `/v1/auth/tokens/{id}/usage` (SRV-873), the Messages API's `/v1/messages` routes (their scope and
 refusal shape are here already).
 """
@@ -774,6 +774,15 @@ class TokenStore:
             return self._c.execute("SELECT COUNT(*) FROM api_tokens WHERE needs_review = 1 AND "
                                    "revoked_at IS NULL AND (expires_at IS NULL OR expires_at > "
                                    "?)", (now,)).fetchone()[0]
+
+    def expiring(self, within_ms: int) -> int:
+        """SRV-871: live tokens of a person or an import (not a service identity) that end
+        within `within_ms`: the finding token_expiring."""
+        now = self.now_ms()
+        with self.cfg._lock:
+            return self._c.execute("SELECT COUNT(*) FROM api_tokens WHERE kind != 'service' AND "
+                                   "revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at "
+                                   "> ? AND expires_at <= ?", (now, now + within_ms)).fetchone()[0]
 
     def admin_token_live(self) -> dict | None:
         now = self.now_ms()

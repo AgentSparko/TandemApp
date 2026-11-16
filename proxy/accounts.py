@@ -47,12 +47,12 @@ exists, so the answer does not tell. Over every address: proxy/identity.py's cap
 
 SEAMS: `service_resolver` (SRV-869: `(headers, peer) -> Principal | None`, asked before the token
 store for a request with a bearer: the plugin relay's in-process secret, relay_principal),
-`exposure` (SRV-871: `(principal, method, path, peer, headers) -> (status, code, message) |
-None`, the protocol's exposure switch for a token), `on_account_removed`.
+`exposure` (SRV-871, proxy/exposure.py: `(principal, method, path, peer, headers) -> (status,
+code, message) | None`, the protocol's exposure switch for a token), `on_account_removed`.
 
 SRV-869: being on the same machine opens nothing outside local mode: `trusted_local` is False
-here for every old guard, and the one this-machine test (proxy/authlocal.py this_machine) lets
-a request in from local mode only. The controller's own callers have identities: chatd's
+here for every old guard, and the one this-machine test (proxy/authlocal.py this_machine) has two
+callers, local mode and the exposure rule. The controller's own callers have identities: chatd's
 svc:chatd, the CLI's svc:cli (<state>/run/cli.token, write_cli_token at each start), a backend's
 collect identity, the plugin relay's secret. A revoked token's open stream closes as an ended
 session's does (Streams).
@@ -103,6 +103,7 @@ DAY_MS = 86_400_000
 TOUCH_MS = 60_000                       # last_seen_at is written at most once a minute
 STREAM_CHECK_S = 2.0
 TOKEN_STREAM = "t:"                     # SRV-869: a token's key in the stream registry
+EXPIRING_MS = 7 * 86_400_000            # SRV-871: finding token_expiring within this
 ACCOUNT_FAILS = 5
 ACCOUNT_WAIT_S = (2.0, 300.0)
 ACCOUNT_FORGET_S = 3600.0               # a name's failures are forgotten after an hour of quiet
@@ -778,6 +779,9 @@ class AccountsAuth:
         self.local_mode = self.local
         self.codes = authlocal.SetupCodes(self.store, self.env)
         self.legacy: list[dict] = []        # proxy/authlegacy.py scan(): {code, variable, file}
+        # SRV-871: each protocol's exposure switch narrows a valid token by where it comes from
+        from proxy import exposure as exposure_mod
+        self.exposure = exposure_mod.Exposure(self, clock=clock)
 
     def listen(self, host: str, port=None, say=None) -> str | None:
         """SEC-26: where the process listens decides local mode (never the peer). Without local
@@ -852,6 +856,11 @@ class AccountsAuth:
             out.append({"code": "tokens_need_review", "facts": {"n": n}})
         if self.tokens.admin_token_live() is not None:
             out.append({"code": "legacy_admin_token", "facts": {}})
+        # SRV-871: the exposure switches against what is reachable, and tokens about to end
+        out += self.exposure.findings()
+        n = self.tokens.expiring(EXPIRING_MS)
+        if n:
+            out.append({"code": "token_expiring", "facts": {"n": n}})
         return out
 
     def describe(self) -> str:

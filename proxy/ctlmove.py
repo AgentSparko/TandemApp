@@ -96,7 +96,9 @@ DROPPED = {"plugins": "plugins stay: their files are on this machine; install th
 # the users columns a fold of TANDEM_API_USERS_FROM's database copies (the key's hash, never a key)
 USER_COLS = ("label", "key_hash", "key_hint", "role", "enabled", "created_at", "last_seen_at")
 LOOPBACK_NAMES = ("localhost", "localhost.localdomain", "ip6-localhost")
-SKIP_SETTINGS = ("controller.", "fleet.")
+#: SRV-871: the sign-in's and the API's settings stay with the accounts and tokens, which no
+#: export carries
+SKIP_SETTINGS = ("controller.", "fleet.", "auth.", "api.")
 STEPS = {"push": (("check", "Check {to}"), ("export", "Export the fleet"),
                   ("start", "Start the controller on {to}"),
                   ("repin", "Hand the nodes to the new controller"),
