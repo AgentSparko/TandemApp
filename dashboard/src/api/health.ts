@@ -107,6 +107,8 @@ export interface HealthTarget {
   engine_state?: 'healthy' | 'loading' | 'draining' | 'failed' | 'down' | null;
   model?: string | null;
   chat?: 'own' | 'external' | 'off';
+  /** the controller: the backend of chatd's sandboxes, as chatd reports it */
+  sandbox_backend?: 'docker' | 'kubernetes' | null;
   sandbox_socket?: string | null;
 }
 

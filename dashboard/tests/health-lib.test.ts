@@ -211,7 +211,8 @@ describe('a finding’s facts', () => {
     expect(e.map((x) => x.label)).toEqual(['SSH login', 'Host key pinned', 'Engine port', 'Token', 'Engine API', 'Mode']);
     expect(e[0].value).toBe('spark@192.0.2.80 port 22');
     expect(e[3].value).toMatch(/^stored, ends in [0-9a-f]{4}$/);
-    expect(reachOf(v.controller)).toEqual([{ label: 'Chat', value: 'Chat runs here', mono: false }, { label: 'Sandbox socket', value: '/run/user/1000/podman/podman.sock', mono: true }]);
+    expect(reachOf(v.controller)).toEqual([{ label: 'Chat', value: 'Chat runs here', mono: false }, { label: 'Sandboxes', value: 'containers on a runtime socket', mono: false }, { label: 'Sandbox socket', value: '/run/user/1000/podman/podman.sock', mono: true }]);
+    expect(reachOf({ ...v.controller, sandbox_backend: 'kubernetes', sandbox_socket: null })).toEqual([{ label: 'Chat', value: 'Chat runs here', mono: false }, { label: 'Sandboxes', value: 'pods in the cluster', mono: false }]);
     expect(reachOf({ ...v.engines[0], http: { port: 8000, token: { set: false, last4: null, sha256_6: null, rotated_at: null } } })[3].value).toBe('none stored');
   });
 });

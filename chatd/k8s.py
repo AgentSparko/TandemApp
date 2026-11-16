@@ -818,6 +818,21 @@ class KubeSandboxes(Sandboxes):
                                  daemon=True).start()
         return False
 
+    BACKEND = "kubernetes"
+
+    def report(self) -> dict:
+        """What `/health` says of the sandboxes (SRV-835): the cluster check's state, `ready`,
+        `unavailable` (with its words) or `unknown` while it runs. Asking also starts the check
+        again when it failed more than 2 minutes ago, in the background."""
+        self.available()
+        st = self.check["state"]
+        if st == "ok":
+            return {"backend": self.BACKEND, "state": "ready", "why": None}
+        if st == "error":
+            return {"backend": self.BACKEND, "state": "unavailable",
+                    "why": self.check["why"] or None}
+        return {"backend": self.BACKEND, "state": "unknown", "why": None}
+
     def unavailable_words(self) -> str:
         return self.check["why"] or "the cluster check has not finished"
 

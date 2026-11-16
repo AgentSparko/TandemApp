@@ -65,6 +65,16 @@ def test_python_m_chatd_starts_and_stops_cleanly():
             except OSError:
                 time.sleep(0.1)
         key = open(os.path.join(d, "forward.key")).read().strip()
+        # SRV-835: the sandboxes' backend and last known state; their words only with the key
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/health")
+        sb = json.loads(c.getresponse().read())["sandbox"]
+        assert sb["backend"] == "docker" and sb["state"] in ("ready", "unavailable", "unknown")
+        assert "why" not in sb, sb
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/health", headers={"X-Tandem-Forward": key})
+        sb = json.loads(c.getresponse().read())["sandbox"]
+        assert sb["backend"] == "docker" and "why" in sb, sb
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         c.request("GET", "/v1/chat-app/session", headers={"X-Tandem-Forward": key})
         r = c.getresponse()

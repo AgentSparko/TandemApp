@@ -242,6 +242,11 @@
       "message": "The sandbox image {image} is not in the container runtime.",
       "fix": "Build it as the runtime's user: bash ops/sandbox/build.sh podman."
     },
+    "sandbox_unavailable": {
+      "status": 503,
+      "message": "Chat sandboxes do not start: {detail}",
+      "fix": "chatd's log says why. In a cluster check the release's sandbox settings (sandbox.mode, its namespace and service account); elsewhere the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env)."
+    },
     "no_memory_cgroup": {
       "status": 409,
       "message": "The kernel does not cap a container's memory here, so a sandbox has no memory limit.",
@@ -390,6 +395,10 @@
       "action": null
     },
     "sandbox_no_image": {
+      "severity": "warning",
+      "action": null
+    },
+    "sandbox_unavailable": {
       "severity": "warning",
       "action": null
     },

@@ -279,7 +279,8 @@ def test_install_and_wizard_flag(tmp_path):
         h = box.json("/v1/fleet/health/controller?fresh=1")
         assert h["chat"] == "off" and not [f for f in h["findings"] if f["code"] in (
             "chatd_down", "chatd_silent", "chat_unreachable", "sandbox_off",
-            "sandbox_unreachable", "sandbox_no_image", "no_memory_cgroup")], h
+            "sandbox_unreachable", "sandbox_no_image", "sandbox_unavailable",
+            "no_memory_cgroup")], h
         assert {c["check"]: c["ok"] for c in h["checks"]}["chatd"] is None, h["checks"]
         assert not os.path.exists(os.path.join(box.state, "chat", "chatd.pid"))
         # switched on from the page: the plan, then its confirm

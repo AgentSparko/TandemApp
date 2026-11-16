@@ -24,6 +24,9 @@ injected. The health service's clock is a test clock, so the cache and the limit
      silent, without its image and fine, the memory cgroup, low disk (warning, error), a backend
      down (retry probes it), two down and one back (cleared per instance), no engine yet
      (setup.needs_setup, add_engine), chat elsewhere unreachable  test_controller_findings
+  4b the sandbox as chatd reports it: kubernetes ready (no sandbox_off), podman ready (the socket
+     not probed), chat off, chat external, the runtime truly missing (sandbox_off)
+                                                                  test_controller_sandbox_as_chatd_says
   5  the cache and the limits: a second read is cached with its age, fresh=1 within 3 s is
      limited, an action not offered is 409, six fixes a minute then 429 with retry_after, bad
      bodies 400
@@ -331,10 +334,12 @@ class FakeChat:
         self.hand_stop = False
         self.job = None
         self.acts: list = []
+        self.sandbox = None              # chatd's /health `sandbox` (SRV-835), None: says nothing
 
     def status(self) -> dict:
         return {"running": self.running, "pid": 7 if self.running else None,
-                "answers": self.answers, "version": None}
+                "answers": self.answers, "version": None,
+                "sandbox": self.sandbox if self.answers else None}
 
     def view(self) -> dict:
         return {"watch": {"stopped_by_hand": self.hand_stop, "gave_up": False}}
@@ -513,6 +518,143 @@ def test_controller_findings(tmp_path, monkeypatch):
             r.close()
     return "no engine, chat elsewhere, chatd down/silent + Restart, sandbox x3, cgroup, disk, " \
            "backend"
+
+
+class FakeExternalChat:
+    """An external chatd's /health over HTTP, with or without its `sandbox`."""
+
+    def __init__(self):
+        import http.server
+        outer = self
+        self.sandbox = None
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                doc = {"status": "ok", "service": "chatd", "version": "t"}
+                if outer.sandbox is not None:
+                    doc["sandbox"] = outer.sandbox
+                raw = json.dumps(doc).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *a):
+                pass
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+def test_controller_sandbox_as_chatd_says(tmp_path, monkeypatch):
+    """SRV-835: the sandbox check reads chatd's own report (its /health `sandbox`): a cluster's
+    sandbox pods that chatd says are ready are no sandbox_off; a socket chatd says is ready is not
+    probed; chat off and an external chatd say nothing of a socket here; a runtime that is really
+    missing is still sandbox_off."""
+    with Proxy(env={"QSE_CHAT_URL": "http://127.0.0.1:9"}) as px:
+        f = tf.fleet_on(px, tf.local_node(tf.fake_root()))
+        r = Rig(px, f, str(tmp_path), monkeypatch)
+        ext = FakeExternalChat()
+        try:
+            h = f.health()
+            clk = Clock()
+            h.clock = clk
+            h.env = {}
+            h.platform = "linux"
+            h.cgroup = lambda sock: (True, None)
+            chat = FakeChat(str(tmp_path))
+            chat.running = chat.answers = True
+            f.chat = chat
+            gone = str(tmp_path / "no-runtime.sock")
+
+            def sandbox(v):
+                return [x for x in v["findings"] if x["code"].startswith("sandbox_")], \
+                    checks(v)["sandbox"]
+            # kubernetes, ready: no socket anywhere, no finding (the live case)
+            chat.cfg = {"QSE_SANDBOX_BACKEND": "kubernetes", "QSE_SANDBOX_SOCKET": gone}
+            chat.sandbox = {"backend": "kubernetes", "state": "ready"}
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], True), v
+            assert v["sandbox_backend"] == "kubernetes" and v["sandbox_socket"] is None, v
+            assert checks(v)["memory_cgroup"] is None, "pods: no socket's cgroup to read"
+            # kubernetes, an older chatd that says nothing, or a check still running: not checked
+            for told in (None, {"backend": "kubernetes", "state": "unknown"}):
+                chat.sandbox = told
+                v = health(r, "controller", clk)
+                assert sandbox(v) == ([], None), (told, v)
+                assert v["sandbox_backend"] == "kubernetes"
+            # kubernetes, the cluster check failed: chatd's words
+            chat.sandbox = {"backend": "kubernetes", "state": "unavailable",
+                            "why": "the runtimeClass 'gvisor' does not exist in this cluster"}
+            v = health(r, "controller", clk)
+            got, ok_ = sandbox(v)
+            assert ok_ is False and [x["code"] for x in got] == ["sandbox_unavailable"], v
+            assert "runtimeClass 'gvisor'" in got[0]["sentence"] and \
+                got[0]["severity"] == "warning" and got[0]["action"] is None, got
+            # podman (docker API on a socket), chatd says ready: passes, the socket is not probed
+            rt = FakeRuntime(image_there=False)
+            chat.cfg = {"QSE_SANDBOX_SOCKET": rt.path}
+            chat.sandbox = {"backend": "docker", "state": "ready"}
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], True) and rt.seen == [], (v, rt.seen)
+            assert v["sandbox_backend"] == "docker" and v["sandbox_socket"] == rt.path
+            # chatd says nothing: the socket's own answer (no image here)
+            chat.sandbox = None
+            v = health(r, "controller", clk)
+            assert [x["code"] for x in sandbox(v)[0]] == ["sandbox_no_image"], v
+            # the socket is fine but chatd says no: its words
+            rt.image_there = True
+            chat.sandbox = {"backend": "docker", "state": "unavailable", "why": "no answer in 5 s"}
+            v = health(r, "controller", clk)
+            got, ok_ = sandbox(v)
+            assert [x["code"] for x in got] == ["sandbox_unavailable"] and ok_ is False, v
+            rt.close()
+            # the runtime is really missing: no socket, chatd says unavailable or nothing
+            chat.cfg = {"QSE_SANDBOX_SOCKET": gone}
+            for told in ({"backend": "docker", "state": "unavailable"}, None):
+                chat.sandbox = told
+                v = health(r, "controller", clk)
+                got, ok_ = sandbox(v)
+                assert [x["code"] for x in got] == ["sandbox_off"] and ok_ is False, (told, v)
+                assert got[0]["facts"]["path"] == gone
+            # the backend from the controller's environment when chatd's env file does not say
+            h.env = {"QSE_SANDBOX_BACKEND": "kubernetes"}
+            chat.sandbox = None
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], None) and v["sandbox_backend"] == "kubernetes", v
+            h.env = {}
+            # chat off: nothing checked, nothing said
+            h.chat_mode = "off"
+            chat.sandbox = {"backend": "docker", "state": "unavailable"}
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], None) and v["chat"] == "off", v
+            assert v["sandbox_backend"] is None and v["sandbox_socket"] is None
+            # chat external: its own report, nothing of a socket here
+            h.chat_mode = None
+            f.chat = None
+            h.env = {"QSE_CHAT_URL": ext.url}
+            v = health(r, "controller", clk)
+            assert v["chat"] == "external" and sandbox(v) == ([], None), v
+            ext.sandbox = {"backend": "kubernetes", "state": "ready"}
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], True) and v["sandbox_backend"] == "kubernetes", v
+            ext.sandbox = {"backend": "docker", "state": "unavailable"}
+            v = health(r, "controller", clk)
+            got, ok_ = sandbox(v)
+            assert [x["code"] for x in got] == ["sandbox_unavailable"] and ok_ is False, v
+            assert v["sandbox_socket"] is None
+            ext.sandbox = {"backend": "zfs", "state": "ready"}       # not a report: ignored
+            v = health(r, "controller", clk)
+            assert sandbox(v) == ([], None), v
+        finally:
+            ext.close()
+            r.close()
+    return "kubernetes ready/unknown/failed, podman ready/no image/chatd says no, missing, " \
+        "off, external"
 
 
 def tf_free_port() -> int:

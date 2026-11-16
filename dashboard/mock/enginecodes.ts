@@ -61,6 +61,7 @@ export const ENGINE_CODES: Record<string, readonly [number, string, string]> = {
   sandbox_off: [409, "Chat sandboxes are off: no container runtime socket is at {path}.", "Give chatd a socket: install with --with-sandbox, set QSE_SANDBOX_SOCKET in chatd.env, or mount a socket into TandemApp's container."],
   sandbox_unreachable: [502, "The container runtime at {path} does not answer.", "Check that its service runs and that this user may open the socket."],
   sandbox_no_image: [409, "The sandbox image {image} is not in the container runtime.", "Build it as the runtime's user: bash ops/sandbox/build.sh podman."],
+  sandbox_unavailable: [503, "Chat sandboxes do not start: {detail}", "chatd's log says why. In a cluster check the release's sandbox settings (sandbox.mode, its namespace and service account); elsewhere the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env)."],
   no_memory_cgroup: [409, "The kernel does not cap a container's memory here, so a sandbox has no memory limit.", "Turn the memory controller on: on a Raspberry Pi add cgroup_enable=memory cgroup_memory=1 to /boot/firmware/cmdline.txt and reboot."],
   disk_low: [507, "Only {free_gb} GB are free at {path}.", "Free some space there: TandemApp wants {need_gb} GB."],
   backend_down: [502, "The backend {backend} does not answer: {detail}", "Check that it runs and that its address and key are right; Backends tests it."],

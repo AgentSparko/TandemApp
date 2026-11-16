@@ -290,6 +290,7 @@ export function reachOf(t: HealthTarget): Fact[] {
   const out: Fact[] = [];
   if (t.kind === 'controller') {
     if (t.chat) out.push({ label: 'Chat', value: CHAT_WORDS[t.chat], mono: false });
+    if (t.sandbox_backend) out.push({ label: 'Sandboxes', value: t.sandbox_backend === 'kubernetes' ? 'pods in the cluster' : 'containers on a runtime socket', mono: false });
     if (t.sandbox_socket) out.push({ label: 'Sandbox socket', value: t.sandbox_socket, mono: true });
     return out;
   }

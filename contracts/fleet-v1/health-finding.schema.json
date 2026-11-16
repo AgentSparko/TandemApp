@@ -33,6 +33,7 @@
         "sandbox_off",
         "sandbox_unreachable",
         "sandbox_no_image",
+        "sandbox_unavailable",
         "no_memory_cgroup",
         "disk_low",
         "backend_down",

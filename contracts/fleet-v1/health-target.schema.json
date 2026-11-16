@@ -224,6 +224,18 @@
         "off"
       ]
     },
+    "sandbox_backend": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "docker",
+        "kubernetes",
+        null
+      ],
+      "description": "the controller: the backend of chatd's sandboxes, as chatd reports it (else its env file); null with Chat off or an external chatd that does not say"
+    },
     "sandbox_socket": {
       "type": [
         "string",

@@ -52,9 +52,13 @@ action; the page's way on is Add engine, with a new code.
 THE CONTROLLER'S CHECKS (`controller`): chatd (own: running and answering, else chatd_down or
 chatd_silent with Restart; external: QSE_CHAT_URL answers, else chat_unreachable; off, OPS-288:
 Chat is switched off, so chatd, the sandbox and the memory cgroup are not checked and say
-nothing), the sandbox
-runtime of an own chatd (its socket answers /_ping and holds the image: sandbox_off,
-sandbox_unreachable, sandbox_no_image), the memory cgroup on that host (Linux: the kernel's memory
+nothing), the sandboxes as chatd reports them (its /health `sandbox`: the backend, docker or
+kubernetes, and ready, unavailable or unknown; ready passes whatever the runtime). For an own
+chatd with a container socket that is not reported ready, the socket answers /_ping and holds the
+image (sandbox_off, sandbox_unreachable, sandbox_no_image; sandbox_unavailable when the socket is
+fine but chatd still says no); in a cluster only chatd's cluster check counts (unavailable:
+sandbox_unavailable with its words; running or not said: not checked); an external chatd's
+unavailable is sandbox_unavailable, the memory cgroup on that host (Linux: the kernel's memory
 controller, and its delegation to the user whose /run/user/<uid> holds the socket:
 no_memory_cgroup), the free space where the state and chat data live (disk_low under DISK_WARN_GB,
 an error under DISK_ERROR_GB), each enabled backend that the background poll found down
@@ -160,6 +164,7 @@ FINDINGS: dict[str, tuple[str, str | None]] = {
     "sandbox_off": ("warning", None),
     "sandbox_unreachable": ("warning", None),
     "sandbox_no_image": ("warning", None),
+    "sandbox_unavailable": ("warning", None),
     "no_memory_cgroup": ("warning", None),
     "disk_low": ("warning", None),
     "backend_down": ("warning", "retry"),
@@ -229,6 +234,30 @@ def _check(name: str, ok, code: str | None = None) -> dict:
 def _v(text) -> tuple[int, int] | None:
     m = re.fullmatch(r"([0-9]+)\.([0-9]+)", text) if isinstance(text, str) else None
     return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+# ======================================================================================== the sandboxes
+SANDBOX_BACKENDS = ("docker", "kubernetes")
+SANDBOX_STATES = ("ready", "unavailable", "unknown")
+
+
+def sandbox_backend(cfg: dict, env) -> str:
+    """The backend chatd's sandboxes use, as its env file (else this controller's environment)
+    sets it: `QSE_SANDBOX_BACKEND`, docker (a container socket, Docker's or Podman's) unless it
+    says kubernetes (chatd/sandbox.py `backend_name`)."""
+    name = (cfg.get("QSE_SANDBOX_BACKEND") or (env or {}).get("QSE_SANDBOX_BACKEND") or "")
+    return "kubernetes" if name.strip().lower() == "kubernetes" else "docker"
+
+
+def sandbox_report(doc) -> dict | None:
+    """chatd's `/health` `sandbox` ({backend, state, why?}), checked; None when it says nothing
+    usable (an older chatd, or one that does not answer)."""
+    if not isinstance(doc, dict) or doc.get("backend") not in SANDBOX_BACKENDS or \
+            doc.get("state") not in SANDBOX_STATES:
+        return None
+    why = doc.get("why")
+    return {"backend": doc["backend"], "state": doc["state"],
+            "why": why[:300] if isinstance(why, str) and why else None}
 
 
 # ======================================================================================== the first run
@@ -603,7 +632,7 @@ class Health:
         checks: list[dict] = []
         chat = self.chat
         state_dir = os.path.dirname(self.cfg.path)
-        sock = None
+        sock = backend = None
         off = self.chat_off()
         if off:
             chat = None
@@ -621,12 +650,14 @@ class Health:
                 found.append(finding("chatd_silent", None, path=log))
             checks.append(_check("chatd", st["running"] and st["answers"],
                                  None if st["running"] and st["answers"] else found[-1]["code"]))
-            sock = chat.cfg.get("QSE_SANDBOX_SOCKET") or "/var/run/docker.sock"
-            image = chat.cfg.get("QSE_SANDBOX_IMAGE") or "tandem-sandbox:1"
-            sb = self._sandbox(sock, image)
+            told = sandbox_report(st.get("sandbox") if st["answers"] else None)
+            backend = (told or {}).get("backend") or sandbox_backend(chat.cfg, self.env)
+            if backend == "docker":
+                sock = chat.cfg.get("QSE_SANDBOX_SOCKET") or "/var/run/docker.sock"
+            sb, sb_ok = self._own_sandbox(chat, backend, sock, told)
             if sb is not None:
                 found.append(sb)
-            checks.append(_check("sandbox", sb is None, sb and sb["code"]))
+            checks.append(_check("sandbox", sb_ok, sb and sb["code"]))
         else:
             url = self.env.get("QSE_CHAT_URL") or "http://127.0.0.1:8016"
             u = urllib.parse.urlsplit(url)
@@ -636,7 +667,16 @@ class Health:
             if not ok:
                 found.append(finding("chat_unreachable", None, address=f"{u.hostname}:{u.port}"))
             checks.append(_check("chatd", ok, None if ok else "chat_unreachable"))
-            checks.append(_check("sandbox", None))
+            # its sandboxes as it says (no socket of its host to look at from here)
+            told = sandbox_report((got[1] or {}).get("sandbox") if ok else None)
+            backend = (told or {}).get("backend")
+            sb = None
+            if told is not None and told["state"] == "unavailable":
+                sb = finding("sandbox_unavailable", told.get("why") or
+                             f"chatd says its {told['backend']} sandboxes are not ready")
+                found.append(sb)
+            checks.append(_check("sandbox", None if told is None or told["state"] == "unknown"
+                                 else sb is None, sb and sb["code"]))
         # the memory cgroup, where an own chatd's sandboxes run
         if chat is not None and self.platform.startswith("linux") and os.path.exists(sock or ""):
             ok, why = self.cgroup(sock)
@@ -681,7 +721,8 @@ class Health:
         return {"id": CONTROLLER, "kind": "controller", "alias": "TandemApp",
                 "address": None,
                 "chat": "off" if off else "own" if chat is not None else "external",
-                "sandbox_socket": sock, "findings": found, "checks": checks}
+                "sandbox_backend": backend, "sandbox_socket": sock, "findings": found,
+                "checks": checks}
 
     def _disk(self, path: str) -> tuple[str, int] | None:
         p = path
@@ -691,6 +732,27 @@ class Health:
             return path, int(self.disk(p or "/").free)
         except OSError:
             return None
+
+    def _own_sandbox(self, chat, backend: str, sock: str | None,
+                     told: dict | None) -> tuple[dict | None, bool | None]:
+        """(the finding, the check's ok) for the sandboxes of the chatd this controller runs.
+        chatd's own word comes first (its `/health` `sandbox`): ready is ready, whatever runtime
+        it uses. In a cluster nothing else is looked at: the cluster check runs in chatd, so
+        while it runs (or chatd does not say) the check is not run. With a container socket the
+        socket is probed when chatd does not say it is ready, for the precise reason."""
+        if told is not None and told["state"] == "ready":
+            return None, True
+        if backend == "kubernetes":
+            if told is not None and told["state"] == "unavailable":
+                return finding("sandbox_unavailable", told.get("why") or
+                               "chatd's cluster check failed"), False
+            return None, None
+        image = chat.cfg.get("QSE_SANDBOX_IMAGE") or "tandem-sandbox:1"
+        sb = self._sandbox(sock, image)
+        if sb is None and told is not None and told["state"] == "unavailable":
+            sb = finding("sandbox_unavailable", told.get("why") or
+                         "chatd says its sandboxes are not ready")
+        return sb, sb is None
 
     @staticmethod
     def _sandbox(sock: str, image: str) -> dict | None:

@@ -193,7 +193,7 @@ def _chatd_env(c: Ctl) -> tuple[int, str]:
 
 
 CHAT_CODES = ("chatd_down", "chatd_silent", "chat_unreachable", "sandbox_off",
-              "sandbox_unreachable", "sandbox_no_image", "no_memory_cgroup")
+              "sandbox_unreachable", "sandbox_no_image", "sandbox_unavailable", "no_memory_cgroup")
 
 
 def test_chat_switch_on_a_controller():

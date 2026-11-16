@@ -269,8 +269,12 @@ class AppChat:
 
     def health(self, timeout: float = 1.0) -> dict | None:
         h = f"[{self.host}]" if ":" in self.host else self.host
+        req = urllib.request.Request(f"http://{h}:{self.port}/health")
+        key = self.forward_key()
+        if key:
+            req.add_header("X-Tandem-Forward", key)         # its sandbox's words come with it
         try:
-            with urllib.request.urlopen(f"http://{h}:{self.port}/health", timeout=timeout) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 doc = json.loads(r.read() or b"{}")
         except Exception:                                            # noqa: BLE001
             return None
@@ -290,9 +294,13 @@ class AppChat:
         pid = self.pid()
         alive = is_chatd(pid)
         h = self.health() if alive else None
+        sb = (h or {}).get("sandbox")
         return {"running": alive, "pid": pid if alive else None,
                 "answers": bool(h and h.get("service") == "chatd"),
-                "version": (h or {}).get("version")}
+                "version": (h or {}).get("version"),
+                # SRV-835: chatd's own word on its sandboxes (backend, state, why); None from a
+                # chatd that does not answer or says nothing of them
+                "sandbox": sb if isinstance(sb, dict) else None}
 
     def running(self) -> bool:
         return self.status()["running"]

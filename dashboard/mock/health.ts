@@ -24,6 +24,7 @@
 //             backends down and four plugin problems
 //   silent    chatd runs but does not answer, the container runtime does not either
 //   external  Chat runs on another machine, which does not answer
+//   cluster   chatd's sandboxes are pods, and its cluster check failed (sandbox_unavailable)
 // The engine hosts paired through Add engine (mock/enginehosts.ts) are checked too, in every
 // scenario. `fail(action, code)` makes a fix answer one refusal until it is cleared; `touch()`
 // forgets the kept answers after a test changed a condition by hand.
@@ -96,6 +97,7 @@ export const HEALTH_FINDINGS: Record<string, readonly [Severity, ActionId | null
   sandbox_off: ['warning', null],
   sandbox_unreachable: ['warning', null],
   sandbox_no_image: ['warning', null],
+  sandbox_unavailable: ['warning', null],
   no_memory_cgroup: ['warning', null],
   disk_low: ['warning', null],
   backend_down: ['warning', 'retry'],
@@ -199,7 +201,11 @@ export interface ControllerSim {
   chatLog: string;
   chatUrl: string;
   chatReachable: boolean;
-  sandbox: 'ok' | 'off' | 'unreachable' | 'no_image';
+  /** as chatd reports it: `unavailable` is chatd's no (a cluster check that failed, with `sandboxWhy`) */
+  sandbox: 'ok' | 'off' | 'unreachable' | 'no_image' | 'unavailable';
+  sandboxWhy?: string;
+  /** chatd's sandbox backend: a container socket, or pods in the cluster (no socket here) */
+  backend?: 'docker' | 'kubernetes';
   socket: string;
   image: string;
   linux: boolean;
@@ -221,7 +227,7 @@ export interface PairingSim {
   facts: Facts;
 }
 
-export const HEALTH_SCENARIOS = ['mixed', 'ok', 'first', 'all', 'silent', 'external'] as const;
+export const HEALTH_SCENARIOS = ['mixed', 'ok', 'first', 'all', 'silent', 'external', 'cluster'] as const;
 export type HealthScenario = (typeof HEALTH_SCENARIOS)[number];
 export const isHealthScenario = (s: unknown): s is HealthScenario => (HEALTH_SCENARIOS as readonly unknown[]).includes(s);
 
@@ -252,6 +258,8 @@ function build(name: HealthScenario, t0: number): Sim {
       return { hosts: [desk()], controller: controller({ chatd: 'silent', sandbox: 'unreachable' }), pairings: [] };
     case 'external':
       return { hosts: [desk()], controller: controller({ chat: 'external', chatUrl: 'http://192.0.2.60:8016', chatReachable: false }), pairings: [] };
+    case 'cluster':
+      return { hosts: [desk()], controller: controller({ backend: 'kubernetes', sandbox: 'unavailable', sandboxWhy: "the runtimeClass 'gvisor' does not exist in this cluster" }), pairings: [] };
     case 'all':
       return {
         hosts: [
@@ -592,15 +600,20 @@ export class MockHealth {
       if (c.chatd === 'down') found.push(healthFinding('chatd_down', { path: c.chatLog }, c.chatdWhy));
       else if (c.chatd === 'silent') found.push(healthFinding('chatd_silent', { path: c.chatLog }));
       checks.push(check('chatd', c.chatd === 'ok', c.chatd === 'ok' ? null : `chatd_${c.chatd}`));
-      sock = c.socket;
+      const pods = c.backend === 'kubernetes';
+      sock = pods ? null : c.socket;
       const sb =
-        c.sandbox === 'off'
-          ? healthFinding('sandbox_off', { path: sock })
-          : c.sandbox === 'unreachable'
-            ? healthFinding('sandbox_unreachable', { path: sock }, 'this user may not open the socket')
-            : c.sandbox === 'no_image'
-              ? healthFinding('sandbox_no_image', { image: c.image })
-              : null;
+        c.sandbox === 'unavailable'
+          ? healthFinding('sandbox_unavailable', {}, c.sandboxWhy ?? 'chatd says its sandboxes are not ready')
+          : pods
+            ? null
+            : c.sandbox === 'off'
+              ? healthFinding('sandbox_off', { path: c.socket })
+              : c.sandbox === 'unreachable'
+                ? healthFinding('sandbox_unreachable', { path: c.socket }, 'this user may not open the socket')
+                : c.sandbox === 'no_image'
+                  ? healthFinding('sandbox_no_image', { image: c.image })
+                  : null;
       if (sb) found.push(sb);
       checks.push(check('sandbox', sb === null, sb?.code ?? null));
     } else {
@@ -609,7 +622,7 @@ export class MockHealth {
       checks.push(check('chatd', c.chatReachable, c.chatReachable ? null : 'chat_unreachable'), check('sandbox', null));
     }
     // the memory cgroup, where an own chatd's sandboxes run: a socket has to be there
-    if (own && c.linux && c.sandbox !== 'off') {
+    if (own && c.linux && c.backend !== 'kubernetes' && c.sandbox !== 'off') {
       if (c.cgroup !== true) found.push(healthFinding('no_memory_cgroup', {}, c.cgroup));
       checks.push(check('memory_cgroup', c.cgroup === true, c.cgroup === true ? null : 'no_memory_cgroup'));
     } else checks.push(check('memory_cgroup', null));
@@ -623,7 +636,7 @@ export class MockHealth {
     const setup = this.setup(now);
     if (setup.needs_setup) found.push(healthFinding('no_engine'));
     checks.push(check('engines', !setup.needs_setup, setup.needs_setup ? 'no_engine' : null));
-    return { id: CONTROLLER, kind: 'controller', alias: 'TandemApp', address: null, chat: c.chat, sandbox_socket: sock, findings: found, checks };
+    return { id: CONTROLLER, kind: 'controller', alias: 'TandemApp', address: null, chat: c.chat, sandbox_backend: own ? (c.backend ?? 'docker') : null, sandbox_socket: sock, findings: found, checks };
   }
 
   // ---- the fixes -------------------------------------------------------------------------------

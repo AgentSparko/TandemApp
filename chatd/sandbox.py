@@ -476,6 +476,7 @@ class Sandboxes:
         self._asked: float | None = None
         self.wait_s, self.poll_s, self.release_every_s = WAIT_S, 2.0, RELEASE_EVERY_S
         self._avail: tuple[float, bool] | None = None
+        self._report_lock = threading.Lock()
         self.stopping = threading.Event()
         self._instance: str | None = None
 
@@ -513,6 +514,37 @@ class Sandboxes:
             ok = False
         self._avail = (self.clock(), ok)
         return ok
+
+    BACKEND = "docker"
+
+    def report(self) -> dict:
+        """What `/health` says of the sandboxes (SRV-835): the backend and the last known state,
+        `ready`, `unavailable` or `unknown`. It never waits on the runtime: a state older than a
+        minute (or none yet) is checked again in the background for the next read."""
+        got = self._avail
+        if got is None or self.clock() - got[0] >= 60:
+            self._refresh_soon()
+        if got is None:
+            return {"backend": self.BACKEND, "state": "unknown", "why": None}
+        if got[1]:
+            return {"backend": self.BACKEND, "state": "ready", "why": None}
+        return {"backend": self.BACKEND, "state": "unavailable",
+                "why": f"the image {self.image} is not in the container runtime, or the runtime "
+                       f"does not answer"}
+
+    def _refresh_soon(self) -> None:
+        lock = self._report_lock
+        if not lock.acquire(blocking=False):
+            return
+
+        def run():
+            try:
+                self.available()
+            except Exception:                                        # noqa: BLE001
+                pass
+            finally:
+                lock.release()
+        threading.Thread(target=run, name="chatd-sandbox-report", daemon=True).start()
 
     def box(self, cid: str) -> Box:
         with self.lock:

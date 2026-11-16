@@ -188,6 +188,62 @@ def test_a_cluster_that_does_not_enforce_network_policy_gets_no_sandboxes():
         r.close()
 
 
+def test_the_health_report_says_the_backend_and_the_check_state():
+    """SRV-835: chatd's /health `sandbox` (KubeSandboxes.report): ready after the check passed,
+    unavailable with the check's words, unknown while it has not finished; never waits."""
+    r = Rig()
+    try:
+        assert r.ks.report() == {"backend": "kubernetes", "state": "ready", "why": None}
+    finally:
+        r.close()
+    r = Rig(check=False)
+    try:
+        r.ks.check["at"] = time.monotonic()            # a check that runs: nothing new starts
+        r.ks._check_lock.acquire()
+        try:
+            assert r.ks.report() == {"backend": "kubernetes", "state": "unknown", "why": None}
+        finally:
+            r.ks._check_lock.release()
+        r.fake.probe = {"controller": True, "egress": True, "api": True}
+        r.ks.run_check()
+        got = r.ks.report()
+        assert got["backend"] == "kubernetes" and got["state"] == "unavailable", got
+        assert "does not enforce NetworkPolicy" in got["why"], got
+    finally:
+        r.close()
+
+
+def test_the_docker_report_never_waits_on_the_socket():
+    """SRV-835: the docker backend's report answers from the last check (60 s), unknown before
+    the first, and checks again in the background."""
+    calls = []
+
+    class Engine:
+        def call(self, method, url, timeout=None, **kw):
+            calls.append(url)
+            return (200, b"{}") if engine_ok[0] else (404, b"{}")
+    engine_ok = [True]
+    t = [1000.0]
+    sb = sb_mod.Sandboxes(tempfile.mkdtemp(prefix="dk-sbx-"), engine=Engine(), clock=lambda: t[0])
+    first = sb.report()
+    assert first == {"backend": "docker", "state": "unknown", "why": None}, first
+    for _ in range(100):
+        if sb._avail is not None:
+            break
+        time.sleep(0.02)
+    assert sb.report() == {"backend": "docker", "state": "ready", "why": None}
+    engine_ok[0] = False
+    t[0] += 61
+    stale = sb.report()                                   # the old answer, then a new check
+    assert stale["state"] == "ready", stale
+    for _ in range(100):
+        if sb._avail is not None and not sb._avail[1]:
+            break
+        time.sleep(0.02)
+    got = sb.report()
+    assert got["state"] == "unavailable" and "tandem-sandbox" in got["why"], got
+
+
 def test_a_runtime_class_that_does_not_exist_is_refused_at_start():
     r = Rig(check=False, QSE_K8S_RUNTIME_CLASS="missing")
     try:

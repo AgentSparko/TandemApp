@@ -149,6 +149,10 @@ CATALOG: dict[str, tuple[int, str, str]] = {
                             "Check that its service runs and that this user may open the socket."),
     "sandbox_no_image": (409, "The sandbox image {image} is not in the container runtime.",
                          "Build it as the runtime's user: bash ops/sandbox/build.sh podman."),
+    "sandbox_unavailable": (503, "Chat sandboxes do not start: {detail}",
+                            "chatd's log says why. In a cluster check the release's sandbox "
+                            "settings (sandbox.mode, its namespace and service account); elsewhere "
+                            "the container runtime chatd uses (QSE_SANDBOX_SOCKET in chatd.env)."),
     "no_memory_cgroup": (409, "The kernel does not cap a container's memory here, so a sandbox "
                               "has no memory limit.",
                          "Turn the memory controller on: on a Raspberry Pi add "

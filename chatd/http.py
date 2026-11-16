@@ -2,7 +2,8 @@
 
 Every route answers under `/v1/chat-app/...` (the path the engine server forwards unchanged) and
 needs `X-Tandem-Forward: <key>`; anything without it gets 403. `GET /health` is the one exception
-(the watchdog's): it says `ok` and the version, nothing else.
+(the watchdog's): it says `ok`, the version, the run slots and the sandboxes' backend and state
+(`sandbox`; their words, `why`, only with the key).
 
 The forward adds what only the engine server knows: `X-Tandem-Password-Set` and
 `X-Tandem-Signed-In` (the capabilities' `session`), and passes the browser's User-Agent, from which
@@ -247,9 +248,19 @@ class Handler(BaseHTTPRequestHandler):
         split = urlsplit(self.path)
         path = split.path
         if path in ("/health", "/healthz") and method == "GET":
-            # SRV-707: the run slots (how many, from the engine or QSE_CHAT_MAX_RUNS, how many held)
-            return self._json(200, {"status": "ok", "service": "chatd", "version": __version__,
-                                    "runs": self.svc.slots.report()})
+            # SRV-707: the run slots (how many, from the engine or QSE_CHAT_MAX_RUNS, how many
+            # held); SRV-835: the sandboxes' backend and last known state, for the health page
+            out = {"status": "ok", "service": "chatd", "version": __version__,
+                   "runs": self.svc.slots.report()}
+            # (its words only with the forward key: the route is open)
+            try:
+                sb = dict(self.svc.sandboxes.report())
+                if not self._authorized():
+                    sb.pop("why", None)
+                out["sandbox"] = sb
+            except Exception:                                        # noqa: BLE001
+                out["sandbox"] = None
+            return self._json(200, out)
         if not self._authorized():
             self.close_connection = True
             return self._json(403, {"error": {"type": "forbidden",
