@@ -91,10 +91,13 @@ ROUTES (every one behind the caller check below; JSON unless an event stream):
     POST   /node/chat/start | stop | restart     202 and the job; 409 not_owned (the engine's
                                        launchers run chatd), busy or no_launcher
     GET    /node/controller            a controller this agent started on this machine, or none
-    POST   /node/controller {bundle, port, admin_token, name?, state_dir?}   the owner's: a
+    POST   /node/controller {bundle, port, password, name?, state_dir?}   the owner's: a
                                        TandemApp controller started here as a systemd user unit
                                        (proxy/appservice.py) with the fleet's export, which it
-                                       imports at its first start; its certificate in the answer
+                                       imports at its first start; its certificate in the answer.
+                                       The password is its first account's, `owner` (its hash
+                                       as admin.json, made the account at that start): never an
+                                       admin token or an API token (SEC-28)
 
 CALLERS. An address is listened on as proxy/nodetrust.py's bind rule says: loopback in plain HTTP
 behind the loopback secret (`<state dir>/secret`, 0600, made at the first start) until the trust
@@ -632,18 +635,19 @@ class Agent:
         answering /health. Its certificate (made at its first start) comes back, for the owner
         to hand the nodes to. A state dir that holds a controller's database already is
         refused: an import never lands on another fleet."""
-        from proxy import appservice
-        if not isinstance(body, dict) or set(body) - {"bundle", "port", "admin_token", "name",
+        from proxy import adminpw, appservice
+        if not isinstance(body, dict) or set(body) - {"bundle", "port", "password", "name",
                                                       "state_dir"}:
-            raise ValueError("the body is {bundle, port, admin_token, name?, state_dir?}")
+            raise ValueError("the body is {bundle, port, password, name?, state_dir?}")
         port = body.get("port")
         if not isinstance(port, int) or isinstance(port, bool) or not 1024 <= port < 65536 or \
                 port in (self.port, self.port + 1):
             raise ValueError("port is a free port from 1024 to 65535, not the agent's")
         from tandemapp.auth import MIN_TOKEN
-        token = body.get("admin_token")
-        if not isinstance(token, str) or len(token) < MIN_TOKEN or any(c.isspace() for c in token):
-            raise ValueError(f"admin_token is the controller's admin password ({MIN_TOKEN} or "
+        password = body.get("password")
+        if not isinstance(password, str) or len(password) < MIN_TOKEN or \
+                any(c.isspace() for c in password) or adminpw.check_new(password):
+            raise ValueError(f"password is the new controller's first account's ({MIN_TOKEN} or "
                              f"more characters, no spaces): it listens on the LAN")
         bundle = body.get("bundle")
         if not isinstance(bundle, dict) or bundle.get("kind") != "tandemapp-export":
@@ -655,7 +659,11 @@ class Agent:
                                                             f"already: pick another state dir")
         made = not os.path.exists(d)
         os.makedirs(d, mode=0o700, exist_ok=True)
-        env = {"TANDEM_ADMIN_TOKEN": token}
+        # SEC-28: the password goes only as its hash, the release before's admin.json, which the
+        # first start makes the account `owner` (proxy/authlegacy.py); nothing writes it as an
+        # admin token, so it never becomes a token for scripts
+        adminpw.Password(os.path.join(d, "admin.json")).set(password)
+        env = {}
         if self.virtual:
             # a virtual node's controller: the machine under it is not this fleet's node
             env.update(TANDEM_NODE_AGENT="off", TANDEM_LOCAL_NODE="off")
@@ -771,7 +779,7 @@ def _clear(d: str, made: bool) -> None:
     if made:
         shutil.rmtree(d, ignore_errors=True)
         return
-    for name in ("import.json", "app.env", "config.sqlite3", "config.sqlite3-wal",
+    for name in ("import.json", "app.env", "admin.json", "config.sqlite3", "config.sqlite3-wal",
                  "config.sqlite3-shm", "ledger.sqlite3", "ledger.sqlite3-wal", "ledger.sqlite3-shm",
                  "fleet.sqlite3", "fleet.sqlite3-wal", "fleet.sqlite3-shm", "secrets.key"):
         try:

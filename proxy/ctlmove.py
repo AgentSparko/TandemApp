@@ -505,11 +505,12 @@ def sign_in(url: str, password: str, timeout: float = 20.0):
 
 
 def owner_session(url: str, password: str, timeout: float = 20.0):
-    """SEC-28: a controller a move started (no account yet, the move's password its admin token,
-    which counts once as the setup code): its first owner `owner` with that password, signed in:
-    {cookie, csrf}; None when it has an owner already or does not answer."""
-    req = urllib.request.Request(url.rstrip("/") + "/v1/auth/setup", data=json.dumps(
-        {"code": password, "username": "owner", "password": password}).encode(),
+    """SEC-28: a controller a move started: its first account `owner`, made at its first start
+    from the move's password (admin.json, POST /node/controller), signed in: {cookie, csrf}; None
+    when that does not sign in or it does not answer. The password is only that account's: it is
+    never sent as a bearer."""
+    req = urllib.request.Request(url.rstrip("/") + "/v1/auth/session", data=json.dumps(
+        {"username": "owner", "password": password}).encode(),
         method="POST", headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -809,7 +810,7 @@ class Mover:
             sid = "start"
             self._step(job, sid, "running")
             st, got = src.client.json("POST", "/node/controller", dict(
-                bundle=bundle, port=job["port"], admin_token=password, **opts), timeout=90.0)
+                bundle=bundle, port=job["port"], password=password, **opts), timeout=90.0)
             bundle = None
             if st != 200 or not isinstance(got, dict) or not got.get("certificate"):
                 return self._fail(job, sid, (got or {}).get("error", {}).get("type") or
@@ -826,11 +827,14 @@ class Mover:
                                          f"handed over")
             sid = "verify"
             self._step(job, sid, "running")
-            # SEC-28: the new controller's first owner, from the move's password (its setup
-            # code); an older one takes the password as its admin token
-            session = self.owner_session(job["api_url"], password)
-            up = self._verify(job, job["api_url"], {"cookie": session} if session else
-                              {"token": password}, done)
+            # SEC-28: the new controller's first account `owner` signs in with the move's
+            # password; the password is never a bearer
+            session = self._owner(job["api_url"], password)
+            if session is None:
+                return self._fail(job, sid, "sign_in_failed", "the new controller's account "
+                                                              "`owner` does not sign in with the "
+                                                              "move's password")
+            up = self._verify(job, job["api_url"], {"cookie": session}, done)
             self._step(job, sid, "done", f"{len(up)} of {len(done)} up at the new controller; "
                                          f"this one refused")
             sid = "done"
@@ -843,6 +847,16 @@ class Mover:
             self._fail(job, sid, exc.kind, exc.message)
         except Exception as exc:                                     # noqa: BLE001
             self._fail(job, sid, "error", f"{type(exc).__name__}: {exc}")
+
+    def _owner(self, url: str, password: str):
+        """The new controller's account `owner`, signed in (a few tries: it has just started)."""
+        for i in range(3):
+            got = self.owner_session(url, password)
+            if got is not None:
+                return got
+            if i < 2:
+                self.sleep(1.0)
+        return None
 
     def _own_row(self) -> dict | None:
         """This machine's node as the new controller reaches it: its agent at its LAN address in

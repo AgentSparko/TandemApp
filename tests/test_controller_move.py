@@ -25,6 +25,9 @@ as on a Spark. The controllers here are tandem-app in this process (the Proxy he
      with nothing handed over and nothing left on the Spark. Then Gherkin's way back: a fresh controller takes the fleet from Gold
      with its password, the nodes trust it and refuse Gold, Gold says moved_to it
                                                                            test_move_and_back
+  4b SEC-28: the move's password is only the new controller's account `owner`'s: no admin token
+     in its env file, its hash as admin.json; after a restart no API token has it as its secret
+     and it opens nothing as a bearer or x-api-key                       test_move_and_back
 
     python tests/test_controller_move.py
 """
@@ -42,6 +45,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -209,6 +214,44 @@ def test_seal():
         raise AssertionError("opened with another key")
     except ctlmove.MoveError as exc:
         assert exc.kind == "bad_request"
+
+
+# ---------------------------------------------------------------------------- 4b. SEC-28
+
+def _password_is_no_token(url: str, state: str, sysd, session: dict) -> None:
+    """The move's password is the new controller's account `owner`'s and nothing else: written
+    only as its hash (admin.json), never as an admin token; after a restart (where an admin token
+    would become a token for scripts) no API token has the password as its secret and the
+    password opens nothing as a bearer or as x-api-key."""
+    env = open(os.path.join(state, "app.env")).read()
+    assert "TANDEM_ADMIN_TOKEN" not in env and ADMIN not in env, env
+    doc = json.load(open(os.path.join(state, "admin.json")))
+    assert doc.get("hash") and ADMIN not in json.dumps(doc)
+    assert oct(os.stat(os.path.join(state, "admin.json")).st_mode & 0o777) == "0o600"
+    unit = "tandemapp-mvtest.service"
+    assert sysd(["systemctl", "--user", "restart", unit])[0] == 0
+    assert _until(lambda: ctlmove.call(url, "GET", "/health", timeout=2.0)[0] == 200, 60), \
+        open(sysd.logs[unit]).read()[-3000:]
+    h = config_mod.key_hash(ADMIN)
+    c = sqlite3.connect(os.path.join(state, "config.sqlite3"))
+    try:
+        rows = c.execute("SELECT source FROM api_tokens WHERE hash = ? OR prev_hash = ?",
+                         (h, h)).fetchall()
+        sources = [r[0] for r in c.execute("SELECT source FROM api_tokens")]
+    finally:
+        c.close()
+    assert rows == [] and "admin_token" not in sources, (rows, sources)
+    for path in ("/v1/settings", "/v1/fleet/nodes", "/v1/models"):
+        assert ctlmove.call(url, "GET", path, token=ADMIN)[0] == 401, path
+        req = urllib.request.Request(url + path, headers={"x-api-key": ADMIN})
+        try:
+            urllib.request.urlopen(req, timeout=10).close()
+            raise AssertionError(f"x-api-key {path} opened")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401, (path, exc.code)
+    # the password still signs in as `owner`, and the session of before still reads
+    assert ctlmove.owner_session(url, ADMIN) is not None
+    assert ctlmove.call(url, "GET", "/v1/fleet/nodes", cookie=session)[0] == 200
 
 
 # ---------------------------------------------------------------------------- the fakes
@@ -436,6 +479,7 @@ def test_move_and_back():
                 open(os.path.join(state, "controller", "controller.crt")).read())
             assert not os.path.exists(os.path.join(state, "import.json"))
             assert oct(os.stat(os.path.join(state, "app.env")).st_mode & 0o777) == "0o600"
+            _password_is_no_token(url, state, sysd, new)
             for n in nodes:
                 assert n.agent.store.owner()["fingerprint"] == new_fp
                 assert n.agent.store.owner()["via"] == "handover"
