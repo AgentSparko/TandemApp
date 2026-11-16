@@ -17,10 +17,11 @@
 //              `http:bench` (HTTP only: read-only, its hot keys); plus every engine host paired in
 //              this mock. The `empty` fleet starts with no engine target. Chat mode installs this
 //              controller's wheel first when the host lacks the extension (a warning in the plan)
-//   hooks      the hook registry and the decision providers (proxy/hooksettings.py): no key until
-//              `control({hooks: true})` fills it (the mock fleet does unless it is `empty`) with
-//              three hooks (`audit` http on the LAN, `export` http outside it, `guard` builtin) and
-//              two providers (`classes` systemone-http with its key set, `own` builtin)
+//   hooks      the hook registry and the decision providers (proxy/hooksettings.py), held in
+//              mock/hooks.ts with their own two APIs: no key until `control({hooks: true})` fills
+//              it with three hooks (`audit` http on the LAN, `export` http outside it, `guard`
+//              builtin) and two providers (`classes` systemone-http with its key set, `own`
+//              builtin). The mock fleet holds the demo set unless it is `empty`
 //
 // A restart follows the clock: scheduled (an `at=` time ahead), draining (the engine is busy for
 // `busy_s`, 6 s by default; the gateway answers 503 with Retry-After meanwhile), restarting (4 s),
@@ -41,6 +42,7 @@
 //                                          chat extension from (409 extension_missing)
 
 import { createHash } from 'node:crypto';
+import { MockHooks, type MockHook, type MockProvider } from './hooks.ts';
 import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestartEstimate, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
@@ -451,8 +453,6 @@ class BackendsScope extends KeyValueScope {
 // provider's, a provider's API keys write-only, an http hook's secret only as set. Setting a hook's
 // payload to `full` is a grant (SEC-16): planned only with pairing's rights (`trust`), and a
 // destination outside the LAN adds the second confirm (grant_keys, confirm_grant).
-type MockHook = { name: string; kind: 'http' | 'builtin'; host: string | null; lan: boolean; vals: Record<string, unknown>; secret: string | null };
-type MockProvider = { name: string; kind: 'systemone-http' | 'builtin' | 'hook'; vals: Record<string, unknown>; keys: Record<string, string> };
 const HOOK_FIELDS: Record<string, { type: KeyType; values?: string[]; nullable?: boolean; default: unknown; text: string }> = {
   enabled: { type: 'boolean', default: true, text: 'called at all' },
   mode: { type: 'enum', values: ['off', 'shadow', 'on'], default: 'on', text: 'off: never called; shadow: called on a copy, nothing applied; on: as its role says' },
@@ -473,35 +473,30 @@ const PROVIDER_FIELDS: Record<string, { type: KeyType; values?: string[]; defaul
 const SCOPE_KEYS = ['models', 'backends', 'profiles', 'users', 'sessions', 'client_kinds'];
 const hint6 = (v: string): string => digest(v).slice(0, 6);
 
-function sampleHooks(): Record<string, MockHook> {
-  return {
-    audit: { name: 'Audit log', kind: 'http', host: 'audit.lan', lan: true, vals: { enabled: true, mode: 'on', priority: 50, scope: {}, policy: null, timeout_ms: null, payload: 'meta' }, secret: 'whsec-mock-audit-0001' },
-    export: { name: 'Export to the archive', kind: 'http', host: 'archive.example.com', lan: false, vals: { enabled: true, mode: 'shadow', priority: 200, scope: {}, policy: 'open', timeout_ms: 500, payload: 'redacted' }, secret: 'whsec-mock-export-0002' },
-    guard: { name: 'No big model for guests', kind: 'builtin', host: null, lan: true, vals: { enabled: true, mode: 'on', priority: 10, scope: { models: ['big-*'], users: ['guest*'] }, policy: 'closed', timeout_ms: null, payload: 'meta' }, secret: null },
-  };
-}
-function sampleProviders(): Record<string, MockProvider> {
-  return {
-    classes: { name: 'Classes', kind: 'systemone-http', vals: { enabled: true, mode: 'on', ab_percent: 0, sticky: 'session', questions: { classify: {}, judge: { model: 'judge-v2' } } }, keys: { '*': 'sk-mock-classes-0003' } },
-    own: { name: 'Own decider', kind: 'builtin', vals: { enabled: true, mode: 'shadow', ab_percent: 0, sticky: 'session', questions: { memory_gate: {} } }, keys: {} },
-  };
-}
-
 class HooksScope extends KeyValueScope {
-  private hooks: Record<string, MockHook> = {};
-  private providers: Record<string, MockProvider> = {};
-  /** the caller has pairing's rights (this machine, or the admin) */
-  trust = true;
-  constructor() {
+  /** the registry the hooks' and the providers' own APIs read and write too (mock/hooks.ts) */
+  constructor(private reg: MockHooks) {
     super('hooks');
+  }
+  private get hooks(): Record<string, MockHook> {
+    return this.reg.hooks;
+  }
+  private get providers(): Record<string, MockProvider> {
+    return this.reg.providers;
+  }
+  /** the caller has pairing's rights (this machine, or the admin) */
+  get trust(): boolean {
+    return this.reg.trust;
+  }
+  set trust(on: boolean) {
+    this.reg.trust = on;
   }
   /** the registry holds the sample hooks and providers, or none */
   get plugged(): boolean {
-    return Object.keys(this.hooks).length + Object.keys(this.providers).length > 0;
+    return this.reg.plugged;
   }
   set plugged(on: boolean) {
-    this.hooks = on ? sampleHooks() : {};
-    this.providers = on ? sampleProviders() : {};
+    this.reg.seed(on);
   }
   writable(): [boolean, string | null] {
     return [true, this.plugged ? null : 'no hook and no decision provider yet: they are added on the hooks’ API (/v1/fleet/hooks, /v1/fleet/decision-providers); their switches show here once there is one'];
@@ -630,20 +625,33 @@ class HooksScope extends KeyValueScope {
   }
   write(sets: Record<string, unknown>, unsets: string[]) {
     const idx = this.index();
+    const hooks = new Set<string>();
+    const providers = new Map<string, string[]>();
     for (const k of [...Object.keys(sets), ...unsets]) {
       const w = idx[k];
       const v = k in sets ? sets[k] : null;
-      if (w.kind === 'hook') this.hooks[w.id].vals[w.field] = w.field === 'scope' && v === null ? {} : copy(v);
-      else if (w.field === 'api_key') {
+      if (w.kind === 'hook') {
+        this.hooks[w.id].vals[w.field] = w.field === 'scope' && v === null ? {} : copy(v);
+        hooks.add(w.id);
+        continue;
+      }
+      const keyed = providers.get(w.id) ?? [];
+      providers.set(w.id, keyed);
+      if (w.field === 'api_key') {
         const keys = this.providers[w.id].keys;
-        if (typeof v === 'string') keys[w.question!] = v;
-        else delete keys[w.question!];
+        if (typeof v === 'string') {
+          keys[w.question!] = v;
+          keyed.push(w.question!);
+        } else delete keys[w.question!];
       } else {
         this.providers[w.id].vals[w.field] = copy(v);
         // a question no longer answered takes its key with it
         if (w.field === 'questions') for (const q of Object.keys(this.providers[w.id].keys)) if (q !== '*' && !(q in (v as object))) delete this.providers[w.id].keys[q];
       }
     }
+    // the registry's own view moves with it: the version, who changed it, a full payload's grant
+    for (const id of hooks) this.reg.touched(id);
+    for (const [id, keyed] of providers) this.reg.providerTouched(id, keyed);
   }
 }
 
@@ -1106,8 +1114,9 @@ export interface MockSettingsOptions {
   engines?: () => { id: string; alias: string }[];
   /** false: no engine target until one is paired (the first run) */
   seeded?: boolean;
-  /** the hook registry holds its sample hooks and providers (control({hooks}) changes it) */
-  hooks?: boolean;
+  /** the hook registry holds its sample hooks and providers (control({hooks}) changes it); `demo`:
+   *  more of them, with the traffic the hooks pages show (mock/hooks.ts) */
+  hooks?: boolean | 'demo';
   now?: number;
 }
 
@@ -1115,6 +1124,9 @@ export class MockSettings {
   private scopes: Record<Scope, ScopeImpl>;
   private engine: EngineScope;
   private hooks: HooksScope;
+  /** the hooks and the decision providers: the settings' hooks scope and their own two APIs
+   *  (/v1/fleet/hooks, /v1/fleet/decision-providers) are views of this one registry */
+  readonly registry: MockHooks;
   private audits: (AuditRow & { n: number })[] = [];
   private done = new Map<string, { same: string; result: Result; at: number; restarts: string[] }>();
   private fails = new Map<string, string>();
@@ -1125,8 +1137,9 @@ export class MockSettings {
   constructor(o: MockSettingsOptions) {
     const t0 = o.now ?? Date.now();
     this.engine = new EngineScope(o.engines ?? (() => []), o.seeded ?? true, t0);
-    this.hooks = new HooksScope();
-    if (o.hooks) this.hooks.plugged = true;
+    this.registry = new MockHooks(t0);
+    this.hooks = new HooksScope(this.registry);
+    if (o.hooks) this.registry.seed(o.hooks);
     this.scopes = { app: new AppScope(o.parts), backends: new BackendsScope(), conductor: new ConductorScope(o.parts, t0), engine: this.engine, hooks: this.hooks };
     this.engine.onEnd = (r, state) => {
       this.audit(r.end!.at, r.who, 'settings.restart', `engine/${r.host.id}`, [], r.change_set, state);
@@ -1327,6 +1340,7 @@ export class MockSettings {
   handle(method: string, path: string, q: URLSearchParams, body: unknown, nowMs = Date.now(), who = 'admin'): Reply {
     const parts = path.replace(/\/+$/, '').split('/').slice(3).map((p) => decodeURIComponent(p));
     this.engine.now = nowMs;
+    this.registry.now = nowMs;
     // the clock moves every restart on, whoever asks
     for (const r of this.engine.restarts) this.engine.view(r, nowMs);
     try {

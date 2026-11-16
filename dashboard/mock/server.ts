@@ -29,6 +29,10 @@
 // click produces (a restart that fails or times out, a refusal of one route, a stale plan, the hooks
 // registry plugged in, no wheel for the chat extension); while one of its restarts drains the engine host, the gateway answers 503
 // with Retry-After.
+// The hooks and the decision providers (/v1/fleet/hooks, /v1/fleet/decision-providers, mock/hooks.ts,
+// VIS-282) are the same registry the settings' hooks scope shows: POST /__mock/hooks {fail, trust, race,
+// behave, provider, requests, asks, replay} makes a route refuse, takes pairing's rights away, lets a
+// hook change on another screen, sets how a receiver answers and sends made-up traffic through.
 // The data plane (SRV-733): `?gateway=on` on the page URL (a cookie) answers /v1/models as
 // TandemApp's controller does (`X-Tandem-Gateway`): the page's /v1 reaches the controller.
 
@@ -978,6 +982,14 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       if (path === '/__mock/settings' && req.method === 'POST') {
         try {
           return json(res, 200, fleetFor(req).settings.control(JSON.parse((await readBody(req)) || '{}')));
+        } catch (e) {
+          return error(res, 400, 'bad_request', (e as Error).message);
+        }
+      }
+      // VIS-282: what no click produces on the hooks' and the decision providers' APIs (mock/hooks.ts)
+      if (path === '/__mock/hooks' && req.method === 'POST') {
+        try {
+          return json(res, 200, fleetFor(req).settings.registry.control(JSON.parse((await readBody(req)) || '{}')));
         } catch (e) {
           return error(res, 400, 'bad_request', (e as Error).message);
         }
