@@ -49,6 +49,7 @@ from proxy import config as config_mod
 from proxy import engines as engines_mod
 from proxy import health as health_mod
 from proxy import hooks as hooks_mod
+from proxy import pluginstore as pluginstore_mod
 from proxy import providers as providers_mod
 from proxy import http1
 from proxy import relay as relay_mod
@@ -205,6 +206,9 @@ class Service:
         # providers.py); idle while none is enabled
         self.providers = providers_mod.Providers(cfg, runner=self.hooks,
                                                  log=lambda m: self.log(m))
+        # SRV-857: the plugin registry (proxy/pluginstore.py); nothing a plugin holds runs here
+        self.plugins = pluginstore_mod.PluginStore(cfg, hooks=self.hooks.store,
+                                                   log=lambda m: self.log(m))
         if conductor is not None:
             from proxy.harness import Harness
             self.harness = Harness(self, conductor, monitor_base, log=self.log)

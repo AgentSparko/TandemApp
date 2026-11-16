@@ -35,8 +35,9 @@ serves on one port:
                                    plan and its confirm; the page's switch wins over the install's
     *    /v1/settings/*            one settings interface over the stores (SRV-845,
                                    proxy/settings.py, contracts/settings-v1): the scopes app,
-                                   backends, conductor, engine and hooks, each with schema, get,
-                                   plan, apply, versions and restore; change sets across scopes;
+                                   backends, conductor, engine, hooks and plugins, each with
+                                   schema, get, plan, apply, versions and restore; change sets
+                                   across scopes;
                                    the engine restarts they schedule; the audit. Reads as the
                                    dashboard, plans and writes as the configuration
     *    /v1/fleet/hooks[/...]     the remote hooks around the relay: list, create, change, test,
@@ -45,6 +46,9 @@ serves on one port:
                                    who answers the conductor's questions: list, create, change,
                                    test, health, the agreement report (proxy/providerapi.py,
                                    SRV-851)
+    *    /v1/fleet/plugins[/...]   the plugin registry: list, inspect a source, install from a
+                                   folder, a wheel or a git commit, enable, disable, verify,
+                                   remove (proxy/pluginapi.py, SRV-857); nothing of a plugin runs
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -663,6 +667,11 @@ class Handler(BaseHTTPRequestHandler):
             from proxy import providerapi
             return providerapi.handle(self, STATE["svc"], method,
                                       [unquote(x) for x in parts[1:]], body)
+        if parts[:1] == ["plugins"]:
+            # SRV-857: the plugins' admin API (proxy/pluginapi.py), its own rights
+            from proxy import pluginapi
+            return pluginapi.handle(self, STATE["svc"], method, [unquote(x) for x in parts[1:]],
+                                    body)
         if parts == ["app", "password"]:
             return self._app_password(method, body)
         if parts[:1] == ["app"] and method == "POST":
@@ -1268,7 +1277,7 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
     """SRV-845: the settings interface over this controller's stores (proxy/settings.py). The
     keyword arguments replace a part for a test (an engine host's control, its backends, the
     warm-up, the hot route, the chat extension's wheel); each default is the fleet's own."""
-    from proxy import hooksettings
+    from proxy import hooksettings, pluginsettings
     from proxy import settings as settings_mod
     from proxy import settingscopes, settingsengine
 
@@ -1340,6 +1349,8 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
         # the hook registry's and the decision providers' switches (proxy/hooksettings.py)
         "hooks": settingscopes.HooksScope(cfg, hooksettings.RegistryHooks(
             svc.hooks, svc.providers.store)),
+        # each installed plugin's settings, secrets and capability grants (SRV-857)
+        "plugins": pluginsettings.PluginsScope(cfg, svc.plugins),
     }
     return settings_mod.Settings(cfg, scopes, restarts=restarts,
                                  log=lambda m: print(m, flush=True))

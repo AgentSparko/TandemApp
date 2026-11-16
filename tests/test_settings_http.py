@@ -105,7 +105,8 @@ def test_routes_rights_and_the_key():
             assert st == 401, (st, err)
             st, ov = call(px, "GET", "/v1/settings", headers={**LAN, **BEARER})
             assert st == 200 and ok(ov, "overview")["order"] == ["app", "backends", "conductor",
-                                                                  "engine", "hooks"], ov
+                                                                  "engine", "hooks",
+                                                                  "plugins"], ov
             assert next(s for s in ov["scopes"] if s["scope"] == "engine")["targets"] == []
             # writes: the configuration's
             ch = [{"scope": "backends", "set": {"backends.cloud.key": SECRET}}]
