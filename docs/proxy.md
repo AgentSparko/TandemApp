@@ -12,9 +12,21 @@ Backends in this release:
 | `deepseek` | DeepSeek's API with your key | chat, completions |
 | `anthropic` | any Anthropic-compatible (Messages API) server, by base URL, with your key | chat, translated |
 
+Every backend also answers clients of the Messages API, through `/v1/messages` (see "The Messages API" below).
+
 The proxy only observes in this release. It never changes a request's meaning: it sets the model id the backend knows, and it asks a stream for its usage frame when the client did not (then it drops that frame before the client). The conductor's features (task class, effort, packages, the loop and tool checks) come to foreign backends in a later release. Their switches are already stored per model.
 
 A backend of kind `anthropic` (SRV-877) is the one kind whose bytes are not copied: an OpenAI chat completion is translated to a Messages request (`<base>/v1/messages`, the base URL with or without `/v1`) and the answer, its stream and its errors back to OpenAI's shape, before the ledger, the hooks and the client read them. The key goes as `x-api-key` (or a bearer, `anthropic.auth`) with `anthropic-version` (`anthropic.api_version`, 2023-06-01 by default); none of the client's headers goes on. What has no equal is refused with a 400 that names the field (`n` above 1, `response_format` `json_object`, audio and file parts, tools other than functions, tool arguments that are not JSON). `temperature`, `top_p` and `top_k` are dropped unless `anthropic.sampling` is `pass`; `presence_penalty`, `frequency_penalty`, `logit_bias`, `seed`, `logprobs`, `top_logprobs` and `user` are dropped too, and the answer's `X-Tandem-Dropped` header names each one the client sent. `max_tokens` is the client's, else `anthropic.default_max_tokens` (16,000; 64,000 for a stream; capped by the model's limit). `reasoning_effort` asks for thinking (`anthropic.thinking_shape`: `adaptive` with `output_config.effort`, `budget`, or `off`); thinking text comes back as `reasoning_content`, without its signature. With `anthropic.auto_cache` on (the default) a request carries one top-level cache breakpoint. A 529 is tried again like a 429 or 503, and reaches an OpenAI client as 503. Not passed on: redacted thinking, server-tool blocks, citations, the stop string that matched, and stream events the translation does not know. The model list is read page by page (`after_id`). Variables: `TANDEM_BACKEND_<ID>_ANTHROPIC_AUTH`, `_ANTHROPIC_API_VERSION`, `_ANTHROPIC_SAMPLING`, `_ANTHROPIC_DEFAULT_MAX_TOKENS`, `_ANTHROPIC_AUTO_CACHE`, `_ANTHROPIC_THINKING_DISPLAY`, `_ANTHROPIC_THINKING_SHAPE`.
+
+## The Messages API
+
+Clients that speak the Messages API use TandemApp too (SRV-879): `POST /v1/messages`, whole or streamed, and `POST /v1/messages/count_tokens`, with the same keys as the OpenAI routes, sent as `x-api-key` or as `Authorization: Bearer`. Neither goes on to a backend, nor do `anthropic-version` (accepted, never required) and `anthropic-beta`. The request is translated to a chat completion and runs the pipeline every chat completion runs (the routes, the deployments, the hooks, the harness, the ledger, whose row says `messages`), and the answer comes back in the Messages API's shape: content blocks, a stop reason, usage, and errors as `{type: "error", error: {type, message}, request_id}` with a `request-id` header on every answer. A drained node or a full backend is 529 `overloaded_error` with its `Retry-After`. A stream sends `message_start`, each block's start, deltas and stop, `message_delta` with the counts, then `message_stop`; while nothing has gone out for 15 seconds (a long prefill, a queue) it sends `ping`.
+
+What it costs. A system prompt's blocks become one system message (their boundaries are lost). Every `cache_control` is dropped (a local engine caches prefixes by itself): `cache_read_input_tokens` is the backend's cached count, `cache_creation_input_tokens` 0, `input_tokens` the rest. `thinking` and `output_config.effort` become the backend's own switch; `budget_tokens` is not a hard cap there. Reasoning comes back as a `thinking` block with a signature TandemApp makes; sent back, those blocks are dropped from the history, as are redacted and foreign ones. A tool result's images and its `is_error` are lost (its text stays). `metadata` never goes on. `top_k` reaches a local engine only. The stop string that matched is named only where the backend names it. Each tool call's input arrives as one `input_json_delta` when the call is whole. Refused with a 400 that names it: server tools and other tool types without a schema, `document` and other block types the chat shape has no place for, `mcp_servers`, `container`. Every field the request goes without is named in `X-Tandem-Dropped`.
+
+`count_tokens` is exact or a 404 `not_found_error`, never an estimate: a TandemLLM engine (a local backend that answers its tokenize route) counts with that route (the model's chat template over the translated request), a backend of kind `anthropic` with its own `count_tokens`; other backends answer 404. A model on a backend of kind `anthropic` is translated twice (to the chat shape, then to the Messages API again), so it loses what both translations lose. `/v1/messages/batches` answers 404.
+
+The harness does not run on a backend of kind `anthropic` (SRV-879): its own requests (the class question, the narrator, the memory writer) speak the OpenAI chat shape, and translated they would lose the log probabilities, the greedy sampling and the thinking switch they rely on. The backend's harness mode and writer cannot be switched on there (a 422 naming the field, or an error naming the variable), a role whose endpoint names such a backend is not asked, and the health page says `harness_unsupported` while anything still asks for it.
 
 ## Running it
 
@@ -323,7 +335,7 @@ First run, 2026-10-28, on the test board (0.15.0: the engine with its conductor 
 
 ### Through a reverse proxy
 
-nginx in front of both sends the five route families to the controller and leaves every other path where it was. Exact (`=`) and `^~` locations win over a regular expression location, so an existing `location ~ ^/(v1|health|events|metrics)(/|$)` for the engine stays as it is:
+nginx in front of both sends the data plane's routes to the controller and leaves every other path where it was. Exact (`=`) and `^~` locations win over a regular expression location, so an existing `location ~ ^/(v1|health|events|metrics)(/|$)` for the engine stays as it is:
 
     location = /v1/chat/completions { include snippets/tandemapp-data-plane.conf; }
     location = /v1/completions      { include snippets/tandemapp-data-plane.conf; }
@@ -331,6 +343,8 @@ nginx in front of both sends the five route families to the controller and leave
     location = /v1/responses        { include snippets/tandemapp-data-plane.conf; }
     location = /v1/models           { include snippets/tandemapp-data-plane.conf; }
     location ^~ /v1/models/         { include snippets/tandemapp-data-plane.conf; }
+    location = /v1/messages         { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/messages/       { include snippets/tandemapp-data-plane.conf; }
 
 with `snippets/tandemapp-data-plane.conf` (`<controller>` is the Spark's address):
 
@@ -350,13 +364,13 @@ with `snippets/tandemapp-data-plane.conf` (`<controller>` is the Spark's address
     proxy_send_timeout 3600s;
     proxy_read_timeout 3600s;          # the engine's --request-timeout: a quiet hour is the most
 
-These six send the data plane only. When TandemApp's page is behind the same proxy, send it the controller's own prefixes too (`/dashboard/`, `/v1/fleet/`, `/v1/settings`, `/v1/config/`, `/v1/chat-app`, ...): the full list, with what both sides serve, is in [install.md](install.md#behind-a-reverse-proxy).
+These eight send the data plane only. When TandemApp's page is behind the same proxy, send it the controller's own prefixes too (`/dashboard/`, `/v1/fleet/`, `/v1/settings`, `/v1/config/`, `/v1/chat-app`, ...): the full list, with what both sides serve, is in [install.md](install.md#behind-a-reverse-proxy).
 
 `proxy_read_timeout` is the time between two reads, so a stream that sends a byte now and then (the engine's prefill comments, reasoning) is never cut by it; a whole answer of an hour's thinking is. `/v1/chat/completions/` with a slash and other spellings stay on the engine. Before the switch, check the controller directly on its port with a small request of each kind (both paths answer in the meantime), then `nginx -t` and `systemctl reload nginx`, and check the same through the public address.
 
 ### Rollback
 
-Restore the site file from the copy made before the change (or delete the six `location` lines), `nginx -t`, `systemctl reload nginx`: clients reach the engine directly again with that reload, without a change on the controller, the engine or a client. The controller keeps its ledger; requests after the rollback are in the engine's only.
+Restore the site file from the copy made before the change (or delete the eight `location` lines), `nginx -t`, `systemctl reload nginx`: clients reach the engine directly again with that reload, without a change on the controller, the engine or a client. The controller keeps its ledger; requests after the rollback are in the engine's only.
 
 ## TandemNode: `tandem node`
 
