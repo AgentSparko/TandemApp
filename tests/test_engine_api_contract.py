@@ -104,8 +104,9 @@ CLIENTS = ("proxy/nodeengines.py", "proxy/nodesource.py", "proxy/nodeagent.py",
 LISTS = ("routes", "app_routes_via_engine", "app_families")
 #: TandemApp's own families newer than the pinned engine contract: the engine answers 404 for them
 #: as for any path it does not know, and docs/controller-routes.json sends them to TandemApp. Each
-#: one becomes an app family of the engine's routes.json at its next pin. SEC-26: the sign-in.
-CONTROLLER_ONLY = ("/v1/auth",)
+#: one becomes an app family of the engine's routes.json at its next pin. SEC-26: the sign-in;
+#: SRV-879: the Messages API (the API exposure page names its paths, SRV-875).
+CONTROLLER_ONLY = ("/v1/auth", "/v1/messages")
 #: where an engine path starts in a literal: its beginning, or right after a `${...}`
 LEAD = re.compile(r"(?:^|(?<=\}))(/v1/|/health|/metrics|/readyz|/_tandem|/s/|/dashboard/)")
 #: the API root alone (a base URL's `/v1`) is no route
