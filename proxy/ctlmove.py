@@ -132,7 +132,8 @@ def export(cfg, *, skip_nodes=(), extra_nodes=(), keys=True, host_keys=(),
         # the providers' go decrypted beside the database (below), the plugins' stay
         for t in ("backend_secrets", "engine_host_keys", "engine_http_tokens", "add_sessions",
                   "fleet_jobs", "audit", "decision_provider_keys", "plugin_secrets",
-                  "hook_secrets", "plugins", "plugin_keys"):
+                  "hook_secrets", "plugins", "plugin_keys", "accounts", "sessions",
+                  "group_roles"):
             if _has_table(c, t):
                 c.execute(f"DELETE FROM {t}")
         for p in SKIP_SETTINGS:

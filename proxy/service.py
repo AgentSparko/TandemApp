@@ -316,10 +316,20 @@ class Service:
     def authorize(self, handler, headers: tuple = ()) -> tuple[bool, str | None]:
         """(may it go on, the user's label). On False a 401 is already written, with `headers`
         beside its own."""
-        try:
-            active = self.cfg.users_active()
-        except Exception:                                          # noqa: BLE001
-            active = False
+        if getattr(self.auth, "accounts", False):
+            # SEC-22: with accounts on, the gate's principal decides (proxy/accounts.py); the
+            # users' keys answer here again once API tokens replace them
+            from proxy import authz
+            p = getattr(handler, "_principal", None)
+            if p is not None and (authz.allow(p, "inference", self.auth.policy)
+                                  or authz.allow(p, "chat-engine", self.auth.policy)):
+                return True, p.name
+            active = True
+        else:
+            try:
+                active = self.cfg.users_active()
+            except Exception:                                      # noqa: BLE001
+                active = False
         if not active:
             return True, None
         token = None

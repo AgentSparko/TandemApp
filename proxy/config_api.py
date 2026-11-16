@@ -55,6 +55,9 @@ SEED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices.seed.jso
 
 def _who(handler, svc) -> str:
     a = svc.auth
+    who_of = getattr(a, "who_of", None)
+    if who_of is not None:              # SEC-22: with accounts on, the account's name
+        return who_of(handler)
     try:
         if a is not None and a.admin_any(handler.headers):
             return "admin"

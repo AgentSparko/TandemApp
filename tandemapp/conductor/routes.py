@@ -137,7 +137,10 @@ class ApiError(Exception):
 def _author(handler, a) -> str:
     """Who wrote a version: how they were let in, and from where (never a token)."""
     h = handler.headers
-    if a.admin_bearer(h):
+    who_of = getattr(a, "who_of", None)
+    if who_of is not None:              # SEC-22: with accounts on, the account's name
+        how = who_of(handler)
+    elif a.admin_bearer(h):
         how = "admin token"
     elif a.session(h) is not None:
         how = "dashboard session"

@@ -225,6 +225,9 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(self.timeout)          # the request phase (IDLE_TIMEOUT_S)
         self._body_done = False
         super().handle_one_request()
+        acc = STATE.get("accounts")
+        if acc is not None:
+            acc.done(self)              # SEC-24: no longer one of its session's open streams
         # a chunked body the handler never read stayed on the wire and the next request on
         # the keep-alive connection was parsed from the middle of it (the size line as a
         # request line). A body this handler never touched at all closes the connection,
@@ -242,6 +245,16 @@ class Handler(BaseHTTPRequestHandler):
     def send_response(self, code, message=None):
         self.connection.settimeout(None)                  # the answer: no timeout
         super().send_response(code, message)
+
+    _principal = None                # SEC-22: who asks, with TANDEM_AUTH=accounts (the gate's)
+
+    def end_headers(self):
+        # SEC-24: a session's renewed cookie (at most once a day), unless the answer sets its own
+        cookie = self.__dict__.pop("_set_cookie", None)
+        if cookie is not None and not any(
+                line[:11].lower() == b"set-cookie:" for line in getattr(self, "_headers_buffer", ())):
+            self.send_header("Set-Cookie", cookie)
+        super().end_headers()
 
     # ----------------------------------------------------------------- helpers
     def _json(self, code: int, payload, extra_headers: tuple = ()) -> None:
@@ -329,6 +342,13 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if verdict == "absent":
             self._json(404, {"error": {"type": "not_found", "message": f"no route {path}"}})
+        elif verdict == "forbidden":
+            # SEC-22 (accounts only): signed in, but the role lacks the route kind's permission
+            from proxy import authz
+            perm = authz.KIND_PERMISSION.get(route)
+            self._json(403, {"error": {"type": "forbidden", "code": "permission_denied",
+                                       "permission": perm,
+                                       "message": f"this needs the permission {perm}"}})
         else:
             self._json(401, {"error": {"type": "unauthorized",
                                        "message": "a bearer token or the dashboard session is "
@@ -353,7 +373,24 @@ class Handler(BaseHTTPRequestHandler):
         return client_gone(self)
 
     # ----------------------------------------------------------------- routes
+    def _gate(self, method: str) -> bool:
+        """SEC-22/SEC-24: with TANDEM_AUTH=accounts, the one rule in front of every route
+        (proxy/accounts.py); True when it answered. Off: nothing."""
+        acc = STATE.get("accounts")
+        return acc is not None and acc.gate(self, method)
+
+    def _auth_api(self, method: str, path: str, raw: bytes | None) -> bool:
+        """`/v1/auth/*` (proxy/authapi.py), with TANDEM_AUTH=accounts only."""
+        acc = STATE.get("accounts")
+        if acc is None or not (path == "/v1/auth" or path.startswith("/v1/auth/")):
+            return False
+        from proxy import authapi
+        authapi.handle(self, acc, method, path, raw)
+        return True
+
     def do_GET(self):
+        if self._gate("GET"):
+            return
         if self._strip_session():
             return
         if chat_forward.route(self, "GET", STATE["auth"]):     # the Chat tab's chatd (SRV-343)
@@ -372,6 +409,8 @@ class Handler(BaseHTTPRequestHandler):
         path = raw.rstrip("/") or "/"
         if path == "/":
             return self._send_empty(302, (("Location", "/dashboard/"),))
+        if self._auth_api("GET", path, None):
+            return
         if path.startswith("/v1/dashboard/"):
             return self._dashboard_get(path)
         if path == "/v1/config" or path.startswith("/v1/config/"):
@@ -477,6 +516,8 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def do_POST(self):
+        if self._gate("POST"):
+            return
         if self._strip_session():
             return
         if chat_forward.route(self, "POST", STATE["auth"]):
@@ -491,6 +532,8 @@ class Handler(BaseHTTPRequestHandler):
             raw = self._read_raw()
         except BodyError as exc:
             return self._body_error(exc)
+        if self._auth_api("POST", path, raw):
+            return
         if path.startswith("/v1/collect/"):          # P6: a plugin's batch, its own token
             from proxy import collect_api
             return collect_api.handle(self, STATE["svc"], path, raw)
@@ -601,6 +644,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(exc.status, exc.body())
 
     def _write(self, method: str):
+        if self._gate(method):
+            return
         if chat_forward.route(self, method, STATE["auth"]):
             return
         if self._chat_engine(method):
@@ -612,6 +657,8 @@ class Handler(BaseHTTPRequestHandler):
             raw = self._read_raw()
         except BodyError as exc:
             return self._body_error(exc)
+        if self._auth_api(method, path, raw):
+            return
         if path.startswith("/v1/fleet/"):
             return self._fleet(method, path, raw)
         if path == "/v1/settings" or path.startswith("/v1/settings/"):
@@ -827,6 +874,9 @@ class Handler(BaseHTTPRequestHandler):
         from proxy import adminpw
         a = STATE["auth"]
         nostore = (("Cache-Control", "no-store"),)
+        if STATE.get("accounts") is not None and method != "GET":
+            from proxy import authapi           # SEC-24: an account's password, not this one
+            return authapi.legacy_password(self)
         if method == "GET":
             if not self._allowed("dashboard"):
                 return
@@ -1001,6 +1051,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _session(self, method: str, body=None, fleet: bool = False) -> None:
         a = STATE["auth"]
+        if STATE.get("accounts") is not None:
+            from proxy import authapi           # SEC-24: over the accounts' sessions
+            return authapi.legacy_session(self, STATE["accounts"], method, fleet)
         if fleet:
             return self._fleet_session(method, body)
         # AU1: no admin password set, or the login off -- nothing to sign in to. GET says so
@@ -1245,20 +1298,34 @@ def build(args, env=None) -> Service:
         ledger_mod.check_config(args.usage_ledger, args.usage_retention_days,
                                 test=env.get("QSE_TEST") == "1")
         led = ledger_mod.Ledger(args.usage_ledger, retention_days=args.usage_retention_days).open()
-    login = (args.dashboard_login == "on")
-    admin = env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN") or None
-    from proxy import adminpw
-    a = auth_mod.Auth(admin, env.get("QSE_METRICS_TOKEN") or None, login=login,
-                      trust_loopback=args.trust_loopback == "on", local_host_only=True,
-                      trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
-                      password=adminpw.Password(os.path.join(os.path.dirname(cfg.path),
-                                                             "admin.json")))
+    # SEC-22: TANDEM_AUTH=accounts turns on the accounts, their sessions and one permission
+    # table (proxy/accounts.py); anything else keeps the rule below, unchanged
+    mode = (env.get("TANDEM_AUTH") or "").strip().lower()
+    accounts = None
+    if mode == "accounts":
+        from proxy import accounts as accounts_mod
+        a = accounts = accounts_mod.AccountsAuth(
+            cfg, trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
+            log=lambda m: STATE["svc"].log(m))
+        accounts.session_tokens = lambda: STATE.get("session_tokens")
+    else:
+        if mode not in ("", "legacy"):
+            print(f"[auth] TANDEM_AUTH={mode[:40]!r} is not a mode (accounts, legacy); the admin "
+                  f"password rule stays", flush=True)
+        login = (args.dashboard_login == "on")
+        admin = env.get("TANDEM_ADMIN_TOKEN") or env.get("QSE_ADMIN_TOKEN") or None
+        from proxy import adminpw
+        a = auth_mod.Auth(admin, env.get("QSE_METRICS_TOKEN") or None, login=login,
+                          trust_loopback=args.trust_loopback == "on", local_host_only=True,
+                          trusted_proxies=env.get("TANDEM_TRUSTED_PROXY", "").split(","),
+                          password=adminpw.Password(os.path.join(os.path.dirname(cfg.path),
+                                                                 "admin.json")))
     registry = metrics_mod.Registry()
     live = live_mod.LiveRegistry(blocks=lambda: None, last_prefill=lambda: None,
                                  engine=_live_engine, hz=live_mod.DEFAULT_HZ, activity=False,
                                  queue_timeout=lambda: 0.0)
-    STATE.update(version=version(), ledger=led, auth=a, registry=registry, live=live,
-                 dashboard_dir=args.dashboard_dir, verbose=args.verbose,
+    STATE.update(version=version(), ledger=led, auth=a, accounts=accounts, registry=registry,
+                 live=live, dashboard_dir=args.dashboard_dir, verbose=args.verbose,
                  args={k: v for k, v in vars(args).items()})
     from proxy import appparts
     state_dir = os.path.dirname(cfg.path)

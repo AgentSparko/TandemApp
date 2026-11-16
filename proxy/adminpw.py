@@ -84,6 +84,17 @@ def _derive(text: str, doc: dict) -> bytes:
     raise ValueError(f"unknown kdf {doc['kdf']!r}")
 
 
+def verify_doc(text, doc: dict) -> bool:
+    """`text` against a hash document of make_doc (one per account, proxy/identity.py): one
+    derive whatever the answer, compared in constant time."""
+    try:
+        got = _derive(text if isinstance(text, str) else "", doc)
+        want = base64.b64decode(doc["hash"])
+    except (ValueError, KeyError, TypeError, MemoryError):
+        return False
+    return hmac.compare_digest(got, want) and isinstance(text, str) and bool(text)
+
+
 def make_doc(text: str, now: float) -> dict:
     """The file's content for `text`: scrypt where hashlib has it, else PBKDF2."""
     salt = secrets.token_bytes(16)
