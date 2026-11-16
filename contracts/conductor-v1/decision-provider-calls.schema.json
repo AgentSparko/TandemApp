@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision provider calls",
+  "description": "GET /v1/fleet/decision-providers/{id}/calls?limit= (SRV-851): this process's recent rows of the provider, newest first, as the journal keeps them (never a text: `key` is a hash of it)",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/call"
+      }
+    }
+  },
+  "required": [
+    "provider",
+    "calls"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "call": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "on",
+            "shadow",
+            "ab"
+          ]
+        },
+        "arm": {
+          "enum": [
+            "a",
+            "b",
+            null
+          ]
+        },
+        "used": {
+          "enum": [
+            "provider",
+            "builtin"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "answer": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "probs": {
+              "type": "object"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ms": {
+              "type": "number"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "label",
+            "confidence",
+            "probs",
+            "model",
+            "ms",
+            "error"
+          ],
+          "additionalProperties": false
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "builtin": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "agree": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fallback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limits": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "request": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "provider",
+        "kind",
+        "question",
+        "mode",
+        "arm",
+        "used",
+        "label",
+        "answer",
+        "endpoint",
+        "builtin",
+        "agree",
+        "fallback",
+        "key",
+        "limits",
+        "request",
+        "session",
+        "ts_ms"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

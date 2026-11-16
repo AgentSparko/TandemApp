@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GET /v1/fleet/hooks/{id}/calls",
+  "description": "the hook's journal, newest first: ids, outcomes and sizes, never a payload.",
+  "type": "object",
+  "properties": {
+    "hook": {
+      "type": "string"
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ts": {
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "request.received",
+              "route.select",
+              "request.before_engine",
+              "decision.ask",
+              "stream.chunk",
+              "tool_call.detected",
+              "tool.before_exec",
+              "tool.after_exec",
+              "response.after_engine",
+              "request.error",
+              "request.finished",
+              "memory.write",
+              "session.start",
+              "session.compact",
+              "engine.lifecycle"
+            ]
+          },
+          "request": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "on",
+              "shadow",
+              "test"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "ok",
+              "timeout",
+              "error",
+              "invalid",
+              "cap",
+              "breaker_open",
+              "redaction_failed",
+              "refused",
+              "dropped"
+            ]
+          },
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": "number"
+          },
+          "breaker": {
+            "enum": [
+              "closed",
+              "open",
+              "half_open"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object"
+          },
+          "decision": {
+            "type": "object"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "string"
+          },
+          "diff": {
+            "type": "object",
+            "description": "shadow: field -> {op, bytes}, or {deny: true}, or {decision}; never a value"
+          }
+        },
+        "required": [
+          "ts",
+          "stage",
+          "request",
+          "mode",
+          "outcome",
+          "action",
+          "duration_ms",
+          "breaker"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "calls": {
+          "type": "integer"
+        },
+        "failures": {
+          "type": "integer"
+        },
+        "timeouts": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
+        },
+        "outcomes": {
+          "type": "object"
+        },
+        "p50_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p95_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "breaker": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "enum": [
+                "closed",
+                "open",
+                "half_open"
+              ]
+            },
+            "consecutive_failures": {
+              "type": "integer"
+            },
+            "open_for_s": {
+              "type": "number"
+            },
+            "opened": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "consecutive_failures",
+            "open_for_s",
+            "opened"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "calls",
+        "failures",
+        "timeouts",
+        "skipped",
+        "outcomes",
+        "p50_ms",
+        "p95_ms",
+        "breaker"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "hook",
+    "calls",
+    "metrics"
+  ],
+  "additionalProperties": false
+}

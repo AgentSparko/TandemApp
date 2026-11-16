@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: session.compact",
+  "description": "a session is compacted. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "messages": {
+      "type": "integer"
+    },
+    "bytes": {
+      "type": "integer"
+    },
+    "content": {
+      "type": "string",
+      "description": "the compaction instruction (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "session",
+    "messages",
+    "bytes"
+  ],
+  "additionalProperties": false
+}

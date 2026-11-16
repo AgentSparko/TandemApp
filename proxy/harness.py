@@ -208,6 +208,13 @@ class Harness:
         if conductor is not None:
             conductor.router.stage_override = self._stage
             conductor.router.cache_scope = self._scope
+            ps = getattr(svc, "providers", None)
+            if ps is not None:
+                # SRV-851: the decision providers answer this conductor's decider questions
+                ps.attach(conductor)
+                conductor.router.providers = ps
+                if getattr(conductor, "judge", None) is not None:
+                    conductor.judge.providers = ps
             if getattr(conductor, "memory", None) is not None:
                 # M3 (2026-10-05): the background memory writer as a request to the session's
                 # own backend, in its idle time (proxy/memwriter.py)

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision providers",
+  "description": "GET /v1/fleet/decision-providers (SRV-851): every provider, the question ids a provider may answer, the kinds, modes and sticky keys, whether recorded answers replace every provider (TANDEM_DECISION_REPLAY)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "decision-provider.schema.json#/$defs/provider"
+      }
+    },
+    "questions": {
+      "type": "object"
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sticky": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replay": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract_version",
+    "providers",
+    "questions",
+    "kinds",
+    "modes",
+    "sticky",
+    "replay"
+  ],
+  "additionalProperties": false
+}

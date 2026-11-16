@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /v1/fleet/hooks/{id}/test",
+  "description": "the hook once against the stage's sample event (examples/), or the body's `event` merged over it; nothing counted or applied.",
+  "type": "object",
+  "properties": {
+    "hook": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "request.received",
+        "route.select",
+        "request.before_engine",
+        "decision.ask",
+        "stream.chunk",
+        "tool_call.detected",
+        "tool.before_exec",
+        "tool.after_exec",
+        "response.after_engine",
+        "request.error",
+        "request.finished",
+        "memory.write",
+        "session.start",
+        "session.compact",
+        "engine.lifecycle"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "ok",
+        "timeout",
+        "error",
+        "invalid",
+        "cap",
+        "breaker_open",
+        "redaction_failed",
+        "refused",
+        "dropped"
+      ]
+    },
+    "duration_ms": {
+      "type": "number"
+    },
+    "result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "diff": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "hook",
+    "stage",
+    "outcome",
+    "duration_ms",
+    "result",
+    "error"
+  ],
+  "additionalProperties": false
+}

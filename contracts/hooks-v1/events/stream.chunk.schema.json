@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: stream.chunk",
+  "description": "each event of a streamed answer. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "index": {
+      "type": "integer"
+    },
+    "kind": {
+      "enum": [
+        "content",
+        "reasoning",
+        "tool",
+        "finish",
+        "usage",
+        "error",
+        "done",
+        "event",
+        "other"
+      ]
+    },
+    "bytes": {
+      "type": "integer"
+    },
+    "content": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "the event's data as JSON (null for [DONE]) (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "index",
+    "kind",
+    "bytes"
+  ],
+  "additionalProperties": false
+}

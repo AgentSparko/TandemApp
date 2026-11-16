@@ -20,6 +20,12 @@ mode is not `off` runs under it: `serve` asks `Harness.begin` for the request's 
 asks the turn for the body and passes every event through it, and the turn writes its journal
 rows before the ledger row. A backend in `off` is P1's relay, byte for byte.
 
+THE HOOKS (SRV-849, proxy/hooks.py). `serve` asks the hook runner for the request's turn: None
+while no hook is enabled, and the relay runs as before, byte for byte. With one, request.received
+and route.select run here, before the harness; request.before_engine, the answer's stages and
+request.error in the relay; request.finished after the ledger row. A hook's deny is the client's
+answer (403 hook_denied, or 503 hook_unavailable for a closed hook that failed).
+
 THE USERS' KEYS. With at least one user in the config (or `TANDEM_API_KEYS` set), a request to the
 OpenAI routes without a known key is a 401, for a backend's model and for the engine's alike. The
 box's own tools stay open the way the admin routes treat them: a request from loopback with
@@ -42,6 +48,8 @@ from proxy import collect_api as collect_mod
 from proxy import config as config_mod
 from proxy import engines as engines_mod
 from proxy import health as health_mod
+from proxy import hooks as hooks_mod
+from proxy import providers as providers_mod
 from proxy import http1
 from proxy import relay as relay_mod
 from proxy import route as route_mod
@@ -189,6 +197,14 @@ class Service:
         # the monitor's policy: its stall watchdog's ntfy settings carry the push of a new model
         self.monitor_base = monitor_base
         self.notifier = None                   # notify.send; a test puts its own here
+        # SRV-849: the remote hooks around the relay (proxy/hooks.py); idle while none is enabled
+        self.hooks = hooks_mod.Runner(cfg, log=lambda m: self.log(m))
+        if registry is not None:
+            self.hooks.families(registry)
+        # SRV-851: the decision providers the controller's conductor asks through (proxy/
+        # providers.py); idle while none is enabled
+        self.providers = providers_mod.Providers(cfg, runner=self.hooks,
+                                                 log=lambda m: self.log(m))
         if conductor is not None:
             from proxy.harness import Harness
             self.harness = Harness(self, conductor, monitor_base, log=self.log)
@@ -202,6 +218,10 @@ class Service:
     def stop(self) -> None:
         if self.harness is not None:
             self.harness.stop()
+        if self.hooks is not None:
+            self.hooks.stop()
+        if getattr(self, "providers", None) is not None:
+            self.providers.stop()
         self.health.stop()
         self.engines.stop()
         self.collect.stop()
@@ -369,7 +389,21 @@ class Service:
         b = self.table.backend_for(route.backend)
         rec.backend_kind = b["kind"] if b else None
         rec.hx = None
-        if self.harness is not None:
+        rec.hk = None
+        deny = None
+        if self.hooks is not None:
+            try:
+                rec.hk = self.hooks.turn(self._hook_ctx(handler, path, route, rec, b))
+            except Exception as exc:                               # noqa: BLE001
+                self.log(f"[hooks] turn failed, relayed as is: {type(exc).__name__}: {exc}")
+                rec.hk = None
+            if rec.hk is not None:
+                try:
+                    body, raw, route, deny = self._hooks_front(handler, path, raw, body, route,
+                                                               rec)
+                except Exception as exc:                           # noqa: BLE001
+                    self.log(f"[hooks] the request's stages failed: {type(exc).__name__}: {exc}")
+        if deny is None and self.harness is not None:
             try:
                 rec.hx = self.harness.begin(handler, path, body, route, rec)
             except Exception as exc:                               # noqa: BLE001
@@ -382,8 +416,11 @@ class Service:
                 pass
         handler._px_written = False
         try:
-            self.relay.serve(handler, path, raw, body, route, rec)
-            if getattr(route, "on_served", None) is not None:
+            if deny is not None:
+                self.refuse(handler, rec, deny)
+            else:
+                self.relay.serve(handler, path, raw, body, route, rec)
+            if deny is None and getattr(route, "on_served", None) is not None:
                 route.on_served(rec)                 # a Replicas member keeps the conversation
         except Exception as exc:                                   # noqa: BLE001
             rec.finish_reason = rec.finish_reason or "error"
@@ -408,6 +445,102 @@ class Service:
                              + traceback.format_exc()[-800:])
             self.account(rec)
         return rec
+
+    # ----------------------------------------------------------------- the hooks (SRV-849)
+    def _hook_ctx(self, handler, path: str, route, rec, backend) -> dict:
+        try:
+            prof = handler.headers.get("X-Tandem-Profile")
+        except Exception:                                          # noqa: BLE001
+            prof = None
+        if not prof and backend:
+            prof = (backend.get("harness") or {}).get("profile")
+        return {"request_id": rec.request_id, "endpoint": relay_mod.endpoint_of(path),
+                "model": route.public, "upstream_model": route.model, "backend": route.backend,
+                "profile": prof or None, "user": rec.user or "owner", "session": rec.conv,
+                "client_kind": rec.client_kind, "stream": bool(rec.stream)}
+
+    def _hooks_front(self, handler, path, raw, body, route, rec):
+        """request.received and route.select: (body, raw, route, a deny or None)."""
+        hk = rec.hk
+        asked = body.get("model")
+        body, raw, deny = hk.received(body, raw)
+        if deny is not None:
+            return body, raw, route, deny
+        if body.get("model") != asked:
+            try:
+                route = self.resolve(body, getattr(handler, "headers", None))
+            except route_mod.NotFound as exc:
+                return body, raw, route, {"hook": None, "status": 404,
+                                          "code": "model_not_found", "message": exc.message}
+            except Exception as exc:                               # noqa: BLE001 (Refused)
+                return body, raw, route, {"hook": None,
+                                          "status": int(getattr(exc, "status", 503)),
+                                          "code": getattr(exc, "code", "refused"),
+                                          "message": str(exc)}
+        decision, deny = hk.select(route, [b["id"] for b in self.cfg.backends() if b["enabled"]])
+        if deny is not None:
+            return body, raw, route, deny
+        if decision:
+            route = self._decided(handler, route, decision)
+        if route.backend != rec.backend or route.public != rec.model:
+            rec.model = rec.model_served = route.public
+            rec.backend = route.backend
+            b = self.table.backend_for(route.backend)
+            rec.backend_kind = b["kind"] if b else None
+        hk.ctx.update(model=route.public, upstream_model=route.model, backend=route.backend)
+        return body, raw, route, None
+
+    def _decided(self, handler, route, d: dict):
+        """route.select's decision as a route: a backend (and its model), a model, a profile (the
+        X-Tandem-Profile the harness and our engine read). A backend or model the table does not
+        have leaves the table's route, with a log line."""
+        if d.get("profile"):
+            try:
+                del handler.headers["X-Tandem-Profile"]
+                handler.headers["X-Tandem-Profile"] = d["profile"]
+            except Exception:                                      # noqa: BLE001
+                pass
+        bid, model = d.get("backend"), d.get("model")
+        if bid:
+            if self.table.backend_for(bid) is None:
+                self.log(f"[hooks] route.select chose the backend {bid!r}, which does not "
+                         f"serve; the table's route stands")
+                return route
+            got = None
+            try:
+                got = self.table.resolve(f"{bid}/{model or route.public}", default=False)
+            except route_mod.NotFound:
+                got = None
+            if got is not None and got.backend == bid:
+                got.public = route.public
+                return got
+            return route_mod.Route(bid, model or (route.model if bid == route.backend
+                                                  else route.public), route.public,
+                                   [c for c in route.candidates() if c[0] != bid])
+        if model:
+            try:
+                got = self.table.resolve(model)
+            except route_mod.NotFound:
+                self.log(f"[hooks] route.select chose the model {model!r}, which no backend "
+                         f"serves; the table's route stands")
+                return route
+            got.public = route.public
+            return got
+        return route
+
+    def refuse(self, handler, rec, deny: dict) -> None:
+        """A hook's refusal as the client's answer (an OpenAI error)."""
+        st = int(deny.get("status") or 403)
+        rec.finish_reason = "refused"
+        rec.error_type = deny.get("code") or "hook_denied"
+        hdrs = [("Content-Type", "application/json")]
+        if deny.get("hook"):
+            hdrs.append(("X-Tandem-Hook", deny["hook"]))
+        data = json.dumps({"error": {"message": deny.get("message") or "refused by a hook",
+                                     "type": "server_busy" if st == 503 else
+                                     "invalid_request_error",
+                                     "code": rec.error_type}}).encode()
+        self.relay._write_plain(handler, st, hdrs, data, rec)
 
     @staticmethod
     def _answer_failure(handler, rec, exc) -> None:
@@ -451,6 +584,12 @@ class Service:
             self.log(f"[collect] join failed: {type(exc).__name__}: {exc}")
         if self.ledger is not None:
             self.ledger.submit(row)
+        hk = getattr(rec, "hk", None)
+        if hk is not None:
+            try:
+                hk.finished(rec)                    # SRV-849: request.finished, off the path
+            except Exception:                                      # noqa: BLE001
+                pass
         if self.observe is not None:
             try:
                 self.observe(rec)

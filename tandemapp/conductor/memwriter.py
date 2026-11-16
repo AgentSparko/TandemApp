@@ -261,6 +261,10 @@ class Writer:
             if not stages:
                 return None, "no_decider"
             doc = dict(router_doc, classifier=dict(clf, stages=stages))
+            if getattr(router, "providers", None) is not None:
+                # SRV-851: the session the controller's decision providers ask for
+                from tandemapp.conductor.classify import CONTEXT
+                CONTEXT.set({"request": None, "session": conv, "user": None})
             ans, st = router.cascade(text, GATE_OPTIONS, doc, roles, question=GATE_QUESTION,
                                      accept=0.6, qid="memory_gate")
         except Exception as exc:                                   # noqa: BLE001

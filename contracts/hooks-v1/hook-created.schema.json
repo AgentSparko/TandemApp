@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "POST /v1/fleet/hooks, POST /v1/fleet/hooks/{id}/secret",
+  "description": "the hook, and an http hook's secret: the only answers that hold it.",
+  "type": "object",
+  "properties": {
+    "hook": {
+      "$ref": "hook.schema.json"
+    },
+    "secret": {
+      "type": "string",
+      "description": "hks_..., the HMAC key (its UTF-8 bytes)"
+    }
+  },
+  "required": [
+    "hook"
+  ],
+  "additionalProperties": false
+}

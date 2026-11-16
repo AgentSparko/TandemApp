@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision provider",
+  "description": "GET, POST (201), PATCH /v1/fleet/decision-providers[/{id}], /enable, /disable, /mode (SRV-851): one provider. A key is write-only: `api_key` or `questions.<id>.api_key` set it (null clears it) and an answer holds only its hint",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "$ref": "#/$defs/provider"
+    }
+  },
+  "required": [
+    "provider"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "provider": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "builtin",
+            "systemone-http",
+            "hook"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hook_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        },
+        "questions": {
+          "type": "object",
+          "description": "question id -> its mapping (additional properties: #/$defs/question)"
+        },
+        "mode": {
+          "enum": [
+            "on",
+            "shadow",
+            "ab"
+          ]
+        },
+        "ab_percent": {
+          "type": "integer"
+        },
+        "sticky": {
+          "enum": [
+            "session",
+            "user",
+            "request"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "created_at": {
+          "type": "integer"
+        },
+        "updated_at": {
+          "type": "integer"
+        },
+        "updated_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "integer"
+        },
+        "breakers": {
+          "type": "object",
+          "description": "endpoint -> #/$defs/breaker"
+        },
+        "health": {
+          "$ref": "#/$defs/health"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "endpoint",
+        "hook_id",
+        "model",
+        "timeout_ms",
+        "questions",
+        "mode",
+        "ab_percent",
+        "sticky",
+        "enabled",
+        "key",
+        "created_at",
+        "updated_at",
+        "updated_by",
+        "version",
+        "breakers"
+      ],
+      "additionalProperties": false
+    },
+    "question": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "key": {
+          "$ref": "#/$defs/key"
+        }
+      },
+      "required": [
+        "model",
+        "endpoint",
+        "timeout_ms"
+      ],
+      "additionalProperties": false
+    },
+    "key": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "key_set": {
+          "type": "boolean"
+        },
+        "last4": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256_6": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "set_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "key_set",
+        "last4",
+        "sha256_6",
+        "set_at"
+      ],
+      "additionalProperties": false,
+      "description": "what is shown of a key: never the key"
+    },
+    "breaker": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "closed",
+            "open",
+            "half_open"
+          ]
+        },
+        "consecutive_failures": {
+          "type": "integer"
+        },
+        "open_for_s": {
+          "type": "number"
+        },
+        "opened": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "state",
+        "consecutive_failures",
+        "open_for_s",
+        "opened"
+      ],
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "up": {
+          "type": "boolean"
+        },
+        "ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "limits": {
+          "type": "object"
+        },
+        "age_s": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "up",
+        "age_s"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "builtin",
+            "systemone-http",
+            "hook"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failing",
+            "down",
+            "off"
+          ]
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "endpoint": {
+                "type": "string"
+              },
+              "questions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "probe": {
+                "$ref": "#/$defs/probe"
+              },
+              "breaker": {
+                "$ref": "#/$defs/breaker"
+              }
+            },
+            "required": [
+              "endpoint",
+              "questions",
+              "probe",
+              "breaker"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "last_call": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "ts_ms": {
+              "type": "integer"
+            },
+            "question": {
+              "type": "string"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ms": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "ts_ms",
+            "question",
+            "error",
+            "ms"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "provider",
+        "kind",
+        "status",
+        "endpoints",
+        "last_call"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

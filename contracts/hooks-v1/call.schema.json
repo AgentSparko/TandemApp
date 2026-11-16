@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 call",
+  "description": "The body of every call: POST to the hook's endpoint with X-Tandem-Hook, X-Tandem-Delivery, X-Tandem-Timestamp and X-Tandem-Signature (README, Signing). `event` is the stage's (events/<stage>.schema.json); it holds `content` only at payload redacted or full.",
+  "type": "object",
+  "properties": {
+    "hooks": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "description": "the delivery id: unique per call, covered by the signature, refused again by a receiver inside the replay window"
+    },
+    "hook": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "request.received",
+        "route.select",
+        "request.before_engine",
+        "decision.ask",
+        "stream.chunk",
+        "tool_call.detected",
+        "tool.before_exec",
+        "tool.after_exec",
+        "response.after_engine",
+        "request.error",
+        "request.finished",
+        "memory.write",
+        "session.start",
+        "session.compact",
+        "engine.lifecycle"
+      ]
+    },
+    "ts": {
+      "type": "number"
+    },
+    "payload": {
+      "enum": [
+        "meta",
+        "redacted",
+        "full"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "on",
+        "shadow",
+        "test"
+      ]
+    },
+    "request": {
+      "description": "the request the call is about: ids only (engine.lifecycle: all null)",
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upstream_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backend": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stream": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "request_id",
+        "endpoint",
+        "model",
+        "upstream_model",
+        "backend",
+        "profile",
+        "user",
+        "session",
+        "client_kind",
+        "stream"
+      ],
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "hooks",
+    "id",
+    "hook",
+    "stage",
+    "ts",
+    "payload",
+    "mode",
+    "request",
+    "event"
+  ],
+  "additionalProperties": false
+}

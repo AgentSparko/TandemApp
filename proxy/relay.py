@@ -48,6 +48,13 @@ new request: the route's fallbacks are tried, and with none left the client gets
 whose engine host restarts for a settings change (`svc.restart_drain_of`, SRV-845) is drained the
 same way until it is back.
 
+THE HOOKS (SRV-849, proxy/hooks.py): with the request's hook turn (`rec.hk`; None while no hook is
+enabled, and nothing here changes) request.before_engine runs on the final body before each try
+(its patches kept for a retry or a fallback), stream.chunk's observers see each event, a whole
+answer passes tool_call.detected and response.after_engine before the client gets a byte (one
+retry if a hook asks), a failure that may be tried again asks request.error for a fallback, and a
+streamed answer's own stages observe after it ended.
+
 THE FLEET (SRV-731, proxy/deployments.py): a backend on a fleet node (`svc.locate`) names the node
 and its deployment in the answer, `X-Tandem-Node` (the node's alias) and `X-Tandem-Deployment`,
 and in the ledger row (`node`, its id, and `deployment`). A deployment's members are its route's
@@ -257,9 +264,21 @@ class Relay:
             if outcome[0] == "done":
                 rec.retries = tries
                 return
+            if outcome[0] == "hook_retry":
+                continue                     # response.after_engine asked once: the same try
             # a failure before any byte reached the client
             last = outcome[1]
             retry_after = outcome[2]
+            hk = getattr(rec, "hk", None)
+            if hk is not None:
+                try:
+                    fb = hk.error(last[0], outcome[3], bid, upstream_model, tries, cands[i + 1:])
+                except Exception as exc:                           # noqa: BLE001
+                    fb = None
+                    self.svc.log(f"[hooks] request.error failed: {type(exc).__name__}")
+                if fb is not None and self.svc.table.backend_for(fb[0]) is not None:
+                    pick = (fb[0], fb[1] or upstream_model)
+                    cands = cands[:i + 1] + [pick] + [c for c in cands[i + 1:] if c != pick]
             if tries >= MAX_RETRIES or (getattr(route, "no_replay", False)
                                         and outcome[3] != "connect"):
                 break
@@ -305,6 +324,21 @@ class Relay:
             # the harness (P4): the notes, the thinking switch, the side cap, the compaction
             # section for this backend's kind; the client's bytes when nothing changes
             body2, changed = hx.upstream(body, adapter, upstream_model)
+            if changed:
+                body, raw = body2, json.dumps(body2, ensure_ascii=False).encode()
+        hk = getattr(rec, "hk", None)
+        if hk is not None:
+            # SRV-849: request.before_engine on the final body; the client's bytes when no hook
+            # changed it
+            try:
+                body2, changed, deny = hk.before_engine(body, backend["id"], upstream_model)
+            except Exception as exc:                               # noqa: BLE001
+                body2, changed, deny = body, False, None
+                self.svc.log(f"[hooks] request.before_engine failed, sent as is: "
+                             f"{type(exc).__name__}")
+            if deny is not None:
+                self.svc.refuse(handler, rec, deny)
+                return ("done",)
             if changed:
                 body, raw = body2, json.dumps(body2, ensure_ascii=False).encode()
         up_body, injected = adapter.prepare(path, raw, body, upstream_model)
@@ -391,8 +425,9 @@ class Relay:
         if stream and sse and status == 200:
             self._stream(handler, path, conn, pool, uh, adapter, injected, backend, rec, poll,
                          headers)
-        else:
-            self._whole(handler, path, conn, pool, status, uh, adapter, backend, rec, poll)
+        elif self._whole(handler, path, conn, pool, status, uh, adapter, backend, rec,
+                         poll) == "retry":
+            return ("hook_retry",)
         return ("done",)
 
     # ----------------------------------------------------------------- answers
@@ -469,12 +504,21 @@ class Relay:
         self._finish(st, adapter, path, backend, rec)
         rec.thinking = st.reasoning
         rec.tool_calls = len(st.tools)
+        hk = getattr(rec, "hk", None)
+        if hk is not None:
+            try:
+                hk.stream_done(200, rec.finish_reason, st.usage)
+            except Exception:                                      # noqa: BLE001
+                pass
 
     def _pump(self, conn, path, adapter, st, injected, rec, w, to, poll, hx) -> bool:
         """Copy one upstream stream to the client, event by event, the adapter reading each and
         the harness (when it runs) deciding what goes out now. True when it ended on its own;
         False when the harness stopped it (the connection is then closed)."""
         buf = bytearray()
+        hk = getattr(rec, "hk", None)
+        if hk is not None and not hk.watches_stream():
+            hk = None
         for piece in conn.body(float(to["idle"]), poll):
             t_arr = time.perf_counter()
             buf += piece
@@ -488,6 +532,11 @@ class Relay:
                 token, drop = adapter.read_frame(path, event[:end], st, injected)
                 if token:
                     rec.stamp_token(t_arr, st.kind, st.tool_name, st.tool_chars)
+                if hk is not None and not drop:
+                    try:
+                        hk.see(event)            # SRV-849: stream.chunk's observers
+                    except Exception:                              # noqa: BLE001
+                        hk = None                # never the stream's failure
                 if hx is None:
                     if not drop:
                         out += event
@@ -624,6 +673,26 @@ class Relay:
             # a stream the client did not ask for: read its frames for the counts
             for ev in data.replace(b"\r\n", b"\n").split(b"\n\n"):
                 adapter.read_frame(path, ev, st, False)
+        hk = getattr(rec, "hk", None)
+        if hk is not None and status == 200 and "json" in ctype:
+            # SRV-849: tool_call.detected and response.after_engine before any byte goes out
+            try:
+                data2, deny, again = hk.answer(data, status, path)
+            except Exception as exc:                               # noqa: BLE001
+                data2, deny, again = data, None, False
+                self.svc.log(f"[hooks] the answer's stages failed, sent as is: "
+                             f"{type(exc).__name__}")
+            if again:
+                return "retry"
+            if deny is not None:
+                self.svc.refuse(handler, rec, deny)
+                self._finish(st, adapter, path, backend, rec)
+                rec.thinking = st.reasoning
+                rec.tool_calls = len(st.tools)
+                return None
+            if data2 is not data:
+                data = data2
+                uh = [(k, v) for k, v in uh if k.lower() != "content-length"]
         try:
             self._start(handler, status, uh, backend, adapter, False, len(data), rec=rec)
             handler.wfile.write(data)

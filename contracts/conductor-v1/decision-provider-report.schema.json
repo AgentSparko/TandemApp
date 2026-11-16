@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "decision provider report",
+  "description": "GET /v1/fleet/decision-providers/report?hours=&provider= (SRV-851): from the conductor's journal (rows kind provider; this process's memory when the controller runs no conductor journal): providers -> question id -> bucket (on, shadow, ab_a, ab_b) -> calls, answered, failures, fallbacks, compared and agreed (shadow: the provider's answer against the conductor's decision), agreement_pct, p50_ms and p95_ms (the provider's time; arm a: the built-in decider's), labels (the answers used; shadow: the provider's)",
+  "type": "object",
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "since_ms": {
+      "type": "integer"
+    },
+    "hours": {
+      "type": "number"
+    },
+    "source": {
+      "enum": [
+        "journal",
+        "memory"
+      ]
+    },
+    "providers": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "contract_version",
+    "since_ms",
+    "hours",
+    "source",
+    "providers"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "bucket": {
+      "type": "object",
+      "properties": {
+        "calls": {
+          "type": "integer"
+        },
+        "answered": {
+          "type": "integer"
+        },
+        "failures": {
+          "type": "integer"
+        },
+        "fallbacks": {
+          "type": "integer"
+        },
+        "compared": {
+          "type": "integer"
+        },
+        "agreed": {
+          "type": "integer"
+        },
+        "agreement_pct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p50_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p95_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "labels": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "calls",
+        "answered",
+        "failures",
+        "fallbacks",
+        "compared",
+        "agreed",
+        "agreement_pct",
+        "p50_ms",
+        "p95_ms",
+        "labels"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

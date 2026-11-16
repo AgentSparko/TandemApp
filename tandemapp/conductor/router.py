@@ -55,7 +55,7 @@ from tandemapp.conductor import deferred as deferred_mod
 from tandemapp.conductor import memory as memory_mod
 from tandemapp.conductor import packages as packages_mod
 from tandemapp import session_tokens as session_tokens_mod
-from tandemapp.conductor.classify import ASKING, PARENT, Answer, Qwen, decider_for
+from tandemapp.conductor.classify import ASKING, CONTEXT, PARENT, Answer, Qwen, decider_for
 from tandemapp.conductor.store import ConfigError
 from tandemapp.knobs import SETTINGS as _S
 
@@ -863,6 +863,9 @@ class Router:
         # turn wait for it (app/tandemapp/conductor/deferred.py)
         self.own_idle = None
         self.deferred = deferred_mod.Deferred(signal=lambda: self.own_idle)
+        # SRV-851: the controller's decision providers (proxy/providers.py), set by its harness;
+        # None everywhere else (the engine's own conductor), and then nothing here changes
+        self.providers = None
 
     # ---------------------------------------------------------------- classifiers
     def _make(self, kind: str, role: dict, timeout_ms: int):
@@ -893,7 +896,7 @@ class Router:
                 return got, None
         role = roles.get("decider" if stage["kind"] == "decider" else "classifier") or {}
         if role.get("mode", "off") == "off":
-            return None, "role_off"
+            return self._provided(stage, qid, None, "role_off")
         if stage["kind"] == "decider" and qid:
             # a model the `deciders` document names for this question; `auto` leaves the role's
             _, dec = self.store.peek("deciders")
@@ -901,7 +904,17 @@ class Router:
             if named and named != "auto":
                 role = dict(role, model=named)
         a = self.factory(stage["kind"], role, int(stage["timeout_ms"]))
-        return (a, None) if a is not None else (None, "no_endpoint")
+        return self._provided(stage, qid, a, "no_endpoint")
+
+    def _provided(self, stage: dict, qid: str | None, a, why: str):
+        """SRV-851: the decider stage of question `qid` as the controller's decision providers
+        serve it (a provider in its place, the built-in `a` its fallback), else `a` as it is, or
+        `why` when there is none."""
+        if self.providers is not None and stage["kind"] == "decider" and qid:
+            got = self.providers.stage(qid, a, why, int(stage["timeout_ms"]))
+            if got is not None:
+                return got, None
+        return (a, None) if a is not None else (None, why)
 
     def cascade(self, text: str, options: dict[str, str], router: dict, roles: dict, *,
                 question: str | None = None, accept: float | None = None,
@@ -917,9 +930,14 @@ class Router:
         class the turn was routed to."""
         token = ASKING.set(qid)
         try:
-            return self._cascade(text, options, router, roles, question, accept, qid, line, about)
+            got = self._cascade(text, options, router, roles, question, accept, qid, line, about)
         finally:
             ASKING.reset(token)
+        if self.providers is not None:
+            # SRV-851: a provider in shadow for this question is asked beside it, off this thread
+            self.providers.after(qid, text, options, question or router["classifier"]["question"],
+                                 line, int(router["classifier"].get("digest_chars", 2000)), got)
+        return got
 
     def _cascade(self, text, options, router, roles, question, accept, qid, line,
                  about=None) -> tuple:
@@ -1153,6 +1171,7 @@ class Router:
         shapes; None for the engine's own requests."""
         if not dry:
             PARENT.set(request_id)                # VIS-60: the router's question names this turn
+            CONTEXT.set({"request": request_id, "session": None, "user": user})
         res = resolve(self.store, str(model or body.get("model") or self.raw_model()),
                       self.raw_model(), headers, client_kind, self.global_mode(),
                       offers_tools=chat and signals.offers_tools(body))
@@ -1201,6 +1220,8 @@ class Router:
                 sess_how = "alias"
         sess = Session("dry") if dry else self.session(key)
         plan.session = sess
+        if not dry:
+            CONTEXT.set({"request": request_id, "session": sess.key, "user": user})
         if not dry and self.session_tokens is not None:
             # `{tandem_url}` in this session's notes: its own address, `.../s/<token>`
             plan.session_token = self.session_tokens.token_for(sess.key)
@@ -1292,6 +1313,12 @@ class Router:
             # does another context line
             ck = (router_v, self.store.peek("deciders")[0],
                   hashlib.sha256(sh.user_text.encode()).hexdigest(), line, self.cache_scope())
+            if self.providers is not None:
+                # SRV-851: a provider's answers (and each A/B arm's) are kept apart from the
+                # built-in's; without a provider for the question the key is as before
+                tag = self.providers.cache_tag("classify")
+                if tag is not None:
+                    ck = ck + (tag,)
             hit = self._cached(ck)
             if hit is not None:
                 ans, stages = hit

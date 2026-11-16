@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: tool.before_exec",
+  "description": "chatd, before a tool runs. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "tool": {
+      "type": "string"
+    },
+    "call_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "args_bytes": {
+      "type": "integer"
+    },
+    "content": {
+      "description": "the call's arguments (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "tool",
+    "call_id",
+    "args_bytes"
+  ],
+  "additionalProperties": false
+}

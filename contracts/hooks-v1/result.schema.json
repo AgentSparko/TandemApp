@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 result",
+  "description": "What a hook answers (HTTP 200 with this JSON; 204 or an empty 200 is {action: continue}). The stage and the hook's role decide which actions are allowed (stages.json `actions`, `roles`); a patch may set or remove (null) only the stage's `fields`, a `content` field only at payload full; a decision holds only the stage's `decision` keys.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "enum": [
+        "continue",
+        "modify",
+        "deny",
+        "decide"
+      ]
+    },
+    "patch": {
+      "type": "object",
+      "description": "field -> new value, null removes it (modify only)"
+    },
+    "decision": {
+      "$ref": "#/$defs/decision"
+    },
+    "reason": {
+      "type": "string",
+      "description": "shown to the client on a deny; journaled (first 300 characters)"
+    },
+    "labels": {
+      "type": "object",
+      "description": "at most 32 short values, carried to request.finished"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "route.select: the backend id"
+        },
+        "model": {
+          "type": "string",
+          "description": "route.select: the model id"
+        },
+        "profile": {
+          "type": "string",
+          "description": "route.select: the conductor profile (X-Tandem-Profile)"
+        },
+        "retry": {
+          "const": true,
+          "description": "response.after_engine: send the request once more"
+        },
+        "fallback": {
+          "description": "request.error: try this next",
+          "type": "object",
+          "properties": {
+            "backend": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "backend"
+          ],
+          "additionalProperties": false
+        },
+        "answer": {
+          "description": "decision.ask: an option id of the question, or {choice, confidence?, probabilities?} (numbers 0..1); anything else is refused",
+          "type": [
+            "string",
+            "object"
+          ],
+          "properties": {
+            "choice": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "probabilities": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+}

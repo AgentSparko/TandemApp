@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: request.received",
+  "description": "after auth, before routing. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "sizes": {
+      "type": "object",
+      "properties": {
+        "body_bytes": {
+          "type": "integer"
+        },
+        "messages": {
+          "type": "integer"
+        },
+        "tools": {
+          "type": "integer"
+        },
+        "chars": {
+          "type": "object",
+          "properties": {
+            "system": {
+              "type": "integer"
+            },
+            "user": {
+              "type": "integer"
+            },
+            "assistant": {
+              "type": "integer"
+            },
+            "tool": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "body_bytes",
+        "messages",
+        "tools",
+        "chars"
+      ],
+      "additionalProperties": false
+    },
+    "params": {
+      "type": "object",
+      "description": "the scalar sampling and output fields the body sets (response_format as {type})"
+    },
+    "params_set": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tool_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "content": {
+      "type": "object",
+      "description": "the request body (payload redacted or full only; redacted: every string through the redaction)"
+    }
+  },
+  "required": [
+    "sizes",
+    "params",
+    "params_set",
+    "tool_names"
+  ],
+  "additionalProperties": false
+}

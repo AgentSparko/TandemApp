@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hooks-v1 event: session.start",
+  "description": "a session starts. The call's `event` at this stage.",
+  "type": "object",
+  "properties": {
+    "session": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "messages": {
+      "type": "integer"
+    },
+    "profile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "session",
+    "messages",
+    "profile"
+  ],
+  "additionalProperties": false
+}
