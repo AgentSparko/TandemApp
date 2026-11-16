@@ -112,3 +112,35 @@ def migrate_like_int5(c) -> int:
                                                                    [("created_at", "0")]))
     c.commit()
     return was
+
+
+def key_rule_like_int5(c, bearer, env_users=None,
+                       trusted_local=False):
+    """That release's rule on the OpenAI routes (its proxy/service.py `authorize` over its
+    proxy/config.py `users_active` and `user_for_key`, SRV-867's rollback test), on an open
+    sqlite3 connection: (200, the user's label or None) or (401, None). `env_users`: its
+    TANDEM_API_KEYS as {sha256 hex: label}; `trusted_local`: a loopback caller with no forwarding
+    header. TANDEM_API_USERS_FROM is not used by these tests."""
+    import hashlib
+    import hmac
+    env_users = env_users or {}
+    active = bool(env_users) or c.execute(
+        "SELECT 1 FROM users WHERE enabled = 1 LIMIT 1").fetchone() is not None
+    if not active:
+        return 200, None
+    label = None
+    if bearer:
+        h = hashlib.sha256(bearer.encode()).hexdigest()
+        for eh, lab in env_users.items():
+            if hmac.compare_digest(eh, h):
+                label = lab
+                break
+        if label is None:
+            r = c.execute("SELECT id, label FROM users WHERE key_hash = ? AND enabled = 1",
+                          (h,)).fetchone()
+            label = r[1] if r else None
+    if label is not None:
+        return 200, label
+    if trusted_local:
+        return 200, None
+    return 401, None
