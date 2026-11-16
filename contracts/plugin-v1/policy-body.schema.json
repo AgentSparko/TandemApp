@@ -1,0 +1,15 @@
+{
+ "$id": "plugin-v1/policy-body",
+ "description": "POST /v1/fleet/plugin-trust/policy",
+ "type": "object",
+ "properties": {
+  "require_signature_sandboxed": {
+   "type": "boolean",
+   "description": "a sandboxed plugin needs a trusted signature too (off by default)"
+  }
+ },
+ "required": [
+  "require_signature_sandboxed"
+ ],
+ "additionalProperties": false
+}

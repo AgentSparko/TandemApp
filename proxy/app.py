@@ -49,6 +49,8 @@ serves on one port:
     *    /v1/fleet/plugins[/...]   the plugin registry: list, inspect a source, install from a
                                    folder, a wheel or a git commit, enable, disable, verify,
                                    remove (proxy/pluginapi.py, SRV-857); nothing of a plugin runs
+    *    /v1/fleet/plugin-trust[/...]  the trusted publisher keys and the signature policy
+                                   (proxy/pluginapi.py, SEC-18)
     *    /chat-engine/...          the engine chatd calls: this gateway, its models, library and
                                    conductor, and the chat engine's facts, live rows, cache
                                    routes and tokenizer (proxy/chatengine.py, SRV-843)
@@ -681,6 +683,11 @@ class Handler(BaseHTTPRequestHandler):
             from proxy import pluginapi
             return pluginapi.handle(self, STATE["svc"], method, [unquote(x) for x in parts[1:]],
                                     body)
+        if parts[:1] == ["plugin-trust"]:
+            # SEC-18: the trusted publisher keys and the signature policy (proxy/pluginapi.py)
+            from proxy import pluginapi
+            return pluginapi.handle_keys(self, STATE["svc"], method,
+                                         [unquote(x) for x in parts[1:]], body)
         if parts == ["app", "password"]:
             return self._app_password(method, body)
         if parts[:1] == ["app"] and method == "POST":

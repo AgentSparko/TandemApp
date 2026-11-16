@@ -67,6 +67,10 @@
   },
   "allow_downgrade": {
    "type": "boolean"
+  },
+  "confirm_trust": {
+   "type": "string",
+   "description": "the plugin's id typed: an upgrade that asks a higher trust level, or whose host grant rested on a signature it no longer carries (SEC-18)"
   }
  },
  "required": [

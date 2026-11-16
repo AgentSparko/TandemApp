@@ -1,0 +1,25 @@
+{
+ "$id": "plugin-v1/plugin-trust",
+ "description": "GET /v1/fleet/plugin-trust (SEC-18): the trusted publisher keys and the signature policy",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "keys": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/trusted_key"
+   }
+  },
+  "policy": {
+   "$ref": "common.schema.json#/$defs/trust_policy"
+  }
+ },
+ "required": [
+  "contract_version",
+  "keys",
+  "policy"
+ ],
+ "additionalProperties": false
+}

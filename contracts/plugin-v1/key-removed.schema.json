@@ -1,0 +1,26 @@
+{
+ "$id": "plugin-v1/key-removed",
+ "description": "DELETE /v1/fleet/plugin-trust/keys/{key}",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "removed": {
+   "type": "string"
+  },
+  "fingerprint": {
+   "type": "string"
+  },
+  "name": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "contract_version",
+  "removed",
+  "fingerprint",
+  "name"
+ ],
+ "additionalProperties": false
+}

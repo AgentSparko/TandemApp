@@ -1,0 +1,11 @@
+{
+ "$id": "plugin-v1/key-remove-body",
+ "description": "DELETE /v1/fleet/plugin-trust/keys/{key}",
+ "type": "object",
+ "properties": {
+  "confirm_fingerprint": {
+   "type": "string"
+  }
+ },
+ "additionalProperties": false
+}

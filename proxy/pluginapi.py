@@ -6,17 +6,37 @@ are VIS-284's).
     POST   /v1/fleet/plugins/inspect          {source}: fetch and check a source without
                                               installing it: the manifest, every check, the
                                               requested capabilities, the settings' form
-    POST   /v1/fleet/plugins                  {source, upgrade?, allow_downgrade?}: install
-                                              (201), upgrade or unchanged (200); refused: 422
-                                              plugin_refused with every error, 409 exists,
-                                              version_unchanged or downgrade
+    POST   /v1/fleet/plugins                  {source, upgrade?, allow_downgrade?,
+                                              confirm_trust?}: install (201), upgrade or
+                                              unchanged (200); refused: 422 plugin_refused with
+                                              every error, 409 exists, version_unchanged,
+                                              downgrade, trust_confirm_needed (an upgrade that asks
+                                              more trust: the installed version keeps running) or
+                                              signature_required
     GET    /v1/fleet/plugins/{id}             one plugin: its manifest, contributions, settings'
                                               form, capabilities requested and granted, secrets
                                               set or unset, integrity, the hooks that name it
     POST   /v1/fleet/plugins/{id}/enable, /disable
-    POST   /v1/fleet/plugins/{id}/verify      check its tree against its sha256 now
+    POST   /v1/fleet/plugins/{id}/verify      check its tree against its sha256 now, and its
+                                              plugin.sig.json against the one installed
     DELETE /v1/fleet/plugins/{id}             refused while a hook names it (409 referenced);
                                               its process ends first
+
+Trust (SEC-18, proxy/plugintrust.py):
+
+    GET    /v1/fleet/plugins/{id}/trust       its level, grants, signature (trusted or not, by
+                                              which key), whether it runs and why not, and what a
+                                              grant takes
+    POST   /v1/fleet/plugins/{id}/trust       {level, engine?, confirm?}: grant host (a trusted
+                                              signature, or confirm = its id typed), engine for one
+                                              engine host (a trusted signature AND confirm), or
+                                              sandboxed (revoke; with engine: that engine's only)
+    GET    /v1/fleet/plugin-trust             the trusted publisher keys and the policy
+    POST   /v1/fleet/plugin-trust/keys        {public_key, name, plugins?, levels?,
+                                              confirm_fingerprint}: trust a key (201); without the
+                                              fingerprint typed back 428, with another 422
+    DELETE /v1/fleet/plugin-trust/keys/{key}  {confirm_fingerprint}: trust it no more
+    POST   /v1/fleet/plugin-trust/policy      {require_signature_sandboxed}
 
 The plugin host's (SRV-859, proxy/pluginhost.py):
 
@@ -39,9 +59,9 @@ A plugin's settings, secrets and capability grants are the settings interface's 
 audit.
 
 THE RIGHTS. Reads, inspect, disable and verify take the configuration's writes (`conductor_write`).
-Install, upgrade, enable and remove take pairing's (`fleet_trust`): with no admin password set only
-this machine may, as pairing a node does. No answer holds a secret: a secret is set or unset with
-its hint.
+Install, upgrade, enable, remove, a trust grant or revoke, a key added or removed and the policy
+take pairing's (`fleet_trust`): with no admin password set only this machine may, as pairing a
+node does. No answer holds a secret: a secret is set or unset with its hint.
 """
 
 from __future__ import annotations
@@ -55,14 +75,17 @@ from proxy.pluginstore import PluginError
 
 CONTRACT = PM.PLUGIN_API
 BASE = "/v1/fleet/plugins"
+KEYS_BASE = "/v1/fleet/plugin-trust"
 
 
 def view(store, p: dict, full: bool = False) -> dict:
     m = p["manifest"]
     contributes = m.get("contributes") or {}
+    sig = store.judged(p["signature"], p["id"], p["trust"] or "sandboxed")["signature"] \
+        if p["signature"] else None
     out = {"id": p["id"], "name": p["name"], "version": p["version"], "kind": p["kind"],
            "title": p["title"], "description": m.get("description"), "source": p["source"],
-           "sha256": p["sha256"], "signature": p["signature"], "enabled": p["enabled"],
+           "sha256": p["sha256"], "signature": sig, "enabled": p["enabled"],
            "trust": {"requested": p["trust"], "granted": p.get("trust_granted") or "sandboxed"},
            "integrity": p["integrity"], "checked_at": p["checked_at"],
            "capabilities": {"requested": store.requested(p), "granted": sorted(p["granted"]),
@@ -88,24 +111,35 @@ def _route_rights(method: str, sub: list[str]) -> str:
         return "fleet_trust"                                          # install
     if method == "DELETE" and len(sub) == 1:
         return "fleet_trust"
-    if method == "POST" and len(sub) == 2 and sub[1] == "enable":
+    if method == "POST" and len(sub) == 2 and sub[1] in ("enable", "trust"):
         return "fleet_trust"
     return "conductor_write"
+
+
+def _keys_rights(method: str, sub: list[str]) -> str:
+    return "conductor_write" if method == "GET" else "fleet_trust"
+
+
+def _rights(handler, route: str, what: str):
+    """None when the caller may go on, else the answer was sent."""
+    from proxy import app as app_mod
+    a = app_mod.STATE.get("auth")
+    if route == "fleet_trust" and a is not None and not a.password_set and \
+            a.decide(route, handler._peer(), handler.headers) != "ok":
+        return _send(handler, 401, {"error": {
+            "type": "unauthorized", "message": f"{what} take pairing's rights: set an admin "
+            f"password (App settings) to do it from another machine, or do it from this one"}}) \
+            or True
+    if not handler._allowed(route):
+        return True
+    return None
 
 
 def handle(handler, svc, method: str, sub: list[str], body) -> None:
     """One /v1/fleet/plugins request; `sub` is the path after /v1/fleet/plugins."""
     store = svc.plugins
     route = _route_rights(method, sub)
-    from proxy import app as app_mod
-    a = app_mod.STATE.get("auth")
-    if route == "fleet_trust" and a is not None and not a.password_set and \
-            a.decide(route, handler._peer(), handler.headers) != "ok":
-        return _send(handler, 401, {"error": {
-            "type": "unauthorized", "message": "installing, enabling and removing a plugin take "
-            "pairing's rights: set an admin password (App settings) to do it from another "
-            "machine, or do it from this one"}})
-    if not handler._allowed(route):
+    if _rights(handler, route, "installing, enabling, trusting and removing a plugin"):
         return
     from proxy import config_api
     who = config_api._who(handler, svc)
@@ -118,6 +152,56 @@ def handle(handler, svc, method: str, sub: list[str], body) -> None:
     except PluginError as exc:
         code, out = exc.status, exc.body()
     return _send(handler, code, out)
+
+
+def handle_keys(handler, svc, method: str, sub: list[str], body) -> None:
+    """One /v1/fleet/plugin-trust request (SEC-18): the trusted publisher keys and the policy."""
+    store = svc.plugins
+    if _rights(handler, _keys_rights(method, sub), "trusting a publisher key and the signature "
+                                                   "policy"):
+        return
+    from proxy import config_api
+    who = config_api._who(handler, svc)
+    try:
+        code, out = _keys_route(store, method, sub, body, who)
+    except PluginError as exc:
+        code, out = exc.status, exc.body()
+    return _send(handler, code, out)
+
+
+def _keys_route(store, method: str, sub: list[str], body, who: str) -> tuple[int, dict]:
+    from proxy import plugintrust
+    if body is not None and not isinstance(body, dict):
+        raise PluginError(400, "bad_request", "the body must be a JSON object")
+    body = body or {}
+    keys = store.keys
+    if not keys.ready():
+        raise PluginError(503, "unavailable", "the config database is not open")
+    if not sub and method == "GET":
+        return 200, {"contract_version": CONTRACT,
+                     "keys": [plugintrust.view_key(k) for k in keys.list()],
+                     "policy": keys.policy()}
+    if sub == ["keys"] and method == "POST":
+        _fields(body, {"public_key", "name", "plugins", "levels", "confirm_fingerprint"})
+        k = keys.add(body.get("public_key"), body.get("name"), body.get("plugins"),
+                     body.get("levels"), confirm=body.get("confirm_fingerprint"), who=who)
+        store._changed(None)            # a plugin's trust may change: the host looks again
+        return 201, {"contract_version": CONTRACT, "key": plugintrust.view_key(k)}
+    if len(sub) == 2 and sub[0] == "keys" and method == "DELETE":
+        _fields(body, {"confirm_fingerprint"})
+        out = keys.remove(sub[1], confirm=body.get("confirm_fingerprint"), who=who)
+        store._changed(None)
+        return 200, {"contract_version": CONTRACT, **out}
+    if sub == ["policy"] and method == "POST":
+        _fields(body, {"require_signature_sandboxed"})
+        if "require_signature_sandboxed" not in body:
+            raise PluginError(400, "bad_request", "require_signature_sandboxed: true or false",
+                              "require_signature_sandboxed")
+        pol = keys.set_policy(body["require_signature_sandboxed"], who)
+        store._changed(None)
+        return 200, {"contract_version": CONTRACT, "policy": pol}
+    raise PluginError(404, "not_found", f"no route {method} {KEYS_BASE}/{'/'.join(sub)}"
+                      .rstrip("/"))
 
 
 def _send(handler, code: int, out) -> None:
@@ -136,12 +220,13 @@ def _route(store, method: str, sub: list[str], body, who: str, q: dict) -> tuple
                          "hooks_api": hookstages.VERSION, "tandemapp": PM.this_tandemapp(),
                          "plugins": [view(store, p) for p in store.list()]}
         if method == "POST":
-            _fields(body, {"source", "upgrade", "allow_downgrade"})
+            _fields(body, {"source", "upgrade", "allow_downgrade", "confirm_trust"})
             for f in ("upgrade", "allow_downgrade"):
                 if f in body and not isinstance(body[f], bool):
                     raise PluginError(400, "bad_request", f"{f}: true or false", f)
             p, note = store.install(body.get("source"), who, upgrade=body.get("upgrade", False),
-                                    allow_downgrade=body.get("allow_downgrade", False))
+                                    allow_downgrade=body.get("allow_downgrade", False),
+                                    confirm_trust=body.get("confirm_trust"))
             code = 201 if note["action"] == "installed" else 200
             return code, {"contract_version": CONTRACT, "plugin": view(store, p, full=True),
                           **note}
@@ -155,6 +240,16 @@ def _route(store, method: str, sub: list[str], body, who: str, q: dict) -> tuple
                          "plugin": view(store, store.need(pid), full=True)}
         if method == "DELETE":
             return 200, {"contract_version": CONTRACT, **store.remove(pid, who)}
+    elif len(sub) == 2 and sub[1] == "trust":
+        pid = sub[0]
+        if method == "GET":
+            return 200, {"contract_version": CONTRACT, "trust": store.trust_view(pid)}
+        if method == "POST":
+            _fields(body, {"level", "engine", "confirm"})
+            return 200, {"contract_version": CONTRACT,
+                         "trust": store.grant_trust(pid, body.get("level"),
+                                                    engine=body.get("engine"),
+                                                    confirm=body.get("confirm"), who=who)}
     elif len(sub) == 2 and method == "POST":
         pid, act = sub
         _fields(body, set())

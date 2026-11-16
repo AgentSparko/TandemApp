@@ -1,0 +1,18 @@
+{
+ "$id": "plugin-v1/key",
+ "description": "POST /v1/fleet/plugin-trust/keys: 201 the key trusted",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "key": {
+   "$ref": "common.schema.json#/$defs/trusted_key"
+  }
+ },
+ "required": [
+  "contract_version",
+  "key"
+ ],
+ "additionalProperties": false
+}

@@ -87,12 +87,47 @@
       "null"
      ]
     },
+    "fingerprint": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "the signing key's fingerprint: the sha256 of its 32 bytes, hex"
+    },
+    "public_key": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "the signing key, base64 of 32 bytes"
+    },
+    "plugin": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "the plugin the signature names"
+    },
+    "version": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "the version the signature names"
+    },
     "trusted": {
      "type": [
       "boolean",
       "null"
      ],
-     "description": "null until F3 decides which keys are trusted"
+     "description": "null without a signature; true when it holds and its key is trusted for this plugin at the level it asks (/v1/fleet/plugin-trust)"
+    },
+    "key_name": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "the trusted key's name"
     },
     "error": {
      "type": [
@@ -106,10 +141,16 @@
     "verified",
     "algorithm",
     "key_id",
+    "fingerprint",
+    "public_key",
+    "plugin",
+    "version",
     "trusted",
+    "key_name",
     "error"
    ],
-   "additionalProperties": false
+   "additionalProperties": false,
+   "description": "plugin.sig.json checked (SEC-18): whether it holds for this tree and manifest, which key signed it, and whether that key is trusted here for this plugin at its level"
   },
   "error_item": {
    "type": "object",
@@ -653,6 +694,245 @@
    ],
    "additionalProperties": false,
    "description": "one plugin with its manifest, settings' form, settings, secrets (hints) and the hooks that name it"
+  },
+  "trust_grant": {
+   "type": "object",
+   "properties": {
+    "level": {
+     "const": "host"
+    },
+    "basis": {
+     "enum": [
+      "signature",
+      "typed"
+     ]
+    },
+    "key_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "at": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "level",
+    "basis",
+    "key_id",
+    "by",
+    "at"
+   ],
+   "additionalProperties": false
+  },
+  "engine_grant": {
+   "type": "object",
+   "properties": {
+    "basis": {
+     "const": "signature+typed"
+    },
+    "key_id": {
+     "type": "string"
+    },
+    "by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "at": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "basis",
+    "key_id",
+    "by",
+    "at"
+   ],
+   "additionalProperties": false
+  },
+  "trust_policy": {
+   "type": "object",
+   "properties": {
+    "require_signature_sandboxed": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "require_signature_sandboxed"
+   ],
+   "additionalProperties": false
+  },
+  "trusted_key": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{16}$"
+    },
+    "fingerprint": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    },
+    "public_key": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "plugins": {
+     "type": [
+      "array",
+      "null"
+     ],
+     "items": {
+      "type": "string"
+     }
+    },
+    "levels": {
+     "type": [
+      "array",
+      "null"
+     ],
+     "items": {
+      "enum": [
+       "sandboxed",
+       "host",
+       "engine"
+      ]
+     }
+    },
+    "added_at": {
+     "type": "integer"
+    },
+    "added_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "fingerprint",
+    "public_key",
+    "name",
+    "plugins",
+    "levels",
+    "added_at",
+    "added_by"
+   ],
+   "additionalProperties": false
+  },
+  "trust": {
+   "type": "object",
+   "description": "a plugin's trust (SEC-18)",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "version": {
+     "type": "string"
+    },
+    "requested": {
+     "enum": [
+      "sandboxed",
+      "host",
+      "engine"
+     ]
+    },
+    "granted": {
+     "enum": [
+      "sandboxed",
+      "host"
+     ]
+    },
+    "grant": {
+     "anyOf": [
+      {
+       "$ref": "common.schema.json#/$defs/trust_grant"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "engines": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "common.schema.json#/$defs/engine_grant"
+     },
+     "description": "engine host -> its grant"
+    },
+    "signature": {
+     "$ref": "common.schema.json#/$defs/signature"
+    },
+    "signed": {
+     "type": "string",
+     "description": "the signature in words: not signed, signed by whom, why not trusted"
+    },
+    "trusted_for": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "sandboxed",
+       "host",
+       "engine"
+      ]
+     },
+     "description": "the levels its signature is trusted at"
+    },
+    "grant_needs": {
+     "enum": [
+      "none",
+      "rights",
+      "typed",
+      "signature"
+     ],
+     "description": "what a grant at the requested level takes: none (sandboxed), rights (pairing's: a trusted signature), typed (its id typed), signature (engine: a trusted signature first)"
+    },
+    "runs": {
+     "type": "boolean",
+     "description": "whether its trust lets it run now"
+    },
+    "why": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "why not"
+    },
+    "policy": {
+     "$ref": "common.schema.json#/$defs/trust_policy"
+    }
+   },
+   "required": [
+    "id",
+    "version",
+    "requested",
+    "granted",
+    "grant",
+    "engines",
+    "signature",
+    "signed",
+    "trusted_for",
+    "grant_needs",
+    "runs",
+    "why",
+    "policy"
+   ],
+   "additionalProperties": false
   }
  }
 }

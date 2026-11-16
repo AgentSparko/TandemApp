@@ -53,6 +53,19 @@
   },
   {
    "method": "GET",
+   "path": "/v1/fleet/plugins/{id}/trust",
+   "schema": "trust.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugins/{id}/trust",
+   "body": "trust-body.schema.json",
+   "schema": "trust.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "GET",
    "path": "/v1/fleet/plugins/{id}/status",
    "schema": "status.schema.json",
    "rights": "conductor_write"
@@ -93,6 +106,33 @@
    "body": "bridge-body.schema.json",
    "schema": "bridge.schema.json",
    "rights": "conductor_write"
+  },
+  {
+   "method": "GET",
+   "path": "/v1/fleet/plugin-trust",
+   "schema": "plugin-trust.schema.json",
+   "rights": "conductor_write"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugin-trust/keys",
+   "body": "key-body.schema.json",
+   "schema": "key.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "DELETE",
+   "path": "/v1/fleet/plugin-trust/keys/{key}",
+   "body": "key-remove-body.schema.json",
+   "schema": "key-removed.schema.json",
+   "rights": "fleet_trust"
+  },
+  {
+   "method": "POST",
+   "path": "/v1/fleet/plugin-trust/policy",
+   "body": "policy-body.schema.json",
+   "schema": "policy.schema.json",
+   "rights": "fleet_trust"
   }
  ],
  "settings": "a plugin's settings, secrets and capability grants: /v1/settings/plugins?target=<id> (contracts/settings-v1 1.1, the plugins scope)",
@@ -133,7 +173,17 @@
   "plugin_down": 503,
   "refused": 403,
   "plugin_error": 502,
-  "bad_arguments": 400
+  "bad_arguments": 400,
+  "not_requested": 422,
+  "bad_value": 422,
+  "typed_confirm_required": 428,
+  "typed_confirm_mismatch": 422,
+  "trust_confirm_needed": 409,
+  "signature_required": 409,
+  "untrusted": 409,
+  "fingerprint_confirm_required": 428,
+  "fingerprint_mismatch": 422,
+  "key_exists": 409
  },
  "checks": {
   "manifest_missing": "no plugin.json at the plugin's root",
@@ -155,7 +205,7 @@
   "path_outside": "a path leaves the plugin's folder",
   "path_missing": "a path the manifest names is not in the plugin",
   "settings_schema": "the settings schema is not one a form can draw (proxy/schemaform.py STRICT)",
-  "signature_invalid": "plugin.sig.json is present and does not hold for this tree",
+  "signature_invalid": "plugin.sig.json is present and does not hold for this tree and manifest, names another plugin or version, or is of an older format",
   "incompatible_tandemapp": "tandemapp does not hold for this TandemApp",
   "incompatible_hooks_api": "hooks_api is newer than (or of another major than) this controller's",
   "incompatible_plugin_api": "plugin_api is newer than (or of another major than) this controller's",
@@ -163,5 +213,6 @@
   "special_file": "a device, fifo or socket in the tree",
   "bad_name": "a name with a control character",
   "too_large": "over 5000 files or 64 MiB"
- }
+ },
+ "trust": "SEC-18: a signature holds or refuses the install; it is trusted only by a key on /v1/fleet/plugin-trust whose limits allow the plugin at its level. sandboxed runs unsigned unless the policy requires a trusted signature; host needs a grant (a trusted signature, or the plugin's id typed); engine needs a trusted signature and the typed confirmation per engine host, and does not run until the in-process chain exists"
 }

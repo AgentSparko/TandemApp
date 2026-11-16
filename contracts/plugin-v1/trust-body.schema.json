@@ -1,0 +1,26 @@
+{
+ "$id": "plugin-v1/trust-body",
+ "description": "POST /v1/fleet/plugins/{id}/trust: grant host (a trusted signature, or confirm = the plugin's id), engine for one engine host (a trusted signature and confirm), or sandboxed (revoke; with engine: that engine's grant only)",
+ "type": "object",
+ "properties": {
+  "level": {
+   "enum": [
+    "sandboxed",
+    "host",
+    "engine"
+   ]
+  },
+  "engine": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$"
+  },
+  "confirm": {
+   "type": "string",
+   "description": "the plugin's id, typed"
+  }
+ },
+ "required": [
+  "level"
+ ],
+ "additionalProperties": false
+}

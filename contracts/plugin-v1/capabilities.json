@@ -46,9 +46,9 @@
  ],
  "hook_payload": "a contributed hook's payload level needs a requested prompts: capability at that level or above",
  "trust": {
-  "sandboxed": "the default: a container or pod of the chat sandbox's class, the egress filter allowing only the granted network: hosts",
-  "host": "a process of the app's user, outside any sandbox: only once the admin granted it (the plugins scope's trust key, pairing's rights and a second confirm)",
-  "engine": "a wheel inside the engine: refused, not available yet"
+  "sandboxed": "the default: a container or pod of the chat sandbox's class, the egress filter allowing only the granted network: hosts; unsigned is fine unless the policy requires a trusted signature (SEC-18)",
+  "host": "a process of the app's user, outside any sandbox: only once granted, with pairing's rights, on a signature by a trusted key or with the plugin's id typed (SEC-18)",
+  "engine": "a wheel inside the engine: a grant per engine host needs a trusted signature and the plugin's id typed; refused at runtime until the in-process chain exists"
  },
  "enforced": "at each use by the plugin host (SRV-859): prompts: levels on hook payloads and provider input, secrets: in the environment and on tandem/secret, settings:read on tandem/settings and the panel bridge, network: by the egress filter; engine:control refused until engine control exists; a refusal is journaled"
 }

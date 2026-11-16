@@ -73,6 +73,18 @@
       "string",
       "null"
      ]
+    },
+    "fingerprint": {
+     "type": "string",
+     "description": "fingerprint_confirm_required, fingerprint_mismatch: the key's fingerprint"
+    },
+    "expect": {
+     "type": "string",
+     "description": "typed_confirm_required, typed_confirm_mismatch: what to type"
+    },
+    "level": {
+     "type": "string",
+     "description": "trust_confirm_needed: the level the new version asks"
     }
    },
    "required": [

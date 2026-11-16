@@ -1,0 +1,52 @@
+{
+ "$id": "plugin-v1/key-body",
+ "description": "POST /v1/fleet/plugin-trust/keys: trust a publisher key, its fingerprint typed back",
+ "type": "object",
+ "properties": {
+  "public_key": {
+   "type": "string",
+   "description": "base64 of the ed25519 key's 32 bytes"
+  },
+  "name": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 80
+  },
+  "plugins": {
+   "type": [
+    "array",
+    "null"
+   ],
+   "items": {
+    "type": "string"
+   },
+   "minItems": 1,
+   "maxItems": 64,
+   "description": "null: any plugin"
+  },
+  "levels": {
+   "type": [
+    "array",
+    "null"
+   ],
+   "items": {
+    "enum": [
+     "sandboxed",
+     "host",
+     "engine"
+    ]
+   },
+   "minItems": 1,
+   "description": "null: any level"
+  },
+  "confirm_fingerprint": {
+   "type": "string",
+   "description": "the key's fingerprint as its publisher published it (sha256 hex; sha256: in front, colons and spaces allowed)"
+  }
+ },
+ "required": [
+  "public_key",
+  "name"
+ ],
+ "additionalProperties": false
+}

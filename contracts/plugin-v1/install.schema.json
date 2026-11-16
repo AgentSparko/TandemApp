@@ -36,6 +36,13 @@
    "items": {
     "type": "string"
    }
+  },
+  "new": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   },
+   "description": "what the upgrade asks anew (capabilities.<cap>, ungranted) or got by its typed confirmation (trust)"
   }
  },
  "required": [
@@ -44,6 +51,7 @@
   "action",
   "kept",
   "dropped",
+  "new",
   "warnings"
  ],
  "additionalProperties": false

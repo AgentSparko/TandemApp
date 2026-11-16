@@ -1,0 +1,18 @@
+{
+ "$id": "plugin-v1/trust",
+ "description": "GET and POST /v1/fleet/plugins/{id}/trust (SEC-18)",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "trust": {
+   "$ref": "common.schema.json#/$defs/trust"
+  }
+ },
+ "required": [
+  "contract_version",
+  "trust"
+ ],
+ "additionalProperties": false
+}

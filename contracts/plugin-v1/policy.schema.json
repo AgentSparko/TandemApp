@@ -1,0 +1,18 @@
+{
+ "$id": "plugin-v1/policy",
+ "description": "POST /v1/fleet/plugin-trust/policy",
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "policy": {
+   "$ref": "common.schema.json#/$defs/trust_policy"
+  }
+ },
+ "required": [
+  "contract_version",
+  "policy"
+ ],
+ "additionalProperties": false
+}
