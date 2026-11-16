@@ -36,7 +36,7 @@ describe('the mock answers the contract', () => {
     ]);
     const r = rig();
     const o = ok<Overview>(await get(r));
-    expect(o.order).toEqual(['app', 'backends', 'conductor', 'engine', 'hooks']);
+    expect(o.order).toEqual(['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins']);
     expect(o.scopes.find((s) => s.scope === 'engine')!.targets).toEqual([
       { id: 'eh-desk', label: 'spark-desk', writable: true, why: null, transport: 'ssh' },
       { id: 'http:bench', label: 'bench', writable: false, why: 'reached over HTTP only: change its settings on its own host (tandem remote settings), or pair it over SSH', transport: 'http' },

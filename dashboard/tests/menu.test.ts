@@ -79,7 +79,7 @@ describe('sub-pages', () => {
   it('a section without sub-pages has none', () => {
     for (const h of ['#/chat/abc', '#/usage', '#/overview', '#/events', '#/health/spark-desk', '#/dev', '#/playground', '#/add-engine', '#/add-spark']) expect(subs(h), h).toEqual([]);
     // VIS-280: App is the settings area, a page a settings scope beside it
-    expect(subs('#/app/backends')).toEqual(['App #/app', '*Backends #/app/backends', 'Conductor #/app/conductor', 'Engines #/app/engines', 'Hooks #/app/hooks', 'History #/app/history']);
+    expect(subs('#/app/backends')).toEqual(['App #/app', '*Backends #/app/backends', 'Conductor #/app/conductor', 'Engines #/app/engines', 'Hooks #/app/hooks', 'Plugins #/app/plugins', 'History #/app/history']);
   });
 });
 

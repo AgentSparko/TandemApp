@@ -172,8 +172,10 @@ describe('Acceptance criteria (SRV-835)', () => {
           expect(t, f.code).toContain(f.fix);
           expect(f.sentence + f.fix, f.code).not.toMatch(/[{}]/);
           const want = HEALTH_FINDINGS[f.code][1];
-          // a refused pairing is no target: its way on is Add engine; a host key that does not match gets none
-          const button = c.kind === 'pairings' ? (want && f.code !== 'host_key_mismatch' ? ['open-add-engine'] : []) : want ? [want] : [];
+          // a refused pairing is no target: its way on is Add engine; a host key that does not match gets none;
+          // a plugin's finding without a fix links to its page, which the plugins pages (VIS-284) hold
+          const button = c.kind === 'pairings' ? (want && f.code !== 'host_key_mismatch' ? ['open-add-engine'] : []) : want ? [want] : c.kind === 'plugins' && f.facts.plugin ? ['open-plugin'] : [];
+          if (button[0] === 'open-plugin') expect(t, f.code).toContain(`href=#/app/plugins/p/${encodeURIComponent(String(f.facts.plugin))}`);
           expect(acts(t), f.code).toEqual(button);
         }
       }

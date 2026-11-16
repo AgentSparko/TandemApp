@@ -5,6 +5,9 @@
 // LAN), versions, restore, the engine restarts a change scheduled and the audit rows. No answer
 // holds a secret.
 //
+// A sixth scope, `plugins` (settings-v1 1.1), has one target an installed plugin: its keys come
+// from its manifest (mock/plugins.ts holds the registry, with its own API).
+//
 // What it holds:
 //   app        chat and conductor, on or off: the same switches as What runs here (mock/appsettings.ts)
 //   backends   `engine` (TandemLLM; its url and enabled are set by TANDEM_BACKENDS: locked) and
@@ -40,15 +43,24 @@
 //   {unreachable: "<engine target>" | null} that engine host does not answer over SSH
 //   {wheel: false | true}                  this controller has no wheel of its own to install the
 //                                          chat extension from (409 extension_missing)
+//   plugins    one target an installed plugin (mock/plugins.ts): `enabled`, `settings.<property>`
+//              from its settings schema, `secrets.<NAME>` write-only, `capabilities.<capability>`
+//              and, for a manifest that asks the host, `trust`. Enabling and a grant take
+//              pairing's rights ({trust: false}: 403 trust_required); prompts:full,
+//              engine:control, a network host outside the LAN and trust host are the plan's
+//              `grant_keys` and need `confirm_grant`
 
 import { createHash } from 'node:crypto';
 import { MockHooks, type MockHook, type MockProvider } from './hooks.ts';
+import { MockPlugins, needsConfirm } from './plugins.ts';
+import { validateField } from '../src/lib/plugins.ts';
+import { schemaForm } from '../src/lib/schema-form.ts';
 import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestartEstimate, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 
 const CONTRACT = '1.1';
-const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks'];
+const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
 const OPS = ['schema', 'get', 'plan', 'apply', 'versions', 'restore'];
 const REPLAY_MS = 300_000;
 const RESTART_MS = 4000;
@@ -1097,6 +1109,165 @@ class EngineScope implements ScopeImpl {
 }
 
 // ---- the interface --------------------------------------------------------------------------------
+// ---- plugins ----------------------------------------------------------------------------------------
+const PLUGIN_TYPE: Record<string, KeyType> = { string: 'string', integer: 'integer', number: 'number', boolean: 'boolean', array: 'list', object: 'object' };
+
+/** One plugin's keys (proxy/pluginsettings.py): what its manifest makes of them, its own versions. */
+class PluginKeys extends KeyValueScope {
+  private who = 'admin';
+  private at = 0;
+  private confirmed = false;
+  constructor(
+    private reg: MockPlugins,
+    private id: string,
+  ) {
+    super('plugins');
+  }
+  private form(prop: string) {
+    const sch = this.reg.schema(this.reg.need(this.id));
+    return sch ? schemaForm(sch).fields.find((f) => f.path[0] === prop) : undefined;
+  }
+  spec(): Record<string, KeySpec> {
+    const p = this.reg.need(this.id);
+    const out: Record<string, KeySpec> = { enabled: spec('enabled', 'boolean', { default: false, text: 'the plugin host may start it' }) };
+    const sch = this.reg.schema(p);
+    for (const f of sch ? schemaForm(sch).fields : []) {
+      const k = `settings.${f.path[0]}`;
+      const named = (f.control === 'select' || f.control === 'choice') && f.options!.every((o) => typeof o.value === 'string');
+      out[k] = spec(k, named ? 'enum' : (PLUGIN_TYPE[f.type] ?? 'object'), { ...(named ? { values: f.options!.map((o) => o.value as string) } : {}), nullable: f.nullable || !f.required, default: f.has_default ? f.default : null, ...(f.description ? { text: f.description } : {}) });
+    }
+    for (const x of p.manifest.secrets ?? []) out[`secrets.${x.name}`] = spec(`secrets.${x.name}`, 'string', { secret: true, nullable: true, ...(x.description ? { text: x.description } : {}) });
+    for (const c of this.reg.requested(p)) out[`capabilities.${c}`] = spec(`capabilities.${c}`, 'boolean', { default: false, text: `granted: the plugin may use it (deny by default)${needsConfirm(c) ? '; granting it takes a second confirm' : ''}` });
+    if (p.manifest.trust === 'host') out.trust = spec('trust', 'enum', { values: ['sandboxed', 'host'], default: 'sandboxed', text: 'host: the plugin runs as a process of the app’s user, outside any sandbox (granting it takes a second confirm); sandboxed: it does not start' });
+    return out;
+  }
+  values(): Record<string, Val> {
+    const p = this.reg.need(this.id);
+    const extra = { label: p.manifest.title ?? p.id };
+    const out: Record<string, Val> = { enabled: { value: p.enabled, set: p.enabled, source: 'plugin', extra } };
+    const eff = this.reg.effective(p);
+    const props = (this.reg.schema(p)?.properties ?? {}) as Record<string, unknown>;
+    for (const k of Object.keys(props)) out[`settings.${k}`] = { value: eff[k] ?? null, set: k in p.settings, source: 'plugin', extra };
+    for (const [n, h] of Object.entries(this.reg.hints(p))) out[`secrets.${n}`] = { value: null, set: h.set, source: 'plugin', extra: { ...extra, hint: h.sha256_6 } };
+    for (const c of this.reg.requested(p)) out[`capabilities.${c}`] = { value: c in p.granted, set: c in p.granted, source: 'plugin', extra };
+    if (p.manifest.trust === 'host') out.trust = { value: p.trust_granted, set: p.trust_granted !== 'sandboxed', source: 'plugin', extra };
+    return out;
+  }
+  check(sets: Record<string, unknown>, unsets: string[], s: Record<string, KeySpec>): void {
+    const p = this.reg.need(this.id);
+    const bad = (k: string, why: string): never => no('bad_value', `${k}: ${why}`, { key: k });
+    for (const [k, v] of Object.entries(sets)) {
+      if (k === 'enabled') {
+        if (typeof v !== 'boolean') bad(k, 'true or false');
+        if (v && p.integrity !== 'ok') bad(k, `${p.id}: its tree is ${p.integrity} since the install; install it again`);
+      } else if (k.startsWith('settings.')) {
+        if (v === null) continue;
+        const f = this.form(k.slice(9))!;
+        const errs = Object.values(validateField({ ...f, required: true }, v, [k]));
+        if (errs.length) bad(k, errs[0].charAt(0).toLowerCase() + errs[0].slice(1).replace(/\.$/, ''));
+      } else if (s[k].secret) {
+        if (v !== null && (typeof v !== 'string' || v.length < 1 || v.length > 8192)) bad(k, 'a string of 1 to 8192 characters');
+      } else if (k.startsWith('capabilities.')) {
+        if (typeof v !== 'boolean') bad(k, 'true or false');
+      } else if (k === 'trust' && v !== 'sandboxed' && v !== 'host') bad(k, 'sandboxed or host');
+    }
+    for (const k of unsets) {
+      if (!k.startsWith('settings.')) continue;
+      const f = this.form(k.slice(9))!;
+      if (f.required && !f.has_default) bad(k, 'it is required and has no default: set a value');
+    }
+  }
+  plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
+    const p = super.plan(t, sets, unsets);
+    const row = this.reg.need(this.id);
+    // a plan is of this install of the plugin as it stands: one removed and installed again is another
+    p.state = digest([p.state, row.installed_at, row.row_version]);
+    // a switch or a grant set to what holds already is no change
+    p.changes = p.changes.filter((c) => c.secret || c.key.startsWith('settings.') || stable(c.from) !== stable(c.to));
+    const changed = new Set(p.changes.map((c) => c.key));
+    const grants: { key: string; capability: string; confirm: boolean }[] = [];
+    for (const [k, v] of Object.entries(sets)) {
+      if (!changed.has(k)) continue;
+      if (k.startsWith('capabilities.') && v === true) grants.push({ key: k, capability: k.slice(13), confirm: needsConfirm(k.slice(13)) });
+      else if (k === 'trust' && v === 'host') grants.push({ key: k, capability: 'trust', confirm: true });
+    }
+    const enabling = changed.has('enabled') && sets.enabled === true;
+    if (!grants.length && !enabling) return p;
+    if (!this.reg.trust) {
+      const key = grants[0]?.key ?? 'enabled';
+      no('trust_required', `${key}: granting a plugin a capability or enabling it takes pairing’s rights: set an admin password (App settings) to do it from another machine, or do it from this one`, { key });
+    }
+    if (enabling) p.warnings.push(`enabled: the plugin host may start ${row.id} (its own code, with the capabilities granted to it)`);
+    for (const g of grants) p.warnings.push(`${g.key}: ${row.id} gets ${g.capability}${g.confirm ? ': apply asks a second time' : ''}`);
+    p.grant_keys = grants.filter((g) => g.confirm).map((g) => g.key).sort();
+    p.state = digest([p.state, grants]);
+    return p;
+  }
+  apply(t: string, p: ScopePlan, ctx: Ctx): Applied {
+    this.who = ctx.who;
+    this.at = ctx.now;
+    this.confirmed = (p.grant_keys ?? []).length > 0;
+    return super.apply(t, p, ctx);
+  }
+  write(sets: Record<string, unknown>, unsets: string[]): void {
+    const w = { enabled: null as boolean | null, settings_set: {} as Record<string, unknown>, settings_unset: [] as string[], secrets_set: {} as Record<string, string>, secrets_unset: [] as string[], grant: [] as string[], revoke: [] as string[], trust: undefined as 'sandboxed' | 'host' | undefined, confirmed: this.confirmed };
+    for (const [k, v] of Object.entries(sets)) {
+      if (k === 'enabled') w.enabled = !!v;
+      else if (k.startsWith('settings.')) v === null ? w.settings_unset.push(k.slice(9)) : (w.settings_set[k.slice(9)] = v);
+      else if (k.startsWith('secrets.')) v === null ? w.secrets_unset.push(k.slice(8)) : (w.secrets_set[k.slice(8)] = v as string);
+      else if (k.startsWith('capabilities.')) (v ? w.grant : w.revoke).push(k.slice(13));
+      else if (k === 'trust') w.trust = v as 'sandboxed' | 'host';
+    }
+    for (const k of unsets) {
+      if (k === 'enabled') w.enabled = false;
+      else if (k.startsWith('settings.')) w.settings_unset.push(k.slice(9));
+      else if (k.startsWith('secrets.')) w.secrets_unset.push(k.slice(8));
+      else if (k.startsWith('capabilities.')) w.revoke.push(k.slice(13));
+      else if (k === 'trust') w.trust = 'sandboxed';
+    }
+    try {
+      this.reg.write(this.id, w, this.who, this.at);
+    } catch (e) {
+      no('store_refused', (e as Error).message);
+    }
+  }
+}
+
+/** The plugins scope: one target a plugin, each with its own keys and its own versions. */
+class PluginsScope implements ScopeImpl {
+  /** a plugin's keys, with the install they are of */
+  private keys = new Map<string, { of: number; keys: PluginKeys }>();
+  constructor(private reg: MockPlugins) {}
+  private of(t: string): PluginKeys {
+    // a plugin that was removed takes its versions with it, also when it is installed again
+    for (const [id, k] of [...this.keys]) if (this.reg.rows[id]?.installed_at !== k.of) this.keys.delete(id);
+    let k = this.keys.get(t);
+    if (!k) this.keys.set(t, (k = { of: this.reg.rows[t].installed_at, keys: new PluginKeys(this.reg, t) }));
+    return k.keys;
+  }
+  targets(): Target[] {
+    return this.reg.list().map((p) => ({ id: p.id, label: p.manifest.title ?? p.id, writable: true, why: p.integrity === 'ok' ? null : `its tree is ${p.integrity} since the install` }));
+  }
+  schema(t: string) {
+    return this.of(t).schema();
+  }
+  get(t: string) {
+    return this.of(t).get();
+  }
+  plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
+    return this.of(t).plan(t, sets, unsets);
+  }
+  apply(t: string, p: ScopePlan, ctx: Ctx): Applied {
+    return this.of(t).apply(t, p, ctx);
+  }
+  versions(t: string) {
+    return this.of(t).versions();
+  }
+  planRestore(t: string, version: string): ScopePlan {
+    return this.of(t).planRestore(t, version);
+  }
+}
+
 interface Part {
   scope: Scope;
   target: string;
@@ -1117,6 +1288,8 @@ export interface MockSettingsOptions {
   /** the hook registry holds its sample hooks and providers (control({hooks}) changes it); `demo`:
    *  more of them, with the traffic the hooks pages show (mock/hooks.ts) */
   hooks?: boolean | 'demo';
+  /** the plugin registry holds hello-tool (true) or the demo set (mock/plugins.ts) */
+  plugins?: boolean | 'demo';
   now?: number;
 }
 
@@ -1127,6 +1300,9 @@ export class MockSettings {
   /** the hooks and the decision providers: the settings' hooks scope and their own two APIs
    *  (/v1/fleet/hooks, /v1/fleet/decision-providers) are views of this one registry */
   readonly registry: MockHooks;
+  /** the plugins: the settings' plugins scope and their own API (/v1/fleet/plugins) are views of
+   *  this one registry */
+  readonly plugins: MockPlugins;
   private audits: (AuditRow & { n: number })[] = [];
   private done = new Map<string, { same: string; result: Result; at: number; restarts: string[] }>();
   private fails = new Map<string, string>();
@@ -1140,7 +1316,9 @@ export class MockSettings {
     this.registry = new MockHooks(t0);
     this.hooks = new HooksScope(this.registry);
     if (o.hooks) this.registry.seed(o.hooks);
-    this.scopes = { app: new AppScope(o.parts), backends: new BackendsScope(), conductor: new ConductorScope(o.parts, t0), engine: this.engine, hooks: this.hooks };
+    this.plugins = new MockPlugins(t0);
+    if (o.plugins) this.plugins.seed(o.plugins);
+    this.scopes = { app: new AppScope(o.parts), backends: new BackendsScope(), conductor: new ConductorScope(o.parts, t0), engine: this.engine, hooks: this.hooks, plugins: new PluginsScope(this.plugins) };
     this.engine.onEnd = (r, state) => {
       this.audit(r.end!.at, r.who, 'settings.restart', `engine/${r.host.id}`, [], r.change_set, state);
       // a restart that did not end well: the result it belongs to holds no longer
@@ -1161,7 +1339,10 @@ export class MockSettings {
     if (typeof b.busy === 'boolean') this.busy = b.busy;
     if (b.move) this.epoch++;
     if (typeof b.hooks === 'boolean') this.hooks.plugged = b.hooks;
-    if (typeof b.trust === 'boolean') this.hooks.trust = b.trust;
+    if (typeof b.trust === 'boolean') {
+      this.hooks.trust = b.trust;
+      this.plugins.trust = b.trust;
+    }
     if ('unreachable' in b) this.engine.unreachable = b.unreachable ?? null;
     if (typeof b.wheel === 'boolean') this.engine.wheel = b.wheel;
     return { fails: Object.fromEntries(this.fails), busy: this.busy, hooks: this.hooks.plugged, trust: this.hooks.trust, wheel: this.engine.wheel };
@@ -1341,6 +1522,7 @@ export class MockSettings {
     const parts = path.replace(/\/+$/, '').split('/').slice(3).map((p) => decodeURIComponent(p));
     this.engine.now = nowMs;
     this.registry.now = nowMs;
+    this.plugins.now = nowMs;
     // the clock moves every restart on, whoever asks
     for (const r of this.engine.restarts) this.engine.view(r, nowMs);
     try {

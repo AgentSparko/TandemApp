@@ -1,0 +1,642 @@
+/* The plugins pages (VIS-284, views/plugins/): the installed list, the install, a plugin's page and
+   its panels. They are drawn in the settings area's and the hooks pages' own language: the rows of
+   a scope's form for a plugin's settings and secrets, the numbered rail for an install's stops,
+   the cards for a choice, cobalt for what is staged or chosen. What is new here is small: a row a
+   plugin, a check with how it ended, a capability with its risk as a bar down its side (grey, amber,
+   red: the status colours, since a risk is one), a log, and the frame a panel shows in. The page
+   column is the `mon` container, so a phone and a column between two sidebars get the same narrow
+   layout. */
+
+qse-plugins {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.plg-reads {
+  flex: 1;
+  min-width: 0;
+}
+.plg-desc {
+  max-width: 72ch;
+  margin-top: 4px;
+}
+
+/* ---- a plugin's state: a dot of its tone and the word --------------------------------------------- */
+.plg-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.plg-state > i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.plg-state.is-ok > i {
+  background: var(--ok);
+}
+.plg-state.is-live > i {
+  background: var(--orange);
+}
+.plg-state.is-warn > i {
+  background: var(--warn);
+}
+.plg-state.is-err > i {
+  background: var(--err);
+}
+.plg-state.is-muted {
+  color: var(--ink-2);
+}
+/* off: a ring, so the state is not said by colour alone */
+.plg-state.is-muted > i {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--ink-3);
+}
+
+/* ---- the installed list --------------------------------------------------------------------------- */
+.plg-list,
+.plg-rows,
+.plg-caps,
+.plg-checks,
+.plg-problems,
+.plg-journal,
+.plg-items-l {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plg-list {
+  gap: 8px;
+}
+.plg-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.plg-item:hover {
+  border-color: color-mix(in srgb, var(--cobalt) 55%, var(--rule-strong));
+}
+.plg-item.is-staged {
+  background: color-mix(in srgb, var(--cobalt) 7%, var(--bg-2));
+  box-shadow: inset 2px 0 0 var(--cobalt);
+}
+.plg-item-a {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: inherit;
+}
+.plg-item-a:hover {
+  text-decoration: none;
+}
+.plg-item-a:hover .plg-item-n {
+  color: var(--cobalt-hi);
+}
+.plg-item-h,
+.plg-item-m,
+.plg-item-s,
+.plg-facts,
+.plg-row-h,
+.plg-cap-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.plg-item-n {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.plg-item.is-off .plg-item-n {
+  color: var(--ink-2);
+}
+.plg-item-d {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 78ch;
+}
+.plg-item-m {
+  gap: 2px 16px;
+  overflow-wrap: anywhere;
+}
+.plg-item-s {
+  justify-content: flex-end;
+  max-width: 300px;
+  gap: 6px 8px;
+}
+.plg-author {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 78ch;
+  padding: 4px 0 8px;
+}
+.plg-author ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* ---- an install: the checks, the sha256, what it asks for ----------------------------------------- */
+.plg-checks {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.plg-check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--rule);
+}
+.plg-check:first-child {
+  border-top: 0;
+}
+.plg-check-g {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  line-height: 1;
+}
+.plg-check.is-pass .plg-check-g {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+.plg-check.is-refused {
+  background: var(--err-wash);
+}
+.plg-check.is-refused .plg-check-g {
+  background: var(--err);
+  color: var(--tl-ink-on-light);
+}
+.plg-check.is-skipped .plg-check-g {
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  color: var(--ink-3);
+}
+.plg-check.is-skipped .plg-check-t {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.plg-check-b {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.plg-check-t {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.plg-problems {
+  gap: 8px;
+  margin-top: 4px;
+}
+.plg-problem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--err);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.plg-problem-t {
+  font-weight: 600;
+}
+.plg-sha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+}
+.plg-sha > .xs {
+  grid-column: 1 / -1;
+}
+.plg-sha > code {
+  padding: 0;
+  background: none;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.plg-facts {
+  gap: 2px 16px;
+  overflow-wrap: anywhere;
+}
+
+/* ---- what it may do: where it runs, then a capability a row, its risk down its side --------------- */
+.plg-caps {
+  gap: 6px;
+}
+.plg-cap,
+.plg-level {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--ink-3);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+.plg-level {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.plg-cap.is-elevated,
+.plg-level.is-elevated {
+  border-left-color: var(--warn);
+}
+.plg-cap.is-high,
+.plg-level.is-high {
+  border-left-color: var(--err);
+}
+.plg-cap.is-staged,
+.plg-level.is-staged {
+  background: color-mix(in srgb, var(--cobalt) 7%, var(--bg-3));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cobalt) 45%, transparent);
+}
+.plg-cap-b {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.plg-cap-b code {
+  overflow-wrap: anywhere;
+}
+.plg-cap-e {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.plg-level .hk-cards {
+  margin-top: 4px;
+}
+.plg-trust-sig {
+  margin-top: 10px;
+}
+
+/* ---- what it adds: a kind a group, a row a thing ---------------------------------------------------- */
+.plg-contribs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.plg-contrib,
+.plg-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.plg-contrib > .hk-sub,
+.plg-refs > .hk-sub {
+  margin-top: 0;
+}
+.plg-refs {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.plg-rows {
+  gap: 0;
+}
+.plg-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.plg-rows > .plg-row:first-child {
+  border-top: 0;
+}
+.plg-row-b {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plg-row .btn .icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---- one plugin ------------------------------------------------------------------------------------ */
+.plg-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--cobalt) 50%, var(--rule-strong));
+  border-left: 3px solid var(--cobalt);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+.plg-setup h3 {
+  font-size: var(--fs-md);
+}
+.plg-setup .st-acts {
+  margin-top: 0;
+  align-items: center;
+}
+.plg-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.plg-controls .btn .icon {
+  width: 13px;
+  height: 13px;
+}
+.plg-err {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plg-err code {
+  padding: 0;
+  background: none;
+}
+.plg-journal {
+  margin-top: 6px;
+}
+.plg-journal > li {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+.plg-journal > li:first-child {
+  border-top: 0;
+}
+
+/* a settings form: a group of fields, a list item by item */
+.plg-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.plg-group .plg-group {
+  grid-column: 1 / -1;
+}
+.plg-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.plg-sub > .seg,
+.plg-sub > select {
+  align-self: flex-start;
+}
+.plg-sub select,
+.plg-items select,
+.plg-tail select {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  max-width: 100%;
+}
+.plg-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.plg-items-l {
+  gap: 6px;
+}
+.plg-item-r {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+  max-width: 520px;
+}
+.plg-item-c {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* its log */
+.plg-log-tools {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.plg-log-tools .hk-check {
+  min-height: 0;
+  padding: 0;
+}
+.plg-log {
+  margin: 0;
+  max-height: 420px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  overflow: auto;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  tab-size: 2;
+}
+.plg-log:focus-visible {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
+}
+/* a wheel from this computer: the file input is hidden in its button, which shows its focus */
+.plg-upload > label {
+  align-self: flex-start;
+  cursor: pointer;
+}
+.plg-upload > label:focus-within {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
+}
+.plg-log code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+/* the plugin host's own lines, and a line that names a failure */
+.plg-log-h {
+  color: var(--ink-3);
+}
+.plg-log-e {
+  color: var(--err);
+}
+
+/* ---- a panel: the plugin's page in a frame of its own --------------------------------------------- */
+.plg-frame-w {
+  min-height: 240px;
+  height: min(70vh, 860px);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  /* a page that sets no colours of its own stays legible: the frame is paper */
+  background: #fff;
+  overflow: hidden;
+  resize: vertical;
+}
+.plg-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  color-scheme: light;
+}
+.plg-frame-wait {
+  height: 320px;
+}
+.plg-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.plg-bridge .st-acts {
+  margin-top: 2px;
+}
+
+@container mon (max-width: 640px) {
+  .plg-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plg-item-s {
+    justify-content: flex-start;
+    max-width: none;
+  }
+  .plg-item-a {
+    min-height: 44px;
+  }
+  .plg-nav > .btn {
+    order: -1;
+  }
+  .plg-reads {
+    flex-basis: 100%;
+  }
+  .plg-cap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plg-cap-e {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+  }
+  .plg-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plg-row > .btn {
+    justify-self: start;
+    min-height: 40px;
+  }
+  .plg-controls {
+    width: 100%;
+    margin-left: 0;
+  }
+  .plg-controls .btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
+  }
+  .plg-setup .btn,
+  .plg-install .st-acts .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 42px;
+  }
+  .plg-journal > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plg-group {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+  .plg-sub select,
+  .plg-items select,
+  .plg-tail select {
+    min-height: 40px;
+  }
+  .plg-item-r {
+    max-width: none;
+  }
+  .plg-item-r > .btn {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+  }
+  .plg-sha {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plg-log-tools {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .plg-log {
+    max-height: 320px;
+  }
+  .plg-frame-w {
+    height: 68vh;
+    resize: none;
+  }
+}

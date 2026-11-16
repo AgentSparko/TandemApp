@@ -25,6 +25,8 @@ qse-settings {
   display: none;
 }
 .st-tab {
+  /* what a tab hides for a screen reader (its staged count) stays inside the strip that scrolls */
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-height: 40px;

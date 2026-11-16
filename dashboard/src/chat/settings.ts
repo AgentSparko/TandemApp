@@ -295,7 +295,7 @@ export class QseChatSettings extends LightElement {
 
   private renderMcp(): TemplateResult {
     return html`<h3 class="ch-settings-h">MCP servers</h3>
-      <p class="ch-settings-lead">Servers the model can call through the Model Context Protocol. stdio servers run on the box; HTTP servers are reached by URL.</p>
+      <p class="ch-settings-lead">Servers the model can call through the Model Context Protocol. stdio servers run on the box; HTTP servers are reached by URL. A running plugin’s tools show here too, and are managed with the plugin.</p>
       <ul class="ch-mcp-list">
         ${this.mcp.map((s) => this.renderServer(s))}
       </ul>
@@ -304,15 +304,19 @@ export class QseChatSettings extends LightElement {
 
   private renderServer(s: McpServer): TemplateResult {
     const open = this.openServer === s.id;
+    // a running plugin's tools (transport `plugin`): listed here, managed on the plugin's own page
+    const ofPlugin = s.transport === 'plugin' && !!s.plugin;
     return html`<li class="ch-mcp is-${s.status}" data-mcp=${s.id}>
       <div class="ch-mcp-row">
         <span class="ch-mark ch-mark-mcp-${s.status}"><span class="ch-mark-dot" aria-hidden="true"></span>${s.status}</span>
         <span class="ch-mcp-name">${s.name}</span>
         <span class="tag">${s.transport}</span>
-        <code class="ch-mcp-where">${s.transport === 'stdio' ? [s.command, ...(s.args ?? [])].join(' ') : s.url}</code>
+        <code class="ch-mcp-where">${ofPlugin ? s.plugin : s.transport === 'stdio' ? [s.command, ...(s.args ?? [])].join(' ') : s.url}</code>
         <span class="grow"></span>
         <button type="button" class="linkish small" aria-expanded=${open} @click=${() => (this.openServer = open ? null : s.id)}>${s.tools.length} tool${s.tools.length === 1 ? '' : 's'}</button>
-        <button type="button" class="btn btn-ghost btn-sm" title="Restart" aria-label=${`Restart ${s.name}`} @click=${async () => {
+        ${ofPlugin
+          ? html`<a class="btn btn-ghost btn-sm" href=${`#/app/plugins/p/${encodeURIComponent(s.plugin!)}`} title="A plugin’s tools are turned on, off and removed with the plugin" data-mcp-plugin=${s.plugin!}>Manage the plugin</a>`
+          : html`<button type="button" class="btn btn-ghost btn-sm" title="Restart" aria-label=${`Restart ${s.name}`} @click=${async () => {
           const r = await this.backend!.restartMcpServer(s.id);
           this.mcp = this.mcp.map((x) => (x.id === s.id ? r : x));
           setTimeout(() => void this.backend!.mcpServers().then((l) => (this.mcp = l)), 1_500);
@@ -321,7 +325,7 @@ export class QseChatSettings extends LightElement {
           if (!confirm(`Remove the server "${s.name}"?`)) return;
           await this.backend!.removeMcpServer(s.id);
           this.mcp = this.mcp.filter((x) => x.id !== s.id);
-        }}>${icon('trash')}</button>
+        }}>${icon('trash')}</button>`}
       </div>
       ${s.error ? html`<p class="ch-mcp-error err-ink small">${s.error}</p>` : nothing}
       ${open ? html`<ul class="ch-mcp-tools">${s.tools.length ? s.tools.map((t) => html`<li><code>${t.name}</code><span class="muted small">${t.description}</span></li>`) : html`<li class="muted small">no tools listed</li>`}</ul>` : nothing}

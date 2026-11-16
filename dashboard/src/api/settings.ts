@@ -1,5 +1,5 @@
-// The settings interface (contracts/settings-v1, `/v1/settings/*`; VIS-280, SRV-845): five scopes
-// (app, backends, conductor, engine, hooks) that answer the same questions with the same shapes, a
+// The settings interface (contracts/settings-v1, `/v1/settings/*`; VIS-280, SRV-845): six scopes
+// (app, backends, conductor, engine, hooks, plugins) that answer the same questions with the same shapes, a
 // change set across them with its plan, its confirm and its result, the engine restarts a change
 // scheduled, and the audit rows. The page plans and applies through the change-set routes only: one
 // part a scope and target, a restore as a part too.
@@ -11,8 +11,8 @@
 import { apiBase } from './client';
 import type { Send } from './engines';
 
-export type Scope = 'app' | 'backends' | 'conductor' | 'engine' | 'hooks';
-export const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks'];
+export type Scope = 'app' | 'backends' | 'conductor' | 'engine' | 'hooks' | 'plugins';
+export const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
 /** none: applied as it is; app: this controller restarts; hot: the running service reads it at
  *  once; engine: the engine restarts (scheduled, waits for idle) */
 export type RestartClass = 'none' | 'app' | 'hot' | 'engine';
@@ -136,7 +136,8 @@ export interface PartPlan {
    *  saw that engine's last restart; engine: the engine's own last start; default: not known yet */
   restart_estimate?: RestartEstimate | null;
   fingerprint_keys: string[];
-  /** the keys that grant a hook the full payload to a destination outside the LAN */
+  /** the keys whose grant is asked a second time: a hook's full payload to a destination outside
+   *  the LAN; a plugin's risky capability, or its run on the host */
   grant_keys: string[];
   warnings: string[];
 }

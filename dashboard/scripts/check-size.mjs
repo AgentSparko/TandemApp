@@ -114,6 +114,21 @@
 // that loads when Monitor → Health opens. The entry chunk stays at 106.0 KB (33 bytes more: the route, the menu
 // entry and its icon). Room looked for first: the page uses the engine routes' refusals and the sign-in card, not
 // copies of its own; the budget counts every file, so a further split saves nothing.
+// 752 KB with the plugins pages (VIS-284, 2026-11-16: 749.4 KB, 767,421 bytes, from 714.5 KB): the installed list,
+// an install with its checks, the sha256, the capabilities in words with their risk and what a plugin adds, a
+// plugin's page with its state, the form drawn from its settings schema, its secrets, grants, log and files, and
+// a panel's frame with the page's side of its bridge, with the API's client, the flow and every refusal's words.
+// They are a chunk of their own (29.8 KB js, 2.1 KB css) that loads when Settings → Plugins opens. The entry
+// chunk stays at 106.0 KB. The small templates they share with the hooks pages moved into a chunk of 1.0 KB
+// that both load (the hooks pages' chunk went from 39.6 to 39.1 KB); the settings area's chunk carries the
+// capability words its review sheet uses and the page that holds the plugins pages. Room looked for first: the
+// pages use the settings area's draft, run sheet, versions and rows and the hooks pages' cards, fields and
+// stylesheet, not copies of their own; the panel the mock serves is not in the bundle; the budget counts every
+// file, so a further split saves nothing.
+// 768 KB with both (2026-11-16: 765.9 KB, 784,253 bytes, from 714.5 KB): the health page and the plugins pages
+// merged, each a chunk of its own that loads when its page opens (11.8 KB js and 31.2 KB js). The plugins pages'
+// chunk grew from 29.8 KB with a wheel's upload, the list's run state, the controller's word on which grants ask
+// twice and the words of the trust routes' refusals. The entry chunk stays at 106.0 KB.
 // OPS-246: dist/ is a build output; CI runs this after the build and a total over the budget fails
 // the job. An optional argument names another folder (the size test's fixture).
 import { existsSync } from 'node:fs';

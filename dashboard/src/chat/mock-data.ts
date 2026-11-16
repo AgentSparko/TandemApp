@@ -88,6 +88,8 @@ export const MCP: McpServer[] = [
   { id: 'notes', name: 'notes', transport: 'stdio', command: 'notes-mcp', args: ['--workspace', 'default'], env: {}, status: 'connected', error: null, tools: [{ name: 'notes_search', description: 'search the notes workspace' }, { name: 'notes_read', description: 'read one note by id' }, { name: 'notes_write', description: 'create or update a note' }], updated_at: iso(-3_600_000) },
   { id: 'web-search', name: 'web-search', transport: 'http', url: 'http://127.0.0.1:8787/mcp', headers: {}, status: 'connected', error: null, tools: [{ name: 'search', description: 'web search, ten results' }, { name: 'fetch_page', description: 'fetch a result as readable text' }], updated_at: iso(-7_200_000) },
   { id: 'calendar', name: 'calendar', transport: 'stdio', command: 'uvx', args: ['calendar-mcp'], env: {}, status: 'failed', error: 'spawn uvx: not found on PATH', tools: [], updated_at: iso(-600_000) },
+  // a running plugin's tools (SRV-859): read-only here, managed on the plugin's page
+  { id: 'plugin:hello-tool', name: 'Hello tool', transport: 'plugin', plugin: 'hello-tool', read_only: true, status: 'connected', error: null, tools: [{ name: 'greet', description: 'Say hello to someone by name.' }], updated_at: iso(-120_000) },
 ];
 
 export const PROMPTS: Prompt[] = [
