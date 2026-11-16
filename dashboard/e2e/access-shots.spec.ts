@@ -40,8 +40,8 @@ async function overflowing(page: Page): Promise<string[]> {
     const w = doc.clientWidth;
     const out: string[] = doc.scrollWidth > w + 1 ? [`the document scrolls: ${doc.scrollWidth} > ${w}`] : [];
     for (const el of Array.from(document.querySelectorAll<HTMLElement>('.content *, dialog[open] *'))) {
-      // the strip of pages scrolls by itself, on purpose
-      if (el.closest('.ac-tabs')) continue;
+      // the strips of pages (access, settings) scroll by themselves, on purpose
+      if (el.closest('.ac-tabs, .st-tabs')) continue;
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.right > w + 1) out.push(`${el.tagName.toLowerCase()}.${String(el.className).replace(/\s+/g, '.')} right=${Math.round(r.right)} width=${Math.round(r.width)} in ${el.parentElement?.className ?? ''}`);
     }
