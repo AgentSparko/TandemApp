@@ -47,6 +47,11 @@ the next request.
 from __future__ import annotations
 
 import copy
+import ipaddress
+import json
+import os
+import re
+import time
 
 from proxy import appparts
 from proxy import config as config_mod
@@ -638,3 +643,256 @@ class HooksScope(KeyValueScope):
             self.adapter.write(sets, unsets, who, grants=g)
         else:
             self.adapter.write(sets, unsets, who)
+
+
+# ======================================================================================== auth, api
+_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+                   r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+
+
+def _spec(type_, default, text, *, values=None, lo=None, hi=None, perm="owner",
+          password=False, restart="none") -> dict:
+    return {"type": type_, "default": default, "text": text, "values": values, "lo": lo,
+            "hi": hi, "perm": perm, "password": password, "restart": restart}
+
+
+class AccountsScope(KeyValueScope):
+    """SRV-871: the `auth` and `api` scopes (TANDEM_AUTH=accounts only; proxy/app.py adds them),
+    flat keys over the config database's settings `auth.<key>` and `api.<key>`, the keys
+    proxy/authz.py Policy, proxy/authlocal.py and proxy/exposure.py read. Owner-only for writes
+    (but `api.tokens.viewers_may_create`, which an admin switches: decision 4 of 2026-11-16) and
+    never with an API token, not even to read. A change that lets other devices in (the exposure
+    switches, `api.listen`, the provider) needs the owner's password first: never from local mode
+    (409 password_first). Every change is an audit row with the old and the new value. Restart
+    class none, but `api.listen` (app: written to the env file as TANDEM_HOST, applied at the next
+    restart)."""
+
+    KEYS: dict = {}
+
+    def __init__(self, cfg, accounts, env_file: str | None = None):
+        super().__init__(cfg)
+        self.accounts = accounts
+        self.env_file = env_file
+
+    def _full(self, k: str) -> str:
+        return f"{self.name}.{k}"
+
+    def _locked(self, k: str) -> str | None:
+        return None
+
+    def _default(self, k: str):
+        return self.KEYS[k]["default"]
+
+    def spec(self, target):
+        out = {}
+        for k, d in self.KEYS.items():
+            why = self._locked(k)
+            out[k] = key_spec(k, d["type"], values=d["values"], default=self._default(k),
+                              restart=d["restart"], writable=why is None, why=why, text=d["text"])
+        return out
+
+    def values(self, target):
+        out = {}
+        for k in self.KEYS:
+            v = self.cfg.setting(self._full(k))
+            if v is None:
+                out[k] = (self._default(k), False, self._source(k), None)
+            else:
+                out[k] = (v, True, "page", None)
+        return out
+
+    def _source(self, k: str) -> str:
+        return "default"
+
+    def check(self, target, sets, unsets, spec):
+        from proxy import authlocal, authz
+        p = settings_mod.caller()
+        if p is None or p.via == "token":
+            raise SettingsError(403, "token_refused", f"the {self.name} settings take a "
+                                                      f"signed-in owner, never an API token")
+        for k in sorted(set(sets) | set(unsets)):
+            d = self.KEYS[k]
+            if not authz.allow(p, d["perm"], self.accounts.policy):
+                raise SettingsError(403, "owner_required" if d["perm"] == "owner" else
+                                    "admin_required", f"{self.name}.{k} is changed by "
+                                    f"{'an owner' if d['perm'] == 'owner' else 'an admin'}",
+                                    key=k)
+            if d["password"] and authlocal.needs_password(p):
+                raise SettingsError(409, "password_first", f"{self.name}.{k} lets other "
+                                    f"devices in: set the owner's password first", key=k)
+        for k, v in sets.items():
+            self._check_value(k, v)
+        return self._warnings(sets)
+
+    def _check_value(self, k: str, v) -> None:
+        d = self.KEYS[k]
+        if d["type"] == "enum":
+            if v not in d["values"]:
+                raise SettingsError(422, "bad_value", f"{self.name}.{k} is one of "
+                                    f"{', '.join(d['values'])}", key=k)
+        elif d["type"] == "integer":
+            if not isinstance(v, int) or isinstance(v, bool) or v < d["lo"] or v > d["hi"]:
+                raise SettingsError(422, "bad_value", f"{self.name}.{k} is a whole number from "
+                                    f"{d['lo']} to {d['hi']}", key=k)
+        elif not isinstance(v, str):
+            raise SettingsError(422, "bad_value", f"{self.name}.{k} is text", key=k)
+
+    def _warnings(self, sets) -> list:
+        return []
+
+    def write(self, target, sets, unsets, who):
+        cur = {k: v[0] for k, v in self.values(target).items()}
+        cfg = self.cfg
+        for k in sorted(set(sets) | set(unsets)):
+            new = sets[k] if k in sets else self._default(k)
+            self._apply(k, sets.get(k), k in sets, who)
+            with cfg._lock:
+                if k in sets:
+                    cfg._conn.execute("INSERT OR REPLACE INTO settings(key, value, updated_at) "
+                                      "VALUES (?, ?, ?)", (self._full(k), json.dumps(sets[k]),
+                                                           int(time.time() * 1000)))
+                else:
+                    cfg._conn.execute("DELETE FROM settings WHERE key = ?", (self._full(k),))
+                cfg._audit(who, "set" if k in sets else "delete", "setting", self._full(k),
+                           detail={"from": cur.get(k), "to": new})
+                cfg._conn.commit()
+                cfg._bump()
+
+    def _apply(self, k: str, v, is_set: bool, who: str) -> None:
+        """A key's effect beyond the stored value (api.listen: the env file)."""
+
+
+class AuthScope(AccountsScope):
+    KEYS = {
+        "provider": _spec("enum", "local", "who answers who someone is: local (the accounts "
+                          "here); ldap, oidc and trusted-header come later", values=("local",),
+                          password=True),
+        "local_mode": _spec("enum", "auto", "auto: a bare install bound to this machine with no "
+                            "owner password asks nothing on this machine; off: never",
+                            values=("auto", "off")),
+        "local_login": _spec("enum", "on", "the page's sign-in form: on, owners only, or "
+                             "hidden (a provider's button alone)", values=("on", "owners",
+                                                                           "hidden")),
+        "chat_min_role": _spec("enum", "operator", "who may use the Chat tab",
+                               values=("operator", "viewer")),
+        "session.idle_days": _spec("integer", 30, "a session ends after this many idle days",
+                                   lo=1, hi=400),
+        "session.absolute_days": _spec("integer", 180, "a session ends this many days after "
+                                       "the sign-in", lo=1, hi=400),
+        "password.min_length": _spec("integer", 12, "a new password's length at least",
+                                     lo=12, hi=256),
+    }
+
+
+class ApiScope(AccountsScope):
+    KEYS = {
+        "openai.exposure": _spec("enum", "this-machine", "who may use the OpenAI API with a "
+                                 "token: this machine, or any device (network)",
+                                 values=("this-machine", "network"), password=True),
+        "anthropic.exposure": _spec("enum", "this-machine", "who may use the Anthropic API with "
+                                    "a token: this machine, or any device (network)",
+                                    values=("this-machine", "network"), password=True),
+        "listen": _spec("string", "127.0.0.1", "the address TandemApp listens on (TANDEM_HOST "
+                        "in its env file), applied at the next restart", password=True,
+                        restart="app"),
+        "tokens.default_days": _spec("integer", 90, "a new token's days when none are asked",
+                                     lo=1, hi=3650),
+        "tokens.max_days": _spec("integer", 0, "a token lives at most this many days (0: no "
+                                 "cap)", lo=0, hi=3650),
+        "tokens.max_days_external": _spec("integer", 30, "the cap for an external provider's "
+                                          "accounts (later)", lo=0, hi=3650),
+        "tokens.viewers_may_create": _spec("enum", "off", "viewers may make inference tokens",
+                                           values=("on", "off"), perm="users"),
+    }
+
+    def _default(self, k: str):
+        if k.endswith(".exposure"):
+            return self.accounts.exposure.default(k.split(".", 1)[0])
+        if k == "listen":
+            return self.accounts.local.bind or self.KEYS[k]["default"]
+        return self.KEYS[k]["default"]
+
+    def _source(self, k: str) -> str:
+        if k.endswith(".exposure") and self._default(k) != self.KEYS[k]["default"]:
+            return "migration"          # an install with legacy keys starts on network
+        if k == "listen":
+            return "install"
+        return "default"
+
+    def _locked(self, k: str) -> str | None:
+        if k == "listen":
+            from proxy import authlocal
+            kind = authlocal.deploy_kind(self.accounts.env, self.accounts.local.exists)
+            if kind == "kubernetes":
+                return ("the pod listens on every address; the chart's ingress decides who "
+                        "reaches it")
+            if not self.env_file:
+                return "this TandemApp runs without an env file: set TANDEM_HOST where it starts"
+        return None
+
+    def _check_value(self, k: str, v) -> None:
+        super()._check_value(k, v)
+        if k == "listen":
+            ok = v == "localhost" or bool(_HOST.match(v))
+            try:
+                ipaddress.ip_address(v.strip("[]"))
+                ok = True
+            except ValueError:
+                pass
+            if not ok:
+                raise SettingsError(422, "bad_value", "api.listen is an address: 127.0.0.1, "
+                                                      "0.0.0.0, ::, or a name", key=k)
+            if self.accounts.store.setup_required():
+                raise SettingsError(409, "password_first", "api.listen lets other devices in: "
+                                                           "an owner with a password first",
+                                    key=k)
+
+    def _warnings(self, sets) -> list:
+        from proxy import authlocal
+        out = []
+        if "listen" in sets:
+            out.append("api.listen applies at the next restart of TandemApp")
+        bind = self.accounts.local.bind
+        for k, v in sets.items():
+            if k.endswith(".exposure") and v == "network" and "listen" not in sets and \
+                    bind is not None and authlocal.loopback_bind(bind):
+                out.append("Other devices cannot use this API. TandemApp listens on this "
+                           "machine only: change api.listen too")
+        return out
+
+    def _apply(self, k: str, v, is_set: bool, who: str) -> None:
+        if k != "listen":
+            return
+        write_env_line(self.env_file, "TANDEM_HOST", v if is_set else None)
+
+
+def write_env_line(path: str, name: str, value: str | None) -> None:
+    """`name=value` in the env file at `path` (replaced where it is, else added; None: taken
+    out), its mode kept, in one rename."""
+    try:
+        with open(path) as f:
+            lines = f.read().splitlines()
+        mode = os.stat(path).st_mode & 0o777
+    except FileNotFoundError:
+        lines, mode = [], 0o600
+    out, done = [], False
+    for line in lines:
+        bare = line.strip()
+        if bare.startswith("export "):
+            bare = bare[7:].lstrip()
+        if bare.split("=", 1)[0].strip() == name:
+            if value is not None and not done:
+                out.append(f"{name}={value}")
+                done = True
+            continue
+        out.append(line)
+    if value is not None and not done:
+        out.append(f"{name}={value}")
+    tmp = f"{path}.tmp-{os.getpid()}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        os.fchmod(fd, mode)
+        os.write(fd, ("\n".join(out) + "\n").encode())
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)

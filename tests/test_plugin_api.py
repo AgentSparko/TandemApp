@@ -41,6 +41,7 @@ from plugin_util import example, example_files, folder, repo, wheel  # noqa: E40
 from proxy_util import Proxy, run  # noqa: E402
 
 from proxy import app as proxy_app  # noqa: E402
+from proxy import settings as settings_mod  # noqa: E402
 from tools import contract_check  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -261,7 +262,8 @@ def test_settings_and_secrets_over_http():
                 answers.append(doc)
                 return doc
             ov = _ok(s("GET", ""), "overview", SV)
-            assert ov["order"][-2:] == ["hooks", "plugins"] and ov["contract_version"] == "1.1"
+            assert ov["order"][-2:] == ["hooks", "plugins"] and \
+                ov["contract_version"] == settings_mod.CONTRACT
             sch = _ok(s("GET", "/plugins/schema?target=classify-provider"), "schema", SV)
             assert "secrets.API_KEY" in {k["key"] for k in sch["keys"]}
             sets = {"secrets.API_KEY": KEY, "settings.fallback": "code",

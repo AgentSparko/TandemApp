@@ -859,8 +859,18 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[-1] for k, v in parse_qs(urlsplit(self.path).query).items()}
         # pairing's rights (a hook's full payload is granted only with them, SEC-16)
         trust = STATE["auth"].decide("fleet_trust", self._peer(), self.headers) == "ok"
+        acc = STATE.get("accounts")
+        principal = acc.request_principal() if acc is not None else None
+        if principal is not None and principal.via == "token" and parts[:1] in (["auth"],
+                                                                                ["api"]):
+            # SRV-871: never with a token, not even to read
+            return self._json(403, {"error": {"type": "token_refused", "code": "token_refused",
+                                              "message": f"the {parts[0]} settings take a "
+                                                         f"signed-in account, never an API "
+                                                         f"token"}},
+                              extra_headers=(("Cache-Control", "no-store"),))
         code, out = st.handle(method, parts, q, body, config_api._who(self, STATE["svc"]),
-                              trust=trust)
+                              trust=trust, principal=principal)
         return self._json(code, out, extra_headers=(("Cache-Control", "no-store"),))
 
     # ----------------------------------------------------------------- the admin password (6.3b)
@@ -1476,6 +1486,12 @@ def settings_of(cfg, svc, parts, state_dir: str, *, ctl_for=None, backends_of=No
         # each installed plugin's settings, secrets and capability grants (SRV-857)
         "plugins": pluginsettings.PluginsScope(cfg, svc.plugins),
     }
+    acc = STATE.get("accounts")
+    if acc is not None:
+        # SRV-871: the sign-in's and the API's settings, with the accounts on only
+        env_file = (STATE.get("args") or {}).get("env_file")
+        scopes["auth"] = settingscopes.AuthScope(cfg, acc, env_file)
+        scopes["api"] = settingscopes.ApiScope(cfg, acc, env_file)
     return settings_mod.Settings(cfg, scopes, restarts=restarts,
                                  log=lambda m: print(m, flush=True))
 

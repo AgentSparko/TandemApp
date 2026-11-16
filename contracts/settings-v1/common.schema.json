@@ -5,6 +5,8 @@
   "scope": {
    "enum": [
     "app",
+    "auth",
+    "api",
     "backends",
     "conductor",
     "engine",

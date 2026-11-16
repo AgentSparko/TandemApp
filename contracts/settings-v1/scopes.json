@@ -1,5 +1,5 @@
 {
- "version": "1.1",
+ "version": "1.2",
  "scopes": [
   {
    "name": "app",
@@ -11,8 +11,27 @@
    ]
   },
   {
-   "name": "backends",
+   "name": "auth",
    "order": 1,
+   "store": "the config database's settings auth.<key> (proxy/settingscopes.py AuthScope), with TANDEM_AUTH=accounts only: the identity provider, local mode, the sign-in form, who may chat, the session timeouts, the password length; owner-only writes, never with an API token, the provider after the owner's password",
+   "targets": "controller",
+   "restart": [
+    "none"
+   ]
+  },
+  {
+   "name": "api",
+   "order": 2,
+   "store": "the config database's settings api.<key> (proxy/settingscopes.py ApiScope), with TANDEM_AUTH=accounts only: each protocol's exposure switch, the listen address (TANDEM_HOST in the env file, at the next restart), the token rules; owner-only writes but tokens.viewers_may_create (an admin's), never with an API token, the exposure and the listen address after the owner's password",
+   "targets": "controller",
+   "restart": [
+    "none",
+    "app"
+   ]
+  },
+  {
+   "name": "backends",
+   "order": 3,
    "store": "the config database: backends, routing rules, users (proxy/config.py)",
    "targets": "controller",
    "restart": [
@@ -21,7 +40,7 @@
   },
   {
    "name": "conductor",
-   "order": 2,
+   "order": 4,
    "store": "this controller's conductor documents (tandemapp/conductor/store.py), versioned",
    "targets": "controller",
    "restart": [
@@ -30,7 +49,7 @@
   },
   {
    "name": "engine",
-   "order": 3,
+   "order": 5,
    "store": "each paired engine host's managed overlay through tandem remote settings (engine-ctl-v1), versioned; hot keys through PATCH /v1/engine/settings (engine API 1.9); its mode (the keys mode and mode.ext) through tandem remote mode set, after the chat extension is installed when it is missing",
    "targets": "an engine host's fleet id (ssh), or http:<backend id> read-only",
    "restart": [
@@ -40,7 +59,7 @@
   },
   {
    "name": "hooks",
-   "order": 4,
+   "order": 6,
    "store": "the hook registry's and the decision providers' tables (proxy/hookstore.py, proxy/providerstore.py) through their adapter (proxy/hooksettings.py): each hook's and each provider's switches, a provider's API keys write-only; the full payload is granted with pairing's rights, outside the LAN with a second confirm",
    "targets": "controller",
    "restart": [
@@ -50,7 +69,7 @@
   },
   {
    "name": "plugins",
-   "order": 5,
+   "order": 7,
    "store": "the plugin registry's tables (proxy/pluginstore.py) through the plugins scope (proxy/pluginsettings.py): one target a plugin, its keys from its manifest: enabled, settings.<property> from its settings schema, secrets.<NAME> write-only, capabilities.<capability> (deny by default), trust (sandboxed or host, for a manifest that asks host); enabling and every grant take pairing's rights, prompts:full, engine:control, network outside the LAN and trust host a second confirm",
    "targets": "an installed plugin's id",
    "restart": [
@@ -207,6 +226,10 @@
   "cross_site": 403,
   "cross_origin": 403,
   "trust_required": 403,
-  "json_only": 415
+  "json_only": 415,
+  "token_refused": 403,
+  "owner_required": 403,
+  "admin_required": 403,
+  "password_first": 409
  }
 }

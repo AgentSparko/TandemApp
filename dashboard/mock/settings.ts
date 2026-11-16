@@ -59,7 +59,7 @@ import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, P
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 
-const CONTRACT = '1.1';
+const CONTRACT = '1.2';
 const SCOPES: Scope[] = ['app', 'backends', 'conductor', 'engine', 'hooks', 'plugins'];
 const OPS = ['schema', 'get', 'plan', 'apply', 'versions', 'restore'];
 const REPLAY_MS = 300_000;

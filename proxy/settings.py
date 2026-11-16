@@ -25,6 +25,8 @@ versions, restore and audit. contracts/settings-v1 is its truth; docs/settings.m
     GET  /v1/settings/audit[?change_set=&limit=]
 
 THE SCOPES, in dependency order (SCOPES): app (proxy/settingscopes.py, the page's switches),
+auth and api (SRV-871, with TANDEM_AUTH=accounts only: the sign-in's settings and the API's
+exposure switches, listen address and token rules; owner-only writes, never with a token),
 backends (backends, routes and users in the config database), conductor (this controller's
 conductor documents, tandemapp/conductor/store.py), engine (per engine host over SSH, its managed
 overlay through `tandem remote settings`, proxy/settingsengine.py) and hooks (an adapter that the
@@ -79,9 +81,10 @@ import threading
 import time
 from datetime import datetime, timezone
 
-CONTRACT = "1.1"
-#: the scopes in dependency order: a change set applies them in this order
-SCOPES = ("app", "backends", "conductor", "engine", "hooks", "plugins")
+CONTRACT = "1.2"
+#: the scopes in dependency order: a change set applies them in this order. `auth` and `api`
+#: (SRV-871, proxy/settingscopes.py AccountsScope) exist with TANDEM_AUTH=accounts only
+SCOPES = ("app", "auth", "api", "backends", "conductor", "engine", "hooks", "plugins")
 OPS = ("schema", "get", "plan", "apply", "versions", "restore")
 RESTART = ("none", "app", "hot", "engine")
 TYPES = ("string", "integer", "number", "boolean", "enum", "list", "object", "document", "path",
@@ -141,6 +144,12 @@ def feeds(keys) -> str:
 def trusted() -> bool:
     """The caller of the request being handled has pairing's rights (`fleet_trust`)."""
     return bool(getattr(_CALLER, "trust", False))
+
+
+def caller():
+    """SRV-871: the request's principal with TANDEM_AUTH=accounts (proxy/accounts.py), else None:
+    the auth and api scopes decide by it."""
+    return getattr(_CALLER, "principal", None)
 
 
 def max_restart(classes) -> str:
@@ -870,15 +879,18 @@ class Settings:
         return out
 
     def handle(self, method: str, parts: list[str], q: dict, body, who: str,
-               trust: bool = False) -> tuple[int, dict]:
-        """`parts`: the path after /v1/settings. `trust`: the caller has pairing's rights."""
+               trust: bool = False, principal=None) -> tuple[int, dict]:
+        """`parts`: the path after /v1/settings. `trust`: the caller has pairing's rights.
+        `principal`: who asks, with the accounts on (the auth and api scopes, SRV-871)."""
         _CALLER.trust = bool(trust)
+        _CALLER.principal = principal
         try:
             return 200, self._route(method, parts, q, body, who)
         except SettingsError as exc:
             return exc.status, exc.body()
         finally:
             _CALLER.trust = False
+            _CALLER.principal = None
 
     def _route(self, method, parts, q, body, who) -> dict:
         target = q.get("target")
