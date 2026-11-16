@@ -13,7 +13,7 @@ These files are the truth for `/v1/settings/*`, TandemApp's one settings interfa
 | `scope-change.schema.json` | the body of `POST /v1/settings/{scope}/plan` and `/apply`: one part, `{target?, set?, unset?}` |
 | `restore-body.schema.json` | the body of `POST /v1/settings/{scope}/restore`: `{target?, version}`; without `confirm` the answer is the plan, with it the result |
 | `change-set.schema.json` | the body of `POST /v1/settings/plan` and `/apply`: `{changes: [{scope, target?, set?, unset?} or {scope, target?, restore}], confirm?, confirm_fingerprint?, when?, deadline_s?, note?}` |
-| `plan.schema.json` | a plan: each part's changes with their restart class, the fingerprint keys, warnings; one `confirm` for the set and `confirm_fingerprint` when a key feeds an engine's disk-cache fingerprint |
+| `plan.schema.json` | a plan: each part's changes with their restart class, how long an engine restart itself takes (`restart_estimate`), the fingerprint keys, warnings; one `confirm` for the set and `confirm_fingerprint` when a key feeds an engine's disk-cache fingerprint |
 | `result.schema.json` | an apply or restore: each part `applied`, `scheduled` (an engine restart runs it), `unchanged`, `failed` or `not_run`, with the version it had before and the restore that brings it back; the set's `state` `applied`, `partial`, `failed` or `unchanged` |
 | `restart.schema.json`, `restarts.schema.json` | `GET /v1/settings/restarts[/{id}]` and `POST /v1/settings/restarts/{id}/cancel`: an engine restart a change scheduled, its state, countdown and the engine's job |
 | `audit.schema.json` | `GET /v1/settings/audit[?change_set=&limit=]`: the audit rows of the settings and of every store write a change set made |

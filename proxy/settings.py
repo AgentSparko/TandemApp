@@ -31,7 +31,8 @@ operations with the same shapes. The stores stay where they are: this module onl
 and records.
 
 A CHANGE SET is a list of parts, at most one per scope and target: a part sets and unsets keys, or
-restores one version. Its plan asks each scope what would change (nothing is written), and gives
+restores one version. Its plan asks each scope what would change (nothing is written; a part that
+restarts an engine says how long the restart itself takes, `restart_estimate`), and gives
 one `confirm`: an HMAC, keyed with this process's random secret, over each part's changes and the
 state its scope planned against (values, versions, the engine's own plan token). A part whose keys
 feed an engine's disk-cache fingerprint adds `confirm_fingerprint`, a second token the apply must
@@ -198,12 +199,14 @@ def change(key: str, before, after, *, was_set: bool, is_set: bool, restart: str
 
 
 def part_plan(changes: list, *, state, warnings=(), native=None, restart: str | None = None,
-              fingerprint_keys=None) -> dict:
+              fingerprint_keys=None, estimate: dict | None = None) -> dict:
+    """`estimate`: how long an engine restart itself takes, {seconds, source}."""
     return {"changes": changes,
             "restart": restart or max_restart(c["restart"] for c in changes),
             "fingerprint_keys": sorted(fingerprint_keys if fingerprint_keys is not None else
                                        {c["key"] for c in changes if c["fingerprint"]}),
-            "warnings": list(warnings), "state": state, "native": native or {}}
+            "warnings": list(warnings), "state": state, "native": native or {},
+            "estimate": estimate}
 
 
 class KeyValueScope(Scope):
@@ -581,6 +584,8 @@ class Settings:
                 "version": p["version"], "changed": bool(pl["changes"]),
                 "changes": pl["changes"], "restart": pl["restart"] if pl["changes"] else "none",
                 "restart_needed": bool(pl["changes"]) and pl["restart"] in ("app", "engine"),
+                "restart_estimate": pl.get("estimate") if pl["changes"] and pl["restart"] == "engine"
+                else None,
                 "fingerprint_keys": pl["fingerprint_keys"], "warnings": pl["warnings"]}
 
     def plan(self, body) -> dict:

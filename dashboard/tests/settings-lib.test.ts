@@ -209,6 +209,10 @@ describe('a plan and a result in words', () => {
     expect([placeOf(PLAN.parts[0], OVERVIEW), placeOf(PLAN.parts[1], OVERVIEW), placeOf(PLAN.parts[1])]).toEqual(['App', 'Engine: spark-desk', 'Engine: eh-desk']);
     expect(costOf(PLAN.parts[0], 'this controller')).toEqual({ tone: 'ok', text: 'No restart: it applies at once.' });
     expect(costOf(PLAN.parts[1], 'spark-desk')).toEqual({ tone: 'live', text: 'Restarts the engine on spark-desk, once.' });
+    // how long the restart itself takes, and where the figure comes from
+    expect(costOf({ ...PLAN.parts[1], restart_estimate: { seconds: 180, source: 'default' } }, 'spark-desk').text).toBe('Restarts the engine on spark-desk, once. The restart takes about 3 min, a usual time for an engine.');
+    expect(costOf({ ...PLAN.parts[1], restart_estimate: { seconds: 144, source: 'engine' } }, 'spark-desk').text).toBe('Restarts the engine on spark-desk, once. The restart takes about 2 min, as its last one did.');
+    expect(costOf({ ...PLAN.parts[1], restart_estimate: { seconds: 7, source: 'measured' } }, 'spark-desk').text).toBe('Restarts the engine on spark-desk, once. The restart takes about 1 min, as its last one did.');
     expect(costOf({ ...PLAN.parts[1], restart: 'hot' }, 'x').text).toBe('No restart: the running engine takes it at once.');
     expect(costOf({ ...PLAN.parts[0], scope: 'conductor', restart: 'hot' }, 'x').text).toBe('No restart: the conductor reads it at the next request.');
     expect(costOf({ ...PLAN.parts[0], changed: false }, 'x').text).toBe('Nothing to change: it holds already.');

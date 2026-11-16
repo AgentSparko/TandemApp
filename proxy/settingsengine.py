@@ -44,6 +44,12 @@ THE RESTART (Restarts) follows the engine's job from the controller:
     warming     the job is done: one token through each backend on the host, then undrained
     done | failed | timeout | cancelled
 
+THE ESTIMATE. A plan that restarts the engine says how long the restart itself takes
+(`restart_estimate`, {seconds, source}): `measured`, what this controller saw the last time it
+restarted that engine (from the job's acting to the end of the warm-up; kept while it runs); else
+`engine`, the engine's last start as it reports it (`status`: its last lifecycle job that acted at
+once, from its creation to its end); else `default`, DEFAULT_RESTART_S.
+
 A job that fails reports the engine's own message and what it restored (`restored`: the version
 the engine runs again and whether it answers); a job that ran out of its deadline is `timeout`
 (the engine changed nothing). Cancel (POST /v1/settings/restarts/{id}/cancel) is possible while
@@ -79,6 +85,10 @@ HTTP_TIMEOUT_S = 5.0
 TYPES = {"string": "string", "integer": "integer", "number": "number", "path": "path",
          "enum": "enum", "module": "module", "cidrs": "cidrs"}
 FINAL = ("done", "failed", "timeout", "cancelled")
+#: an engine restart's length when neither this controller nor the engine knows one: a model loads
+DEFAULT_RESTART_S = 180
+#: the engine's lifecycle jobs that stop and start it (an upgrade fetches and builds besides)
+START_KINDS = ("start", "restart", "settings", "mode", "restore")
 #: the engine's mode as two keys of their own, and the overlay keys `mode set` writes for them
 MODE_VARS = {"mode": "QSE_MODE", "mode.ext": "QSE_EXT"}
 MODE_KEYS = tuple(MODE_VARS)
@@ -138,6 +148,31 @@ def shown_key(key: str) -> str:
 
 def _shown(key: str, v):
     return (v or None) if key == "QSE_EXT" else v
+
+
+def _epoch(text) -> float | None:
+    from datetime import datetime
+    if not isinstance(text, str):
+        return None
+    try:
+        return datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text) \
+            .timestamp()
+    except ValueError:
+        return None
+
+
+def engine_start_s(status: dict | None) -> int | None:
+    """The engine's last start as `status` reports it: its last lifecycle job that acted at once
+    (no wait for idle in it), from its creation to its end."""
+    job = (status or {}).get("job")
+    if not isinstance(job, dict) or job.get("kind") not in START_KINDS or job.get("state") != "done":
+        return None
+    if ((job.get("when") or {}).get("mode")) != "now":
+        return None
+    a, b = _epoch(job.get("created_at")), _epoch(job.get("ended_at"))
+    if a is None or b is None or not 0 < b - a < START_BUDGET_S:
+        return None
+    return int(round(b - a))
 
 
 def _sha_of(path: str) -> tuple[str, int]:
@@ -412,7 +447,8 @@ class EngineScope(Scope):
         native = {"kind": "mode", "mode": new_mode, "ext": new_ext, "base": base,
                   "install": install, "hot_only": False, "previous": prev}
         return part_plan(out, state=digest([prev, base, (install or {}).get("sha256")]),
-                         warnings=warnings, native=native, restart="engine", fingerprint_keys=[])
+                         warnings=warnings, native=native, restart="engine", fingerprint_keys=[],
+                         estimate=self._estimate(target, st))
 
     @staticmethod
     def _status(ctl) -> dict | None:
@@ -420,6 +456,17 @@ class EngineScope(Scope):
             return ctl.status()
         except enginectl.CtlError:
             return None
+
+    def _estimate(self, target: str, status: dict | None) -> dict:
+        """How long the engine's restart itself takes: measured here, else the engine's own last
+        start, else DEFAULT_RESTART_S."""
+        took = self.restarts.took(target) if self.restarts is not None else None
+        if took is not None:
+            return {"seconds": took, "source": "measured"}
+        got = engine_start_s(status)
+        if got is not None:
+            return {"seconds": got, "source": "engine"}
+        return {"seconds": DEFAULT_RESTART_S, "source": "default"}
 
     def _plan(self, target: str, sets: dict, unsets: list, *, restore: int | None = None) -> dict:
         if not self.target_info(target)["writable"]:
@@ -442,6 +489,9 @@ class EngineScope(Scope):
                 if exc.code == "no_change":
                     return part_plan([], state=digest(["no_change", target, restore]))
                 raise
+            hot = (not doc["plan"]["restart_needed"] and restore is None and install is None
+                   and all(e["restart"] == "hot" for e in doc["plan"]["effect"]))
+            st = None if hot else self._status(ctl)
         p = doc["plan"]
         shadowed = set(p.get("shadowed") or [])
         out = []
@@ -473,7 +523,8 @@ class EngineScope(Scope):
                                             p["base"], (install or {}).get("sha256")]),
                          warnings=warnings, native=native,
                          restart="hot" if hot_only else "engine",
-                         fingerprint_keys=[shown_key(k) for k in p.get("fingerprint_keys") or []])
+                         fingerprint_keys=[shown_key(k) for k in p.get("fingerprint_keys") or []],
+                         estimate=None if hot_only else self._estimate(target, st))
 
     def plan(self, target, sets, unsets):
         return self._plan(target, sets, unsets)
@@ -607,6 +658,7 @@ class Restarts:
         self.clock, self.sleep = clock, sleep
         self.poll_s, self.warm_wait_s, self.start_budget_s = poll_s, warm_wait_s, start_budget_s
         self._items: dict[str, dict] = {}
+        self._took: dict[str, int] = {}         # host -> seconds its last restart took here
         self._lock = threading.RLock()
         self.on_end = None                     # (restart id, state): the settings' replay map
 
@@ -618,6 +670,12 @@ class Restarts:
                 if r["draining"] and bid in r["backends"]:
                     return f"{r['alias']} (restarting for a settings change)"
         return None
+
+    def took(self, host: str) -> int | None:
+        """How long the last restart of `host` this controller followed took, from the job's
+        acting to the end of its warm-up; None before one ended here."""
+        with self._lock:
+            return self._took.get(host)
 
     # ------------------------------------------------------------------ views
     def _view(self, r: dict) -> dict:
@@ -664,7 +722,7 @@ class Restarts:
              "deadline_at": None, "ended_at": None, "job": _brief(job),
              "state": "scheduled" if at and at > now else "draining", "message": None,
              "backends": [], "draining": False, "warm": None, "restored": None,
-             "cancel": False, "pending": False}
+             "cancel": False, "pending": False, "acting_at": None}
         with self._lock:
             self._items[rid] = r
             old = sorted(self._items.values(), key=lambda x: x["created_at"])
@@ -773,6 +831,8 @@ class Restarts:
                         r["state"] = "draining"
             elif js == "acting":
                 with self._lock:
+                    if r["acting_at"] is None:
+                        r["acting_at"] = self.clock()
                     if r["state"] not in FINAL:
                         r["state"] = "restarting"
             elif js == "done":
@@ -815,6 +875,8 @@ class Restarts:
             results[bid] = {"ok": bool(ok), "why": None if ok else why}
         with self._lock:
             r["warm"] = {"ok": all(v["ok"] for v in results.values()), "backends": results}
+            if r["acting_at"] is not None:
+                self._took[r["host"]] = max(0, int(round(self.clock() - r["acting_at"])))
         self._end(r, "done", "the engine runs the new settings"
                   + ("" if r["warm"]["ok"] else "; a backend gave no warm-up token, the gateway's "
                                                  "health check takes it from here"))

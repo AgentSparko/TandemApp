@@ -48,6 +48,10 @@ contracts/settings-v1 (tools/contract_check.py).
      with other keys of the same engine the mode goes into one overlay change; QSE_MODE itself and
      mode.ext with the bare engine are refused on their key
                                                         test_engine_mode
+ 12  A plan that restarts an engine says how long the restart itself takes: the default before
+     anything is known, the engine's own last start when its status reports one, what this
+     controller measured once it followed a restart; a hot change and a store's change say none
+                                                        test_restart_estimate
 
 CPU only. Run: python tests/test_settings.py
 """
@@ -966,6 +970,44 @@ def test_engine_mode():
     finally:
         r.close()
     return "chat with the wheel installed first, engine back, refusals on their key, one restart"
+
+
+def test_restart_estimate():
+    r = Rig("estimate")
+    try:
+        ch = [{"scope": "engine", "target": "h1", "set": {"MAX_QUEUE": 30}}]
+        e = r.plan(ch)["parts"][0]
+        assert e["restart_estimate"] == {"seconds": settingsengine.DEFAULT_RESTART_S,
+                                         "source": "default"}, e
+        # hot keys only, a store's change: no restart, no estimate
+        p = r.plan([{"scope": "engine", "target": "h1", "set": {"QSE_ALLOW_FROM": "10.0.0.0/8"}},
+                    {"scope": "backends", "set": {"backends.cloud.label": "Cloud 2"}}])
+        assert [x["restart_estimate"] for x in p["parts"]] == [None, None], p
+        # the engine's own last start: a job that acted at once, created to ended
+        ftr.set_state(r.eng, sim_job={"id": "20261115T090000-abcdef", "kind": "restart",
+                                      "state": "done", "phase": "done", "when": {"mode": "now"},
+                                      "created_at": "2026-11-15T09:00:00Z",
+                                      "ended_at": "2026-11-15T09:02:24Z", "message": "healthy",
+                                      "_steps": ["done"], "_i": 0})
+        e = r.plan(ch)["parts"][0]
+        assert e["restart_estimate"] == {"seconds": 144, "source": "engine"}, e
+        # a job that waited for idle first says nothing of the start alone
+        assert settingsengine.engine_start_s({"job": {
+            "kind": "settings", "state": "done", "when": {"mode": "idle"},
+            "created_at": "2026-11-15T09:00:00Z", "ended_at": "2026-11-15T09:30:00Z"}}) is None
+        # once this controller followed a restart of it: what it measured
+        res = r.apply(ch)
+        assert r.wait_restart(res["parts"][0]["restart"]["id"])["state"] == "done"
+        took = r.restarts.took("h1")
+        assert isinstance(took, int) and 0 <= took < 30, took
+        e = r.plan([{"scope": "engine", "target": "h1", "set": {"MAX_QUEUE": 31}}])["parts"][0]
+        assert e["restart_estimate"] == {"seconds": took, "source": "measured"}, e
+        # the mode's own plan says it too
+        e = r.plan([{"scope": "engine", "target": "h1", "set": {"mode": "chat"}}])["parts"][0]
+        assert e["restart_estimate"]["source"] == "measured", e
+    finally:
+        r.close()
+    return "default, then the engine's own last start, then what this controller measured"
 
 
 if __name__ == "__main__":

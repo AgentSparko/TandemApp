@@ -20,7 +20,8 @@
 //
 // A restart follows the clock: scheduled (an `at=` time ahead), draining (the engine is busy for
 // `busy_s`, 6 s by default; the gateway answers 503 with Retry-After meanwhile), restarting (4 s),
-// warming (3 s), done. `control()` (POST /__mock/settings) sets what no click produces:
+// warming (3 s), done. A plan's restart estimate is 180 s until a restart of that host ended,
+// then the 7 s it took. `control()` (POST /__mock/settings) sets what no click produces:
 //   {restart: "fail" | "timeout" | "ok"}   how the next restart ends
 //   {busy_s: N}                            how long the engine stays busy after the drain starts
 //   {fail: "<route>:<error type>" | null}  a route answers that refusal until cleared (routes:
@@ -35,7 +36,7 @@
 //                                          chat extension from (409 extension_missing)
 
 import { createHash } from 'node:crypto';
-import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
+import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestartEstimate, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
 
@@ -126,6 +127,8 @@ interface ScopePlan {
   warnings: string[];
   state: string;
   native: Record<string, unknown>;
+  /** an engine restart's own length */
+  estimate?: RestartEstimate | null;
 }
 const planOf = (changes: Change[], state: unknown, o: Partial<ScopePlan> = {}): ScopePlan => ({
   changes,
@@ -134,7 +137,10 @@ const planOf = (changes: Change[], state: unknown, o: Partial<ScopePlan> = {}): 
   warnings: o.warnings ?? [],
   state: digest(state),
   native: o.native ?? {},
+  estimate: o.estimate ?? null,
 });
+/** when neither the controller nor the engine knows how long a restart takes (proxy/settingsengine.py) */
+const DEFAULT_RESTART_S = 180;
 
 interface Applied {
   version_before: string | null;
@@ -633,6 +639,8 @@ interface EngineHost {
   good: number;
   /** the chat extension is installed on the host */
   ext: boolean;
+  /** how long its last restart took, as this controller saw it (seconds) */
+  took?: number;
 }
 interface RestartItem {
   id: string;
@@ -725,6 +733,9 @@ class EngineScope implements ScopeImpl {
     const h = this.host(t);
     return { current: String(h.current), versions: [...h.versions].reverse().map((v) => ({ id: String(v.n), at: iso(v.at), who: null, note: v.note, change_set: null, keys: Object.keys(v.set).map((k) => SHOWN[k] ?? k).sort(), current: v.n === h.current, good: v.n === h.good, values: Object.fromEntries(Object.entries(v.set).map(([k, x]) => [SHOWN[k] ?? k, k === 'QSE_EXT' ? x || null : x])) })) };
   }
+  private estimate(h: EngineHost): RestartEstimate {
+    return h.took != null ? { seconds: h.took, source: 'measured' } : { seconds: DEFAULT_RESTART_S, source: 'default' };
+  }
   /** the wheel to install first when chat mode needs an extension the host lacks; the refusal with its fix */
   private extNeed(h: EngineHost, ext: string): { name: string; bytes: number; module: string } | null {
     if (h.ext && ext === DEFAULT_EXT) return null;
@@ -765,7 +776,7 @@ class EngineScope implements ScopeImpl {
       if (newMode !== curMode) changes.push(change('mode', curMode, newMode, { was_set: 'QSE_MODE' in over, is_set: true, restart: 'engine' }));
       if (newExt !== curExt) changes.push(change('mode.ext', curExt, newExt, { was_set: curExt !== null, is_set: newExt !== null, restart: 'engine' }));
       const target = { ...over, QSE_MODE: newMode, QSE_EXT: newExt ?? '' };
-      return planOf(changes, [h.current, target, install], { restart: 'engine', fingerprint_keys: [], warnings: install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : [], native: { next: target, hot: false, restore: null, base: h.current, install, kind: 'mode' } });
+      return planOf(changes, [h.current, target, install], { restart: 'engine', fingerprint_keys: [], warnings: install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : [], native: { next: target, hot: false, restore: null, base: h.current, install, kind: 'mode' }, estimate: this.estimate(h) });
     }
     if ('mode' in sets) {
       next.QSE_MODE = mode!;
@@ -799,7 +810,7 @@ class EngineScope implements ScopeImpl {
     const hot = changes.length > 0 && restore === null && changes.every((c) => c.restart === 'hot');
     const fp = changes.filter((c) => c.fingerprint).map((c) => c.key);
     const warnings = [...(install ? [`the engine host has no ${install.module} that loads: TandemApp installs its own wheel first (${install.name}, 4 MB)`] : []), ...(fp.length ? [`${fp.join(', ')} feed the disk cache’s fingerprint`] : [])];
-    return planOf(changes, [h.current, next, restore, install], { restart: hot ? 'hot' : 'engine', fingerprint_keys: fp, warnings, native: { next, hot, restore, base: h.current, install } });
+    return planOf(changes, [h.current, next, restore, install], { restart: hot ? 'hot' : 'engine', fingerprint_keys: fp, warnings, native: { next, hot, restore, base: h.current, install }, estimate: hot ? null : this.estimate(h) });
   }
   plan(t: string, sets: Record<string, unknown>, unsets: string[]): ScopePlan {
     return this.planFor(t, sets, unsets, null);
@@ -871,6 +882,8 @@ class EngineScope implements ScopeImpl {
       r.host.current = r.host.good = n;
     }
     if (now < idle + RESTART_MS + WARM_MS) return { state: 'warming', left: null, phase: 'done' };
+    // what it took from the job's acting to the end of the warm-up: the next plan's estimate
+    if (!r.end) r.host.took = Math.round((RESTART_MS + WARM_MS) / 1000);
     this.finish(r, 'done', idle + RESTART_MS + WARM_MS, 'the engine runs the new settings');
     return this.stage(r, now);
   }
@@ -1031,6 +1044,7 @@ export class MockSettings {
     const views: PartPlan[] = parts.map((p) => ({
       scope: p.scope, target: p.target, kind: p.kind, version: p.version, changed: p.plan!.changes.length > 0, changes: p.plan!.changes,
       restart: p.plan!.changes.length ? p.plan!.restart : 'none', restart_needed: p.plan!.changes.length > 0 && (p.plan!.restart === 'app' || p.plan!.restart === 'engine'),
+      restart_estimate: p.plan!.changes.length && p.plan!.restart === 'engine' ? (p.plan!.estimate ?? null) : null,
       fingerprint_keys: p.plan!.fingerprint_keys, warnings: p.plan!.warnings,
     }));
     const changed = views.some((v) => v.changed);

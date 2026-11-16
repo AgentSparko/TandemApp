@@ -132,8 +132,16 @@ export interface PartPlan {
   changes: Change[];
   restart: RestartClass;
   restart_needed: boolean;
+  /** a part that restarts an engine: how long the restart itself takes. measured: this controller
+   *  saw that engine's last restart; engine: the engine's own last start; default: not known yet */
+  restart_estimate?: RestartEstimate | null;
   fingerprint_keys: string[];
   warnings: string[];
+}
+
+export interface RestartEstimate {
+  seconds: number;
+  source: 'measured' | 'engine' | 'default';
 }
 
 export interface Plan {

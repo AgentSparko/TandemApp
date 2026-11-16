@@ -78,10 +78,25 @@ export function whenWords(w: When, time: (t: number) => string = hhmm): string {
 
 export type Tone = 'ok' | 'live' | 'warn' | 'err' | 'muted';
 
+/** How long an engine restart takes, in words: `about 3 min`. */
+export function aboutMin(s: number): string {
+  return `about ${Math.max(1, Math.round(s / 60))} min`;
+}
+
+/** The restart's own length, in a sentence: where the figure comes from decides the words. */
+export function estimateWords(e: PartPlan['restart_estimate']): string | null {
+  if (!e) return null;
+  if (e.source === 'default') return `The restart takes ${aboutMin(e.seconds)}, a usual time for an engine.`;
+  return `The restart takes ${aboutMin(e.seconds)}, as its last one did.`;
+}
+
 /** What a part costs, in a line. */
 export function costOf(p: PartPlan, label: string): { tone: Tone; text: string } {
   if (!p.changed) return { tone: 'muted', text: 'Nothing to change: it holds already.' };
-  if (p.restart === 'engine') return { tone: 'live', text: `Restarts the engine on ${label}, once.` };
+  if (p.restart === 'engine') {
+    const e = estimateWords(p.restart_estimate);
+    return { tone: 'live', text: `Restarts the engine on ${label}, once.${e ? ` ${e}` : ''}` };
+  }
   if (p.restart === 'app') return { tone: 'live', text: 'Restarts TandemApp.' };
   if (p.restart === 'hot') return { tone: 'ok', text: p.scope === 'engine' ? 'No restart: the running engine takes it at once.' : 'No restart: the conductor reads it at the next request.' };
   return { tone: 'ok', text: 'No restart: it applies at once.' };

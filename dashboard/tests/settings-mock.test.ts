@@ -379,6 +379,7 @@ describe('the engine’s mode', () => {
     const plan = ok<Plan>(await post(r, '/plan', { changes: MODE }));
     expect(plan.parts[0].changes.map((c) => [c.key, c.from, c.to])).toEqual([['mode', 'engine', 'chat'], ['mode.ext', null, 'tandemapp.engine_ext']]);
     expect(plan.parts[0].warnings).toEqual(['the engine host has no tandemapp.engine_ext that loads: TandemApp installs its own wheel first (tandemapp-0.15.0-py3-none-any.whl, 4 MB)']);
+    expect(plan.parts[0].restart_estimate).toEqual({ seconds: 180, source: 'default' });
     const res = await change(r, MODE);
     const rs = res.parts[0].restart!;
     expect([res.state, res.parts[0].state, rs.kind, rs.state]).toEqual(['applied', 'scheduled', 'mode', 'draining']);
@@ -390,7 +391,11 @@ describe('the engine’s mode', () => {
     // back to the bare engine, then chat again: the extension is there, no install
     await change(r, [{ scope: 'engine', target: 'eh-desk', set: { mode: 'engine' } }]);
     r.wait(20_000);
-    expect(ok<Plan>(await post(r, '/plan', { changes: MODE })).parts[0].warnings).toEqual([]);
+    const later = ok<Plan>(await post(r, '/plan', { changes: MODE })).parts[0];
+    expect([later.warnings, later.restart_estimate]).toEqual([[], { seconds: 7, source: 'measured' }]);
+    // a hot change and a store's change have none
+    const hot = ok<Plan>(await post(r, '/plan', { changes: [{ scope: 'app', set: { chat: 'on' } }, { scope: 'engine', target: 'eh-desk', set: { QSE_ALLOW_FROM: '192.0.2.0/24' } }] }));
+    expect(hot.parts.map((x) => x.restart_estimate)).toEqual([null, null]);
     // the versions show the mode's keys as the page knows them
     const v = ok<VersionsView>(await get(r, '/engine/versions?target=eh-desk')).versions[0];
     expect([v.keys, v.values]).toEqual([['MAX_QUEUE', 'mode', 'mode.ext'], { MAX_QUEUE: '16', mode: 'engine', 'mode.ext': null }]);

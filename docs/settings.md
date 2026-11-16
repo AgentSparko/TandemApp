@@ -56,8 +56,19 @@ A change set has at most one part per scope and target.
 **The plan** writes nothing. For each part it lists:
 
 - every change, with its restart class;
+- for a part that restarts an engine, how long the restart itself takes (`restart_estimate`, below);
 - the keys that feed an engine's disk-cache fingerprint;
 - warnings.
+
+`restart_estimate` is `{seconds, source}`. The source is one of these, in this order:
+
+| source | seconds |
+|-|-|
+| `measured` | what this controller saw the last time it restarted that engine: from the engine's job acting to the end of the warm-up. Kept while the controller runs. |
+| `engine` | the engine's last start as its `status` reports it: its last start, restart or settings job that acted at once, from its creation to its end |
+| `default` | 180 |
+
+It leaves out the wait for idle, which `deadline_s` bounds.
 
 It gives one `confirm` for the whole set. A key that feeds the fingerprint adds `confirm_fingerprint`: after that restart every saved prefix and parked chat misses, so it asks twice.
 
@@ -194,7 +205,7 @@ Each page draws its form from the scope's schema. A key gets the control its typ
 Changing a field writes nothing. The page stages the change, and a bar at the bottom carries the staged changes from page to page. Review then reads the plan of the whole set from `POST /v1/settings/plan`:
 
 - every part in the order it applies, with its changes and warnings;
-- whether a part restarts an engine. The plan then asks when: once idle (it waits 10 minutes by default), at a set time, or now;
+- whether a part restarts an engine, and how long the restart takes ("about 3 min"). The plan then asks when: once idle (it waits 10 minutes by default), at a set time, or now;
 - a second confirm for a key that feeds the fingerprint.
 
 Apply answers with each part's state. An applied part has a Restore button. After a failure you can plan the same changes again.

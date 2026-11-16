@@ -75,7 +75,7 @@ describe('the Gherkin scenarios of VIS-280', () => {
     // Then the page shows the plan with one restart and its time
     const plan = sheet(p);
     // the mode and the extension chat mode runs; the engine host lacks it: TandemApp's own wheel first
-    for (const s of ['Review 2 changes', 'One engine restart: spark-desk.', 'Engine: spark-desk', 'Restarts the engine on spark-desk, once.', 'When spark-desk restarts', 'Wait at most', 'It waits for the running requests to end, at most 10 minutes. Still busy then: nothing changes.', 'Apply 2 changes', 'TandemApp installs its own wheel first (tandemapp-0.15.0-py3-none-any.whl']) expect(plan).toContain(s);
+    for (const s of ['Review 2 changes', 'One engine restart: spark-desk.', 'Engine: spark-desk', 'Restarts the engine on spark-desk, once.', 'When spark-desk restarts', 'Wait at most', 'It waits for the running requests to end, at most 10 minutes. Still busy then: nothing changes.', 'Apply 2 changes', 'TandemApp installs its own wheel first (tandemapp-0.15.0-py3-none-any.whl', 'The restart takes about 3 min, a usual time for an engine.']) expect(plan).toContain(s);
     expect(plan).toMatch(/>mode<\/span>\s*<span class="rs-val"><span class="rs-from">engine<\/span>.*<span class="rs-to">chat<\/span>/s);
     expect(plan).toMatch(/>mode\.ext<\/span>\s*<span class="rs-val"><span class="rs-from">not set<\/span>.*<span class="rs-to">tandemapp\.engine_ext<\/span>/s);
     expect([restartsEngine(p.flow.state.plan), p.flow.state.plan!.parts[0].restart_needed, p.flow.blocked()]).toEqual([true, true, null]);
@@ -187,7 +187,8 @@ describe('the Gherkin scenarios of VIS-280', () => {
     p.draft.set('engine', 'eh-desk', MODE_KEY, 'engine', on.held);
     await p.flow.review(p.draft.changes());
     const plan = sheet(p);
-    for (const s of ['Review 2 changes', 'Restarts the engine on spark-desk, once.']) expect(plan).toContain(s);
+    // its last restart is known now: the estimate is what it took
+    for (const s of ['Review 2 changes', 'Restarts the engine on spark-desk, once.', 'The restart takes about 1 min, as its last one did.']) expect(plan).toContain(s);
     expect(plan).toMatch(/<span class="rs-from">chat<\/span>.*<span class="rs-to">engine<\/span>/s);
     expect(plan).not.toContain('installs its own wheel');
     await p.flow.apply();
