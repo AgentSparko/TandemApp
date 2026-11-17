@@ -130,7 +130,7 @@ def _chat_host():
 def test_the_module_fits_the_interface():
     X = engine_ext
     assert X.EXT_API == SPEC["version"] and H.accepts(X.EXT_API) is None, (X.EXT_API, SPEC["version"])
-    assert H.accepts(X.EXT_API, "1.2") is not None and X.EXT_API == "3.1"
+    assert H.accepts(X.EXT_API, "1.2") is not None and X.EXT_API == "3.2"
     assert H.accepts(X.EXT_API, "3.0") is not None                    # a 3.0 host does not take it (3.1)
     assert H.accepts(X.EXT_API, "2.1") is not None                    # another major: a 2.x host refuses it
     assert H.accepts("2.0", X.EXT_API) is not None                    # and this host a 2.x extension

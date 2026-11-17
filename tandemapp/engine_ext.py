@@ -43,7 +43,7 @@ import io
 import json
 import time
 
-EXT_API = "3.1"
+EXT_API = "3.2"
 NAME = "tandemapp"
 #: the session monitor runs behind this extension with no conductor directory too
 MONITOR_ALONE = True
@@ -217,6 +217,11 @@ class Watch:
 
     def check_answer(self, items, final=False):
         return self._sup.check_answer(items, final=final)
+
+    def constraint_outcomes(self, outcomes):
+        """engine-ext-v1 3.2: the outcome of each SET_CONSTRAINT act, into the request's journal
+        row (`Supervisor.constraint_outcomes`)."""
+        return self._sup.constraint_outcomes(outcomes)
 
     def done(self, outcome, detail):
         """After the response: its calls into the session state, and, when the monitor decided

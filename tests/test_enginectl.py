@@ -1003,7 +1003,7 @@ def test_no_secret_anywhere(tmp_path, monkeypatch):
 
 def _ctl_1_1(rig: Rig, ctl: E.EngineHostControl, wheel_path: str, archive: str) -> None:
     lst = ctl_ok(ctl.ext_list(), "ext list")
-    assert lst["extensions"] == [] and lst["host_ext_api"] == "3.1", lst
+    assert lst["extensions"] == [] and lst["host_ext_api"] == "3.2", lst
     # the wheel from a file: its name from the path, its sha256 passed, the bytes on stdin
     n = len(ftr.stdin_seen(rig.engine))
     got = ctl_ok(ctl.ext_install(wheel_path, module="tandemapp_ext", when="idle", deadline=120),

@@ -513,10 +513,10 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
         ext = st.get("ext") or {}
         return {"extensions": [{"module": v["module"], "source": "remote", "dist": k,
                                 "dist_version": v["version"], "name": k, "version": v["version"],
-                                "ext_api": "3.1", "imports": True, "accepted": True, "why": None,
+                                "ext_api": "3.2", "imports": True, "accepted": True, "why": None,
                                 "configured": False, "wheel": v["wheel"], "sha256": v["sha256"],
                                 "installed_at": CREATED} for k, v in sorted(ext.items())],
-                "mode": "engine", "configured": None, "host_ext_api": "3.1"}, 0
+                "mode": "engine", "configured": None, "host_ext_api": "3.2"}, 0
     if name == "ext install":
         checked = _read_stdin(d, opts.get("--sha256", ""), 256 << 20)
         wheel = opts.get("--name", "")
@@ -530,7 +530,7 @@ def answer(d: str, st: dict, name: str, opts: dict, pos: list, key_id: str | Non
         set_state(d, ext=ext)
         return {"installed": {"dist": dist, "version": version, "module": mod, "wheel": wheel,
                               "sha256": checked["sha256"]},
-                "extension": {"name": dist, "version": version, "ext_api": "3.1", "imports": True,
+                "extension": {"name": dist, "version": version, "ext_api": "3.2", "imports": True,
                               "accepted": True, "why": None},
                 "configured": False, "restart_needed": True, "checked": checked}, 0
     if name == "ext remove":

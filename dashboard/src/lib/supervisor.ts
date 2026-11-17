@@ -15,6 +15,7 @@ export const ACTION_WORDS: Record<string, string> = {
   GIVE_UP: 'gave up the turn',
   PROMPT_TAIL_NOTE: 'added a hidden note',
   SET_THINK_BUDGET: 'set the thinking budget',
+  SET_CONSTRAINT: 'constrained the answer',
   NOTIFY: 'pushed a notification',
   PASS: 'passed',
 };

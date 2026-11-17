@@ -4,7 +4,7 @@
 `Monitor.begin` gives a request its `Supervisor`, or None when the request runs raw. The server's
 loop calls the supervisor at the four safe points:
 
-    SP4  sup.at_request(ev)          -> [Action]   PROMPT_TAIL_NOTE, SET_THINK_BUDGET
+    SP4  sup.at_request(ev)          -> [Action]   PROMPT_TAIL_NOTE, SET_THINK_BUDGET, SET_CONSTRAINT
     SP1  sup.at_block(ev, room)      -> Action?    CLOSE_REASONING, GIVE_UP
     SP2  sup.at_finish(ev, room)     -> Action?    CONTINUE_HIDDEN, REGENERATE_CALL, GIVE_UP
     SP3  sup.check_answer(items)     -> Action?    REGENERATE_CALL, GIVE_UP (repairs are kept)
@@ -54,7 +54,7 @@ from tandemapp.conductor.monitor.journal import Journal
 from tandemapp.conductor.monitor.observe import RequestEvent
 from tandemapp.conductor.monitor.policy import (
     CLOSE_REASONING, CONTINUE_HIDDEN, GIVE_UP, PASS, PROMPT_TAIL_NOTE, REGENERATE_CALL,
-    REPAIR_CALL, SAFE_POINTS, SET_THINK_BUDGET, Action, Policy, lower,
+    REPAIR_CALL, SAFE_POINTS, SET_CONSTRAINT, SET_THINK_BUDGET, Action, Policy, lower,
 )
 from tandemapp.conductor.monitor.observe import ToolCallEvent
 from tandemapp.conductor.monitor.session import Sessions, args_hash
@@ -296,6 +296,8 @@ class Supervisor:
         # act; shadow journals its size. None: the note as the policy writes it
         self.evidence: tuple | None = None
         self.events: list[dict] = []
+        # engine-ext-v1 3.2: what the engine made of this request's SET_CONSTRAINT acts
+        self.constraints: list[dict] = []
         # every decision that acts, and each check of an answer's held calls, as it happens: the
         # user-visible states' hook (server/conductor/states.py); None when nobody listens
         self.on_event = None
@@ -388,10 +390,21 @@ class Supervisor:
                     self._write("SP4", task, act, "act", cap="no_closer", decision=PASS)
                     continue
                 self.think_budget, self._budget = act.budget, act
+            elif act.kind == SET_CONSTRAINT:
+                # the engine carries it out and never hands it to apply_request: journaled here,
+                # its outcome comes back through constraint_outcomes
+                act.detail = dict(act.detail, constraint=act.constraint)
+                self.acted = True
+                self._write("SP4", task, act, "act")
             else:
                 continue
             out.append(act)
         return out
+
+    def constraint_outcomes(self, outcomes) -> None:
+        """engine-ext-v1 3.2: what the engine made of this request's SET_CONSTRAINT acts, one
+        {kind, scope, strict, applied, why} each; kept for the request's outcome row."""
+        self.constraints = [dict(o) for o in outcomes or ()]
 
     def argloop_stopped(self, verdict, name: str | None) -> None:
         """The tool-argument loop guard stopped this request's open call (server/argloop.py):
@@ -719,6 +732,8 @@ class Supervisor:
             self._passes = {}
         if not self.events:
             return
+        if self.constraints:
+            detail = dict(detail, constraints=self.constraints)
         self.journal.write(dict(self._base("end"), decision="OUTCOME", outcome=outcome,
                                 acts=self.acts, hidden_tokens=self.hidden_tokens,
                                 detail=detail))

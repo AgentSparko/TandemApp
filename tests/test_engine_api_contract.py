@@ -771,7 +771,8 @@ def test_additive_1_5():
     assert ok(ex, health) and ex["engine_api"] == "1.5"
     with open(os.path.join(ROOT, "contracts", "engine-api-v1", "PIN")) as f:
         pin = dict(ln.split(None, 1) for ln in f.read().splitlines() if ln and not ln.startswith("#"))
-    (x,) = ex["extensions"]
+    # the 1.5 copy is frozen at the extension of its day; the current example names the pinned one
+    (x,) = _ex("health.example.json")["extensions"]
     assert x["name"] == "tandemapp" and x["ext_api"] == pin["ext_api"].strip(), (x, pin)
     return f"1.4 answers valid, {len(now)} routes, {len(g9)} in group 9, the dashboard reads " \
            f"{len(new_calls)} engine screen paths, extensions names tandemapp {x['ext_api']}"

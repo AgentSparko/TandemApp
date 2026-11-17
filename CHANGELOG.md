@@ -22,6 +22,7 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 
 ### The engine without TandemApp
 
+- The extension speaks engine-ext-v1 3.2 (ENG-458): a session monitor task at SP4 may answer `SET_CONSTRAINT` ({kind regex, choice, json_schema or logit_bias, value, scope, strict}), which the engine carries out with its own grammar; its outcome goes into the request's journal row. TandemApp pins the engine's contracts at engine API 1.9, ext 3.2.
 - The engine carries no copy of TandemApp any more (ENG-413). TandemApp pins the engine's contracts at engine API 1.8 (`contracts/engine-api-v1/PIN`, `proxy.engineapi.SPEAKS`). In 1.8 the page, the Chat tab's forward and the other backends are this tree's controller's only: an engine answers them 404.
 - The extension registers no `/dashboard` route. Its routes are the conductor's, the library, the model's memory and Laya.
 - `tandem-app import-backends --from <file>` copies an engine's old relay database (its `QSE_BACKENDS`, ENG-413 WP14b) into the controller's: each backend it does not have yet, with its key under the controller's master key, its models (prices and switches included) and its routing rules. Without `--write` it shows what it would copy and writes nothing; `--disabled` stores the backends off. The users stay in the old file (`TANDEM_API_USERS_FROM`), and the old file is never written. [docs/proxy.md](docs/proxy.md#moving-from-the-engines-relay) has the steps.

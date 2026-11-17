@@ -35,10 +35,15 @@ REPAIR_CALL = "REPAIR_CALL"
 REGENERATE_CALL = "REGENERATE_CALL"
 PROMPT_TAIL_NOTE = "PROMPT_TAIL_NOTE"
 SET_THINK_BUDGET = "SET_THINK_BUDGET"
+#: engine-ext-v1 3.2: the form of the answer, carried out by the engine's own grammar (`constraint`)
+SET_CONSTRAINT = "SET_CONSTRAINT"
 NOTIFY = "NOTIFY"
 GIVE_UP = "GIVE_UP"
 ACTIONS = (PASS, CLOSE_REASONING, CONTINUE_HIDDEN, REPAIR_CALL, REGENERATE_CALL,
-           PROMPT_TAIL_NOTE, SET_THINK_BUDGET, NOTIFY, GIVE_UP)
+           PROMPT_TAIL_NOTE, SET_THINK_BUDGET, SET_CONSTRAINT, NOTIFY, GIVE_UP)
+#: SET_CONSTRAINT's `constraint`: engine-ext-v1 3.2 `supervisor.act.constraint`
+CONSTRAINT_KINDS = ("regex", "choice", "json_schema", "logit_bias")
+CONSTRAINT_SCOPES = ("answer", "tool_args")
 
 # The safe points, all on the request's own thread, and what may happen at each. The TandemLLM
 # notes call the request start SP0; the tickets call it SP4.
@@ -46,7 +51,7 @@ SAFE_POINTS = {
     "SP1": ("block", (CLOSE_REASONING, GIVE_UP)),
     "SP2": ("finish", (CONTINUE_HIDDEN, GIVE_UP)),
     "SP3": ("tool_call", (REPAIR_CALL, REGENERATE_CALL, GIVE_UP)),
-    "SP4": ("request", (PROMPT_TAIL_NOTE, SET_THINK_BUDGET)),
+    "SP4": ("request", (PROMPT_TAIL_NOTE, SET_THINK_BUDGET, SET_CONSTRAINT)),
 }
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -63,18 +68,28 @@ class Action:
 
     `text` is the hidden text the executor forwards (a close phrase, a nudge, a note) or, for
     GIVE_UP, the visible sentence; it always comes from the policy file. `budget` is
-    SET_THINK_BUDGET's reasoning cap (0 = thinking off). `detail` is journaled as it is.
+    SET_THINK_BUDGET's reasoning cap (0 = thinking off). `constraint` is SET_CONSTRAINT's
+    {kind, value, scope, strict} (engine-ext-v1 3.2), checked for its shape here; whether the
+    engine can carry it out is the engine's to say (`Supervisor.constraint_outcomes`). `detail` is
+    journaled as it is.
 
     The supervisor fills the token ids before the executor sees the action: `ids` are forwarded
     through the engine, and `visible` -- a suffix of `ids` -- is what the client receives of
     them (the reasoning closer of a hidden close, nothing for a hidden turn)."""
 
-    __slots__ = ("kind", "task", "reason", "text", "budget", "score", "detail", "ids", "visible")
+    __slots__ = ("kind", "task", "reason", "text", "budget", "score", "detail", "ids", "visible",
+                 "constraint")
 
     def __init__(self, kind: str, reason: str = "", text: str = "", budget: int | None = None,
-                 score: float | None = None, detail: dict | None = None, task: str = ""):
+                 score: float | None = None, detail: dict | None = None, task: str = "",
+                 constraint: dict | None = None):
         if kind not in ACTIONS:
             raise ValueError(f"unknown action {kind!r}")
+        if kind == SET_CONSTRAINT:
+            constraint = check_constraint(constraint)
+        elif constraint is not None:
+            raise ValueError(f"{kind} takes no constraint")
+        self.constraint = constraint
         self.kind, self.reason, self.text, self.budget = kind, reason, text, budget
         self.score, self.detail, self.task = score, detail or {}, task
         self.ids: list[int] = []
@@ -87,6 +102,25 @@ class Action:
 
     def __repr__(self):
         return f"Action({self.kind}, task={self.task!r}, reason={self.reason!r})"
+
+
+def check_constraint(c) -> dict:
+    """SET_CONSTRAINT's `constraint` with its defaults filled in (scope `answer`, strict false);
+    ValueError for a shape engine-ext-v1 3.2 does not list, which the engine would take as a wrong
+    shape and detach the supervisor for."""
+    if not isinstance(c, dict) or set(c) - {"kind", "value", "scope", "strict"}:
+        raise ValueError("a constraint is {kind, value, scope?, strict?}")
+    if c.get("kind") not in CONSTRAINT_KINDS:
+        raise ValueError(f"constraint kind is one of {', '.join(CONSTRAINT_KINDS)}")
+    if "value" not in c:
+        raise ValueError("a constraint has a value")
+    scope = c.get("scope", "answer")
+    if scope not in CONSTRAINT_SCOPES:
+        raise ValueError(f"constraint scope is one of {', '.join(CONSTRAINT_SCOPES)}")
+    strict = c.get("strict", False)
+    if not isinstance(strict, bool):
+        raise ValueError("constraint strict is true or false")
+    return {"kind": c["kind"], "value": c["value"], "scope": scope, "strict": strict}
 
 
 def parse_mode(value, default: str | None = None) -> str | None:
