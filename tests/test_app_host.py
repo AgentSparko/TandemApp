@@ -345,6 +345,9 @@ def test_take_across_hosts():
         def call(url, method, path, body=None, token=None, timeout=20.0, cookie=None):
             asked.append((url, method, path))
             assert url == "http://engine-box.example:8091", url
+            # SEC-28: the password signs in once; no call carries it as a bearer
+            assert token is None and cookie == {"cookie": "tandem_session=s", "csrf": "c"}, \
+                (token, cookie)
             if path == "/v1/fleet/controller":
                 return 200, {"host": {"name": "engine-box"}}
             if path == "/v1/fleet/controller/handover":
@@ -353,12 +356,27 @@ def test_take_across_hosts():
             if path == "/v1/fleet/controller/handover/h-1/commit":
                 return 200, {"nodes": [dict(x, state="handed") for x in nodes]}
             return 404, {}
-        m = ctlmove.Mover(f, call=call, sign_in=lambda u, p: None, spawn=lambda fn: fn(),
+        def no_call(*a, **k):
+            raise AssertionError("a pull whose password does not sign in calls nothing")
+        m0 = ctlmove.Mover(f, call=no_call, sign_in=lambda u, p: None, spawn=lambda fn: fn(),
+                           sleep=lambda s: None)
+        m0.take({"url": "http://engine-box.example:8091", "password": "wrong-" + ADMIN_A},
+                "admin", time.time())
+        j0 = tf.ok(px.svc.cfg.job("move"), "move-job")
+        assert j0["state"] == "failed" and j0["steps"][0]["state"] == "failed", j0
+        assert "sign_in_failed" in json.dumps(j0), j0
+        signed = []
+
+        def sign_in(u, p):
+            signed.append((u, p))
+            return {"cookie": "tandem_session=s", "csrf": "c"}
+        m = ctlmove.Mover(f, call=call, sign_in=sign_in, spawn=lambda fn: fn(),
                           sleep=lambda s: None)
         job = m.take({"url": "http://engine-box.example:8091", "password": ADMIN_A},
                      "admin", time.time())
         j = tf.ok(px.svc.cfg.job("move"), "move-job")
         assert j["id"] == job["id"] and j["state"] == "done", j
+        assert signed == [("http://engine-box.example:8091", ADMIN_A)], signed
         cfg = px.svc.cfg
         # loopback backends point at the host the giver was reached at; the rest stay
         assert cfg.backend("eng")["url"] == "http://engine-box.example:8000/v1"

@@ -1065,19 +1065,24 @@ class Mover:
 
     def _pull(self, job: dict, url: str, password: str | None, token: str | None = None) -> None:
         """SRV-869: with `token` (a trust token made on the giver)
-        every call carries it as the bearer, and nothing signs in: no password, no cookie."""
+        every call carries it as the bearer, and nothing signs in: no password, no cookie.
+        SEC-28: a password only signs in (its first owner's, or an older controller's admin
+        password); every call then carries that session. It is never sent as a bearer."""
         f = self.fleet
         sid = "check"
         try:
             self._step(job, sid, "running")
-            auth = {"token": token or password}
-            st, doc = self.call(url, "GET", "/v1/fleet/controller", **auth)
-            if st == 401 and password and not token:
-                # its first owner's password signs in (an older one's admin password too)
+            auth: dict = {}
+            if token:
+                auth = {"token": token}
+            elif password:
                 c = self.sign_in(url, password)
-                if c:
-                    auth = {"cookie": c}
-                    st, doc = self.call(url, "GET", "/v1/fleet/controller", **auth)
+                if not c:
+                    return self._fail(job, sid, "sign_in_failed",
+                                      f"{url} did not sign in with this password: give its "
+                                      "first owner's password, or a trust token made there")
+                auth = {"cookie": c}
+            st, doc = self.call(url, "GET", "/v1/fleet/controller", **auth)
             if st != 200:
                 return self._fail(job, sid, "unreachable", _err(doc, f"{url} answered HTTP {st}"))
             self._step(job, sid, "done", f"{doc['host']['name']} ({url})")
