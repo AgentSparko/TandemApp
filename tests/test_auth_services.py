@@ -185,6 +185,47 @@ def test_chatd_through_the_controller():
     return "minted at chatd's start into its environment; a chat and a skill through it"
 
 
+def test_a_chatd_from_before_the_accounts_is_restarted_once():
+    """SEC-28: a chatd that kept running across the upgrade to the accounts holds no service key
+    and every call it makes is a 401. The watcher's first look restarts it once, so it gets one;
+    a chatd that holds a key, or one this controller started, is left running."""
+    from proxy import appchat
+    with Proxy(env=ON) as px:
+        owned_proxy(px)
+        with open(os.path.join(px.dir, "chatd.env"), "w") as f:
+            f.write(f"QSE_CHAT_URL=http://127.0.0.1:{free_port()}\n")
+        chat = proxy_app.own_chat(argparse.Namespace(port=px.port, host="127.0.0.1"),
+                                  px.svc.cfg, {})
+        try:
+            assert chat.service_key is not None
+            done, logs = [], []
+            chat.log = logs.append
+            chat.running = lambda: True
+            chat.pid = lambda: 424242
+            chat._end = lambda pid: done.append(("end", pid))
+            chat.start = lambda: (done.append(("start",)), (0, "started (pid 1)"))[1]
+            for env, want in ((b"PATH=/usr/bin\0HOME=/x\0", True),
+                              (b"QSE_CHAT_ENGINE_KEY=tdm-x\0", False), (None, False)):
+                chat._identity_checked = False
+                chat.env_of = lambda pid, env=env: env
+                done.clear()
+                got = chat.tick()
+                assert (got == "restarted_identity") == want, (env, got)
+                assert done == ([("end", 424242), ("start",)] if want else []), (env, done)
+                assert chat.tick() == "running" and len(done) == (2 if want else 0), done
+            assert any("without its service identity" in m for m in logs), logs
+            # one this controller started is its own: never looked at
+            chat._identity_checked = False
+            chat.proc = object()
+            chat.env_of = lambda pid: b""
+            done.clear()
+            assert chat.tick() == "running" and done == [], done
+        finally:
+            appchat.AppChat.close(chat)
+            proxy_app.STATE["chat"] = None
+    return "a keyless chatd restarted once; one with a key, or ours, left running"
+
+
 # ---------------------------------------------------------------------------- Gherkin 2
 
 def test_loopback_alone_opens_nothing():

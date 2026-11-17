@@ -214,6 +214,28 @@ class AppChat:
     #: SRV-869 (accounts on): () -> a fresh secret of chatd's service identity svc:chatd, minted
     #: at each start of chatd and handed over in its environment only (proxy/app.py own_chat)
     service_key = None
+    #: SEC-28: the running chatd was looked at once for its service identity (`lacks_identity`)
+    _identity_checked = False
+
+    def env_of(self, pid) -> bytes | None:
+        """A running process's environment (Linux /proc), or None where it cannot be read."""
+        try:
+            with open(f"/proc/{int(pid)}/environ", "rb") as f:
+                return f.read()
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def lacks_identity(self) -> bool:
+        """SEC-28: a chatd this process did not start (one that kept running across the upgrade
+        to the accounts) has no service key, and every call it makes to /chat-engine is a 401.
+        True when the identity is on, the env file names no key of its own, and the running
+        chatd's environment holds none. False where its environment cannot be read."""
+        if self.service_key is None or (self.cfg.get("QSE_CHAT_ENGINE_KEY") or "").strip():
+            return False
+        if self.proc is not None:
+            return False
+        env = self.env_of(self.pid())
+        return env is not None and b"QSE_CHAT_ENGINE_KEY=" not in env
 
     def engine_key(self) -> str | None:
         """chatd's key for this controller's completions once it has users (QSE_CHAT_ENGINE_KEY
@@ -505,6 +527,15 @@ class AppChat:
             if self.running():
                 if w.get("hour") or w.get("n"):
                     self._update(hour=None, n=None)
+                if not self._identity_checked:
+                    self._identity_checked = True
+                    if self.lacks_identity():
+                        # once, at this controller's first look: a restart gives it its key
+                        self._end(self.pid())
+                        rc, msg = self.start()
+                        self.log("[chat] chatd ran without its service identity (it was started "
+                                 f"before the accounts): restarted; {msg}")
+                        return "restarted_identity" if rc == 0 else "failed"
                 return "running"
             hour = self.hour()
             n = int(w.get("n") or 0) if w.get("hour") == hour else 0
