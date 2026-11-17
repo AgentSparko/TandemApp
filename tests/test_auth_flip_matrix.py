@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import int5_schema  # noqa: E402
 from proxy import adminpw  # noqa: E402
+from proxy import app as proxy_app  # noqa: E402
 from proxy import authz  # noqa: E402
 from proxy_util import Proxy, run  # noqa: E402
 
@@ -95,6 +96,9 @@ def _matrix() -> dict:
                     px.dir, None if password else TOKEN)
             for cred in CREDS:
                 for method, path, body in ROUTES:
+                    # each row on its own: the wrong-token limit per address (SEC-28) is
+                    # tests/test_auth_tokens.py's, not this matrix's
+                    proxy_app.STATE["accounts"].limits.tokens._fails.clear()
                     st, _, raw = px.request(method, path, body, headers=_headers(cred, cookie))
                     try:
                         code = (json.loads(raw).get("error") or {}).get("code")

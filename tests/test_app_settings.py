@@ -545,9 +545,15 @@ def test_take_signs_in():
     m._fail = lambda job, sid, kind, msg: steps.append((sid, "failed", msg))
     m.fleet = F()
     m._pull({"id": "j"}, "http://192.0.2.40:8080", PW)
-    assert seen[0] == ("/v1/fleet/controller", PW, None)
-    assert seen[1] == ("/v1/fleet/controller", None, "c-1")
+    # SEC-28: the password signs in first; no call carries it as a bearer
+    assert seen == [("/v1/fleet/controller", None, "c-1")], seen
     assert steps[-1][:2] == ("check", "failed")
+    # a password that does not sign in stops the pull before any call
+    seen.clear()
+    steps.clear()
+    m._pull({"id": "j"}, "http://192.0.2.40:8080", "not-" + PW)
+    assert seen == [] and steps[-1][:2] == ("check", "failed"), (seen, steps)
+    assert "did not sign in" in steps[-1][2], steps
 
 
 if __name__ == "__main__":

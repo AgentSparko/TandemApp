@@ -323,9 +323,11 @@ def test_wrong_tokens_are_limited():
             assert st == 429 and out["type"] == "error", out
             # the page's session is not a token: it still works
             assert px.get("/v1/auth/session", ops)[0] == 200
-            # another address (from the loopback proxy, X-Real-IP counts) is not limited
-            assert px.post("/v1/chat/completions", body,
-                           {**bearer(good), "X-Real-IP": "203.0.113.9"})[0] == 200
+            # another address (from the loopback proxy, X-Real-IP counts) is not limited: it
+            # meets the exposure rule (this-machine by default), not the limit
+            st, _, out = px.post("/v1/chat/completions", body,
+                                 {**bearer(good), "X-Real-IP": "203.0.113.9"})
+            assert st == 403 and json.loads(out)["error"]["code"] == "api_not_exposed", (st, out)
             # the next minute the address is free again
             base = time.time()
             accounts().limits.tokens.clock = lambda: base + 61
