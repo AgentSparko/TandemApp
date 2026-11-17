@@ -323,6 +323,10 @@ def test_wrong_tokens_are_limited():
             assert st == 429 and out["type"] == "error", out
             # the page's session is not a token: it still works
             assert px.get("/v1/auth/session", ops)[0] == 200
+            # a service identity from the same address goes on (chatd, a collector, the relay)
+            chatd = accounts().tokens.mint_service(tokens_mod.CHATD_SERVICE,
+                                                   tokens_mod.CHATD_SCOPES)
+            assert px.get("/chat-engine/v1/models", bearer(chatd))[0] == 200
             # another address (from the loopback proxy, X-Real-IP counts) is not limited: it
             # meets the exposure rule (this-machine by default), not the limit
             st, _, out = px.post("/v1/chat/completions", body,

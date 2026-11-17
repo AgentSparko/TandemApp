@@ -1129,14 +1129,17 @@ class AccountsAuth:
         peer = handler._peer()
         token_call = self.has_token(handler.headers)
         tkey = self.limits.key(peer, handler.headers) if token_call else None
-        if token_call and self.limits.tokens.login_blocked(tkey):
-            strip_credentials(handler.headers)
-            return self._token_refuse(handler, method, raw, 429, "rate_limited",
-                                      "too many wrong API tokens from this address; try again "
-                                      "in a minute")
         p = self.resolve(handler.headers, peer, raw)
         if token_call:
             strip_credentials(handler.headers)       # SRV-867: checked; never passed on
+        # SEC-28: an address with too many wrong tokens gets 429 for a token, right or wrong (no
+        # answer tells a guess apart), but a service identity (chatd, a collector, the plugin
+        # relay) goes on: wrong keys from its address must not stop it
+        if token_call and not (isinstance(p, Principal) and p.kind == "service") and \
+                self.limits.tokens.login_blocked(tkey):
+            return self._token_refuse(handler, method, raw, 429, "rate_limited",
+                                      "too many wrong API tokens from this address; try again "
+                                      "in a minute")
         if token_call and isinstance(p, tokens_mod.Refused) and p.status == 401:
             self.limits.tokens.login_failed(tkey)
         if isinstance(p, tokens_mod.Refused):
