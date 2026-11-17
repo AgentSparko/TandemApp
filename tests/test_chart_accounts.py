@@ -422,7 +422,7 @@ def test_docs():
                   "tokens chatd-key FILE"):
         assert words in k8s, words
     linux = _read("docs", "install-linux.md")
-    for words in ("TANDEM_AUTH=accounts", "--behind-proxy", "local mode", "setup code",
+    for words in ("[auth.md](auth.md)", "--behind-proxy", "local mode", "setup code",
                   "tandem-app users setup-code", "tandem-app users reset-password NAME",
                   "API exposure", "TANDEM_TRUSTED_PROXY", "--setup-code", "tandem-app check",
                   "30 days"):
