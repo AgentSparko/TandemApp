@@ -406,8 +406,31 @@ above:
     location ^~ /plugin-backends { return 404; }
 
 The routes left on the engine answer with the engine's own rule until the engine is paired and
-refuses callers without its token. `tests/test_route_list.py` checks both lists against
-[controller-routes.json](controller-routes.json).
+refuses callers without its token. The engine has no sign-in for its dashboard, conductor and
+library reads, so until then the proxy puts TandemApp's sign-in in front of them: for each request
+the proxy sends to the engine it asks the controller first (`auth_request`) whether its cookie or
+token signs in, and `/health` stays open with the header that tells the page to show its
+sign-in:
+
+    location = /_tandemapp_signin { internal; proxy_pass http://<controller>:8091/v1/auth/sessions; include snippets/tandemapp-signin-gate.conf; }
+    location = /health            { proxy_pass http://<engine>:8000; add_header X-Tandem-Auth accounts always; }
+    location /                    { auth_request /_tandemapp_signin; proxy_pass http://<engine>:8000; }
+
+with `snippets/tandemapp-signin-gate.conf`:
+
+    proxy_method GET;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+
+`/v1/auth/sessions` answers 2xx for a signed-in session, 401 without one (the page then shows its
+sign-in) and 403 for a token without the `self` right. Without the gate, anyone who reaches the
+proxy reads the engine's live view, its logs and the conductor's records, and the page shows them
+without a sign-in: it finds the accounts in `/health`'s `X-Tandem-Auth`, which the engine does
+not send. `tests/test_route_list.py` checks both lists against
+[controller-routes.json](controller-routes.json), and the gate.
 
 `python -m chatd.front`, the stand-in front for an engine without the Chat tab's forward, signs
 every caller in as the owner. It binds to a loopback address only and refuses any other host.

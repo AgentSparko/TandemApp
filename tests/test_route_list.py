@@ -20,6 +20,10 @@ controller paths sent the settings, hooks, providers, plugins and health pages' 
      sends every listed path to TandemApp, the front of an engine with its own page sends every
      controller prefix; both block the internal ones
                                                                   test_the_front_snippets_send_every_controller_prefix
+  6  the front of an engine with its own page sends the engine nothing without a sign-in of
+     TandemApp: every engine location asks the controller first, at a route that needs a
+     credential; /health alone stays open and says the accounts are on
+                                                                  test_the_mixed_front_signs_in_before_the_engine
 
     python tests/test_route_list.py
 """
@@ -211,6 +215,35 @@ def test_the_front_snippets_send_every_controller_prefix():
         assert nginx_pick(data_plane + mixed, path, "engine") == "controller", path
     return f"{len(rows)} prefixes, {len(bare)} bare and {len(mixed)} mixed locations"
 
+
+
+def test_the_mixed_front_signs_in_before_the_engine():
+    """The engine has no sign-in for its dashboard, conductor and library reads: behind the mixed
+    front a page showed the engine's live view to a browser that never signed in, because the
+    page found no X-Tandem-Auth on the engine's /health and every engine read answered."""
+    from proxy import authz
+    gate = doc_blocks("### No way around the controller")[2]
+    by = {(mod, loc): body for mod, loc, body in gate}
+    fall = by[("", "/")]
+    assert "auth_request /_tandemapp_signin;" in fall and ":8000" in fall, fall
+    check = by[("=", "/_tandemapp_signin")]
+    assert "internal;" in check, check
+    target = re.search(r"proxy_pass http://[^/;]+(/[^;\s]*);", check).group(1)
+    perm = authz.permission_for("GET", target)
+    assert perm not in (None, authz.OPEN), (target, perm)
+    health = by[("=", "/health")]
+    assert "auth_request" not in health and "X-Tandem-Auth accounts" in health, health
+    # every path the mixed front leaves to the engine lands in the gated location
+    mixed = doc_blocks("### No way around the controller")[1]
+    data_plane = doc_blocks("### Through a reverse proxy")[0]
+    left = [p for r in routes() for p in probes(r) if r["owner"] in ("engine", "both")
+            and nginx_pick(data_plane + mixed, p, "engine") == "engine"]
+    assert left, "the mixed front leaves nothing to the engine"
+    for p in left:
+        if p == "/health":
+            continue
+        assert nginx_pick(gate, p, "nothing").startswith("? auth_request"), p
+    return f"{len(left)} engine paths behind {target} ({perm}), /health open"
 
 # ---------------------------------------------------------------------------- 4
 def test_the_controller_answers_what_the_list_says():
