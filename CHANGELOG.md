@@ -13,6 +13,9 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 - `/v1/dashboard/session`, `/v1/fleet/session`, `/v1/chat-app/session` and `/v1/fleet/app/password` stay one release over the accounts: their sign-in is the first owner's password, and `password_set` in their answers means a sign-in is needed.
 - The installer writes no admin token: beyond loopback (`--listen`) or with `--behind-proxy` it prints a setup code while no owner exists, and it leaves the lines of an older install in `app.env`. The Helm chart's `auth.mode` is `accounts`; `legacy` is refused with a message.
 - A client's `Authorization` or `x-api-key` never reaches a backend: the gate checks it and removes it.
+- Wrong API tokens are limited per address: after 20 in a minute every request with a token from that address is a 429 with `Retry-After` for the rest of the minute. Sessions and other addresses go on.
+- Taking a fleet with a password signs in at the other controller first and carries only that session: the password is never a bearer. A password that does not sign in stops the pull at its first step.
+- `python -m chatd.front` and `chatd --front` bind to a loopback address only and refuse any other host: the front signs every caller in as the owner (OPS-300). `docs/proxy.md` has the reverse proxy's two shapes with no way around the controller, checked against `docs/controller-routes.json`.
 - A move of the controller to a Spark gives the new controller's account `owner` the move's password and nothing else: the Spark keeps only its hash, and it never becomes an admin token or a token for scripts.
 - The Usage, request and parallel views show a reader without the right `users` no other account's username: the user list, a request's user and a lane's user say "another account", and `user=` takes only the reader's own (SRV-873).
 

@@ -16,6 +16,10 @@ controller paths sent the settings, hooks, providers, plugins and health pages' 
      is named in its code), the conductor's ones only while its conductor is on, and none of the
      engine's
                                                                   test_the_controller_answers_what_the_list_says
+  5  OPS-300: docs/proxy.md's fronts leave no way around the controller: the bare-engine front
+     sends every listed path to TandemApp, the front of an engine with its own page sends every
+     controller prefix; both block the internal ones
+                                                                  test_the_front_snippets_send_every_controller_prefix
 
     python tests/test_route_list.py
 """
@@ -124,6 +128,88 @@ def test_the_install_doc_names_every_prefix():
     for r in routes():
         assert f"`{r['prefix']}`" in sec, f"the install doc's list lacks {r['prefix']}"
     return f"{len(routes())} prefixes in docs/install.md"
+
+
+# ---------------------------------------------------------------------------- 5
+PROXY_DOC = os.path.join(ROOT, "docs", "proxy.md")
+LOCATION = re.compile(r"^\s{4}location\s+(=|\^~)?\s*(\S+)\s*\{\s*(.*?)\s*\}\s*$")
+
+
+def doc_blocks(section: str) -> list[list[tuple[str, str, str]]]:
+    """The nginx blocks (indented `location` lines) of one section of docs/proxy.md:
+    [[(modifier, path, body), ...], ...] in the order they appear."""
+    with open(PROXY_DOC, encoding="utf-8") as fh:
+        text = fh.read()
+    at = text.find(section)
+    assert at >= 0, f"docs/proxy.md has no {section!r}"
+    end = text.find("\n### ", at + 5)
+    blocks, cur = [], []
+    for line in text[at:end if end > 0 else None].splitlines():
+        m = LOCATION.match(line)
+        if m:
+            cur.append((m.group(1) or "", m.group(2), m.group(3)))
+        elif cur and line.strip() == "":
+            blocks.append(cur)
+            cur = []
+        elif cur and not line.startswith("    "):
+            blocks.append(cur)
+            cur = []
+    if cur:
+        blocks.append(cur)
+    return blocks
+
+
+def nginx_pick(locations, path: str, fallback: str) -> str:
+    """Where nginx sends `path` (no regex locations here): an exact match first, else the longest
+    prefix; 'controller' for the data-plane snippet, 'blocked' for a return, else `fallback`."""
+    best = None
+    for mod, loc, body in locations:
+        if mod == "=" and path == loc:
+            best = (10 ** 6, body)
+            break
+        if mod in ("^~", "") and path.startswith(loc) and (best is None or len(loc) > best[0]):
+            best = (len(loc), body)
+    if best is None:
+        return fallback
+    body = best[1]
+    if "tandemapp-data-plane.conf" in body:
+        return "controller"
+    if body.startswith("return"):
+        return "blocked"
+    return f"? {body}"
+
+
+def probes(r: dict) -> list[str]:
+    p = r["prefix"]
+    if r["match"] == "exact":
+        return [p]
+    return [p, p.rstrip("/") + "/x/y"]
+
+
+def test_the_front_snippets_send_every_controller_prefix():
+    """OPS-300: no way around the controller. The bare-engine front sends every listed path to
+    TandemApp and blocks the internal ones. The front of an engine that still serves its own page
+    sends TandemApp every prefix only TandemApp answers (with the data plane of 'Through a reverse
+    proxy'), blocks the internal ones, and leaves only engine and both prefixes to the engine."""
+    rows = routes()
+    data_plane = doc_blocks("### Through a reverse proxy")[0]
+    bare, mixed = doc_blocks("### No way around the controller")[:2]
+    assert len(data_plane) == 8, data_plane
+    for r in rows:
+        for path in probes(r):
+            want = "blocked" if r["owner"] == "internal" else "controller"
+            got = nginx_pick(bare, path, "nothing")
+            assert got == want, ("bare", path, r["owner"], got)
+            got = nginx_pick(data_plane + mixed, path, "engine")
+            if r["owner"] in ("controller", "internal"):
+                assert got == want, ("mixed", path, r["owner"], got)
+            else:
+                assert got in ("engine", "controller"), ("mixed", path, got)
+    # the data plane and the new routes are the controller's in both
+    for path in ("/v1/messages", "/v1/messages/count_tokens", "/v1/auth/session",
+                 "/v1/chat/completions", "/v1/models"):
+        assert nginx_pick(data_plane + mixed, path, "engine") == "controller", path
+    return f"{len(rows)} prefixes, {len(bare)} bare and {len(mixed)} mixed locations"
 
 
 # ---------------------------------------------------------------------------- 4

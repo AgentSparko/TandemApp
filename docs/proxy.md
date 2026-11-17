@@ -378,6 +378,43 @@ These eight send the data plane only. When TandemApp's page is behind the same p
 
 `proxy_read_timeout` is the time between two reads, so a stream that sends a byte now and then (the engine's prefill comments, reasoning) is never cut by it; a whole answer of an hour's thinking is. `/v1/chat/completions/` with a slash and other spellings stay on the engine. Before the switch, check the controller directly on its port with a small request of each kind (both paths answer in the meantime), then `nginx -t` and `systemctl reload nginx`, and check the same through the public address.
 
+### No way around the controller
+
+A path the proxy sends straight to an engine passes no sign-in of TandemApp: only the engine's own
+rule applies there. With an engine host that runs no page and no conductor of its own (the
+default since engine API 1.8), the proxy sends everything to TandemApp and blocks the two internal
+prefixes:
+
+    location ^~ /chat-engine     { return 404; }
+    location ^~ /plugin-backends { return 404; }
+    location /                   { include snippets/tandemapp-data-plane.conf; }
+
+WebSockets (the Chat tab's terminal and port preview) need `proxy_set_header Upgrade
+$http_upgrade;` and `proxy_set_header Connection $connection_upgrade;` in that location.
+
+While an engine still serves its own page and conductor, the proxy keeps sending the engine's
+routes to it, and sends TandemApp every prefix only TandemApp answers, beside the data plane
+above:
+
+    location = /                 { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /dashboard       { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/fleet        { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/settings     { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/config       { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/auth         { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/chat-app     { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /v1/collect      { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /plugin-panels   { include snippets/tandemapp-data-plane.conf; }
+    location ^~ /chat-engine     { return 404; }
+    location ^~ /plugin-backends { return 404; }
+
+The routes left on the engine answer with the engine's own rule until the engine is paired and
+refuses callers without its token. `tests/test_route_list.py` checks both lists against
+[controller-routes.json](controller-routes.json).
+
+`python -m chatd.front`, the stand-in front for an engine without the Chat tab's forward, signs
+every caller in as the owner. It binds to a loopback address only and refuses any other host.
+
 ### Rollback
 
 Restore the site file from the copy made before the change (or delete the eight `location` lines), `nginx -t`, `systemctl reload nginx`: clients reach the engine directly again with that reload, without a change on the controller, the engine or a client. The controller keeps its ledger; requests after the rollback are in the engine's only.

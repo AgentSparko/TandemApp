@@ -153,10 +153,11 @@ permission prompt gives its slot back until the answer comes, and takes one agai
 cloud model takes no slot: its calls run at the provider, not on the box.
 
 **An engine without the forward.** An engine server from an older build (or another engine
-altogether) has no `/v1/chat-app` route. `bash ops/chatd.sh start --front 0.0.0.0:4180` also
+altogether) has no `/v1/chat-app` route. `bash ops/chatd.sh start --front 127.0.0.1:4180` also
 serves the built dashboard on :4180 from chatd's own process, forwarding `/v1/chat-app/*` to chatd and
-everything else to the engine (`chatd/front.py`). The front has no admin password, so it belongs on
-the trusted network only.
+everything else to the engine (`chatd/front.py`). The front signs every caller in as the owner, so it
+binds to a loopback address only and refuses any other host. To reach the Chat tab from another
+device, run TandemApp.
 
 ## Auth
 

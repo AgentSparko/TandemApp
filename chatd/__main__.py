@@ -2,7 +2,7 @@
 
     python -m chatd [--host 127.0.0.1] [--port 8016] [--data ~/.tandemllm/chat]
                     [--engine http://127.0.0.1:8000] [--max-runs 2] [--no-titles]
-                    [--front 0.0.0.0:4180 --dashboard dashboard/dist]
+                    [--front 127.0.0.1:4180 --dashboard dashboard/dist]
 
 `--front` also serves chatd/front.py from this process: the dashboard and the Chat tab in front of
 an engine whose server has no forward (one process to start and stop when trying the chat).
@@ -69,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--front", default=None, help="HOST:PORT for chatd/front.py in this process")
     ap.add_argument("--dashboard", default=None, help="the built dashboard, for --front")
     a = ap.parse_args(argv)
+    if a.front:
+        from chatd import front as front_mod
+        bad = front_mod.refused_host(a.front.rpartition(":")[0].strip("[]") or "127.0.0.1")
+        if bad:
+            print(f"python -m chatd: --front {a.front}: {bad}", file=sys.stderr)
+            return 2
     data = os.path.expanduser(a.data)
     os.makedirs(data, mode=0o700, exist_ok=True)
     key = load_key(data)

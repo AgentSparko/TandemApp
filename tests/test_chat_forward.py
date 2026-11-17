@@ -402,6 +402,26 @@ def test_the_front_serves_the_dashboard_and_forwards_both_ways():
         fk[0].shutdown()
 
 
+def test_the_front_is_for_this_machine_only():
+    """OPS-300: the front signs every caller in as the owner, so `python -m chatd.front` and
+    `python -m chatd --front` refuse a host that is not loopback, before anything listens."""
+    import contextlib
+    import io
+
+    from chatd import __main__ as chatd_main
+    from chatd import front
+    for host in ("127.0.0.1", "::1", "localhost"):
+        assert front.refused_host(host) is None, host
+    for host in ("0.0.0.0", "192.0.2.7", "::", ""):
+        assert "for this machine only" in front.refused_host(host), host
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        assert front.main(["--host", "0.0.0.0", "--dashboard", "/nonexistent"]) == 2
+        assert chatd_main.main(["--front", "0.0.0.0:4180", "--data", "/nonexistent/x"]) == 2
+        assert chatd_main.main(["--front", "[::]:4180", "--data", "/nonexistent/x"]) == 2
+    assert err.getvalue().count("for this machine only") == 3, err.getvalue()
+
+
 def test_a_browser_that_leaves_while_chatd_holds_the_answer_closes_the_forward():
     """#86: a long-poll or a quiet event stream through the port preview. The forward waited in
     recv for chatd and noticed a browser that left only on its next write, so chatd (and the

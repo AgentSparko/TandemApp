@@ -1,7 +1,7 @@
 """`python -m chatd.front`: the dashboard and the Chat tab in front of an engine that has no forward.
 
     python -m chatd.front --port 4180 --dashboard dashboard/dist \\
-        --engine http://127.0.0.1:8000 [--chatd http://127.0.0.1:8016] [--host 0.0.0.0]
+        --engine http://127.0.0.1:8000 [--chatd http://127.0.0.1:8016]
 
 The engine server forwards `/v1/chat-app/*` itself (server/chat_forward.py). An engine that runs
 another build -- an older release, a branch without the forward, vLLM -- does not, and this front
@@ -9,8 +9,11 @@ stands in for it, so the Chat tab can be tried without restarting the engine:
 
     /dashboard/*        the built dashboard (server/static.py, the engine's own file server)
     /v1/chat-app/*      to chatd with the forward key, as the engine server would (no password:
-                        the front has no admin switch, so it binds to 127.0.0.1 unless told)
+                        the front signs everyone in as the owner)
     everything else     to the engine unchanged (its own auth applies there)
+
+OPS-300: it is for this machine only. It signs every caller in, so it binds to a loopback address
+and refuses any other `--host`. To reach the Chat tab from another device, run TandemApp.
 
 It holds nothing and computes nothing; stopping it stops nothing in chatd.
 """
@@ -25,6 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from chatd.__main__ import load_key, log
 from tandemapp import chat_forward, static
+from tandemapp.auth import LOOPBACK
 
 
 class FrontHandler(BaseHTTPRequestHandler):
@@ -72,6 +76,15 @@ class FrontHandler(BaseHTTPRequestHandler):
         self._go("PUT")
 
 
+def refused_host(host: str) -> str | None:
+    """OPS-300: why `host` is refused for the front, or None for a loopback address."""
+    if host in LOOPBACK or host == "localhost":
+        return None
+    return (f"--host {host or '(all addresses)'} refused: this front signs every caller in as "
+            "the owner, so it is for this machine only (127.0.0.1 or ::1). To reach the Chat tab "
+            "from another device, run TandemApp.")
+
+
 def _addr(url: str) -> tuple[str, int]:
     u = urllib.parse.urlsplit(url)
     return u.hostname or "127.0.0.1", u.port or 80
@@ -87,6 +100,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data", default=os.environ.get("QSE_CHAT_DATA") or "~/.tandemllm/chat",
                     help="chatd's data folder (its forward.key)")
     a = ap.parse_args(argv)
+    bad = refused_host(a.host)
+    if bad:
+        print(f"python -m chatd.front: {bad}", file=sys.stderr)
+        return 2
     handler = type("Front", (FrontHandler,), {
         "dist": os.path.abspath(a.dashboard), "engine": _addr(a.engine),
         "chatd": _addr(a.chatd), "key": load_key(os.path.expanduser(a.data))})

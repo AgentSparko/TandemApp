@@ -1,7 +1,7 @@
 #!/bin/bash
 # chatd, the Chat tab's service (python -m chatd, chatd/__init__.py):
 #
-#   bash app/ops/chatd.sh start [--front 0.0.0.0:4180]   start it in the background (QSE_CHAT_URL)
+#   bash app/ops/chatd.sh start [--front 127.0.0.1:4180]   start it in the background (QSE_CHAT_URL)
 #   bash app/ops/chatd.sh stop [--this-tree]            SIGTERM: open runs end `interrupted` (Continue);
 #                                                   --this-tree: only a chatd this checkout started
 #   bash app/ops/chatd.sh restart                       stop, then start
