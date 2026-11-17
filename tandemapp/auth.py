@@ -90,11 +90,12 @@ def loopback_host(host: str) -> bool:
 
 
 class LoginLimit:
-    """Failed sign-ins per address: LOGIN_FAILS a minute, then `login_blocked` for the rest of the
-    window. Used by proxy/accounts.py SignInLimits."""
+    """Failed sign-ins per address: LOGIN_FAILS a minute (or `fails`), then `login_blocked` for
+    the rest of the window. Used by proxy/accounts.py SignInLimits and its wrong-token limit."""
 
-    def __init__(self, trusted_proxies=(), *, clock=time.time):
+    def __init__(self, trusted_proxies=(), *, clock=time.time, fails: int = 0):
         self.clock = clock
+        self.fails = fails or LOGIN_FAILS
         self.trusted_proxies = TrustedProxies(trusted_proxies)
         self._fails: dict = collections.defaultdict(collections.deque)
         self._lock = threading.Lock()
@@ -105,7 +106,7 @@ class LoginLimit:
             q = self._fails[who]
             while q and now - q[0] > LOGIN_WINDOW_S:
                 q.popleft()
-            return len(q) >= LOGIN_FAILS
+            return len(q) >= self.fails
 
     def login_key(self, peer: str, headers) -> str:
         """The throttle key for one login attempt -- the one rule BOTH servers run.

@@ -44,7 +44,9 @@ THE GATE (one rule for every route, AccountsAuth.gate):
 SIGN-IN LIMITS. Per address: five failures a minute, then 429 for a minute (tandemapp/auth.py's
 rule and key). Per name tried: after five failures each further try waits twice as long as the
 one before, 2 s up to 300 s, never a lock for good; the name tried is the key whether or not it
-exists, so the answer does not tell. Over every address: proxy/identity.py's cap.
+exists, so the answer does not tell. Over every address: proxy/identity.py's cap. Wrong API
+tokens (a 401: unknown, revoked, expired, owner disabled) per address: TOKEN_FAILS a minute, then
+every request with a token from that address is a 429 for the rest of the minute.
 
 SEAMS: `service_resolver` (SRV-869: `(headers, peer) -> Principal | None`, asked before the token
 store for a request with a bearer: the plugin relay's in-process secret, relay_principal),
@@ -106,6 +108,7 @@ STREAM_CHECK_S = 2.0
 TOKEN_STREAM = "t:"                     # SRV-869: a token's key in the stream registry
 EXPIRING_MS = 7 * 86_400_000            # SRV-871: finding token_expiring within this
 ACCOUNT_FAILS = 5
+TOKEN_FAILS = 20                        # wrong API tokens per address a minute, then 429
 ACCOUNT_WAIT_S = (2.0, 300.0)
 ACCOUNT_FORGET_S = 3600.0               # a name's failures are forgotten after an hour of quiet
 MAX_KEYS = 10_000
@@ -671,6 +674,7 @@ class SignInLimits:
     def __init__(self, trusted_proxies=(), *, clock=time.time):
         self.clock = clock
         self.by_address = auth_mod.LoginLimit(trusted_proxies, clock=clock)
+        self.tokens = auth_mod.LoginLimit(trusted_proxies, clock=clock, fails=TOKEN_FAILS)
         self._names: dict[str, list] = {}           # name -> [failures, wait until, last failure]
         self._lock = threading.Lock()
 
@@ -1124,9 +1128,17 @@ class AccountsAuth:
                                 "no permission is defined for this route")
         peer = handler._peer()
         token_call = self.has_token(handler.headers)
+        tkey = self.limits.key(peer, handler.headers) if token_call else None
+        if token_call and self.limits.tokens.login_blocked(tkey):
+            strip_credentials(handler.headers)
+            return self._token_refuse(handler, method, raw, 429, "rate_limited",
+                                      "too many wrong API tokens from this address; try again "
+                                      "in a minute")
         p = self.resolve(handler.headers, peer, raw)
         if token_call:
             strip_credentials(handler.headers)       # SRV-867: checked; never passed on
+        if token_call and isinstance(p, tokens_mod.Refused) and p.status == 401:
+            self.limits.tokens.login_failed(tkey)
         if isinstance(p, tokens_mod.Refused):
             if perm != authz.OPEN:
                 return self._token_refuse(handler, method, raw, p.status, p.code, p.message,
@@ -1198,7 +1210,8 @@ class AccountsAuth:
                       message: str, **facts) -> bool:
         if method not in ("GET", "HEAD"):
             handler.close_connection = True
-        extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else ()
+        extra = (("WWW-Authenticate", 'Bearer realm="TandemLLM"'),) if status == 401 else \
+            (("Retry-After", str(int(auth_mod.LOGIN_WINDOW_S))),) if status == 429 else ()
         shape, rid = None, None
         if _messages_shape(handler, raw):
             shape, rid = "messages", tokens_mod.request_id()

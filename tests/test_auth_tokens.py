@@ -299,6 +299,41 @@ def test_expired_and_revoked():
         srv.shutdown()
 
 
+def test_wrong_tokens_are_limited():
+    """SEC-28: 20 wrong API tokens a minute from one address, then every request with a token
+    from there is a 429 for the rest of the minute; a session, another address and the next
+    minute are not affected."""
+    srv, port = engine()
+    try:
+        with Proxy(env={**ON, **env_for(port)}) as px:
+            px.sync()
+            make("ops", "operator")
+            ops = sign_in(px, "ops")
+            good, _ = new_token(px, ops, label="good", scopes=["inference:openai"])
+            body = {"model": "small-1", **CHAT}
+            for i in range(20):
+                assert px.post("/v1/chat/completions", body,
+                               bearer(f"tdm-{i:08x}-" + "x" * 43))[0] == 401, i
+            st, h, out = px.post("/v1/chat/completions", body, bearer("tdm-0000ffff-" + "y" * 43))
+            assert st == 429 and h.get("Retry-After") == "60", (st, h, out)
+            assert json.loads(out)["error"]["code"] == "rate_limited", out
+            # a right token from the same address waits too, in either header and shape
+            assert px.post("/v1/chat/completions", body, bearer(good))[0] == 429
+            st, out = j(px.post("/v1/messages", {"model": "small-1"}, {"x-api-key": good}))
+            assert st == 429 and out["type"] == "error", out
+            # the page's session is not a token: it still works
+            assert px.get("/v1/auth/session", ops)[0] == 200
+            # another address (from the loopback proxy, X-Real-IP counts) is not limited
+            assert px.post("/v1/chat/completions", body,
+                           {**bearer(good), "X-Real-IP": "203.0.113.9"})[0] == 200
+            # the next minute the address is free again
+            base = time.time()
+            accounts().limits.tokens.clock = lambda: base + 61
+            assert px.post("/v1/chat/completions", body, bearer(good))[0] == 200
+    finally:
+        srv.shutdown()
+
+
 # ---------------------------------------------------------------------------- Gherkin 4
 
 def test_an_imported_key():
