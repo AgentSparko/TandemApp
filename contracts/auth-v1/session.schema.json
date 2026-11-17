@@ -1,0 +1,95 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "authenticated": {
+   "type": "boolean"
+  },
+  "account": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/account"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "principal": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "kind": {
+       "enum": [
+        "account",
+        "local",
+        "token",
+        "service",
+        "session-address"
+       ]
+      },
+      "name": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "name"
+     ]
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "permissions": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "csrf": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "provider": {
+   "$ref": "common.schema.json#/$defs/provider"
+  },
+  "setup_required": {
+   "type": "boolean"
+  },
+  "local_mode": {
+   "type": "boolean"
+  },
+  "expires_at": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  }
+ },
+ "required": [
+  "contract_version",
+  "authenticated",
+  "account",
+  "principal",
+  "permissions",
+  "csrf",
+  "provider",
+  "setup_required",
+  "local_mode",
+  "expires_at"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/auth/session: who this request is. `csrf` is the header X-Tandem-CSRF every write of the session sends",
+ "$id": "auth-v1/session"
+}

@@ -24,7 +24,7 @@ The proxy, the collector and the plugins read \code{TANDEM_*} variables. TandemA
 
 \section{HTTP}\index{auth}
 
-Table~\ref{tab:ref-http-who} names the labels the route tables use. The controller's admin password is \code{TANDEM_ADMIN_TOKEN} (\code{QSE_ADMIN_TOKEN} is read too); it follows the engine's access rule, and the OpenAI routes are open until the first user key exists (Section~\ref{sec:users}).
+Table~\ref{tab:ref-http-who} names the labels the route tables use. Every route but \code{/health}, the page and the sign-in needs an account's session or an API token (Section~\ref{sec:users}); \code{docs/auth.md} has the roles, the scopes and the recovery steps.
 
 \input{generated/http-who}
 

@@ -1,0 +1,17 @@
+{
+ "type": "object",
+ "properties": {
+  "tokens": {
+   "type": "array",
+   "items": {
+    "$ref": "token.schema.json"
+   }
+  }
+ },
+ "required": [
+  "tokens"
+ ],
+ "additionalProperties": false,
+ "description": "GET /v1/auth/tokens",
+ "$id": "auth-v1/tokens"
+}

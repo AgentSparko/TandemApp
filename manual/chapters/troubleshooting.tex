@@ -34,7 +34,7 @@ The Chat tab is in beta (Chapter~\ref{ch:chat}).
 
 \section{The proxy}
 
-\paragraph{401: a proxy API key is needed.} Once one user key exists, every request from another machine needs \code{Authorization: Bearer tdm-...}. Make a key under Backends, Users, or set \code{TANDEM_API_KEYS}.
+\paragraph{401 or 403 from another device.} Every request from another device needs an API token (\code{Authorization: Bearer tdm-...}); 401 names a token that is unknown, revoked or expired. 403 \code{api\_not\_exposed} means the protocol's switch is on this machine: set it to network under Settings, API. Make a token on the Access page or with \code{tandem-app tokens create}.
 
 \paragraph{A save in the Backends view answers 422 and names a variable.} A \code{TANDEM_*} variable sets that field, and the environment wins. Change the variable, or remove it and restart.
 

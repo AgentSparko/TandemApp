@@ -1,0 +1,42 @@
+{
+ "contract_version": "1.0",
+ "authenticated": true,
+ "account": {
+  "id": "bfd8453cf205",
+  "username": "ops",
+  "display_name": null,
+  "role": "operator",
+  "must_change": false
+ },
+ "principal": {
+  "kind": "account",
+  "name": "ops"
+ },
+ "permissions": [
+  "chat",
+  "fleet:read",
+  "fleet:write",
+  "inference",
+  "metrics:read",
+  "read",
+  "self",
+  "settings:write",
+  "tokens:inference",
+  "tokens:management"
+ ],
+ "csrf": "9178a0a01ec4307cf99f71d3579bb02bd520c247db26961601caf97127d3e1d5",
+ "provider": {
+  "kind": "local",
+  "capabilities": {
+   "password": true,
+   "redirect": false,
+   "header": false,
+   "groups": false,
+   "manage_users": true,
+   "change_password": true
+  }
+ },
+ "setup_required": true,
+ "local_mode": false,
+ "expires_at": "2026-12-17T10:35:25Z"
+}

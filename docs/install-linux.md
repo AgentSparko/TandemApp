@@ -30,7 +30,7 @@ restarted, and switched back when it does not come up. `app.env` keeps what it h
 
 | option | what |
 |-|-|
-| `--listen ADDR` | the address to bind: `0.0.0.0`, `::` or one of the host's. An address beyond loopback writes an admin token (`TANDEM_ADMIN_TOKEN`, never printed) into `app.env` and turns the page's sign-in on; with accounts (below) it writes no secret and prints a setup code |
+| `--listen ADDR` | the address to bind: `0.0.0.0`, `::` or one of the host's. An address beyond loopback writes no secret and prints a one-time setup code (below) |
 | `--behind-proxy` | a reverse proxy or tunnel on this host sends other devices here: with accounts, this machine's browser is never trusted without a password (`TANDEM_LOCAL_MODE=off`) and the summary prints a setup code |
 | `--port N` | default 8080 |
 | `--chat off\|own\|external` | who runs chatd. A new `app.env` gets `off`; the page switches it later. `own` here runs chatd on this host from the start |
@@ -52,8 +52,8 @@ On Linux a user unit stops at logout unless the user lingers; the install prints
 ### Sign-in with accounts
 
 User accounts with roles, sessions and API tokens are the sign-in (there is no admin token and
-no open default any more; an older install's `TANDEM_ADMIN_TOKEN`, `TANDEM_AUTH=accounts` and
-the like are named on the health page and can go once you will not roll back).
+no open default any more; an older install's variables are named on the health page and can go
+once you will not roll back). [auth.md](auth.md) has the roles, tokens and recovery steps.
 
 - **This machine only** (the default address, no proxy): local mode. The page opens without a
   password and offers "Set a password"; nothing else on the network reaches it. A tool on this
@@ -80,9 +80,9 @@ the like are named on the health page and can go once you will not roll back).
 - `tandem-app service install --host 0.0.0.0` refuses while no owner has a password, unless
   `--setup-code`, which prints a code. `tandem-app check` says where the sign-in stands.
 - An install that had the admin token keeps it working for scripts for 30 days, as an API token
-  marked for review. It never signs in to the page. Remove `TANDEM_ADMIN_TOKEN`,
-  `TANDEM_API_KEYS` and `TANDEM_DASHBOARD_LOGIN` from `app.env` once you will not go back to an
-  older release; the health page names each one still set.
+  marked for review. It never signs in to the page. [auth.md](auth.md#moving-from-the-old-sign-in)
+  lists the old variables; remove them from `app.env` once you will not go back to an older
+  release. The health page names each one still set.
 
 ### Behind a reverse proxy
 

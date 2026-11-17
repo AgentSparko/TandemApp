@@ -1,0 +1,121 @@
+{
+ "$id": "auth-v1/common",
+ "description": "the parts the other schemas share",
+ "$defs": {
+  "time": {
+   "type": "string",
+   "description": "UTC, ISO 8601 with a Z"
+  },
+  "role": {
+   "enum": [
+    "viewer",
+    "operator",
+    "admin",
+    "owner"
+   ]
+  },
+  "scope": {
+   "enum": [
+    "inference:openai",
+    "inference:anthropic",
+    "usage:read",
+    "metrics:read",
+    "settings:read",
+    "settings:write",
+    "fleet:read",
+    "fleet:write",
+    "trust",
+    "collect:write",
+    "chat-engine",
+    "plugin-backend"
+   ]
+  },
+  "account": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "username": {
+     "type": "string"
+    },
+    "display_name": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "role": {
+     "enum": [
+      "viewer",
+      "operator",
+      "admin",
+      "owner"
+     ]
+    },
+    "must_change": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "id",
+    "username",
+    "display_name",
+    "role",
+    "must_change"
+   ],
+   "additionalProperties": false,
+   "description": "an account as its owner sees it: never a password, hash or salt"
+  },
+  "provider": {
+   "type": "object",
+   "properties": {
+    "kind": {
+     "enum": [
+      "local",
+      "trusted-header",
+      "oidc",
+      "ldap"
+     ]
+    },
+    "capabilities": {
+     "type": "object",
+     "properties": {
+      "password": {
+       "type": "boolean"
+      },
+      "redirect": {
+       "type": "boolean"
+      },
+      "header": {
+       "type": "boolean"
+      },
+      "groups": {
+       "type": "boolean"
+      },
+      "manage_users": {
+       "type": "boolean"
+      },
+      "change_password": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "password",
+      "redirect",
+      "header",
+      "groups",
+      "manage_users",
+      "change_password"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "required": [
+    "kind",
+    "capabilities"
+   ],
+   "additionalProperties": false
+  }
+ }
+}

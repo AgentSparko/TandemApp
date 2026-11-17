@@ -1,0 +1,22 @@
+{
+ "contract_version": "1.0",
+ "authenticated": false,
+ "account": null,
+ "principal": null,
+ "permissions": [],
+ "csrf": null,
+ "provider": {
+  "kind": "local",
+  "capabilities": {
+   "password": true,
+   "redirect": false,
+   "header": false,
+   "groups": false,
+   "manage_users": true,
+   "change_password": true
+  }
+ },
+ "setup_required": true,
+ "local_mode": false,
+ "expires_at": null
+}

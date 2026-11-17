@@ -1,0 +1,30 @@
+{
+ "type": "object",
+ "properties": {
+  "error": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "type": "string"
+    },
+    "code": {
+     "type": "string"
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "code",
+    "message"
+   ]
+  }
+ },
+ "required": [
+  "error"
+ ],
+ "additionalProperties": false,
+ "description": "a token's refusal on an OpenAI route: 401 invalid_api_key, 403 permission_denied or api_not_exposed, 429 rate_limited with Retry-After",
+ "$id": "auth-v1/openai-error"
+}

@@ -14,7 +14,7 @@ TandemApp runs on one machine on a home or office LAN, in front of one or more e
 | dashboard | the web UI, served by the controller, and by an engine in chat mode while the engine still carries TandemApp | `dashboard/` |
 | TandemNode, 7700 | the agent the controller reads a node through; mTLS with pinned certificates after pairing, a pairing window on 7701 while a code is shown | `proxy/nodeagent.py`, `proxy/pairing.py` |
 
-The controller's admin password (`TANDEM_ADMIN_TOKEN`) is optional, as the engine's is. With no password, every route answers anyone who reaches the port. With one, the admin routes and every chat route need the bearer token or the `qse_dash` session cookie. The OpenAI routes behind the controller are open until the first user key exists; from then on every request from another machine needs a key. chatd trusts only requests that carry the forward key (`X-Tandem-Forward`).
+Every route of the controller but `/health`, the page shell and the sign-in needs an account's session or an API token ([auth.md](auth.md)). Until the first owner exists, only the one-time setup code opens the first-run setup. The one exception is local mode: a bare process bound to loopback lets this machine's browser and tools in as the owner until that owner sets a password. Tokens have scopes, are checked against their owner's role at each request, and never reach a backend. chatd trusts only requests that carry the forward key (`X-Tandem-Forward`).
 
 Treat each of these as attacker-controlled:
 
@@ -29,7 +29,7 @@ Treat each of these as attacker-controlled:
 
 In this order:
 
-1. Auth in `tandemapp/auth.py` (the engine keeps its own copy), `tandemapp/chat_forward.py` and `chatd/http.py`: any way past the admin rule with a password set, a forged trusted-local, a forged forward key or `X-Tandem-*` header, a session cookie that outlives its token.
+1. Sessions and API tokens: the gate in `proxy/accounts.py`, the permission table in `proxy/authz.py`, tokens in `proxy/tokens.py`, local mode and the setup code in `proxy/authlocal.py`, and `tandemapp/chat_forward.py` and `chatd/http.py`. Any route without the permission it needs, a session that outlives its revocation, a token used beyond its scopes, models, expiry or its owner's role, a CSRF or cross-origin write, local mode reached through a proxy, a setup code that opens more than the setup, a forged forward key or `X-Tandem-*` header, or a credential that reaches a backend, a log or an answer.
 2. The sandbox boundary: a container setting that lets a chat reach the host, and egress bypasses in `chatd/egress.py` such as DNS rebinding, IPv4-mapped IPv6, redirects or CONNECT tricks that reach the LAN, the box or an engine's port. `ops/sandbox/relay.py`, which runs inside the container, is part of this.
 3. Path handling on the host for a chat's files: `chatd/workspace.py` (`SandboxDir`, O_NOFOLLOW walks), uploads (`chatd/attach.py`), snapshots, the files pane, the Open WebUI tool runner (`chatd/owui.py`). Traversal, symlink races and writes outside `<data>/workspaces/<id>/` are in scope.
 4. Script from a sandbox page that runs on the dashboard's origin. Previews must stay in an opaque-origin iframe; the CSPs live in `chatd/panes.py` and `chatd/preview.py`, and the port proxy in chatd.

@@ -1,0 +1,26 @@
+{
+ "type": "object",
+ "properties": {
+  "contract_version": {
+   "const": "1.0"
+  },
+  "account": {
+   "$ref": "common.schema.json#/$defs/account"
+  },
+  "csrf": {
+   "type": "string"
+  },
+  "expires_at": {
+   "$ref": "common.schema.json#/$defs/time"
+  }
+ },
+ "required": [
+  "contract_version",
+  "account",
+  "csrf",
+  "expires_at"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/auth/session: 200 with the session cookie (tandem_session over http, __Host-tandem_session over https)",
+ "$id": "auth-v1/signed-in"
+}

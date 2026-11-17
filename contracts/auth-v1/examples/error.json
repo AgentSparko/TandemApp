@@ -1,0 +1,7 @@
+{
+ "error": {
+  "type": "unauthorized",
+  "code": "sign_in_required",
+  "message": "sign in, or send an API token"
+ }
+}

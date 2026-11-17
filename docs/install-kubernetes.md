@@ -76,9 +76,9 @@ and refused. The chart puts no auth secret into the pod's environment:
   and spent after 5 wrong tries. With no Secret at all (`auth.create: false`) each start logs a
   fresh code while no owner exists.
 - On a new install, make no admin token. A Secret named by `auth.existingSecret` (or the one an
-  older chart made with an admin token) is the old admin token as well
-  (`TANDEM_ADMIN_TOKEN_FILE`): a value of 32 characters or more there becomes an API token for
-  scripts for 30 days once the owner exists. Let the chart make the code, or give your own in a
+  older chart made with an admin token) is the old admin token as well: a value of 32 characters
+  or more there becomes an API token for scripts for 30 days once the owner exists
+  ([auth.md](auth.md#moving-from-the-old-sign-in)). Let the chart make the code, or give your own in a
   Secret named by `auth.bootstrap.existingSecret`, which is only ever a setup code.
 - Nobody signs in before the owner exists: every route but `/health` and the page shell answers
   401. That includes `kubectl port-forward`, which reaches the pod on its own loopback: on
@@ -343,7 +343,7 @@ after an install or upgrade with an MCP `initialize` and `tools/list` from the c
 and once an owner exists (made with it, or from the controller's admin password) it is an API token,
 from that moment and with no restart, for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
 Secret while you may roll back: `helm rollback` to the revision before brings back the template
-that reads it into `TANDEM_ADMIN_TOKEN`, and the admin token signs in there as before. A network-
+that reads it as the admin token, which signs in there as before. A network-
 reachable release with no admin password answers 401 everywhere after this upgrade until the
 setup code is used.
 

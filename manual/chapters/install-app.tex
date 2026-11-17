@@ -96,7 +96,7 @@ conductor documents & the harness's profiles, router, packages and journal & \co
 
 \section{Moving from the engine's relay}\label{sec:import-backends}
 
-Up to engine API 1.7 the engine's own server could relay too, with \code{--backends <config database>}\index{backends@\texttt{-\kern0pt-backends}} (\code{QSE_BACKENDS}\index{qsebackends@\texttt{QSE\_BACKENDS}} in its \code{serve.env}). Since 1.8 the engine relays to nothing, and its start refuses any other value than empty or off with one line that says what to do. That config database is this controller's format, so \code{tandem-app import-backends --from <file>} shows what it would copy and \code{--write} copies it: each backend the controller does not have yet, with its key under the controller's master key, its models and its routing rules. The users stay in the old file, which the import never writes; \code{TANDEM_API_USERS_FROM} makes the controller check their keys there. \code{--disabled} stores the backends off, to turn on at the switch. Then \code{tandem doctor --retire-backends} on the engine's box turns its line into a dated comment. \code{docs/proxy.md} has the details.
+Up to engine API 1.7 the engine's own server could relay too, with \code{--backends <config database>}\index{backends@\texttt{-\kern0pt-backends}} (\code{QSE_BACKENDS}\index{qsebackends@\texttt{QSE\_BACKENDS}} in its \code{serve.env}). Since 1.8 the engine relays to nothing, and its start refuses any other value than empty or off with one line that says what to do. That config database is this controller's format, so \code{tandem-app import-backends --from <file>} shows what it would copy and \code{--write} copies it: each backend the controller does not have yet, with its key under the controller's master key, its models and its routing rules. The users stay in the old file, which the import never writes; their keys come over once as API tokens with the same hashes (\code{docs/auth.md}, Moving from the old sign-in). \code{--disabled} stores the backends off, to turn on at the switch. Then \code{tandem doctor --retire-backends} on the engine's box turns its line into a dated comment. \code{docs/proxy.md} has the details.
 
 \section{The fleet}\label{sec:fleet}\index{fleet}
 
@@ -189,4 +189,4 @@ A node and a controller trust each other through pinned certificates; no passwor
 
 \section{Access}
 
-The standalone proxy follows the engine's access rule (\enginemanual{Access and sign-in}) with its own variable, \code{TANDEM_ADMIN_TOKEN}, and adds user keys for the OpenAI routes (Section~\ref{sec:users}). It binds \code{127.0.0.1} by default.
+The standalone proxy has its own sign-in: accounts with roles, and API tokens (Section~\ref{sec:users}). It binds \code{127.0.0.1} by default, where it lets this machine in as the owner until that owner sets a password. Beyond loopback nobody signs in until the first owner is made with the one-time setup code the installer and the log print.

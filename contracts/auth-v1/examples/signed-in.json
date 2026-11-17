@@ -1,0 +1,12 @@
+{
+ "contract_version": "1.0",
+ "account": {
+  "id": "bfd8453cf205",
+  "username": "ops",
+  "display_name": null,
+  "role": "operator",
+  "must_change": false
+ },
+ "csrf": "d801222cbc0367e5d5d0237357790ce74e189826e1eb19f8fd609dd140be9872",
+ "expires_at": "2026-12-17T10:35:25Z"
+}

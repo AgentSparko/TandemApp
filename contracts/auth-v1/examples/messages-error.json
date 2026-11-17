@@ -1,0 +1,8 @@
+{
+ "type": "error",
+ "error": {
+  "type": "authentication_error",
+  "message": "the token is not known"
+ },
+ "request_id": "req_985f08ab7a9aaa75a116e731"
+}

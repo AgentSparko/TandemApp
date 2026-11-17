@@ -1,0 +1,10 @@
+{
+ "label": "laptop",
+ "scopes": [
+  "inference:openai"
+ ],
+ "models": [
+  "small-*"
+ ],
+ "days": 90
+}

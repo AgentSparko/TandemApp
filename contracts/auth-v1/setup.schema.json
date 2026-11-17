@@ -1,0 +1,21 @@
+{
+ "type": "object",
+ "properties": {
+  "code": {
+   "type": "string"
+  },
+  "username": {
+   "type": "string"
+  },
+  "password": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "username",
+  "password"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/auth/setup: the first owner. `code` is the one-time setup code; in local mode there is none",
+ "$id": "auth-v1/setup"
+}

@@ -1,0 +1,40 @@
+{
+ "type": "object",
+ "properties": {
+  "label": {
+   "type": "string"
+  },
+  "scopes": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/scope"
+   }
+  },
+  "models": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "days": {
+   "anyOf": [
+    {
+     "type": "integer"
+    },
+    {
+     "const": "never"
+    }
+   ]
+  },
+  "limits": {
+   "type": "object"
+  }
+ },
+ "required": [
+  "label",
+  "scopes"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/auth/tokens: the body. `models` are globs; `days` a number or \"never\"; `limits` keys: requests_per_minute, tokens_per_minute, concurrent, cost_per_day, cost_per_month",
+ "$id": "auth-v1/token-new"
+}

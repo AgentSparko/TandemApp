@@ -1,0 +1,131 @@
+{
+ "type": "object",
+ "properties": {
+  "id": {
+   "type": "string"
+  },
+  "kind": {
+   "enum": [
+    "user",
+    "service",
+    "legacy"
+   ],
+   "description": "legacy: a key imported from the old sign-in, under review until confirmed"
+  },
+  "label": {
+   "type": "string"
+  },
+  "owner": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "owner_id": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "hint": {
+   "type": "string"
+  },
+  "scopes": {
+   "type": "array",
+   "items": {
+    "$ref": "common.schema.json#/$defs/scope"
+   }
+  },
+  "models": {
+   "type": [
+    "array",
+    "null"
+   ],
+   "items": {
+    "type": "string"
+   }
+  },
+  "limits": {
+   "type": "object"
+  },
+  "memory_user": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "source": {
+   "type": "string"
+  },
+  "needs_review": {
+   "type": "boolean"
+  },
+  "state": {
+   "enum": [
+    "active",
+    "expired",
+    "revoked"
+   ]
+  },
+  "created_at": {
+   "$ref": "common.schema.json#/$defs/time"
+  },
+  "expires_at": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "revoked_at": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "last_used_at": {
+   "anyOf": [
+    {
+     "$ref": "common.schema.json#/$defs/time"
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "token": {
+   "type": "string",
+   "description": "tdm-<8 hex id>-<43 characters>, shown this once"
+  }
+ },
+ "required": [
+  "id",
+  "kind",
+  "label",
+  "owner",
+  "owner_id",
+  "hint",
+  "scopes",
+  "models",
+  "limits",
+  "memory_user",
+  "source",
+  "needs_review",
+  "state",
+  "created_at",
+  "expires_at",
+  "revoked_at",
+  "last_used_at",
+  "token"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/auth/tokens: 201, the token shown once (Cache-Control: no-store)",
+ "$id": "auth-v1/token-created"
+}

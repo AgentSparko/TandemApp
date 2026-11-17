@@ -1,0 +1,18 @@
+{
+ "type": "object",
+ "properties": {
+  "username": {
+   "type": "string"
+  },
+  "password": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "username",
+  "password"
+ ],
+ "additionalProperties": false,
+ "description": "POST /v1/auth/session: the body",
+ "$id": "auth-v1/sign-in"
+}

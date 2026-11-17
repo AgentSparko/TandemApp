@@ -45,7 +45,6 @@ TANDEM_BACKEND_DEEPSEEK_KIND=deepseek          # a cloud kind fills its URL in
 TANDEM_BACKEND_DEEPSEEK_KEY=<your DeepSeek key>
 TANDEM_ROUTE_1="deepseek-*=deepseek"
 TANDEM_PRICE_1="deepseek/deepseek-flash=0.30,0.006,1.2"
-TANDEM_API_KEYS="laptop:tdm-...,ci:tdm-..."
 \end{shell}
 
 \code{<ID>} in a variable name is the backend id in capitals, with \code{-} written as \code{_}. The environment wins field by field\index{environment overlay}: at every start the variables are written over the database's rows, and a backend is created when it is missing. The GUI shows each field a variable sets as locked, with the variable's name on it; a save that changes such a field answers 422 and names the variable. When the variable goes away, the field can be edited again and keeps its last value. An unknown variable, an unknown backend or a value the schema refuses stops the start with a message that names the variable. One schema, \code{proxy/config.schema.json}, checks both ways in. Table~\ref{tab:ref-tandem} lists every variable.
@@ -152,11 +151,11 @@ security add-generic-password -s tandemllm -a secrets-key -w "$(cat ~/.tandemllm
 rm ~/.tandemllm/secrets.key
 \end{shell}
 
-\section{Users and their keys}\label{sec:users}\index{users}
+\section{Accounts and API tokens}\label{sec:users}\index{users}
 
-Under Backends, Users, the admin makes a key per person or tool. The key, \code{tdm-} and random characters, is shown once and stored as its sha256. From the first key on, the OpenAI routes need one (\code{Authorization: Bearer tdm-...}) for every model, the engine's own included, from any machine other than this one. A request from loopback without proxy headers passes, so the engine's own helpers keep working. The key's label goes into the ledger's \code{user} column, and the Usage view filters by it. \code{TANDEM_API_KEYS}\index{tandemapikeys@\texttt{TANDEM\_API\_KEYS}} adds keys from the environment, in memory only.
+People sign in with an account (viewer, operator, admin or owner). Programs use an API token, made on the Access page or with \code{tandem-app tokens create}: \code{tdm-} and random characters, shown once and stored as its sha256, with scopes (\code{inference:openai}, \code{inference:anthropic}, \code{settings:read} and others), model globs, an expiry and limits. Another device needs a token and the protocol's exposure switch on network (Settings, API). The token's owner goes into the ledger's \code{user} column, and the Usage view filters by it. \code{docs/auth.md} has the details.
 
-The configuration routes (\code{/v1/config}) follow the admin rule. With no admin password (\code{TANDEM_ADMIN_TOKEN}) set, the default, anyone who reaches the port can change the configuration from the Backends and Setup screens, which ask for no password; with one set, a write needs it as a bearer header or a session, or comes from the machine itself. The default bind is \code{127.0.0.1}; keep the port on a trusted network.
+The configuration routes (\code{/v1/config}) need an operator's session, or a token with \code{settings:write}, to change anything. Being on the same machine opens nothing outside local mode. The default bind is \code{127.0.0.1}; keep the port on a trusted network.
 
 Putting one cloud key in front of several people makes you the provider toward them. The provider's terms hold the key holder responsible for what those people send, and most forbid reselling access without an agreement. Per-user keys keep each person's usage visible in the ledger. This is not legal advice.
 
