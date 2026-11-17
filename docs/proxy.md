@@ -405,9 +405,8 @@ above:
     location ^~ /chat-engine     { return 404; }
     location ^~ /plugin-backends { return 404; }
 
-The routes left on the engine answer with the engine's own rule until the engine is paired and
-refuses callers without its token. The engine has no sign-in for its dashboard, conductor and
-library reads, so until then the proxy puts TandemApp's sign-in in front of them: for each request
+The engine has no sign-in of its own and needs none: sign-in is TandemApp's alone. So the proxy
+puts TandemApp's sign-in in front of the routes it leaves on the engine: for each request
 the proxy sends to the engine it asks the controller first (`auth_request`) whether its cookie or
 token signs in, and `/health` stays open with the header that tells the page to show its
 sign-in:
