@@ -457,6 +457,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pages-per-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pages per role
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-first-owner" class="md-nav__link">
     <span class="md-ellipsis">
       The first owner
@@ -1293,6 +1302,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pages-per-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      Pages per role
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-first-owner" class="md-nav__link">
     <span class="md-ellipsis">
       The first owner
@@ -1418,6 +1436,28 @@ because it comes from the same machine, except in local mode (below).</p>
 <p><code>auth.chat_min_role: viewer</code> opens the Chat tab to viewers. <code>api.tokens.viewers_may_create: on</code>
 lets viewers make inference tokens. The last enabled owner cannot be disabled, demoted or
 removed.</p>
+<h2 id="pages-per-role">Pages per role<a class="headerlink" href="#pages-per-role" title="Permanent link">&para;</a></h2>
+<p>An admin picks which pages each role sees under Users &amp; access, Views. A TandemApp that many
+people use, such as one in the cloud, can show a new user Chat and API alone. The settings
+behind it are <code>auth.views.viewer</code>, <code>auth.views.operator</code> and <code>auth.views.admin</code>: <code>all</code> (the
+default), or the menu's sections separated by commas (<code>chat</code>, <code>overview</code>, <code>performance</code>, <code>usage</code>,
+<code>hardware</code>, <code>events</code>, <code>health</code>, <code>sparks</code>, <code>models</code>, <code>api</code>, <code>conductor</code>, <code>playground</code>, <code>dev</code>,
+<code>start</code>, <code>add-engine</code>, <code>add-spark</code>, <code>app</code>). Owners see every page. Account and Users &amp; access
+follow the role's permissions, never this list.</p>
+<p>A hidden page leaves the menu, and its link opens the first page the role sees. Its own routes
+answer 403 <code>view_hidden</code>, to a session and to the role's API tokens alike: Usage
+(<code>/v1/fleet/ledger</code>), Hardware (<code>/v1/fleet/host</code>), Events (<code>/v1/fleet/rules</code>), Models
+(<code>/v1/fleet/weights</code>), API (<code>/v1/config/backends</code>, <code>/v1/config/prices</code>), the Conductor
+(<code>/v1/conductor/*</code> but its speed check, live panel and residency limits), Dev
+(<code>/v1/dashboard/logs</code>), App (<code>/v1/settings/*</code> but the <code>auth</code> and <code>api</code> scopes, <code>/v1/fleet/app</code>,
+<code>/v1/fleet/hooks</code>, <code>/v1/fleet/plugins</code>), Chat (<code>/v1/chat-app/*</code>), Add Spark (<code>/v1/fleet/add</code>,
+<code>/v1/fleet/discovery</code>) and Add engine (<code>/v1/fleet/pair</code>). Overview, Performance, Health,
+Sparks, Playground and Get started read only what the top bar and the live panel read on every
+page, so the menu alone hides them. The gate checks the permission first and answers a missing
+one as before.</p>
+<p>A viewer's Chat is <code>auth.chat_min_role</code>, an owner's setting; the Views page switches it there.
+<code>auth.default_role</code> (<code>viewer</code> by default, never <code>owner</code>) is the role a new account gets when the
+request names none, and the one Add a user starts with.</p>
 <h2 id="the-first-owner">The first owner<a class="headerlink" href="#the-first-owner" title="Permanent link">&para;</a></h2>
 <p><strong>Local mode.</strong> A TandemApp process bound to loopback only (<code>127.0.0.1</code>, <code>::1</code>), not in a
 container and not on Kubernetes, opens to this machine's browser and tools as the owner <code>local</code>
