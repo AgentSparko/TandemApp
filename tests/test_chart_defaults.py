@@ -468,7 +468,10 @@ def golden_lines() -> list:
 
 
 def changes(old: list, new: list) -> tuple[list, list]:
-    """(lines gone, lines added)."""
+    """(lines gone, lines added). Whitespace-only lines don't count: Helm 3 and Helm 4 leave a
+    template's blank lines differently (the CI runner's Helm is 3, the golden render's 4)."""
+    old = [x for x in old if x.strip()]
+    new = [x for x in new if x.strip()]
     gone, added = [], []
     for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes():
         if op in ("delete", "replace"):
