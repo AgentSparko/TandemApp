@@ -128,6 +128,7 @@ import sqlite3
 import threading
 import time
 
+from proxy import presets as presets_mod
 from proxy import schema
 from proxy import secrets as vault_mod
 from proxy.translate import anthropic as anthropic_tr
@@ -280,7 +281,11 @@ ADDED = (("models", "price_offpeak", "TEXT"),
          # SRV-877: a kind's own settings (kind anthropic: auth, api_version, sampling, ...)
          ("backends", "anthropic", "TEXT NOT NULL DEFAULT '{}'"),
          # SRV-881: the price of a cache write kept for 1 hour (the cache write price without)
-         ("models", "price_cache_write_1h", "REAL"))
+         ("models", "price_cache_write_1h", "REAL"),
+         # the Backends page's providers (proxy/presets.py): a stored cloud flag (NULL: the
+         # kind's) and the preset a backend was made from (NULL: none)
+         ("backends", "cloud", "INTEGER"),
+         ("backends", "preset", "TEXT"))
 
 
 def _inflight_col(v) -> int:
@@ -769,7 +774,8 @@ class ConfigDB:
         self._conn.execute(
             "INSERT INTO backends(id, kind, label, url, enabled, models_mode, models, fallback, "
             "max_inflight, timeouts, inject_usage, harness, created_at, updated_at, updated_by, "
-            "host, anthropic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "host, anthropic, cloud, preset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+            "?, ?, ?)",
             (doc["id"], kind, doc.get("label"), norm_url(doc["url"]),
              int(doc.get("enabled", True)), doc.get("models_mode", "discover"),
              json.dumps(doc.get("models", [])), json.dumps(doc.get("fallback", [])),
@@ -777,7 +783,8 @@ class ConfigDB:
              json.dumps(doc.get("timeouts", {})),
              None if doc.get("inject_usage") is None else int(doc["inject_usage"]),
              json.dumps(doc.get("harness", {})), now, now, who, json.dumps(doc.get("host", {})),
-             json.dumps(doc.get("anthropic", {}))))
+             json.dumps(doc.get("anthropic", {})),
+             None if doc.get("cloud") is None else int(doc["cloud"]), doc.get("preset")))
         self._audit(who, "create", "backend", doc["id"], [k for k in doc if k != "key"])
 
     def _update_backend_fields(self, bid: str, fields: dict, who: str) -> None:
@@ -792,7 +799,7 @@ class ConfigDB:
                 v = json.dumps(old)
             elif k in ("models", "fallback"):
                 v = json.dumps(v)
-            elif k in ("enabled", "inject_usage"):
+            elif k in ("enabled", "inject_usage", "cloud"):
                 v = None if v is None else int(v)
             elif k == "url":
                 v = norm_url(v)
@@ -809,8 +816,8 @@ class ConfigDB:
 
     def _row_backend(self, r) -> dict:
         (bid, kind, label, url, enabled, mmode, models, fallback, maxin, timeouts, inject,
-         harness, created, updated, by, host, anth) = r
-        cloud = KINDS.get(kind, KINDS["generic"])["cloud"]
+         harness, created, updated, by, host, anth, cloud_col, preset) = r
+        cloud = KINDS.get(kind, KINDS["generic"])["cloud"] if cloud_col is None else bool(cloud_col)
         to = dict(TIMEOUTS[cloud])
         to.update(json.loads(timeouts or "{}"))
         h = {"mode": "off", "profile": None}
@@ -821,7 +828,7 @@ class ConfigDB:
                 "max_inflight": int(maxin) if maxin else None, "timeouts": to,
                 "inject_usage": (KINDS.get(kind, KINDS["generic"])["inject_usage"]
                                  if inject is None else bool(inject)),
-                "harness": h, "cloud": cloud,
+                "harness": h, "cloud": cloud, "preset": preset,
                 "host": dict({"mode": "auto", "url": None, "dcgm_url": None},
                              **json.loads(host or "{}")),
                 "created_at": created, "updated_at": updated, "updated_by": by,
@@ -830,7 +837,7 @@ class ConfigDB:
 
     _BCOLS = ("id, kind, label, url, enabled, models_mode, models, fallback, max_inflight, "
               "timeouts, inject_usage, harness, created_at, updated_at, updated_by, host, "
-              "anthropic")
+              "anthropic, cloud, preset")
 
     def backends(self) -> list[dict]:
         with self._lock:
@@ -852,6 +859,8 @@ class ConfigDB:
         errs = schema.validate(doc, "backend")
         if errs:
             raise ConfigError(f"{errs[0][0]} {errs[0][1]}", field=errs[0][0])
+        if doc.get("preset") is not None and doc["preset"] not in presets_mod.IDS:
+            raise ConfigError(f"no preset '{doc['preset']}'", field="preset")
         bad = harness_refusal(doc)
         if bad is not None:
             raise ConfigError(f"{bad[0]}: {bad[1]}", field=bad[0])

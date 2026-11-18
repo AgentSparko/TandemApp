@@ -217,6 +217,14 @@
         "anthropic": {
           "$ref": "#/$defs/anthropic"
         },
+        "cloud": {
+          "type": ["boolean", "null"]
+        },
+        "preset": {
+          "type": ["string", "null"],
+          "maxLength": 40,
+          "pattern": "^[a-z0-9-]+$"
+        },
         "key": {
           "type": [
             "string",
@@ -301,6 +309,14 @@
         },
         "anthropic": {
           "$ref": "#/$defs/anthropic"
+        },
+        "cloud": {
+          "type": ["boolean", "null"]
+        },
+        "preset": {
+          "type": ["string", "null"],
+          "maxLength": 40,
+          "pattern": "^[a-z0-9-]+$"
         },
         "key": {
           "type": [

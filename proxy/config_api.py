@@ -18,6 +18,7 @@ characters and a 6-hex-digit hash prefix. A user's key is in the answer to its c
                                                       test saves nothing: 409 `key_rejected` or
                                                       `unreachable` with the test in the answer,
                                                       until the same body comes with `confirm`
+    GET    /v1/config/presets                         the providers the page offers (proxy/presets.py)
     GET    /v1/config/backends/{id}                   one, with its models
     PATCH  /v1/config/backends/{id}                   change fields (`key: null` removes the key)
     DELETE /v1/config/backends/{id}
@@ -46,6 +47,7 @@ from urllib.parse import unquote, urlsplit
 from proxy import adapters as adapters_mod
 from proxy import config as config_mod
 from proxy import health as health_mod
+from proxy import presets as presets_mod
 
 CONTRACT = "1.0"
 SEED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices.seed.json")
@@ -124,6 +126,8 @@ def overview(svc) -> dict:
                           "timeouts": config_mod.TIMEOUTS[v["cloud"]]}
                       for k, v in config_mod.KINDS.items()},
             "feature_groups": list(config_mod.FEATURE_GROUPS),
+            # the providers the page offers when a backend is added (proxy/presets.py)
+            "presets": presets_mod.presets(),
             # P4: whether a conductor runs the harness here, and the defaults by kind
             "harness": {"conductor": getattr(svc, "harness", None) is not None,
                         "profiles": _profiles(svc),
@@ -188,6 +192,8 @@ def handle(handler, svc, method: str, path: str, body) -> None:
             return _send(handler, 200, _test_unsaved(svc, body or {}))
         elif parts == ["audit"] and method == "GET":
             return _send(handler, 200, {"audit": _audit_rows(handler, svc, cfg)})
+        elif parts == ["presets"] and method == "GET":
+            return _send(handler, 200, {"presets": presets_mod.presets()})
         elif parts == ["prices", "seed"] and method == "GET":
             with open(SEED) as f:
                 return _send(handler, 200, json.load(f))
@@ -225,7 +231,7 @@ def _backends(handler, svc, method, parts, body, who):
                 raise config_mod.ConfigError("the id 'engine' is the engine's own", field="id")
             if verify and not confirm:
                 # SRV-749: a failed test saves nothing until the user confirms
-                t = _test_unsaved(svc, {k: body.get(k) for k in ("kind", "url", "key")})
+                t = _test_unsaved(svc, {k: body.get(k) for k in ("kind", "url", "key", "cloud")})
                 if not t["ok"]:
                     return _send(handler, 409, {"error": {
                         "type": t["reason"] or "unreachable", "test": t,
@@ -339,7 +345,7 @@ def _test_unsaved(svc, body: dict) -> dict:
             key = svc.cfg.key_for(body["id"])
         except Exception:                                          # noqa: BLE001
             key = None
-    cloud = config_mod.KINDS[kind]["cloud"]
+    cloud = config_mod.KINDS[kind]["cloud"] if body.get("cloud") is None else bool(body["cloud"])
     b = {"id": doc["id"], "kind": kind, "url": config_mod.norm_url(url),
          "timeouts": dict(config_mod.TIMEOUTS[cloud]), "inject_usage": True}
     r = health_mod.probe(b, key, log=svc.log)
