@@ -36,12 +36,16 @@ answer 403 `view_hidden`, to a session and to the role's API tokens alike: Usage
 (`/v1/fleet/ledger`), Hardware (`/v1/fleet/host`), Events (`/v1/fleet/rules`), Models
 (`/v1/fleet/weights`), API (`/v1/config/backends`, `/v1/config/prices`), the Conductor
 (`/v1/conductor/*` but its speed check, live panel and residency limits), Dev
-(`/v1/dashboard/logs`), App (`/v1/settings/*` but the `auth` and `api` scopes, `/v1/fleet/app`,
-`/v1/fleet/hooks`, `/v1/fleet/plugins`), Chat (`/v1/chat-app/*`), Add Spark (`/v1/fleet/add`,
-`/v1/fleet/discovery`) and Add engine (`/v1/fleet/pair`). Overview, Performance, Health,
-Sparks, Playground and Get started read only what the top bar and the live panel read on every
-page, so the menu alone hides them. The gate checks the permission first and answers a missing
-one as before.
+(`/v1/dashboard/logs`), App (`/v1/settings/*` but the `auth` and `api` scopes, and any change
+set with another scope; `/v1/fleet/app`, `/v1/fleet/hooks`, `/v1/fleet/plugins`), Chat
+(`/v1/chat-app/*`), Add Spark (`/v1/fleet/add`, `/v1/fleet/discovery`) and Add engine
+(`/v1/fleet/pair`). Overview, Performance, Health, Sparks, Playground and Get started read only
+what the top bar and the live panel read on every page, so the menu alone hides them. The gate
+checks the permission first and answers a missing one as before.
+
+Hiding a page hides that page's own data, not the fleet's: every role that may read keeps the
+routes the top bar reads on every page (nodes, deployments, metrics, alerts, the system), and
+`GET /v1/config` keeps the backend list, which the key dialog on My tokens shows.
 
 A viewer's Chat is `auth.chat_min_role`, an owner's setting; the Views page switches it there.
 `auth.default_role` (`viewer` by default, never `owner`) is the role a new account gets when the

@@ -596,6 +596,14 @@ class Settings:
                            f"target")
             seen.add(k)
         parts.sort(key=lambda p: (SCOPES.index(p["scope"]), p["target"]))
+        # SRV-890: every scope but `auth` and `api` (Users & access) is the App page's: a role it is
+        # hidden from neither plans nor applies them through the change set routes
+        from proxy import authz
+        who = caller()
+        if who is not None and any(p["scope"] not in ("auth", "api") for p in parts) and \
+                not authz.view_allowed(who, "app", authz.Policy(self.cfg)):
+            raise SettingsError(403, "view_hidden", f"the page app is hidden from the role "
+                                f"{who.role}", section="app")
         return parts
 
     def _plan_parts(self, parts: list[dict]) -> None:

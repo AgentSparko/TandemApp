@@ -7,7 +7,8 @@ and the role a new account gets (`auth.default_role`), with TANDEM_AUTH=accounts
                                                                    test_the_route_map
   2  A viewer shown API and Models: /v1/auth/session names them; a hidden section's own route is
      403 view_hidden by session; a shown one is not                test_a_hidden_section_by_session
-  3  An operator shown Chat alone: its API token is refused the same routes; its inference is not
+  3  An operator shown Chat alone: its API token is refused the same routes; a change set of
+     the App page's scopes is refused through the global plan and apply as well
                                                                    test_a_hidden_section_by_token
   4  The owner sees every page whatever the settings; an admin's own row applies to admins
                                                                    test_the_owner_sees_everything
@@ -54,8 +55,10 @@ def change(px, who: dict, sets: dict) -> tuple[int, dict]:
 
 
 def hidden(res) -> bool:
+    """403 view_hidden: the gate's `code`, or the settings interface's `type` (settings-v1)."""
     st, out = j(res)
-    return st == 403 and (out or {}).get("error", {}).get("code") == "view_hidden"
+    err = (out or {}).get("error", {})
+    return st == 403 and "view_hidden" in (err.get("code"), err.get("type"))
 
 
 def test_the_route_map():
@@ -108,7 +111,16 @@ def test_a_hidden_section_by_token():
             assert hidden(px.get(p, bearer(tok))), p
         assert not hidden(px.get("/v1/fleet/nodes", bearer(tok)))
         assert not hidden(px.get("/v1/chat-app/chats", ops))
-    return "an operator's token: hidden routes 403 view_hidden, the fleet list not"
+        # App's change sets: through the global plan and apply too; the auth scope stays open
+        app = {"changes": [{"scope": "app", "target": "controller", "set": {"chat": "off"}}]}
+        assert hidden(px.post("/v1/settings/plan", app, ops))
+        assert hidden(px.post("/v1/settings/apply", {**app, "confirm": "x"}, ops))
+        assert hidden(px.post("/v1/settings/app/plan", {"set": {"chat": "off"}}, ops))
+        assert change(px, own, {"views.operator": "chat,app"})[0] == 200
+        st, out = j(px.post("/v1/settings/plan", app, ops))
+        assert st == 200, (st, out)
+    return "an operator's token: hidden routes 403 view_hidden, the fleet list not; App's " \
+           "change sets too"
 
 
 def test_the_owner_sees_everything():

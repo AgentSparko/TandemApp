@@ -415,7 +415,7 @@ Every route but `/health`, the page and the sign-in needs an account's session o
 | `upload_too_large` | 413 | a wheel is at most {...} MiB | `proxy/pluginapi.py` |
 | `version_mismatch` | 409, 500 | {...}: {...}; Install refuses another version | `proxy/addspark.py`, `proxy/deployments.py` and 1 more |
 | `version_unchanged` | 409 | {...} {...} is installed with another tree (sha256 {...}, this one {...}): a changed plugin carries a new version | `proxy/pluginstore.py` |
-| `view_hidden` | 403 | the page {...} is hidden from the role {...} | `proxy/accounts.py` |
+| `view_hidden` | 403 | the page {...} is hidden from the role {...} | `proxy/accounts.py`, `proxy/settings.py` |
 | `warm_timeout` | 504 | no token after {...} s: {...} | `proxy/deployments.py` |
 | `wrong_credentials` | in the body | the username or the password is not right | `proxy/authapi.py` |
 | `wrong_setup_code` | 401 | the setup code is not right | `proxy/authapi.py` |

@@ -203,7 +203,8 @@ export class QseApp extends LightElement {
         const page = r.view !== this.route.view || r.path.join('/') !== this.route.path.join('/');
         this.route = r;
         if (this.setupMode && r.view !== 'setup') navigate('setup');
-        else if (!visible(sectionOf(r.view))) return navigate(firstVisible());
+        // a setup in progress keeps every role on the Setup Guide, shown or not
+        else if (!this.setupMode && !visible(sectionOf(r.view))) return navigate(firstVisible());
         if (this.more && !this.pendingNav) this.closeMore();
         setPage(pageKey(r.view, r.path));
         showPage(sectionOf(r.view), this.wclass, window.innerWidth);
@@ -610,7 +611,7 @@ export class QseApp extends LightElement {
     // an admin shows their role (a hidden page's link goes to the first page shown)
     setRights(s?.authenticated ? (s.permissions ?? []) : null);
     setViews(s?.authenticated ? s.views : null);
-    if (!visible(sectionOf(this.route.view))) navigate(firstVisible());
+    if (!this.setupMode && !visible(sectionOf(this.route.view))) navigate(firstVisible());
     this.auth = m.needOf(s) as 'signin' | 'setup' | 'password' | null;
     this.requestUpdate();
   }
@@ -834,7 +835,7 @@ export class QseApp extends LightElement {
   }
 
   private renderView(): TemplateResult {
-    if (!this.booted || (this.setupMode && this.route.view !== 'setup') || !visible(sectionOf(this.route.view))) return html``;
+    if (!this.booted || (this.setupMode && this.route.view !== 'setup') || (!this.setupMode && !visible(sectionOf(this.route.view)))) return html``;
     switch (this.route.view) {
       case 'chat':
         void loadChat();

@@ -6,7 +6,7 @@ Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd
 
 ### Pages per role
 
-- An admin picks which pages each role sees, under Users & access, Views (SRV-890): a TandemApp that many people use, such as one in the cloud, can show a new user Chat and API alone. Owners see every page; Account and Users & access follow the permissions. A hidden page leaves the menu, its link opens the first page shown, and its own routes answer 403 `view_hidden` to a session and to the role's API tokens. Overview, Performance, Health, Sparks, Playground and Get started read only what the top bar reads on every page, so the menu alone hides them. The settings are `auth.views.<role>` and `auth.default_role`; `GET /v1/auth/session` names the pages in `views`.
+- An admin picks which pages each role sees, under Users & access, Views (SRV-890): a TandemApp that many people use, such as one in the cloud, can show a new user Chat and API alone. Owners see every page; Account and Users & access follow the permissions. A hidden page leaves the menu, its link opens the first page shown, and its own routes answer 403 `view_hidden` to a session and to the role's API tokens. Overview, Performance, Health, Sparks, Playground and Get started read only what the top bar reads on every page, so the menu alone hides them, and that fleet data (nodes, deployments, metrics, alerts) stays readable to every role with `read`. The settings are `auth.views.<role>` and `auth.default_role`; `GET /v1/auth/session` names the pages in `views`.
 - `auth.default_role` is the role a new account gets when the request names none, and the one Add a user starts with.
 
 ## 0.16.0, 2026-11-18

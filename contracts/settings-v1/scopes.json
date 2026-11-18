@@ -230,6 +230,7 @@
   "token_refused": 403,
   "owner_required": 403,
   "admin_required": 403,
+  "view_hidden": 403,
   "password_first": 409
  }
 }

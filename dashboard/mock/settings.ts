@@ -75,7 +75,7 @@ export const SETTINGS_ERRORS: Record<string, number> = {
   confirm_required: 428, fingerprint_confirm_required: 428, grant_confirm_required: 428, stale_plan: 409, busy: 409, read_only: 409, too_late: 409, ended: 409, engine_busy: 409,
   engine_refused: 409, host_key_changed: 409, no_http: 409, extension_missing: 409, unknown_key: 422, locked: 422, bad_value: 422, invalid_document: 422, restore_invalid: 422,
   store_refused: 422, engine_unreachable: 502, engine_failed: 502, engine_too_old: 502, engine_timeout: 504, unauthorized: 401, cross_site: 403,
-  cross_origin: 403, trust_required: 403, json_only: 415, token_refused: 403, owner_required: 403, admin_required: 403, password_first: 409,
+  cross_origin: 403, trust_required: 403, json_only: 415, token_refused: 403, owner_required: 403, admin_required: 403, view_hidden: 403, password_first: 409,
 };
 const SENTENCE: Record<string, string> = {
   busy: 'another change set is being applied: plan again when it is done',
