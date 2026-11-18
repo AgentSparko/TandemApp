@@ -250,6 +250,7 @@ test('a provider, a key and go: OpenRouter connects with its URL filled in and s
   await expect(f.locator('[data-connect]')).toBeDisabled();            // its key is required
   await f.locator('[data-field="key"] input').fill('sk-or-test');
   await f.locator('[data-connect]').click();
+  await expect(page.locator('#backend-detail')).toBeVisible();      // saved: its page opens
   await page.goto('./#/backends');
   const card = page.locator('.bk-card[data-backend="openrouter"]');
   await expect(card).toBeVisible();
@@ -283,6 +284,7 @@ test('a refused key saves nothing until Save anyway @mock', async ({ page }) => 
   await f.locator('[data-field="key"] input').fill('wrong-key');
   await f.locator('[data-connect]').click();
   await f.locator('[data-confirm]').click();
+  await expect(page.locator('#backend-detail')).toBeVisible();
   await page.goto('./#/backends');
   await expect(page.locator('.bk-card[data-backend="deepseek"]')).toBeVisible();
 });
@@ -296,6 +298,7 @@ test('Custom (Anthropic-compatible): a URL and an optional token @mock', async (
   await f.locator('[data-field="url"] input').fill('http://192.0.2.7:8080');
   await f.locator('[data-field="label"] input').fill('Lab Claude proxy');
   await f.locator('[data-connect]').click();
+  await expect(page.locator('#backend-detail')).toBeVisible();
   await page.goto('./#/backends');
   const card = page.locator('.bk-card[data-backend="custom"]');
   await expect(card).toContainText('Lab Claude proxy');
