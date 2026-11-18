@@ -68,6 +68,8 @@ interface Tok {
   label: string;
   last4: string;
   scopes: string[];
+  /** SRV-889: the backends it may reach; none: every backend */
+  backends: string[];
   models: string[];
   limits: Record<string, number>;
   memory_user: string | null;
@@ -168,7 +170,7 @@ export class MockAuth {
     return s;
   }
   mint(owner: Account | null, label: string, scopes: string[], o: Partial<Tok> = {}): Tok {
-    const t: Tok = { id: this.id(8), kind: 'user', owner_id: owner?.id ?? null, label, last4: this.id(4), scopes, models: [], limits: {}, memory_user: owner?.username ?? label, source: 'created', needs_review: false, created_at: this.t0 - 20 * DAY, expires_at: this.t0 + 70 * DAY, revoked_at: null, last_used_at: null, ...o };
+    const t: Tok = { id: this.id(8), kind: 'user', owner_id: owner?.id ?? null, label, last4: this.id(4), scopes, backends: [], models: [], limits: {}, memory_user: owner?.username ?? label, source: 'created', needs_review: false, created_at: this.t0 - 20 * DAY, expires_at: this.t0 + 70 * DAY, revoked_at: null, last_used_at: null, ...o };
     this.tokens.push(t);
     return t;
   }
@@ -257,7 +259,7 @@ export class MockAuth {
     return {
       id: t.id, kind: t.kind, label: t.label, owner: owner?.username ?? null, owner_id: t.owner_id,
       hint: t.source === 'created' ? `tdm-${t.id}-...${t.last4}` : t.last4 ? `...${t.last4}` : null,
-      scopes: t.scopes, models: t.models, limits: t.limits, memory_user: t.memory_user, source: t.source, needs_review: t.needs_review, state: this.state(t, now),
+      scopes: t.scopes, backends: t.backends, models: t.models, limits: t.limits, memory_user: t.memory_user, source: t.source, needs_review: t.needs_review, state: this.state(t, now),
       created_at: iso(t.created_at), expires_at: iso(t.expires_at), revoked_at: iso(t.revoked_at), last_used_at: iso(t.last_used_at),
     };
   }
@@ -511,18 +513,20 @@ export class MockAuth {
       }
       if (method !== 'POST') no(405, 'method_not_allowed', 'the tokens take GET and POST');
       const b = body as Record<string, unknown> | null;
-      if (!b || typeof b !== 'object' || Object.keys(b).some((k) => !['label', 'scopes', 'models', 'days', 'limits'].includes(k))) no(400, 'bad_request', 'the body is {label, scopes, models?, days?, limits?}');
+      if (!b || typeof b !== 'object' || Object.keys(b).some((k) => !['label', 'scopes', 'backends', 'models', 'days', 'limits'].includes(k))) no(400, 'bad_request', 'the body is {label, scopes, backends?, models?, days?, limits?}');
       const label = typeof b!.label === 'string' ? b!.label.trim() : '';
       if (!label || label.length > 64) no(400, 'bad_request', 'a label is 1 to 64 characters');
       const scopes = this.checkScopes(b!.scopes, me!.role);
       const models = b!.models ?? [];
       if (!Array.isArray(models) || models.length > 64 || !models.every((m) => typeof m === 'string' && m.length > 0 && m.length <= 200 && m.trim() === m)) no(400, 'bad_request', 'models is a list of at most 64 model ids or globs ("small-*")');
+      const backends = b!.backends ?? [];
+      if (!Array.isArray(backends) || backends.length > 64 || !backends.every((x) => typeof x === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(x))) no(400, 'bad_request', 'backends is a list of at most 64 backend ids');
       const limits = (b!.limits ?? {}) as Record<string, unknown>;
       if (typeof limits !== 'object' || Array.isArray(limits) || Object.entries(limits).some(([k, v]) => !LIMIT_KEYS.includes(k) || (v !== null && (typeof v !== 'number' || v < 0)))) no(400, 'bad_request', `limits takes ${LIMIT_KEYS.join(', ')}, each a number of 0 or more`);
       const days = this.days(b!.days, me!.role, scopes.includes('trust'));
       if (this.tokens.some((t) => t.owner_id === me!.id && t.label === label && t.revoked_at === null)) no(409, 'conflict', `you have a token '${label}' already`);
       const secret = `${this.id(20)}${this.id(19)}${this.id(4)}`;
-      const t = this.mint(me!, label, scopes, { models: [...new Set(models as string[])], limits: Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== null)) as Record<string, number>, created_at: now, expires_at: days ? now + days * DAY : null, last4: secret.slice(-4) });
+      const t = this.mint(me!, label, scopes, { backends: [...new Set(backends as string[])], models: [...new Set(models as string[])], limits: Object.fromEntries(Object.entries(limits).filter(([, v]) => v !== null)) as Record<string, number>, created_at: now, expires_at: days ? now + days * DAY : null, last4: secret.slice(-4) });
       this.log(now, me!.username, 'create', 'api_token', t.id, { label, owner: me!.username, scopes, days });
       return { status: 201, body: { ...this.token(t, now), token: `tdm-${t.id}-${secret}` } };
     }
@@ -561,6 +565,7 @@ export class MockAuth {
       if (!mine) no(403, 'permission_denied', 'only its owner changes a token');
       if (typeof b!.label === 'string') tok.label = b!.label.trim();
       if (Array.isArray(b!.models)) tok.models = b!.models as string[];
+      if (Array.isArray(b!.backends)) tok.backends = b!.backends as string[];
       this.log(now, me!.username, 'update', 'api_token', tok.id, {}, Object.keys(b!).sort());
       return { status: 200, body: this.token(tok, now) };
     }

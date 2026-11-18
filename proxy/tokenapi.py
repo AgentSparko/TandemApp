@@ -2,10 +2,10 @@
 
     GET    /v1/auth/tokens[?all=1]       your tokens; with all=1 every token (permission `users`),
                                          the service identities and the imported keys under review
-    POST   /v1/auth/tokens               {label, scopes, models?, days? (a number or "never"),
+    POST   /v1/auth/tokens               {label, scopes, backends?, models?, days? (a number or "never"),
                                          limits?}: 201 with the token, shown this once
     GET    /v1/auth/tokens/{id}          one token (never its secret)
-    PATCH  /v1/auth/tokens/{id}          {label?, models?, limits?} (its owner; limits under the
+    PATCH  /v1/auth/tokens/{id}          {label?, backends?, models?, limits?} (its owner; limits under the
                                          owner's role, SRV-873); {needs_review: false} confirms
                                          an imported key (permission `users`)
     DELETE /v1/auth/tokens/{id}          revoke
@@ -64,11 +64,12 @@ def handle(handler, a, method: str, rest: list, body) -> None:
             if method != "POST":
                 return _err(handler, 405, "method_not_allowed", "the tokens take GET and POST")
             if not isinstance(body, dict) or set(body) - {"label", "scopes", "models", "days",
-                                                          "limits"}:
-                return _err(handler, 400, "bad_request", "the body is {label, scopes, models?, "
-                            "days?, limits?}")
+                                                          "limits", "backends"}:
+                return _err(handler, 400, "bad_request", "the body is {label, scopes, backends?, "
+                            "models?, days?, limits?}")
             view, token = ts.create(a.store.get(p.id), label=body.get("label"),
                                     scopes=body.get("scopes"), models=body.get("models"),
+                                    backends=body.get("backends"),
                                     days=body.get("days"), limits=body.get("limits"),
                                     actor=p.name)
             return handler._json(201, {**view, "token": token}, extra_headers=NOSTORE)
@@ -111,8 +112,8 @@ def handle(handler, a, method: str, rest: list, body) -> None:
                                  extra_headers=NOSTORE)
         if method == "PATCH":
             if not isinstance(body, dict) or not body:
-                return _err(handler, 400, "bad_request", "the body is {label?, models?, "
-                            "limits?} or {needs_review: false}")
+                return _err(handler, 400, "bad_request", "the body is {label?, backends?, "
+                            "models?, limits?} or {needs_review: false}")
             if "needs_review" in body:
                 if body != {"needs_review": False}:
                     return _err(handler, 400, "bad_request", "confirm with {needs_review: "

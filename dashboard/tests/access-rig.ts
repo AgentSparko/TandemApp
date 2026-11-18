@@ -24,7 +24,7 @@ export const KEYS = {
   account: ['id', 'username', 'display_name', 'role', 'must_change'],
   user: ['id', 'username', 'display_name', 'role', 'enabled', 'provider', 'has_password', 'must_change', 'created_at', 'last_login_at'],
   session: ['id', 'account_id', 'username', 'created_at', 'last_seen_at', 'idle_until', 'expires_at', 'address', 'agent', 'current'],
-  token: ['id', 'kind', 'label', 'owner', 'owner_id', 'hint', 'scopes', 'models', 'limits', 'memory_user', 'source', 'needs_review', 'state', 'created_at', 'expires_at', 'revoked_at', 'last_used_at'],
+  token: ['id', 'kind', 'label', 'owner', 'owner_id', 'hint', 'scopes', 'backends', 'models', 'limits', 'memory_user', 'source', 'needs_review', 'state', 'created_at', 'expires_at', 'revoked_at', 'last_used_at'],
   audit: ['at', 'who', 'action', 'object', 'object_id', 'fields', 'detail'],
   // SRV-873: GET /v1/auth/tokens/{id}/usage (proxy/tokenusage.py)
   usage: ['from', 'to', 'tz', 'ledger', 'totals', 'days', 'models', 'unpriced', 'refusals', 'last_used_at', 'token', 'limits'],

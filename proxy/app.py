@@ -456,7 +456,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             # SRV-733: beside `data`, what a TandemLLM engine's own list holds (decision models)
             return self._json(200, {"object": "list",
-                                    "data": STATE["svc"].models(int(STATE["svc"].started)),
+                                    "data": STATE["svc"].visible_models(int(STATE["svc"].started)),
                                     **STATE["svc"].model_extras()},
                               extra_headers=(GATEWAY_HEADER,))
         if path.startswith("/v1/models/"):
@@ -466,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return
             name = unquote(path[len("/v1/models/"):])
-            card = STATE["svc"].card(name, int(STATE["svc"].started))
+            card = STATE["svc"].visible_card(name, int(STATE["svc"].started))
             if card is None:
                 # SRV-733: an id the default engine answers that no list names (its raw model's
                 # alias, a decision model): the engine's own answer

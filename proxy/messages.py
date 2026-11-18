@@ -461,7 +461,7 @@ def model_info(card: dict, first_seen=None) -> dict:
 def _infos(svc) -> list[dict]:
     snap = svc.table.snapshot()["by_backend"]
     out = []
-    for card in svc.models(int(svc.started)):
+    for card in svc.visible_models(int(svc.started)):
         t = card.get("tandem") if isinstance(card.get("tandem"), dict) else {}
         row = (snap.get(t.get("backend")) or {}).get(t.get("upstream_id")) or {}
         out.append(model_info(card, row.get("discovered_at")))

@@ -77,19 +77,22 @@ for (const size of ['desktop', '360'] as const) {
     await page.setViewportSize(SIZES[size]);
     await open(page, 'ola', '#/account/tokens');
     await page.locator('[data-act="token-new"]').click();
-    await expect(dlg(page)).toBeVisible();
-    await dlg(page).locator('input[name="label"]').fill('desk');
-    await dlg(page).locator('input[name="scopes"]').first().check();
+    // SRV-889: the smart dialog (views/tokens/token-dialog.ts)
+    const tk = page.locator('dialog[data-dialog="token"]');
+    await expect(tk).toBeVisible();
+    await tk.locator('input[name="label"]').fill('desk');
     await shot(page, `2-token-form-${size}`);
-    await dlg(page).locator('[data-act="dlg-go"]').click();
-    const code = dlg(page).locator('[data-secret="token"]');
+    for (let i = 0; i < 3; i++) await tk.locator('[data-act="tk-next"]').click();
+    await expect(tk.locator('[data-summary]')).toContainText('This key');
+    await tk.locator('[data-act="tk-create"]').click();
+    const code = tk.locator('[data-secret="token"]');
     await expect(code).toHaveText(/^tdm-[0-9a-f]{8}-/);
     const token = (await code.textContent())!;
-    await expect(dlg(page)).toContainText('This token is shown once. Copy it now.');
-    await expect(dlg(page).locator('[data-secret="url"]')).toHaveCount(2);
+    await expect(tk).toContainText('Copy the key now. It is shown this once.');
+    await expect(tk.locator('.tk-setup > div')).toHaveCount(4);
     await shot(page, `2-token-once-${size}`);
-    await dlg(page).locator('[data-act="dlg-go"]').click();
-    await expect(dlg(page)).toBeHidden();
+    await tk.locator('[data-act="tk-done"]').click();
+    await expect(tk).toBeHidden();
     await expect(page.locator('qse-access')).toContainText(`...${token.slice(-4)}`);
     await expect(page.locator('qse-access')).not.toContainText(token);
     // nothing of it in the address, and nothing kept in this browser
@@ -193,20 +196,25 @@ test('desktop: the keyboard opens a dialog, moves through it and closes it', asy
   await page.setViewportSize(SIZES.desktop);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await open(page, 'kim', '#/account/tokens');
+  // SRV-889: Create a token opens the smart dialog
+  const tk = page.locator('dialog[data-dialog="token"]');
   await page.locator('[data-act="token-new"]').focus();
   await page.keyboard.press('Enter');
-  await expect(dlg(page)).toBeVisible();
-  // the first field has the focus; Tab stays inside the dialog
-  await expect(dlg(page).locator('input[name="label"]')).toBeFocused();
+  await expect(tk).toBeVisible();
+  // the name has the focus; Tab stays inside the dialog
+  await expect(tk.locator('input[name="label"]')).toBeFocused();
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => !!document.activeElement?.closest('dialog[open]') || document.activeElement === document.body)).toBe(true);
   }
   await page.keyboard.press('Escape');
-  await expect(dlg(page)).toBeHidden();
-  // a form is sent with Enter from a field
+  await expect(tk).toBeHidden();
+  // Enter from a field goes on: an empty name is held, a name goes to the next step
   await page.locator('[data-act="token-new"]').click();
-  await dlg(page).locator('input[name="label"]').fill('by keyboard');
+  await tk.locator('input[name="label"]').fill('');
   await page.keyboard.press('Enter');
-  await expect(dlg(page).locator('[data-dialog-error]')).toHaveText('Pick at least one thing the token may do.');
+  await expect(tk.locator('[data-dialog-error]')).toHaveText('Give the key a name.');
+  await tk.locator('input[name="label"]').fill('by keyboard');
+  await page.keyboard.press('Enter');
+  await expect(tk.locator('.tk-steps li.is-on')).toContainText('Models');
 });

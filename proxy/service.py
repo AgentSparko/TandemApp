@@ -368,6 +368,63 @@ class Service:
             raise deployments.Refused(403, "permission_denied",
                                       f"this token may not use the model {model!r}")
 
+    def _token(self):
+        p = self.principal()
+        if p is None or getattr(p, "via", None) != "token":
+            return None
+        if not getattr(p, "models", ()) and not getattr(p, "backends", ()):
+            return None
+        return p
+
+    def restrict(self, route):
+        """SRV-889: the route a token may run: its backend and fallbacks cut to the token's
+        backends and models (proxy/tokens.py may_run). A deployment's route keeps its member or is
+        refused; a table route moves to its first allowed fallback. 403 when nothing is left."""
+        p = self._token()
+        if p is None or route is None:
+            return route
+        from proxy import deployments
+        from proxy import tokens as tokens_mod
+        ok = lambda bid, mid: tokens_mod.may_run(p.models, p.backends, route.public, bid, mid)  # noqa: E731
+        allowed = [(b, m) for b, m in [(route.backend, route.model), *route.fallbacks] if ok(b, m)]
+        if not allowed or (route.deployment is not None and not ok(route.backend, route.model)):
+            what = (f"the backend {route.backend!r}" if p.backends and route.backend not in p.backends
+                    else f"the model {route.public!r}")
+            raise deployments.Refused(403, "permission_denied", f"this token may not use {what}")
+        route.backend, route.model = allowed[0]
+        route.fallbacks = allowed[1:]
+        return route
+
+    def visible_models(self, created: int) -> list[dict]:
+        """SRV-889: /v1/models as the request's token sees it: only what it may run."""
+        cards = self.models(created)
+        p = self._token()
+        if p is None:
+            return cards
+        from proxy import tokens as tokens_mod
+        # an engine's own card names the engine in owned_by: the table's rows name the backend
+        where = {card.get("id"): (bid, up) for bid, up, card in self.table.listing_rows(created)}
+        out = []
+        for c in cards:
+            name = c.get("id", "")
+            bid, up = where.get(name, (None, None))
+            if bid is None:
+                try:
+                    r = self.table.resolve(name)
+                    bid, up = r.backend, r.model
+                except Exception:                                  # noqa: BLE001
+                    t = c.get("tandem") if isinstance(c.get("tandem"), dict) else {}
+                    bid, up = t.get("backend") or c.get("owned_by") or "", t.get("upstream_id") or name
+            if tokens_mod.may_run(p.models, p.backends, name, bid, up):
+                out.append(c)
+        return out
+
+    def visible_card(self, name: str, created: int) -> dict | None:
+        card = self.card(name, created)
+        if card is None or self._token() is None:
+            return card
+        return card if any(c.get("id") == name for c in self.visible_models(created)) else None
+
     def resolve(self, body: dict, headers=None, check_token: bool = True):
         """The route of a request at the standalone proxy: a fleet deployment's (its members),
         else the table's. route.NotFound, or proxy.deployments.Refused for a deployment that
@@ -379,8 +436,9 @@ class Service:
         if self.place is not None:
             r = self.place(model, body, headers)
             if r is not None:
-                return r
-        return self.table.resolve(model)
+                return self.restrict(r) if check_token else r
+        r = self.table.resolve(model)
+        return self.restrict(r) if check_token else r
 
     def route(self, path: str, body: dict):
         """The route of a request, or None when no backend's model is asked for. NotFound for a

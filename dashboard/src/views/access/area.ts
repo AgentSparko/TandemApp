@@ -17,6 +17,7 @@ import { setCsrf } from '../../lib/csrf';
 import { setParams } from '../../lib/router';
 import { LightElement } from '../../ui/base';
 import { accessView, dialogView, type On } from './view';
+import '../tokens/token-dialog';
 import '../../styles/access.css';
 
 const again = (): boolean => window.dispatchEvent(new CustomEvent('qse-signed-in'));
@@ -52,6 +53,12 @@ export class QseAccess extends LightElement {
     const d = this.dialog;
     const f = this.flow;
     if (!d || !f) return;
+    // SRV-889: Create a token opens the smart dialog (views/tokens/token-dialog.ts)
+    if (f.dialog?.kind === 'token-new') {
+      f.close();
+      if (f.me) void this.querySelector('qse-token-dialog')?.show(f.me);
+      return;
+    }
     const kind = f.dialog?.kind ?? null;
     if (f.dialog && !d.open) d.showModal();
     else if (!f.dialog && d.open) d.close();
@@ -100,6 +107,7 @@ export class QseAccess extends LightElement {
     const f = this.flow;
     if (!f) return nothing;
     return html`${accessView(f, this.on)}
+      <qse-token-dialog @token-made=${() => this.enter()}></qse-token-dialog>
       <dialog class="act-dialog" aria-labelledby="ac-dlg-t" data-dialog="access" @close=${() => f.close()} @cancel=${(e: Event) => f.busy === 'dialog' && e.preventDefault()}>
         <div class="act-body">${dialogView(f, this.on, location.origin)}</div>
       </dialog>`;

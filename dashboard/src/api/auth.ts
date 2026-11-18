@@ -66,6 +66,8 @@ export interface Token {
   /** all the page ever sees of the token again: its id and last 4 characters */
   hint: string | null;
   scopes: string[];
+  /** SRV-889: the backends it may reach; none: every backend (older servers send none) */
+  backends?: string[];
   models: string[];
   limits: Limits;
   memory_user: string | null;
@@ -118,6 +120,7 @@ export type TokenOnce = Token & { token: string };
 export interface NewToken {
   label: string;
   scopes: string[];
+  backends?: string[];
   models?: string[];
   days?: number | 'never';
   limits?: Limits;

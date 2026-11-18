@@ -26,3 +26,4 @@ Rules every answer keeps:
   answer that makes a token (`token-created`), which is `Cache-Control: no-store`.
 - Every write of a session sends `X-Tandem-CSRF` with the session's `csrf`.
 - `contract_version` is `1.0`. A field is only ever added; a changed meaning is a new contract.
+- SRV-889 added `backends` to a token and to a new token's body: the backend ids its requests may reach, none for every backend; `models` may then name `<backend>/<model>` globs.

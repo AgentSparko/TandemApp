@@ -1,11 +1,12 @@
 """API tokens (SRV-867).
 
-A token has a label, an owner, scopes, a model list, an expiry and optional limits. It is shown
+A token has a label, an owner, scopes, a backend list, a model list, an expiry and optional
+limits. It is shown
 once and stored as the SHA-256 of the whole token (config.key_hash), with its id and its last four
 characters. The format is `tdm-<8 hex id>-<43 characters>`.
 
     TokenStore(account_store)
-      create(owner, label=, scopes=, models=, days=, limits=, actor=) -> (view, token)
+      create(owner, label=, scopes=, backends=, models=, days=, limits=, actor=) -> (view, token)
       resolve(headers) -> Principal | Refused | None      the request gate's token_resolver
       revoke(id, actor=, why=)  rotate(id, grace_s=, actor=) -> (view, token)
       confirm(id, actor=)  update(id, changes, actor=)  revoke_owner(account_id, actor=, why=)
@@ -23,7 +24,15 @@ THE TABLE `api_tokens` (in the config database, new; the old `users` table keeps
     written to the ledger's `user`: the owner's username, an imported key's old label), source
     (created | users | env | users_from | admin_token), legacy_user_id (the `users` row an import
     came from), needs_review, created_at, created_by, expires_at (NULL: never), revoked_at,
-    revoked_by, revoke_why, last_used_at, prev_hash and prev_until (a rotated secret's grace)
+    revoked_by, revoke_why, last_used_at, prev_hash and prev_until (a rotated secret's grace),
+    backends (JSON list of backend ids; added to an older table at the start)
+
+WHAT A TOKEN MAY RUN (SRV-889). `backends` names the backends a request of the token may reach
+(none: every backend). `models` holds globs over the model id the client sends, or over
+`<backend>/<upstream model>` of the backend that serves it (`vllm1/*`, `openrouter/anthropic/*`;
+none: every model). A request's route, its fallbacks included, keeps only the backends and models
+the token allows (Service.restrict); with none left it is a 403 that names what is missing, and a
+fallback the token may not use is never tried. /v1/models lists the token only what it may run.
 
 A revoked row stays: its hash keeps an import from bringing the key back, and its usage stays
 named. Rows are never deleted here.
@@ -118,6 +127,7 @@ CHATD_SERVICE = "svc:chatd"
 ADMIN_LABEL = "admin token"
 LABEL_RE = re.compile(r"^[^\x00-\x1f\x7f]{1,64}$")
 MAX_MODELS = 64
+BACKEND_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 INFERENCE = ("inference:openai", "inference:anthropic")
 MANAGEMENT = ("usage:read", "metrics:read", "settings:read", "settings:write", "fleet:read",
@@ -175,7 +185,7 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   limits TEXT NOT NULL DEFAULT '{}', memory_user TEXT NOT NULL, source TEXT NOT NULL,
   legacy_user_id INTEGER, needs_review INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
   created_by TEXT, expires_at INTEGER, revoked_at INTEGER, revoked_by TEXT, revoke_why TEXT,
-  last_used_at INTEGER, prev_hash TEXT, prev_until INTEGER);
+  last_used_at INTEGER, prev_hash TEXT, prev_until INTEGER, backends TEXT NOT NULL DEFAULT '[]');
 CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_label ON api_tokens(owner_id, label)
   WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS api_tokens_prev ON api_tokens(prev_hash) WHERE prev_hash IS NOT NULL;
@@ -184,7 +194,7 @@ CREATE INDEX IF NOT EXISTS api_tokens_owner ON api_tokens(owner_id);
 COLS = ("id", "kind", "owner_id", "label", "hash", "last4", "scopes", "models", "limits",
         "memory_user", "source", "legacy_user_id", "needs_review", "created_at", "created_by",
         "expires_at", "revoked_at", "revoked_by", "revoke_why", "last_used_at", "prev_hash",
-        "prev_until")
+        "prev_until", "backends")
 
 
 def cli_token_path(state_dir: str) -> str:
@@ -359,6 +369,11 @@ class TokenStore:
         self._flushed = 0.0
         with self.cfg._lock:
             self.cfg._conn.executescript(DDL)
+            # SRV-889: a table made by an older release gets the backend list (none: every one)
+            cols = {r[1] for r in self.cfg._conn.execute("PRAGMA table_info(api_tokens)")}
+            if "backends" not in cols:
+                self.cfg._conn.execute("ALTER TABLE api_tokens ADD COLUMN backends TEXT NOT NULL "
+                                       "DEFAULT '[]'")
             self.cfg._conn.commit()
 
     on_revoked = None               # SRV-869: (token ids) -> None, the open streams' close
@@ -376,7 +391,7 @@ class TokenStore:
         if r is None:
             return None
         d = dict(zip(COLS, r))
-        for k in ("scopes", "models"):
+        for k in ("scopes", "models", "backends"):
             d[k] = json.loads(d[k] or "[]")
         d["limits"] = json.loads(d["limits"] or "{}")
         d["needs_review"] = bool(d["needs_review"])
@@ -415,7 +430,8 @@ class TokenStore:
                 "owner": owner["username"] if owner else None, "owner_id": row["owner_id"],
                 "hint": f"{PREFIX}{row['id']}-...{row['last4']}" if row["source"] == "created"
                 else (f"...{row['last4']}" if row["last4"] else None),
-                "scopes": row["scopes"], "models": row["models"], "limits": row["limits"],
+                "scopes": row["scopes"], "backends": row["backends"], "models": row["models"],
+                "limits": row["limits"],
                 "memory_user": row["memory_user"], "source": row["source"],
                 "needs_review": row["needs_review"], "state": self.state(row),
                 "created_at": _iso(row["created_at"]), "expires_at": _iso(row["expires_at"]),
@@ -500,6 +516,16 @@ class TokenStore:
         return list(dict.fromkeys(models))
 
     @staticmethod
+    def check_backends(backends) -> list[str]:
+        if backends is None:
+            return []
+        if not isinstance(backends, list) or len(backends) > MAX_MODELS or \
+                not all(isinstance(b, str) and BACKEND_RE.match(b) for b in backends):
+            raise TokenError(400, "bad_request", f"backends is a list of at most {MAX_MODELS} "
+                                                 f"backend ids")
+        return list(dict.fromkeys(backends))
+
+    @staticmethod
     def check_limits(limits) -> dict:
         if limits is None:
             return {}
@@ -531,7 +557,7 @@ class TokenStore:
         return label.strip()
 
     def create(self, owner: dict, *, label, scopes, models=None, days=None, limits=None,
-               actor: str) -> tuple[dict, str]:
+               backends=None, actor: str) -> tuple[dict, str]:
         """A token of `owner` (an account row): its view and the token, which is never shown
         again."""
         if owner is None or not owner.get("enabled"):
@@ -539,6 +565,7 @@ class TokenStore:
         label = self.check_label(label)
         scopes = self.check_scopes(scopes, owner["role"])
         models = self.check_models(models)
+        backends = self.check_backends(backends)
         limits = self.role_limits(self.check_limits(limits), owner["role"])
         days = self._days(days, owner["role"], TRUST in scopes)
         tid, token = self._new_secret()
@@ -553,10 +580,12 @@ class TokenStore:
                 (tid, "user", owner["id"], label, key_hash(token), token[-4:],
                  json.dumps(scopes), json.dumps(models), json.dumps(limits),
                  owner["username"], "created", None, 0, now, actor,
-                 now + days * DAY_MS if days else None, None, None, None, None, None, None))
+                 now + days * DAY_MS if days else None, None, None, None, None, None, None,
+                 json.dumps(backends)))
             self.cfg._audit(actor, "create", "api_token", tid,
                             detail={"label": label, "owner": owner["username"],
-                                    "scopes": scopes, "days": days})
+                                    "scopes": scopes, "days": days, "backends": backends,
+                                    "models": models})
             self._c.commit()
             self.ensure_guard()
         return self.view(self.get(tid)), token
@@ -596,10 +625,11 @@ class TokenStore:
         if row is None:
             raise TokenError(404, "not_found", "no such token")
         if not isinstance(changes, dict) or not changes or \
-                set(changes) - {"label", "models", "limits"}:
-            raise TokenError(400, "bad_request", "the body is {label?, models?, limits?}")
+                set(changes) - {"label", "models", "limits", "backends"}:
+            raise TokenError(400, "bad_request", "the body is {label?, backends?, models?, limits?}")
         label = self.check_label(changes.get("label", row["label"]))
         models = self.check_models(changes.get("models", row["models"]))
+        backends = self.check_backends(changes.get("backends", row["backends"]))
         limits = row["limits"]
         if "limits" in changes:
             # SRV-873: the whole set, under the owner's role of now
@@ -611,8 +641,9 @@ class TokenStore:
                     "SELECT 1 FROM api_tokens WHERE owner_id IS ? AND label = ? AND revoked_at "
                     "IS NULL AND id != ?", (row["owner_id"], label, tid)).fetchone():
                 raise TokenError(409, "conflict", f"a token {label!r} exists already")
-            self._c.execute("UPDATE api_tokens SET label = ?, models = ?, limits = ? WHERE id = ?",
-                            (label, json.dumps(models), json.dumps(limits), tid))
+            self._c.execute("UPDATE api_tokens SET label = ?, models = ?, limits = ?, backends = ? "
+                            "WHERE id = ?", (label, json.dumps(models), json.dumps(limits),
+                                             json.dumps(backends), tid))
             self.cfg._audit(actor, "update", "api_token", tid, fields=sorted(changes))
             self._c.commit()
         return self.view(self.get(tid))
@@ -711,7 +742,7 @@ class TokenStore:
                 f"({', '.join('?' * len(COLS))})",
                 (tid, "service", None, label, key_hash(token), token[-4:],
                  json.dumps(list(scopes)), "[]", "{}", name, "service", None, 0, now, actor,
-                 None, None, None, None, None, None, None))
+                 None, None, None, None, None, None, None, "[]"))
             self.cfg._audit(actor, "create", "api_token", tid,
                             detail={"label": label, "kind": "service"})
             self._c.commit()
@@ -783,7 +814,8 @@ class TokenStore:
                          via="token", scopes=frozenset(row["scopes"]),
                          perms=effective(row["scopes"], role, row["kind"], self.policy,
                                          owned=row["owner_id"] is not None),
-                         models=tuple(row["models"]), client="k:" + h[:12],
+                         models=tuple(row["models"]), backends=tuple(row["backends"]),
+                         client="k:" + h[:12],
                          expires_at=row["expires_at"],
                          limits=tuple(sorted(row["limits"].items())))
 
@@ -875,7 +907,7 @@ class TokenStore:
                  memory_user or label, source, legacy_user_id, int(review and enabled), now,
                  "migration", expires_at, None if enabled else now,
                  None if enabled else "migration",
-                 None if enabled else "disabled before the upgrade", None, None, None))
+                 None if enabled else "disabled before the upgrade", None, None, None, "[]"))
             self.cfg._audit("migration", "create", "api_token", tid,
                             detail={"label": name, "source": source, "kind": kind})
             self._c.commit()
@@ -989,9 +1021,21 @@ class TokenStore:
 
 
 def model_allowed(models, model) -> bool:
-    """A token's globs over public model ids; none: every model its owner may use."""
+    """A token's globs over public model ids; none: every model its owner may use. A glob of the
+    `<backend>/<model>` form is checked once the backend is known (may_run), so it lets the
+    request through here."""
     if not models:
         return True
     if not isinstance(model, str) or not model:
         return False
-    return any(fnmatch.fnmatchcase(model, g) for g in models)
+    return any(fnmatch.fnmatchcase(model, g) for g in models) or any("/" in g for g in models)
+
+
+def may_run(models, backends, public: str, backend: str, upstream: str) -> bool:
+    """SRV-889: whether a token may run `public` on `backend` (as `upstream` there)."""
+    if backends and backend not in backends:
+        return False
+    if not models:
+        return True
+    names = (public or "", f"{backend}/{upstream}", f"{backend}/{public}")
+    return any(fnmatch.fnmatchcase(n, g) for g in models for n in names)

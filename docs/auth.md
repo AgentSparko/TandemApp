@@ -71,8 +71,11 @@ on the client and the https cookie is set. Loopback is always trusted for these 
 ## API tokens
 
 A token is `tdm-<8 hex id>-<43 characters>`. It is shown once when it is made and stored as its
-sha256. Make one on the Access page (Tokens), with `POST /v1/auth/tokens`, or with
-`tandem-app tokens create NAME --label L --scope S`.
+sha256. Make one with New API key on API, Endpoint and keys (or Create a token on the Access
+page), with `POST /v1/auth/tokens`, or with `tandem-app tokens create NAME --label L --scope S`.
+The dialog asks what the key is for (a coding agent, a Messages API client, a chat app, a script,
+monitoring) and fills in the scopes, then which backends and models it may run, then its expiry
+and limits, and shows the key once with the setup for that client.
 
 | scope | opens |
 |-|-|
@@ -84,7 +87,12 @@ sha256. Make one on the Access page (Tokens), with `POST /v1/auth/tokens`, or wi
 | `fleet:read`, `fleet:write` | the fleet |
 | `trust` | pairing and take-over |
 
-`models` narrows a token to model ids that match its globs (`small-*`). `days` sets its expiry, or
+`backends` narrows a token to those backends (SRV-889): a request goes only to a backend on the
+list, a route's fallbacks keep only those, and a model the token may not reach is a 403 that names
+the backend. `models` narrows it to model ids that match its globs (`small-*`), or to
+`<backend>/<model>` globs over the backend that serves the model (`vllm1/*`,
+`openrouter/anthropic/*`). Both empty: every backend and model. `/v1/models` lists a token only
+the models it may run. `days` sets its expiry, or
 `never`. `limits` holds `requests_per_minute`, `tokens_per_minute`, `concurrent`, `cost_per_day`
 and `cost_per_month`: a rate limit is a 429 with `Retry-After`, a spend limit a 403
 `spend_limit_reached`. An admin sets defaults per role (`api.limits.default.<role>.<key>`); a

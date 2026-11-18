@@ -6,7 +6,7 @@
 // views/settings/area.ts, a chunk of its own too, with OPS-234's controller host and its move in
 // views/fleet/app-settings.ts), Health (SRV-835, views/health/area.ts, its own chunk) and Models (VIS-252: the
 // deployments, Serve a model with its placement step, the weights matrix: views/fleet/models.ts,
-// serve.ts, weights.ts); API still shows its head, what it will hold and the step that builds it.
+// serve.ts, weights.ts) and API's Endpoint and keys (SRV-889, views/tokens/endpoint.ts) are built.
 
 import { html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -25,6 +25,7 @@ import './fleet/models';
 import './fleet/serve';
 import './fleet/weights';
 import '../styles/models.css';
+import './tokens/endpoint';
 
 interface PageDef {
   eyebrow: string;
@@ -98,6 +99,8 @@ export class QseFleetPage extends LightElement {
       const p = this.path[0];
       return p && p !== 'topology' ? html`<qse-spark-node .nodeId=${p}></qse-spark-node>` : html`<qse-sparks .tab=${p === 'topology' ? 'topology' : 'list'}></qse-sparks>`;
     }
+    // SRV-889: API's first page, Endpoint and keys
+    if (this.view === 'api') return html`<qse-endpoint></qse-endpoint>`;
     const d = PAGES[this.view];
     if (!d) return nothing;
     return html`<header class="page-head" data-page=${this.view}>

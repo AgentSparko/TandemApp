@@ -170,6 +170,7 @@ class Principal:
     must_change: bool = False       # signed in with a one-time code: only a new password
     perms: frozenset | None = None  # SRV-867: a token's scopes cut to its owner's role of now
     models: tuple = ()              # SRV-867: a token's model globs (none: every model)
+    backends: tuple = ()            # SRV-889: a token's backends (none: every backend)
     client: str | None = None       # SRV-867: the ledger's client id (a prefix of the hash)
     limits: tuple = ()              # SRV-873: a token's own limits, (key, value) pairs
 

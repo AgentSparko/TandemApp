@@ -82,7 +82,7 @@ function tokenMain(f: AccessFlow, t: Token, owner: boolean): TemplateResult {
   return html`<div class="ac-t"><b>${t.label}</b>${t.state !== 'active' ? tag(t.state, 'ac-off') : endsSoon(t, now) ? tag('ends soon', 'ac-warn') : nothing}${isImported(t) ? tag('imported') : nothing}</div>
     <p class="small"><span class="num ac-wrap" data-hint>${t.hint ?? 'no hint'}</span>${owner ? html` · ${t.owner ?? 'no owner'}` : nothing}</p>
     <p class="ac-tags">${t.scopes.map((s) => tag(scopeLabel(s)))}</p>
-    <p class="small muted">${t.models.length ? html`models <span class="num ac-wrap">${t.models.join(', ')}</span>` : 'every model'} · ${stateWords(t, now)} · last used ${ago(t.last_used_at, now)}${Object.keys(t.limits).length ? html` · limits ${LIMIT_KEYS.filter((k) => t.limits[k] != null).map((k) => `${LIMIT_WORDS[k].toLowerCase()} ${t.limits[k]}`).join(', ')}` : nothing}</p>`;
+    <p class="small muted" data-runs>${t.backends?.length ? html`backends <span class="num ac-wrap">${t.backends.join(', ')}</span> · ` : nothing}${t.models.length ? html`models <span class="num ac-wrap">${t.models.join(', ')}</span>` : t.backends?.length ? 'every model there' : 'every model'} · ${stateWords(t, now)} · last used ${ago(t.last_used_at, now)}${Object.keys(t.limits).length ? html` · limits ${LIMIT_KEYS.filter((k) => t.limits[k] != null).map((k) => `${LIMIT_WORDS[k].toLowerCase()} ${t.limits[k]}`).join(', ')}` : nothing}</p>`;
 }
 /** SRV-873: what the token used in 30 days, its limits' state, models no spend limit holds, and
  *  its last refusals */
