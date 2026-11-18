@@ -1,0 +1,2494 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/0.16.0/plugins/">
+      
+      
+        <link rel="prev" href="../hooks/">
+      
+      
+        <link rel="next" href="../plugins-sdk/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Plugins - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#plugins" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Plugins
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#write-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      Write one
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      The manifest
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The manifest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#contributions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-the-four-annotations-and-strict-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools: the four annotations and strict input
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      Install
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-trees-sha256-and-a-signature" class="md-nav__link">
+    <span class="md-ellipsis">
+      The tree's sha256 and a signature
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lifecycle
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sign-a-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sign a plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trust
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running plugins
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running plugins">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trust-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trust levels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supervision" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supervision
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      The protocol
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contributions_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributions
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contributions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Hooks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Decision providers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backends
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      Skills
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#panels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Panels
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-a-sandboxed-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      Write a sandboxed plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Debugging
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      The API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings-secrets-and-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings, secrets and capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-plugins-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Plugins pages
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-engine-stats-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      The engine-stats plugins
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#write-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      Write one
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-manifest" class="md-nav__link">
+    <span class="md-ellipsis">
+      The manifest
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The manifest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#contributions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributions
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-the-four-annotations-and-strict-input" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools: the four annotations and strict input
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      Install
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-trees-sha256-and-a-signature" class="md-nav__link">
+    <span class="md-ellipsis">
+      The tree's sha256 and a signature
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      Lifecycle
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sign-a-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sign a plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trust
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running plugins
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running plugins">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trust-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Trust levels
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supervision" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supervision
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      The protocol
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contributions_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Contributions
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Contributions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tools
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Hooks
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Decision providers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backends" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backends
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skills" class="md-nav__link">
+    <span class="md-ellipsis">
+      Skills
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#panels" class="md-nav__link">
+    <span class="md-ellipsis">
+      Panels
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-a-sandboxed-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      Write a sandboxed plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      Debugging
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      The API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings-secrets-and-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      Settings, secrets and capabilities
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-plugins-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Plugins pages
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-engine-stats-plugins" class="md-nav__link">
+    <span class="md-ellipsis">
+      The engine-stats plugins
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="plugins">Plugins<a class="headerlink" href="#plugins" title="Permanent link">&para;</a></h1>
+<p>A plugin is a folder with a manifest, <code>plugin.json</code>, and a program that speaks MCP over stdio. It can add tools, hooks, decision providers, backends, page panels, skills and in-engine hooks. TandemApp installs it from a folder, a wheel or a git commit, checks it, records the sha256 of its files, and keeps its settings, secrets and granted capabilities.</p>
+<p>The contract is <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/contracts/plugin-v1/README.md"><code>contracts/plugin-v1</code></a>.</p>
+<p>Once enabled, the plugin host runs it as one process and wires in what it contributes while it runs (<a href="#running-plugins">running plugins</a>).</p>
+<h2 id="write-one">Write one<a class="headerlink" href="#write-one" title="Permanent link">&para;</a></h2>
+<p>The smallest plugin is <a href="https://github.com/TandemLLM/TandemApp/tree/v0.16.0/contracts/plugin-v1/examples/hello-tool"><code>examples/hello-tool</code></a>: one MCP tool that greets a name.</p>
+<div class="highlight"><pre><span></span><code>hello-tool/
+  plugin.json     the manifest
+  server.py       an MCP server over stdio, the standard library only
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w"> </span><span class="nt">"plugin_api"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hello-tool"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0.1.0"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"tandemapp"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&gt;=0.15"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"hooks_api"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"entry"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"python3"</span><span class="p">,</span><span class="w"> </span><span class="s2">"server.py"</span><span class="p">]},</span>
+<span class="w"> </span><span class="nt">"contributes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"tools"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span>
+<span class="w">   </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"greet"</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Say hello to someone by name."</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">"inputSchema"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">}},</span>
+<span class="w">                   </span><span class="nt">"required"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span><span class="w"> </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<span class="w">   </span><span class="nt">"annotations"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"readOnlyHint"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"destructiveHint"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                   </span><span class="nt">"idempotentHint"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"openWorldHint"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">}</span>
+<span class="w">  </span><span class="p">}]</span>
+<span class="w"> </span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"settings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"object"</span><span class="p">,</span><span class="w"> </span><span class="nt">"additionalProperties"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"greeting"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span><span class="w"> </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Hello"</span><span class="p">}}}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>In Python, the <a href="../plugins-sdk/">plugin SDK</a> writes this reader for you: a plugin is a few decorated functions, and <code>tandemapp-plugin new</code> starts one.</p>
+<p>Check it the way an install does, without installing it:</p>
+<div class="highlight"><pre><span></span><code>python tools/plugin_check.py path/to/hello-tool
+ok hello-tool 0.1.0 sha256 7c51... (2 files)
+</code></pre></div>
+<p>Two more examples: <a href="https://github.com/TandemLLM/TandemApp/tree/v0.16.0/contracts/plugin-v1/examples/audit-hook"><code>audit-hook</code></a> (an observer hook at <code>request.finished</code>) and <a href="https://github.com/TandemLLM/TandemApp/tree/v0.16.0/contracts/plugin-v1/examples/classify-provider"><code>classify-provider</code></a> (a decision provider for <code>classify</code>, with a secret and a network host).</p>
+<h2 id="the-manifest">The manifest<a class="headerlink" href="#the-manifest" title="Permanent link">&para;</a></h2>
+<p>Every field not listed here is refused, not ignored.</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>what</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plugin_api</code></td>
+<td>the plugin-v1 version the manifest is written for, <code>1.0</code></td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>the plugin's id: lowercase letters, digits and dashes, at most 48. One plugin of a name.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td><code>MAJOR.MINOR.PATCH</code>, with an optional <code>-pre</code></td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>plugin</code> (default): a program the plugin host runs. <code>engine-stats</code>: a package an engine loads to send its figures; recorded only.</td>
+</tr>
+<tr>
+<td><code>title</code>, <code>description</code>, <code>author</code>, <code>license</code>, <code>homepage</code></td>
+<td>for the page</td>
+</tr>
+<tr>
+<td><code>tandemapp</code></td>
+<td>the TandemApp versions it runs on, e.g. <code>&gt;=0.15, &lt;0.17</code> (<code>&gt;=</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&lt;</code>, <code>==</code>, <code>!=</code>, <code>~=</code>, <code>==0.16.*</code>)</td>
+</tr>
+<tr>
+<td><code>hooks_api</code></td>
+<td>the hooks-v1 version it speaks (kind <code>plugin</code>)</td>
+</tr>
+<tr>
+<td><code>entry</code></td>
+<td><code>{command: [argv...], env?: {NAME: value}}</code>: started from the manifest's folder, never through a shell (kind <code>plugin</code>)</td>
+</tr>
+<tr>
+<td><code>trust</code></td>
+<td><code>sandboxed</code> (default), <code>host</code> or <code>engine</code>: where it asks to run</td>
+</tr>
+<tr>
+<td><code>contributes</code></td>
+<td><code>hooks</code>, <code>tools</code>, <code>decision_providers</code>, <code>backends</code>, <code>panels</code>, <code>skills</code>, <code>engine_hooks</code> (below)</td>
+</tr>
+<tr>
+<td><code>settings</code></td>
+<td>a JSON schema of type object: the plugin's settings, drawn as a form</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td><code>[{name, description?}]</code>, names like <code>API_KEY</code></td>
+</tr>
+<tr>
+<td><code>capabilities</code></td>
+<td>what it asks for (below)</td>
+</tr>
+<tr>
+<td><code>engine_stats</code></td>
+<td>kind <code>engine-stats</code>: <code>{engine, package, entry_points, install?, env?}</code></td>
+</tr>
+<tr>
+<td><code>git</code></td>
+<td><code>{submodules: "ignore"}</code>, <code>{lfs: "ignore"}</code>: see <a href="#install">git sources</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="contributions">Contributions<a class="headerlink" href="#contributions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>each item</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tools</code></td>
+<td>an MCP tool: <code>name</code>, <code>description</code>, <code>inputSchema</code>, <code>annotations</code>, optional <code>title</code> and <code>outputSchema</code></td>
+</tr>
+<tr>
+<td><code>hooks</code></td>
+<td><code>name</code>, <code>stages</code> (hooks-v1 stages), <code>role</code> (transform, guard, decider, observer: one the stage takes), <code>payload</code> (<code>meta</code> by default)</td>
+</tr>
+<tr>
+<td><code>decision_providers</code></td>
+<td><code>name</code>, <code>questions</code> (the conductor's: classify, packages, deliverable, memory_intent, memory_gate, judge)</td>
+</tr>
+<tr>
+<td><code>backends</code></td>
+<td><code>name</code>, <code>description</code>, <code>models</code></td>
+</tr>
+<tr>
+<td><code>panels</code></td>
+<td><code>name</code>, <code>title</code>, <code>path</code>: an HTML file in the plugin, shown in a sandboxed frame</td>
+</tr>
+<tr>
+<td><code>skills</code></td>
+<td>folders in the plugin, each holding <code>&lt;skill&gt;/SKILL.md</code>; each becomes one more skill folder</td>
+</tr>
+<tr>
+<td><code>engine_hooks</code></td>
+<td><code>name</code>, <code>wheel</code> (a .whl in the plugin), <code>hooks</code> (the engine extension's: plan, prompt, at_request, at_block, at_tool_call, check_answer, at_finish, extras, follow_ups, finish); needs <code>trust: engine</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="tools-the-four-annotations-and-strict-input">Tools: the four annotations and strict input<a class="headerlink" href="#tools-the-four-annotations-and-strict-input" title="Permanent link">&para;</a></h3>
+<p>Every tool states all four MCP annotations as booleans: <code>readOnlyHint</code>, <code>destructiveHint</code>, <code>idempotentHint</code> and <code>openWorldHint</code>. Its <code>inputSchema</code> is of type object and says <code>"additionalProperties": false</code> on every object in it, nested ones and array items included. A tool that misses one annotation, or a schema that allows extra properties (missing, <code>true</code>, a schema, <code>patternProperties</code>), is refused at install, naming the tool and the annotation or the place in the schema.</p>
+<h3 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h3>
+<p>The <code>settings</code> schema is drawn as a form (one generator for plugins, hooks and the conductor's documents: <code>proxy/schemaform.py</code>, and <code>dashboard/src/lib/schema-form.ts</code> for the page). To keep the form and the checks honest it must:</p>
+<ul>
+<li>be of type object, and say <code>"additionalProperties": false</code> on every object;</li>
+<li>use only the keywords a form reads: <code>type</code>, <code>properties</code>, <code>required</code>, <code>items</code>, <code>enum</code>, <code>const</code>, <code>anyOf</code>/<code>oneOf</code> (a nullable value, or a list of constants), local <code>$ref</code> to <code>$defs</code>, <code>title</code>, <code>description</code>, <code>default</code>, <code>examples</code>, <code>readOnly</code>, <code>format</code>, <code>pattern</code>, <code>minLength</code>, <code>maxLength</code>, <code>minimum</code>, <code>maximum</code>, <code>exclusiveMinimum</code>, <code>exclusiveMaximum</code>, <code>multipleOf</code>, <code>minItems</code>, <code>maxItems</code>, <code>uniqueItems</code>, <code>minProperties</code>, <code>maxProperties</code>;</li>
+<li>have defaults that hold against their own schema;</li>
+<li>nest at most 4 levels and hold at most 200 fields;</li>
+<li>hold no secret: a secret is a name in <code>secrets</code>, sealed apart and never shown again.</li>
+</ul>
+<h2 id="capabilities">Capabilities<a class="headerlink" href="#capabilities" title="Permanent link">&para;</a></h2>
+<p>A plugin gets nothing by default. It asks in <code>capabilities</code>; the admin grants each one in the settings interface. Granted is always a part of what was asked.</p>
+<table>
+<thead>
+<tr>
+<th>capability</th>
+<th>means</th>
+<th>grant</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prompts:meta</code></td>
+<td>a hook or provider sees ids, model, sizes, counts, timings, class and tool names</td>
+<td>pairing's rights</td>
+</tr>
+<tr>
+<td><code>prompts:redacted</code></td>
+<td>as meta, plus the content after the conductor's redaction</td>
+<td>pairing's rights</td>
+</tr>
+<tr>
+<td><code>prompts:full</code></td>
+<td>prompts and answers as they are</td>
+<td>pairing's rights and a second confirm</td>
+</tr>
+<tr>
+<td><code>network:&lt;host&gt;[:&lt;port&gt;]</code></td>
+<td>it may connect to this host (a DNS name or an IPv4 address)</td>
+<td>pairing's rights; a second confirm outside the LAN</td>
+</tr>
+<tr>
+<td><code>settings:read</code></td>
+<td>it may read the settings interface's values (never a secret)</td>
+<td>pairing's rights</td>
+</tr>
+<tr>
+<td><code>engine:control</code></td>
+<td>it may restart the engine or change its mode through the controller</td>
+<td>pairing's rights and a second confirm</td>
+</tr>
+<tr>
+<td><code>secrets:&lt;NAME&gt;</code></td>
+<td>the declared secret NAME is passed to its process</td>
+<td>pairing's rights</td>
+</tr>
+</tbody>
+</table>
+<p>A contributed hook's <code>payload</code> needs a <code>prompts:</code> capability at that level or above; a decision provider needs one. Whatever it asks for, a plugin never reads the config database, another plugin's secrets, pairing keys or backend keys.</p>
+<p>The plugin host checks each capability where it is used, and a refusal is journaled: in the plugin's status (<code>refusals</code>) and in the audit table (<code>refused</code>, by <code>plugin:&lt;id&gt;</code>, the capability's name, never a value).</p>
+<table>
+<thead>
+<tr>
+<th>capability</th>
+<th>checked where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prompts:&lt;level&gt;</code></td>
+<td>a hook's payload when it is registered and at each call; a decision provider's input</td>
+</tr>
+<tr>
+<td><code>network:&lt;host&gt;[:&lt;port&gt;]</code></td>
+<td>the sandbox's egress filter: only these hosts</td>
+</tr>
+<tr>
+<td><code>settings:read</code></td>
+<td><code>tandem/settings</code> and the panel bridge's <code>settings.read</code></td>
+</tr>
+<tr>
+<td><code>secrets:&lt;NAME&gt;</code></td>
+<td>the process's environment and <code>tandem/secret</code></td>
+</tr>
+<tr>
+<td><code>engine:control</code></td>
+<td>refused, whatever is granted, until engine control for plugins exists</td>
+</tr>
+</tbody>
+</table>
+<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>POST /v1/fleet/plugins {"source": {"type": "folder", "path": "/srv/plugins/hello-tool"}}
+POST /v1/fleet/plugins {"source": {"type": "wheel", "path": "/srv/hello_tool-0.1.0-py3-none-any.whl"}}
+POST /v1/fleet/plugins {"source": {"type": "git", "url": "https://example.com/hello.git",
+                                   "commit": "&lt;40 hex digits&gt;", "subdir": "plugins/hello"}}
+</code></pre></div>
+<p><code>POST /v1/fleet/plugins/inspect</code> with the same <code>source</code> runs every check and installs nothing.</p>
+<p>A wheel that is not on the controller's disk can be sent to it: <code>POST /v1/fleet/plugins/upload?name=hello_tool-0.1.0-py3-none-any.whl</code> with the wheel's bytes as the body (<code>Content-Type: application/octet-stream</code>, at most 32 MiB, pairing's rights). The controller keeps it in its plugins' upload folder for an hour and answers the <code>source</code> to inspect and install it with; after that it is removed.</p>
+<p><code>GET /v1/fleet/plugins</code> carries each plugin's run state from the plugin host (<code>run</code>: its state, restarts, last error and <code>gave_up</code>), so a list needs no status call per plugin. Every plugin's view names the requested capabilities whose grant takes the second confirm (<code>capabilities.confirm</code>), as inspect does. Every time in the API is in milliseconds since the epoch.</p>
+<p>Nothing in a plugin runs at install. A folder is copied file by file. A wheel is read as a zip, never through pip: its manifest is at its root or in one top-level folder, every member stays inside the tree, no member is a symlink, and the hashes in its RECORD must hold. A git source is fetched into an empty repository with no system or user git config, no hooks and no prompt, over https, ssh or file only, and its files are read out of the commit one blob at a time: no checkout, so no filter, attribute or LFS smudge runs.</p>
+<p>A git source is pinned to a commit: the full id (40 hex digits). A branch name, a tag name or a short id is refused, because each can move. A submodule or an LFS file refuses the install, since its content is not in the commit, unless the manifest says <code>"git": {"submodules": "ignore"}</code> or <code>{"lfs": "ignore"}</code>: then the submodule's folder stays empty and an LFS file stays a pointer.</p>
+<p>The checks, each a refusal with its code and the manifest field it is about (<code>contracts/plugin-v1/api.json</code> <code>checks</code> lists them all):</p>
+<ul>
+<li>the manifest parses, fits the schema and its kind's rules;</li>
+<li>the tools' annotations and strict input schemas;</li>
+<li>unique names within each contribution; hooks at real stages with a role the stage takes; providers for real questions;</li>
+<li>paths that stay in the plugin and exist;</li>
+<li><code>secrets:&lt;NAME&gt;</code> names a declared secret; payloads covered by a <code>prompts:</code> capability; <code>engine_hooks</code> only with <code>trust: engine</code>;</li>
+<li>the settings schema, as above;</li>
+<li><code>tandemapp</code> holds for this TandemApp, <code>hooks_api</code> and <code>plugin_api</code> are not newer than this controller's (same major, minor not newer). A refusal names the needed version and this one's;</li>
+<li>a signature, when there is one, holds;</li>
+<li>with the policy on, a sandboxed plugin carries a trusted signature (409 <code>signature_required</code>).</li>
+</ul>
+<h3 id="the-trees-sha256-and-a-signature">The tree's sha256 and a signature<a class="headerlink" href="#the-trees-sha256-and-a-signature" title="Permanent link">&para;</a></h3>
+<p>The install records the sha256 of the plugin's files: sha256 over <code>plugin-tree-v1\n</code> and a line a file, in byte order of the path, <code>&lt;sha256 of the file&gt; &lt;x or -&gt; &lt;path&gt;\n</code> (<code>x</code>: executable). <code>.git</code> and <code>__pycache__</code> folders, <code>.pyc</code>, <code>.DS_Store</code> and <code>._*</code> files are not part of the tree; a symlink or a special file refuses it. The registry checks the tree again when the plugin is enabled and before it is started, and <code>plugin.sig.json</code> with it (the tree's sha256 leaves the signature out, so the registry records the signature file's own sha256): a tree or a signature that changed reads <code>mismatch</code> (or <code>missing</code>), with the reason, and does not load until it is installed again. The health page names it (<code>plugin_tampered</code>).</p>
+<p>A plugin may carry a signature, <code>plugin.sig.json</code> at its root (<a href="#sign-a-plugin">signing</a>). When it is present it must hold, or the install is refused (<code>signature_invalid</code>).</p>
+<h2 id="lifecycle">Lifecycle<a class="headerlink" href="#lifecycle" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>install</td>
+<td>the plugin is stored under the controller's state dir, <code>plugins/&lt;name&gt;/&lt;version&gt;/</code>, disabled</td>
+</tr>
+<tr>
+<td>enable</td>
+<td>checks the tree and the compatibility with this TandemApp first</td>
+</tr>
+<tr>
+<td>disable</td>
+<td>always works</td>
+</tr>
+<tr>
+<td>upgrade</td>
+<td>install the new version with <code>"upgrade": true</code>. Settings whose property is still there and whose value still holds, secrets still declared and capabilities still asked for are kept; the rest is dropped and listed. A new capability starts ungranted (listed in <code>new</code>): it takes its own grant. The old version's folder is removed. The same version with other files is refused (raise the version); an older version needs <code>"allow_downgrade": true</code>, signed or not. A version that asks a higher trust level, or whose host grant rested on a signature it no longer carries, is refused (409 <code>trust_confirm_needed</code>) and the installed version keeps running, until it comes again with <code>"confirm_trust": "&lt;plugin id&gt;"</code> (<a href="#trust">trust</a>).</td>
+</tr>
+<tr>
+<td>remove</td>
+<td>refused while a hook names the plugin (409 <code>referenced</code>, with the hooks); takes its folder and secrets</td>
+</tr>
+</tbody>
+</table>
+<p>An install cut short leaves nothing: the files move into place before the registry row is written, and the next start removes a staging folder or a version folder no row names.</p>
+<h2 id="sign-a-plugin">Sign a plugin<a class="headerlink" href="#sign-a-plugin" title="Permanent link">&para;</a></h2>
+<p><code>tools/plugin_sign.py</code> makes an ed25519 key and signs a plugin folder with it; it never prints the private key.</p>
+<div class="highlight"><pre><span></span><code>python tools/plugin_sign.py keygen ~/keys/acme-plugins.pem      # 0600, never overwritten
+public_key g2KYlmjw...UZJzY=
+fingerprint sha256:27b251a6f466ff65ffa8c9f9dc4a3033d3752871cc05faea0637f08152a37788
+
+python tools/plugin_sign.py sign --key ~/keys/acme-plugins.pem path/to/hello-tool
+python tools/plugin_sign.py verify path/to/hello-tool --fingerprint sha256:27b2...7788
+</code></pre></div>
+<p><code>--passphrase-env NAME</code> encrypts the key at keygen and reads the passphrase at sign. Publish the public key and its fingerprint where your users can compare them. Sign last: a file changed after signing breaks the signature.</p>
+<p>What is signed. <code>plugin.sig.json</code> holds <code>{format, algorithm, public_key, plugin, version, tree_sha256, manifest_sha256, signature}</code>: <code>format</code> is <code>tandemapp-plugin-sig-1</code>, <code>algorithm</code> <code>ed25519</code>, <code>public_key</code> the base64 of the key's 32 bytes, <code>tree_sha256</code> the tree's sha256 (above: it folds in every file's sha256) and <code>manifest_sha256</code> the sha256 of <code>plugin.json</code>'s bytes. <code>signature</code> is the base64 of the 64-byte ed25519 signature over five lines of UTF-8, each ending in <code>\n</code>:</p>
+<div class="highlight"><pre><span></span><code>tandemapp-plugin-sig-1
+plugin &lt;name&gt;
+version &lt;version&gt;
+tree &lt;tree_sha256&gt;
+manifest &lt;manifest_sha256&gt;
+</code></pre></div>
+<p>The install checks each part: the tree, the manifest, the name and the version must be this plugin's, and the signature must hold. A key's id is the first 16 hex digits of its fingerprint, the sha256 of its 32 bytes.</p>
+<h2 id="trust">Trust<a class="headerlink" href="#trust" title="Permanent link">&para;</a></h2>
+<p>A signature that holds is only trusted when its key is one this TandemApp trusts for that plugin at that level. A signature by any other key counts as none.</p>
+<p>A route that takes pairing's rights (install, upload, enable, remove, a trust grant, the keys and the policy) answers 403 <code>trust_required</code> to a caller that may change the configuration but has not those rights (with no admin password set: any other machine), and 401 to one that may not change the configuration at all.</p>
+<p><strong>Trusted keys</strong> (<code>/v1/fleet/plugin-trust</code>, pairing's rights to change). Adding a key takes its fingerprint typed or pasted back: compare it with the one its publisher published. Without it the answer is 428 <code>fingerprint_confirm_required</code> with the fingerprint to compare; a different one is 422 <code>fingerprint_mismatch</code>. A key can be limited to plugin ids (<code>plugins</code>) and to trust levels (<code>levels</code>); <code>null</code> means any. Removing a key takes its fingerprint as well. To change a key's limits, remove it and add it again.</p>
+<div class="highlight"><pre><span></span><code>POST /v1/fleet/plugin-trust/keys {"public_key": "g2KYlmjw...UZJzY=", "name": "Acme plugins",
+                                  "plugins": ["hello-tool"], "levels": ["sandboxed", "host"],
+                                  "confirm_fingerprint": "sha256:27b251a6...7788"}
+DELETE /v1/fleet/plugin-trust/keys/27b251a6f466ff65 {"confirm_fingerprint": "sha256:27b2...7788"}
+POST /v1/fleet/plugin-trust/policy {"require_signature_sandboxed": true}
+</code></pre></div>
+<p><strong>The levels.</strong></p>
+<table>
+<thead>
+<tr>
+<th>level</th>
+<th>runs when</th>
+<th>a grant takes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sandboxed</code></td>
+<td>always; with <code>require_signature_sandboxed</code> on (off by default), only with a trusted signature, refused at install, enable and load otherwise</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td><code>host</code></td>
+<td>it holds a host grant</td>
+<td>pairing's rights, and either a signature trusted for host (basis <code>signature</code>) or the plugin's id typed (basis <code>typed</code>). A grant on a signature holds only while that signature stays trusted: remove the key, and the plugin stops until it is granted again</td>
+</tr>
+<tr>
+<td><code>engine</code></td>
+<td>not yet: the in-process chain does not exist</td>
+<td>per engine host: a signature trusted for engine AND the plugin's id typed. The grant is recorded; the plugin is refused at runtime until engine extensions install through <code>ext install</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>GET  /v1/fleet/plugins/&lt;id&gt;/trust                      what it asks, what it has, its signature,
+                                                       whether it runs and what a grant takes
+POST /v1/fleet/plugins/&lt;id&gt;/trust {"level": "host", "confirm": "&lt;id&gt;"}
+POST /v1/fleet/plugins/&lt;id&gt;/trust {"level": "engine", "engine": "&lt;engine host&gt;", "confirm": "&lt;id&gt;"}
+POST /v1/fleet/plugins/&lt;id&gt;/trust {"level": "sandboxed"}                     revoke every grant
+POST /v1/fleet/plugins/&lt;id&gt;/trust {"level": "sandboxed", "engine": "&lt;host&gt;"}  revoke one engine
+</code></pre></div>
+<p>A grant without the typed confirmation where one is needed is 428 <code>typed_confirm_required</code>; a wrong one is 422 <code>typed_confirm_mismatch</code>; an engine grant without a trusted signature is 409 <code>signature_required</code>. The settings interface's <code>trust</code> key grants host only for a plugin signed by a key trusted for host (with its second confirm); for an unsigned one it answers 409 and points here.</p>
+<p><strong>Updates.</strong> A new capability starts ungranted. A version that asks a higher level than the installed one, or whose host grant rested on a signature this version does not carry, waits for <code>confirm_trust</code> (the plugin's id): the installed version keeps running meanwhile. With it, the upgrade goes ahead, and a host plugin's grant is renewed on the new version's trusted signature or, unsigned, on the typed confirmation. A host grant carries over an upgrade that still asks host; an engine grant carries over while the new version is still signed by a key trusted for engine. Going back to an older version, signed or not, takes <code>allow_downgrade</code>.</p>
+<p><strong>Audit.</strong> Each trust decision is a row of the audit table: a key trusted or distrusted (with its fingerprint), the policy set, a grant or revoke (its level, basis, key and engine host), and each refusal at install, upgrade, enable, load or grant (<code>refused</code>, with where and why). The health page names a plugin that may not run as it asks (<code>plugin_untrusted</code>) or that changed (<code>plugin_tampered</code>).</p>
+<h2 id="running-plugins">Running plugins<a class="headerlink" href="#running-plugins" title="Permanent link">&para;</a></h2>
+<p>The plugin host in the controller starts one process for each enabled plugin of kind <code>plugin</code>, from <code>entry.command</code> (argv, never a shell) in the manifest's folder. It reads the registry every 2 seconds and at each change: a disabled or removed plugin stops, a plugin whose settings, secrets, grants or version changed starts again with them.</p>
+<h3 id="trust-levels">Trust levels<a class="headerlink" href="#trust-levels" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th><code>trust</code></th>
+<th>where it runs</th>
+<th>how</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sandboxed</code> (default)</td>
+<td>a container (Docker or Podman) or a Kubernetes pod of the chat sandbox's class</td>
+<td>always, signed or not, unless the policy requires a trusted signature for sandboxed plugins; it waits when there is no sandbox runtime here</td>
+</tr>
+<tr>
+<td><code>host</code></td>
+<td>a process of the app's user, outside any sandbox</td>
+<td>only once granted (<a href="#trust">trust</a>): on a signature by a trusted key, or with the plugin's id typed; until then it does not start</td>
+</tr>
+<tr>
+<td><code>engine</code></td>
+<td>a wheel inside the engine</td>
+<td>a grant per engine host takes a trusted signature and the plugin's id typed; refused at runtime until the in-process chain exists</td>
+</tr>
+</tbody>
+</table>
+<p><strong>The sandbox.</strong> The sandbox image (<code>QSE_SANDBOX_IMAGE</code>, <code>tandem-sandbox:1</code>), uid 1000, every capability dropped, no-new-privileges, a read-only root, a small in-memory /tmp, no devices, 512 MiB (<code>TANDEM_PLUGIN_MEM_MB</code>), one CPU and 128 processes, and no network but its loopback. Mounted: the plugin's installed tree at <code>/plugin</code>, read-only; its own folder at <code>/workspace</code> (<code>TANDEM_PLUGIN_DATA</code>) and a home at <code>/home/agent</code>. Nothing else of the controller's: not the config database, not another plugin's folder or secrets. Its way out is the chat sandbox's egress proxy (<code>HTTP_PROXY</code> and <code>HTTPS_PROXY</code> are set) with a host list: only the hosts of its granted <code>network:</code> capabilities, a granted LAN address included; any other address is refused, and this box (loopback), link-local addresses and the Kubernetes API are refused even when granted.</p>
+<p><strong>Which runtime.</strong> The one chatd uses on this install: <code>QSE_SANDBOX_BACKEND</code>, <code>QSE_SANDBOX_SOCKET</code> and <code>QSE_SANDBOX_IMAGE</code> from the controller's environment or chatd's env file (<code>&lt;state dir&gt;/chatd.env</code>). <code>TANDEM_PLUGIN_SANDBOX</code> (auto, docker, kubernetes, off) overrides it. In a cluster a plugin's pod is made like a chat's sandbox pod, its tree a read-only subPath of the release's volume, and reaches only the plugin host's egress port (<code>sandbox.kubernetes.pluginEgressPort</code>, 3129, <code>TANDEM_PLUGIN_EGRESS_PORT</code>). With no runtime a sandboxed plugin does not start: its state is <code>unavailable</code> and the health page says why (<code>plugin_no_sandbox</code>).</p>
+<p><strong>The environment</strong> holds only what the grants allow, never the controller's:</p>
+<table>
+<thead>
+<tr>
+<th>variable</th>
+<th>what</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TANDEM_PLUGIN</code>, <code>TANDEM_PLUGIN_VERSION</code></td>
+<td>its id and version</td>
+</tr>
+<tr>
+<td><code>TANDEM_PLUGIN_SETTINGS</code></td>
+<td>its own settings as JSON, each schema default filled in</td>
+</tr>
+<tr>
+<td><code>TANDEM_PLUGIN_DATA</code></td>
+<td>its own data folder</td>
+</tr>
+<tr>
+<td><code>TANDEM_PLUGIN_CAPABILITIES</code></td>
+<td>the capabilities granted, a JSON list</td>
+</tr>
+<tr>
+<td><code>&lt;NAME&gt;</code></td>
+<td>each secret granted by <code>secrets:&lt;NAME&gt;</code> (a name the process itself uses, such as <code>PATH</code> or <code>HOME</code>, is not passed)</td>
+</tr>
+<tr>
+<td><code>entry.env</code>, <code>LANG</code>, <code>PYTHONUNBUFFERED</code></td>
+<td>the manifest's own values and two defaults</td>
+</tr>
+</tbody>
+</table>
+<p>A host plugin also gets this process's <code>PATH</code>, and its data folder as <code>HOME</code>.</p>
+<h3 id="supervision">Supervision<a class="headerlink" href="#supervision" title="Permanent link">&para;</a></h3>
+<p>A plugin that exits, or does not answer <code>initialize</code> within 20 seconds, is started again after 1, 2, 4, 8, 16, 32, then 60 seconds. At the fifth failure within an hour the host gives up: it disables the plugin (audited, by <code>plugin-host</code>) and the health page names it (<code>plugin_failed</code>) until it is enabled again. A stop by hand holds it until a start by hand. Removing a running plugin ends its process before its folder goes.</p>
+<h2 id="the-protocol">The protocol<a class="headerlink" href="#the-protocol" title="Permanent link">&para;</a></h2>
+<p>MCP over stdio, one JSON-RPC 2.0 message a line, protocol revision 2025-06-18: <code>initialize</code>, then <code>tools/list</code> when the manifest declares tools, <code>tools/call</code>, <code>ping</code>. Three more methods carry what MCP has no words for, and the plugin answers those it contributes:</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>params</th>
+<th>answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hooks/call</code></td>
+<td>the hooks-v1 envelope (<code>hooks</code>, <code>id</code>, <code>stage</code>, <code>ts</code>, <code>payload</code>, <code>mode</code>, <code>request</code>, <code>event</code>) with <code>hook</code> set to the contributed hook's name and <code>hook_id</code> to the runner's id</td>
+<td>a hooks-v1 result: <code>{action: continue\|modify\|deny\|decide, patch?, decision?, reason?, labels?}</code></td>
+</tr>
+<tr>
+<td><code>decision/ask</code></td>
+<td><code>{provider, question, instructions, options, model, deadline_ms, payload, input}</code>; <code>input</code> is <code>{chars}</code> at meta, <code>{text}</code> at redacted (after the conductor's redaction) and full</td>
+<td><code>{label, confidence?, probabilities?}</code>: <code>label</code> one of <code>options</code></td>
+</tr>
+<tr>
+<td><code>backend/request</code></td>
+<td><code>{backend, method, path, body}</code></td>
+<td><code>{status, body}</code>, or <code>{status, events: [...]}</code> for a stream (each event one SSE <code>data:</code> line)</td>
+</tr>
+</tbody>
+</table>
+<p>The plugin may ask the host, with requests of its own on the same stream:</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>params</th>
+<th>needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tandem/settings</code></td>
+<td>none</td>
+<td><code>settings:read</code>: its own settings</td>
+</tr>
+<tr>
+<td><code>tandem/secret</code></td>
+<td><code>{name}</code></td>
+<td><code>secrets:&lt;name&gt;</code>; another plugin's secret never</td>
+</tr>
+<tr>
+<td><code>tandem/engine</code></td>
+<td>any</td>
+<td>refused until engine control for plugins exists</td>
+</tr>
+</tbody>
+</table>
+<p>A refusal is the JSON-RPC error <code>-32001</code> with <code>data.capability</code>. The calls are local, so they carry no signature; the payload levels still apply.</p>
+<h2 id="contributions_1">Contributions<a class="headerlink" href="#contributions_1" title="Permanent link">&para;</a></h2>
+<p>Each contribution is registered while the plugin runs and is gone when it stops. A plugin's status says what was registered and what was not, and why (<code>notes</code>).</p>
+<h3 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h3>
+<p>Offered to the Chat tab: chatd lists them with its MCP servers (<code>plugin:&lt;id&gt;</code>, transport <code>plugin</code>, read-only there) as <code>mcp__plugin_&lt;id&gt;__&lt;tool&gt;</code>, and calls them through the controller (<code>/chat-engine/v1/plugins/tools</code>, <code>/chat-engine/v1/plugins/tools/call</code>), so Chat must be on to use them. Only a tool the manifest declares and the server lists is offered, with the manifest's checked schema and annotations; arguments outside the schema are refused before the plugin sees them.</p>
+<h3 id="hooks">Hooks<a class="headerlink" href="#hooks" title="Permanent link">&para;</a></h3>
+<p>Each hook joins the runner as <code>&lt;plugin&gt;/&lt;hook&gt;</code>: priority 100, mode on, no scope, the manifest's stages, role and payload. A hook whose payload is above the plugin's granted <code>prompts:</code> level is not registered. To set its priority, scope, mode or policy, add a hook of kind <code>plugin</code> on the hooks' API with <code>target</code> <code>&lt;plugin&gt;/&lt;hook&gt;</code> (at the declared stages, role and payload or below): it takes the contributed hook's place. The runner's timeouts, breaker and policies apply as for any hook.</p>
+<h3 id="decision-providers">Decision providers<a class="headerlink" href="#decision-providers" title="Permanent link">&para;</a></h3>
+<p>Each provider is registered as <code>&lt;plugin&gt;/&lt;provider&gt;</code> in <code>shadow</code>: asked off the request's path and journaled, never used. To have it answer, add a decision provider of kind <code>plugin</code> with <code>target</code> <code>&lt;plugin&gt;/&lt;provider&gt;</code> and the mode you want (<code>on</code>, <code>ab</code>): it takes the contributed one's place.</p>
+<h3 id="backends">Backends<a class="headerlink" href="#backends" title="Permanent link">&para;</a></h3>
+<p>Each backend becomes a row of the backends store, <code>plugin-&lt;id&gt;-&lt;name&gt;</code> (kind generic, the manifest's models, labelled "(plugin <id>)"), whose URL is this controller's <code>/plugin-backends/&lt;id&gt;/&lt;name&gt;</code>: requests that the gateway routes there go to the plugin as <code>backend/request</code>, <code>GET /v1/models</code> answers the manifest's models. That route answers this machine only. The row is removed when the plugin stops.</p>
+<h3 id="skills">Skills<a class="headerlink" href="#skills" title="Permanent link">&para;</a></h3>
+<p>Each skill folder of a running plugin is one more skill folder of the controller's conductor, after the packages document's own <code>skill_dirs</code>, read from the installed tree (never written).</p>
+<h3 id="panels">Panels<a class="headerlink" href="#panels" title="Permanent link">&para;</a></h3>
+<p>A panel is served at <code>/plugin-panels/&lt;id&gt;/&lt;panel&gt;/</code> (its HTML; the files beside it under the same path) with <code>Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; ...; connect-src 'none'</code>: in the page's iframe or on its own it has an opaque origin, so it reads no cookie, storage or route of the controller's. It talks to the page with <code>postMessage({type: 'tandem-bridge', id, method, params})</code>; the page relays the call to <code>POST /v1/fleet/plugins/&lt;id&gt;/bridge</code> and posts back <code>{type: 'tandem-bridge-result', id, result | error}</code>.</p>
+<table>
+<thead>
+<tr>
+<th>bridge method</th>
+<th>needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plugin.info</code>, <code>plugin.status</code></td>
+<td>nothing</td>
+</tr>
+<tr>
+<td><code>tools.call</code> <code>{tool, arguments}</code></td>
+<td>the tool is the plugin's own and read-only (<code>readOnlyHint</code>)</td>
+</tr>
+<tr>
+<td><code>settings.read</code></td>
+<td><code>settings:read</code></td>
+</tr>
+<tr>
+<td><code>engine.control</code></td>
+<td>refused: not available yet</td>
+</tr>
+</tbody>
+</table>
+<p><code>GET /v1/fleet/plugins/&lt;id&gt;/panels</code> lists them with the bridge's methods this plugin may use.</p>
+<h2 id="write-a-sandboxed-plugin">Write a sandboxed plugin<a class="headerlink" href="#write-a-sandboxed-plugin" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Use the standard library, or vendor what you need into the plugin: the sandbox has the image's Python 3.12 and Node, its root is read-only, and its network reaches only the hosts you ask for.</li>
+<li>Read your settings from <code>TANDEM_PLUGIN_SETTINGS</code>; keep files in <code>TANDEM_PLUGIN_DATA</code>.</li>
+<li>Ask for <code>network:&lt;host&gt;[:&lt;port&gt;]</code> for each host you call; HTTP clients that honour <code>HTTPS_PROXY</code> (urllib, requests, curl) go through the proxy as they are.</li>
+<li>Write logs to stderr; stdout is the protocol.</li>
+<li><code>examples/hello-tool</code>, <code>audit-hook</code> and <code>classify-provider</code> are complete plugins written against the protocol itself; <code>note-webhook</code> and <code>keyword-router</code> are built on the <a href="../plugins-sdk/">SDK</a>. The tests run each of them.</li>
+</ul>
+<h2 id="debugging">Debugging<a class="headerlink" href="#debugging" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>what</th>
+<th>where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>running or why not, restarts, the last error, what was registered, the refusals</td>
+<td><code>GET /v1/fleet/plugins/&lt;id&gt;/status</code></td>
+</tr>
+<tr>
+<td>its stderr and the host's lines about it, every secret value replaced by <code>[secret NAME]</code></td>
+<td><code>GET /v1/fleet/plugins/&lt;id&gt;/logs?tail=200</code>; <code>&lt;state dir&gt;/logs/plugins/&lt;id&gt;.log</code> (1 MiB, then one older file)</td>
+</tr>
+<tr>
+<td>start again, stop (held), start</td>
+<td><code>POST /v1/fleet/plugins/&lt;id&gt;/restart</code>, <code>/stop</code>, <code>/start</code></td>
+</tr>
+<tr>
+<td>a hook's calls and breaker</td>
+<td><code>GET /v1/fleet/hooks/&lt;id&gt;/calls</code> for a hook of kind plugin; the runner's metrics for <code>&lt;plugin&gt;/&lt;hook&gt;</code></td>
+</tr>
+<tr>
+<td>a plugin that gave up, has no sandbox, changed since its install or is not trusted as it asks</td>
+<td>the health page's controller findings</td>
+</tr>
+<tr>
+<td>why it may not run at its level</td>
+<td><code>GET /v1/fleet/plugins/&lt;id&gt;/trust</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-api">The API<a class="headerlink" href="#the-api" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>route</th>
+<th>rights</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /v1/fleet/plugins</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/inspect {source}</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins {source, upgrade?, allow_downgrade?, confirm_trust?}</code></td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/upload?name=&lt;file&gt;.whl</code> (the wheel's bytes)</td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>GET /v1/fleet/plugins/{id}</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>GET /v1/fleet/plugins/{id}/trust</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/{id}/trust {level, engine?, confirm?}</code></td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>GET /v1/fleet/plugin-trust</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugin-trust/keys</code>, <code>DELETE /v1/fleet/plugin-trust/keys/{key}</code>, <code>POST /v1/fleet/plugin-trust/policy</code></td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/{id}/enable</code></td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/{id}/disable</code>, <code>/verify</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>DELETE /v1/fleet/plugins/{id}</code></td>
+<td>pairing's</td>
+</tr>
+<tr>
+<td><code>GET /v1/fleet/plugins/{id}/status</code>, <code>/logs</code>, <code>/panels</code></td>
+<td>the configuration's</td>
+</tr>
+<tr>
+<td><code>POST /v1/fleet/plugins/{id}/start</code>, <code>/stop</code>, <code>/restart</code>, <code>/bridge</code></td>
+<td>the configuration's</td>
+</tr>
+</tbody>
+</table>
+<p>Pairing's rights are the admin's, or this machine's while no admin password is set. No answer holds a secret. Starting a plugin takes it enabled first, which takes pairing's rights.</p>
+<h2 id="settings-secrets-and-capabilities">Settings, secrets and capabilities<a class="headerlink" href="#settings-secrets-and-capabilities" title="Permanent link">&para;</a></h2>
+<p>They are the settings interface's <code>plugins</code> scope, one target a plugin: <code>GET /v1/settings/plugins/schema?target=&lt;id&gt;</code>, then plan and apply as for any scope (<a href="../settings/#plugins">settings</a>). Its keys are <code>enabled</code>, <code>settings.&lt;property&gt;</code>, <code>secrets.&lt;NAME&gt;</code> (write-only), <code>capabilities.&lt;capability&gt;</code> and, for a manifest that asks <code>trust: host</code>, <code>trust</code> (host only on a trusted signature; <a href="#trust">trust</a>). Each plugin keeps its own versions.</p>
+<h2 id="the-plugins-pages">The Plugins pages<a class="headerlink" href="#the-plugins-pages" title="Permanent link">&para;</a></h2>
+<p>The dashboard has all of this under Settings, Plugins.</p>
+<ul>
+<li><strong>The list.</strong> Each installed plugin with its version, its kind, where it came from, its trust level, its signature and its state. The state is the run state the list carries; no plugin is asked alone.</li>
+<li><strong>Install.</strong> A folder or a wheel on the controller's machine, a wheel uploaded from this computer, or a git URL with a full commit id. The source is checked first. The page then shows every check with how it ended, the sha256 of the files, where the plugin asks to run, each capability in plain words with its risk, and what it adds. Install comes after that. A refused source installs nothing; each reason stands with what to change and the controller's own sentence.</li>
+<li><strong>A plugin's page.</strong> Its state, restarts and last error, with start, stop and restart; what it adds and where each shows; its settings as a form drawn from its schema; its secrets, set or removed and never shown; each capability with its grant; its log; its files, with a check against the sha256 of the install; a newer version; and its removal. A plugin that is off has one button that stages the switch and everything it asks for.</li>
+<li><strong>A panel.</strong> The plugin's own page in a sandboxed frame. The page relays the frame's bridge calls to <code>/v1/fleet/plugins/&lt;id&gt;/bridge</code>, only the methods <code>GET .../panels</code> lists for it; anything else is refused on the page. A panel that cannot be shown says why.</li>
+</ul>
+<p>The switch, the settings, the secrets, the grants and the trust level are staged and go through the settings' review, which asks a second time for <code>prompts:full</code>, <code>engine:control</code>, a network host outside the LAN and the host. Install, upgrade, removal, start, stop and restart are done at once.</p>
+<p>A wheel is named by its path on the controller's machine, or uploaded from the browser's computer through <code>POST /v1/fleet/plugins/upload</code>: the page then checks it from the path the controller answers, which holds for an hour. Which grants ask a second time is the controller's word (<code>capabilities.confirm</code>); the page reads a host itself only for a controller that does not say.</p>
+<h2 id="the-engine-stats-plugins">The engine-stats plugins<a class="headerlink" href="#the-engine-stats-plugins" title="Permanent link">&para;</a></h2>
+<p>The two packages in <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/plugins/README.md"><code>plugins/</code></a> that an engine loads to send its figures have a manifest of kind <code>engine-stats</code>. The controller can check and record them; installing them into the engine stays <code>pip install plugins/&lt;engine&gt;</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../hooks/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Hooks">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Hooks
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../plugins-sdk/" class="md-footer__link md-footer__link--next" aria-label="Next: The plugin SDK">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                The plugin SDK
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

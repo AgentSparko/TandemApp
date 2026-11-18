@@ -1,0 +1,1524 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/0.16.0/status-lines/">
+      
+      
+        <link rel="prev" href="../session-monitor/">
+      
+      
+        <link rel="next" href="../chat-mode/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Status lines, the voice and the shadow reader - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#status-lines-the-voice-and-the-shadow-reader" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Status lines, the voice and the shadow reader
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      Status lines
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-narrator-and-the-voice" class="md-nav__link">
+    <span class="md-ellipsis">
+      The narrator and the voice
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-shadow-reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      The shadow reader
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      Status lines
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-narrator-and-the-voice" class="md-nav__link">
+    <span class="md-ellipsis">
+      The narrator and the voice
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-shadow-reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      The shadow reader
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="status-lines-the-voice-and-the-shadow-reader">Status lines, the voice and the shadow reader<a class="headerlink" href="#status-lines-the-voice-and-the-shadow-reader" title="Permanent link">&para;</a></h1>
+<p>A client shows the model's reasoning and its answer. What the conductor does around them, the engine's queue, a long prefill, a hidden close, was visible only on the dashboard. This page covers the lines that show it in the client, the small model that can write them, and a second use of small models: the shadow reader that keeps its own exact copy of a session.</p>
+<h2 id="status-lines">Status lines<a class="headerlink" href="#status-lines" title="Permanent link">&para;</a></h2>
+<p>With a profile's <code>ui.states: on</code> (the shipped profiles), each step the conductor takes is one short line the client renders, at the moment it happens:</p>
+<div class="highlight"><pre><span></span><code>› code edit, maximum effort
+› reading 20,745 tokens, about 18 s left
+› waiting: another request is running, position 1, about 40 s
+› thinking 25 s: designing a 140x15 tile map with pits, coins, enemies and platforms
+› writing render.js, 211 lines so far
+› checking the tool call
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>kind</th>
+<th>template</th>
+<th>when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>route</code></td>
+<td><code>deciding: code_edit, high effort</code></td>
+<td>a classifier answered this turn</td>
+</tr>
+<tr>
+<td><code>package</code></td>
+<td><code>retrieving: skill photo-to-3d</code></td>
+<td>the note carries a skill</td>
+</tr>
+<tr>
+<td><code>cap</code></td>
+<td><code>thinking closed at the 16,384 cap</code></td>
+<td>the turn's cap closes the reasoning</td>
+</tr>
+<tr>
+<td><code>backstop</code></td>
+<td><code>thinking closed at the 32,768 backstop</code></td>
+<td>D2 closes it</td>
+</tr>
+<tr>
+<td><code>loop</code></td>
+<td><code>loop detected, steering</code></td>
+<td>D1 closes a reasoning loop</td>
+</tr>
+<tr>
+<td><code>continue</code></td>
+<td><code>empty answer, continuing</code></td>
+<td>E1's hidden continue</td>
+</tr>
+<tr>
+<td><code>check</code></td>
+<td><code>checking the tool call</code></td>
+<td>SP3 checks the held calls</td>
+</tr>
+<tr>
+<td><code>repair</code></td>
+<td><code>repairing the tool call</code></td>
+<td>C4 repairs a call</td>
+</tr>
+<tr>
+<td><code>queue</code></td>
+<td><code>waiting: ..., position 1</code></td>
+<td>the request waits for the engine</td>
+</tr>
+<tr>
+<td><code>prefill</code></td>
+<td><code>reading 35,189 tokens at ~750 tok/s, about 47 s left</code></td>
+<td>a long prefill, every 10 s</td>
+</tr>
+<tr>
+<td><code>thinking</code></td>
+<td><code>thinking 4 min, 9,800 tokens</code></td>
+<td>every 2 minutes or 4,096 tokens of thinking</td>
+</tr>
+</tbody>
+</table>
+<p><em>Kinds of status line.</em></p>
+<p><code>ui.states_channel</code> says where the lines go. <code>reasoning</code> puts them inside the reasoning the client renders. <code>content</code> sends each as a content delta of its own, before, between and after the reasoning's parts. <code>inline</code>, the coding profile's value, is built for opencode: each line opens a reasoning part of its own, titled by the line, in time order, and the answer's text part opens after them. It works because opencode's provider ends an open reasoning part when an empty <code>tool_calls</code> delta arrives and opens a new one at the next reasoning delta, which the server sends as <code>**› line**</code>. That was checked by running recorded streams through opencode's own parser, taken out of its binary.</p>
+<p>The model never reads a line. Every line is framed so that the server can find it exactly, and whenever the conductor is configured the server takes every framed line out of whatever a client sends back, before the router, the monitor or the template read it. The prompt, the resident prefix it resumes and the notes' replay positions are exactly what they would be without the lines. The lines are not tokens: never in <code>usage</code>, the suffix store or the response cache's key. The journal row keeps each one with its kind and its time.</p>
+<p>Open WebUI times a reasoning block from its first reasoning piece to its first answer piece and shows that as “Thought for N seconds”, so the waiting and reading lines counted as thinking: a summary with thinking off that read 12,874 tokens showed “Thought for 14 seconds”. For the client kinds in <code>QWEN38_STATUS_CLIENTS</code> (default <code>open-webui</code>) every line said before the model's first generated token goes out as an Open WebUI status event, the line under the model's name that its tools use, and one last event at the first token says what the wait was (“Read 12,874 tokens in 14 s”). The reasoning opens with the model's own first piece, and a turn that does not think shows no “Thought for”. Lines after the first token keep the profile's channel.</p>
+<p>The progress lines (<code>queue</code>, <code>prefill</code>, <code>thinking</code>) are templates with numbers: the queue position and an estimate of the wait, a long prefill's rate and time left, a long thinking's time and tokens (<code>ui.progress</code>). A request that waits for the engine opens its stream at its first waiting line, so a refusal after that ends the stream with an <code>error</code> object and <code>[DONE]</code>.</p>
+<h2 id="the-narrator-and-the-voice">The narrator and the voice<a class="headerlink" href="#the-narrator-and-the-voice" title="Permanent link">&para;</a></h2>
+<p><code>ui.narrator</code> picks who writes the lines that are not progress templates.</p>
+<table>
+<thead>
+<tr>
+<th>value</th>
+<th>lines</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>off</code></td>
+<td>the templates</td>
+</tr>
+<tr>
+<td><code>on</code></td>
+<td>each line rewritten by a small model, in at most 150 ms, else the template</td>
+</tr>
+<tr>
+<td><code>thoughts</code></td>
+<td>one summary per stretch of thinking of at least 128 tokens: “Thought 1m 43s: planned the level layout and decided on a fixed timestep”</td>
+</tr>
+<tr>
+<td><code>live</code></td>
+<td>the voice: what the model is doing right now</td>
+</tr>
+</tbody>
+</table>
+<p><em>The narrator's modes.</em></p>
+<p>The voice (<code>live</code>, the coding and chat profiles) separates facts from words. The engine writes the facts: the timer, a tool call's action and target read from the open call block as the model writes it, a write's line count, the queue's place, the prefill's tokens. The small model writes only the short phrase after them, from a window of the model's newest tokens: what the thinking is about now (every 25 s from 15 s), what a thought of at least 10 s decided, what a write is for. Every phrase passes a check before it is said: a file name or number it holds must be in the text the small model read, and so must most of its content words; no first person, no markup, no copy of an example, nothing like the last four lines, and the user's language (English or German). A phrase that fails is not said. Nothing is said for a short turn: no thinking line before 15 s and no tool line for a call done within 1.5 s.</p>
+<p>The small model is <code>QWEN38_NARRATOR_MODEL</code>, a Qwen3.5 model (<code>qwen3.5-2b</code> for the voice). It runs on the engine's own Qwen3.5 forward (<code>engine/generative/qwen35.py</code>) and reads the model's own token ids without a second tokenisation, because the Qwen3.5 small models share Qwen3.8's vocabulary and merges; the server checks that at load against the served checkpoint's tokenizer. Its decode step runs from a CUDA graph captured at load, in a memory pool and on a stream of its own. It loads at the start through the residency planner (role <code>narrator</code>, a 6 GiB claim) and stays loaded.</p>
+<p>Its time is rationed. The phrases are written in slices of at most 150 ms on the request's own thread, between two of the model's rounds, with the device synchronised first, so nothing of the small model runs beside the big one. A request's small-model time is one share: 3 % of the time since the model's first token (<code>ui.live.share</code>; 2.5 % in the coding profile, which also runs the shadow reader from the same share).</p>
+<p>Measured on the engine with Qwen3.5-2B (the 0.4.0 series, the same 2,000-token text and 504 blocks in every run, 3 runs an arm, <code>--no-learn-cost</code>): 63.47 tok/s with the voice off, 62.26 on, -1.90 % (measured). On four recorded opencode sessions the 2B wrote a phrase in 308 to 369 ms at the median, in slices of at most 150 ms (measured, <code>tools/voice_replay.py</code>).</p>
+<h2 id="the-shadow-reader">The shadow reader<a class="headerlink" href="#the-shadow-reader" title="Permanent link">&para;</a></h2>
+<p>A small Qwen3.5 model keeps its own state of each coding session: its KV rows and its Gated DeltaNet state for every token the session holds, the served prompt and the model's output. It reads each turn's new tokens and nothing else, so a small model can answer a question about a 100,000-token session in one forward of the question. It is off until <code>QWEN38_SHADOW_MODEL</code> names a model (<code>qwen3.5-0.8b</code>).</p>
+<p>Two cheaper ways to give a small model the big model's context were tried first and failed: a few soft tokens made from the 27B's hidden rows answered at chance, and a per-layer map from the 27B's state into a small model's reached a held-out R² of about 0.5, far from what agreement needs. The small model's own state of the same tokens is exact, and that is what the shadow keeps.</p>
+<p><strong>Exact on a grid.</strong> The state advances only in whole chunks of 512 rows at absolute positions k · 512. A fresh prefill of the same ids on the same grid runs the same chunks on the same inputs, so the two states are equal bit for bit, however many turns it took. Measured on the GPU on two real conversations of 41,802 and 58,278 tokens: every KV row, the recurrent state and the convolution state equal a fresh prefill on the same grid (measured, the 0.4.0 series). When a new prompt differs from what was read (a template drops an earlier turn's reasoning), the reader goes back to the newest checkpoint at or below the difference, one kept at each turn's prompt end.</p>
+<p><strong>When it reads.</strong> While the big model decodes, only it and its drafters use the GPU. The reader has two windows. In the idle window it looks every 0.2 s, and when no request runs or waits it reads for at most 2 s, checking before every chunk whether a request waits; a request that arrives waits at most one chunk, 36 to 50 ms on the 0.8B. Inside a turn it may use 2 % of the time since the model's first token, in slices between two rounds. The idle window alone is not enough for an agent: in the ledger's opencode sessions the median gap between one request's end and the next one's start is 0.31 s.</p>
+<p><strong>What it costs.</strong> With the shadow on, the big model's decode on a 16,350-token prompt went from 36.02 to 35.28 tok/s, -2.05 %, and the time to first token did not move (measured, <code>tools/shadow_ab.py</code>, 6 runs an arm, the 0.4.0 series). That is the 2 % share, as designed.</p>
+<table>
+<thead>
+<tr>
+<th>session depth (tokens)</th>
+<th>0</th>
+<th>16,384</th>
+<th>33,000</th>
+<th>41,000</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3.5-0.8B, ms per 512-row chunk</td>
+<td>36.4</td>
+<td>41.1</td>
+<td></td>
+<td>49.9</td>
+</tr>
+<tr>
+<td>Qwen3.5-2B, ms per 512-row chunk</td>
+<td>50.5</td>
+<td>56.1</td>
+<td>69.1</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>The shadow reader's read rate: milliseconds per 512-row chunk at three depths of the session (the 2B's last point at 33k). Measured: <code>tools/shadow_measure.py</code> with the served process's arithmetic flags, median of 3, the 0.4.0 series.</em></p>
+<p><strong>Who asks.</strong></p>
+<p><code>ask(session, question, choices)</code>, also <code>POST /v1/conductor/shadow/ask</code>, is a typed decision of the small model over the whole session: each choice is a letter, and one forward of the question gives the letters' softmax. At the end of a 41k session the router's 9-class question took 68 ms on the 0.8B (measured). In the coding profile the router's class question is asked of the shadow in shadow mode on turns of at least 8,192 tokens and journaled beside the router's own class; nothing of the turn changes.</p>
+<p>What that journal showed is a result in its own right. On 58 journaled turns, the small models agreed with the router's class no better than a constant answer does:</p>
+<table>
+<thead>
+<tr>
+<th>model</th>
+<th>classes with descriptions</th>
+<th>short labels only</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3.5-0.8B</td>
+<td>8 of 58</td>
+<td>2 of 58</td>
+</tr>
+<tr>
+<td>Qwen3.5-2B</td>
+<td>25 of 58</td>
+<td>8 of 58</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B</td>
+<td>19 of 58</td>
+<td>44 of 58</td>
+</tr>
+</tbody>
+</table>
+<p><em>The router's question asked of the shadow on 58 journaled turns of 6 opencode sessions. A constant <code>code_edit</code> scores 42 of 58. (measured), <code>tools/shadow_router_eval.py</code>, 2026-10-05.</em></p>
+<p>The shadow therefore keeps the 0.8B (1.5 GiB of weights, the fastest read) and the question stays in shadow. A question the small models can answer, such as two or three coarse classes asked only where the router decides fresh, is the next thing to try.</p>
+<p><strong>Memory.</strong> Resident states are capped at <code>QWEN38_SHADOW_GB</code> (4 GiB). Past the cap, the least recently used session goes to the NVMe (<code>QWEN38_SHADOW_DISK</code>, one file a session, 48 h) and comes back exact. A 58k session is 0.88 GiB on the 0.8B. The model loads through the residency planner in an idle window soon after the start, and its own pool, up to its claim, is left out of the engine's memory ceiling. A live memory pool never gives its free segments back, so after an idle burst that leaves more than <code>QWEN38_SHADOW_POOL_SLACK_GIB</code> (2) free in the pool, the shadow parks its sessions on the disk and unloads the model; the next turn loads it again and reads on from the disk.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../session-monitor/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The session monitor">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                The session monitor
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../chat-mode/" class="md-footer__link md-footer__link--next" aria-label="Next: Chat mode: the conductor inside the engine">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Chat mode: the conductor inside the engine
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

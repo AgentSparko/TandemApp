@@ -1,0 +1,1561 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/0.16.0/monitoring/">
+      
+      
+        <link rel="prev" href="../proxy/">
+      
+      
+        <link rel="next" href="../dashboard/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Monitoring: several engines and the machines behind them - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#monitoring-several-engines-and-the-machines-behind-them" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Monitoring: several engines and the machines behind them
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#every-request-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      Every request at once
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inside-vllm-and-sglang-the-engines-page-l1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Inside vLLM and SGLang: the engine's page (L1)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inside-vllm-and-sglang-the-plugins-l2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Inside vLLM and SGLang: the plugins (L2)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-machine-behind-each-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      The machine behind each backend
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-own-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own Prometheus
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#every-request-at-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      Every request at once
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inside-vllm-and-sglang-the-engines-page-l1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Inside vLLM and SGLang: the engine's page (L1)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inside-vllm-and-sglang-the-plugins-l2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Inside vLLM and SGLang: the plugins (L2)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-machine-behind-each-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      The machine behind each backend
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-own-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      Your own Prometheus
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="monitoring-several-engines-and-the-machines-behind-them">Monitoring: several engines and the machines behind them<a class="headerlink" href="#monitoring-several-engines-and-the-machines-behind-them" title="Permanent link">&para;</a></h1>
+<p>With more than one backend, the dashboard answers three questions for all of them at once: what each request is doing right now, how each engine is doing inside, and how the machine behind it is doing. Each answer has its own source, and each source is optional. All of it is measured or null, never estimated: a figure a backend does not report reads “not reported by this backend”.</p>
+<table>
+<thead>
+<tr>
+<th>layer</th>
+<th>where it reads</th>
+<th>what it gives</th>
+<th>needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the relay</td>
+<td>every answer the proxy relays</td>
+<td>per request: tokens from <code>usage</code>, cached and reasoning tokens where reported, TTFT and decode rate at the proxy, cost</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>L1: the engine's page</td>
+<td>vLLM's and SGLang's <code>/metrics</code>, every 15 s</td>
+<td>per engine: requests running and waiting, KV use, decode rate, prefix-cache hits, TTFT, queue and prefill percentiles, preemptions, speculation</td>
+<td>kind <code>vllm</code> or <code>sglang</code>; SGLang <code>--enable-metrics</code></td>
+</tr>
+<tr>
+<td>L2: the plugin</td>
+<td>a plugin inside vLLM or SGLang, posting once a second</td>
+<td>per request: the engine's own queue, prefill and decode time, cached tokens, preemptions, finish reason</td>
+<td>the plugin and two variables</td>
+</tr>
+<tr>
+<td>the host collector</td>
+<td>the machine behind each backend</td>
+<td>memory, CPU, GPUs, disks, network, the process behind each backend's port</td>
+<td>nothing here; a collector or exporters on a remote machine</td>
+</tr>
+</tbody>
+</table>
+<p><em>The four layers TandemApp reads.</em></p>
+<h2 id="every-request-at-once">Every request at once<a class="headerlink" href="#every-request-at-once" title="Permanent link">&para;</a></h2>
+<p>Performance, Parallel (<code>#/performance?tab=parallel</code>) shows every request in flight on every backend, the engine included. It reads <code>GET /v1/dashboard/parallel</code> once a second; the server builds the document at most every 0.4 s for all viewers, and a poll with <code>since</code> carries only the new samples.</p>
+<p><img alt="The Performance view, Parallel page: every request in flight on six backends, the aggregate decode rate, and one card per backend" src="../media/dashboard-parallel.png" /></p>
+<p><em>The Performance view, Parallel page: every request in flight on six backends, the aggregate decode rate, and one card per backend. Demo data from the dashboard's mock server (<code>npm run preview:mock</code>), not a measurement.</em></p>
+<ul>
+<li>The aggregate decode rate now, and its last five minutes stacked by backend.</li>
+<li>The requests by state: waiting, prefilling, thinking, tool call, writing.</li>
+<li>The time to first token at p50 and p90, the cache hit and the cost per minute, over the requests finished in the last five minutes.</li>
+<li>One card per backend.</li>
+<li>One lane per request: backend and model, client, session, state, tokens with thinking apart, decode tok/s now and on average, TTFT, prefill rate, cache, cost so far, elapsed. A lane keeps its row until a few seconds after it ends.</li>
+</ul>
+<p>A lane's live token count comes from the best source the backend allows. The engine's own requests use the engine's count. A TandemLLM backend behind a proxy is read from that engine's own board once a second, because the relay tags each request with <code>X-Tandem-Relay-Id</code>; the engine streams blocks of several tokens, so its frames are not a count. Any other backend's stream frames count only after they were checked: each finished streamed answer's frames are compared with its <code>usage.completion_tokens</code> (within 2 tokens and 1 %), answers with and without tool calls apart, and two passing answers of a kind with no failure among the last 8 make the frames a count. DeepSeek's reasoning and content frames are one token each; its tool-call arguments arrive several tokens a frame, so a DeepSeek lane has no live count while it writes a call. Without a count a lane shows its frames and “not reported”, and its tokens arrive with the usage at the end.</p>
+<table>
+<thead>
+<tr>
+<th>agent-like sessions at once</th>
+<th>8</th>
+<th>16</th>
+<th>32</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>aggregate tok/s, all lanes</td>
+<td>526</td>
+<td>896</td>
+<td>1,495</td>
+</tr>
+</tbody>
+</table>
+<p><em>A load test of the Parallel view, not an engine benchmark: N agent-like sessions (a system prompt, two tools, up to three streamed turns) through a test proxy in front of a cloud API, the engine and two fake backends, 0 errors in each run. The aggregate is the sum over every backend. Measured: <code>tools/parallel_load.py</code>, the 0.4.0 series. With 32 streams the page's document took about 1 ms to build and a poll was at most 55 KB.</em></p>
+<p><code>tools/parallel_load.py</code> drives the page on your own backends, for example <code>--mix deepseek-flash=10,TandemLLM=2 --duration 90 --budget-usd 0.5 --board</code>. It reports TTFT, decode rate, cache hit, throughput and cost per model, stops starting turns at the budget, and with <code>--board</code> puts the page's per-second series beside the frames its own clients received.</p>
+<h2 id="inside-vllm-and-sglang-the-engines-page-l1">Inside vLLM and SGLang: the engine's page (L1)<a class="headerlink" href="#inside-vllm-and-sglang-the-engines-page-l1" title="Permanent link">&para;</a></h2>
+<p>For a backend of kind <code>vllm</code> or <code>sglang</code> the proxy reads the engine's <code>/metrics</code> every 15 s through a name table checked against vLLM v0.30.0 and SGLang v0.5.21 (<code>proxy/engines.py</code>). Window figures come from the first and the newest reading of the last 5 minutes; with one reading, or no traffic in the window, they are null. A family a release renamed maps to nothing and its tile says “not reported by this backend”: a new release can cost a tile, never a failed read. After a failed read the proxy waits 30 s, then 60, then 120 s.</p>
+<table>
+<thead>
+<tr>
+<th>figure</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>running, waiting</td>
+<td><code>vllm:num_requests_running</code>, <code>_waiting</code></td>
+<td><code>sglang:num_running_reqs</code>, <code>num_queue_reqs</code></td>
+</tr>
+<tr>
+<td>KV in use</td>
+<td><code>vllm:kv_cache_usage_perc</code></td>
+<td><code>sglang:token_usage</code></td>
+</tr>
+<tr>
+<td>decode rate</td>
+<td><code>vllm:generation_tokens_total</code> over the window</td>
+<td><code>sglang:generation_tokens_total</code>, <code>gen_throughput</code></td>
+</tr>
+<tr>
+<td>prefix-cache hits</td>
+<td><code>vllm:prefix_cache_hits_total</code> over <code>queries_total</code></td>
+<td><code>sglang:cached_tokens_total</code> over <code>prompt_tokens_total</code></td>
+</tr>
+<tr>
+<td>queue, prefill, decode</td>
+<td><code>vllm:request_queue_time_seconds</code> and siblings</td>
+<td><code>sglang:queue_time_seconds</code> only</td>
+</tr>
+<tr>
+<td>preemptions</td>
+<td><code>vllm:num_preemptions_total</code></td>
+<td><code>sglang:num_retracted_requests_total</code></td>
+</tr>
+<tr>
+<td>speculation</td>
+<td>drafts, draft tokens, accepted tokens, and acceptance per draft position</td>
+<td><code>sglang:spec_accept_rate</code>, <code>spec_accept_length</code></td>
+</tr>
+</tbody>
+</table>
+<p><em>The engine figures and the families they come from.</em></p>
+<p>The proxy's own <code>/metrics</code> carries the mapped families as <code>qse_backend_*</code> with a <code>backend</code> label, for a Prometheus of your own; they never enter the engine's own families. Mapping one page of about 500 lines takes about 2 ms on the poller's own thread, and a relay thread never waits for it.</p>
+<h2 id="inside-vllm-and-sglang-the-plugins-l2">Inside vLLM and SGLang: the plugins (L2)<a class="headerlink" href="#inside-vllm-and-sglang-the-plugins-l2" title="Permanent link">&para;</a></h2>
+<p>The page gives totals. A single request's queue time, its prefill time and whether the scheduler preempted it are not on it. Two small packages in <code>plugins/</code> run inside the engine and send those numbers per request:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>plugins/vllm<span class="w">    </span><span class="c1"># tandemllm-vllm-plugin, into vLLM's own Python</span>
+pip<span class="w"> </span>install<span class="w"> </span>plugins/sglang<span class="w">  </span><span class="c1"># tandemllm-sglang-plugin, into SGLang's own Python</span>
+<span class="nv">TANDEM_COLLECT_URL</span><span class="o">=</span>http://proxy-host:8080/v1/collect/&lt;backend<span class="w"> </span>id&gt;
+<span class="nv">TANDEM_COLLECT_TOKEN</span><span class="o">=</span>&lt;the<span class="w"> </span>proxy<span class="err">'</span>s<span class="w"> </span>collect<span class="w"> </span>token&gt;
+</code></pre></div>
+<p>vLLM loads its plugin from the <code>vllm.stat_logger_plugins</code> entry point, once per data-parallel engine in its API server process; SGLang loads its plugin from <code>sglang.srt.plugins</code> in every process it starts, with two hooks on its tokenizer manager and its scheduler's metrics collector. Neither package has a dependency, and neither reads a prompt, an answer or a token id: each item is counts and times. A plugin keeps the last 10,000 finished requests and 300 one-second scheduler samples in memory and posts what is new once a second, or an empty batch every 10 s when the engine is idle. The collect token is <code>TANDEM_COLLECT_TOKEN</code> in the proxy's environment, or one the proxy makes and stores in its config database at the first need; it lets its holder post numbers for a backend that exists, nothing else.</p>
+<p>The proxy joins each item to the request's ledger row by an id it sends upstream: vLLM gets <code>X-Request-Id: px-&lt;hex&gt;</code> and reports <code>chatcmpl-px-&lt;hex&gt;</code>; SGLang gets <code>rid</code> in the body. A client that sets its own id keeps it, and the join uses it. The row then gets the engine's own <code>queue_ms</code>, <code>prompt_ms</code>, <code>decode_ms</code>, <code>decode_tps</code>, <code>prefill_tps</code>, <code>cached_tokens</code>, <code>preemptions</code> and <code>engine_finish</code>, and <code>l2_join</code> says <code>exact</code>. A request the proxy cannot tag (the Responses API, SGLang with <code>n</code> above 1) is matched by time and token counts when exactly one row fits, and says <code>approximate</code>. An item waits up to 10 minutes for its row, and a row for its item.</p>
+<p>The engine always starts. If the plugin does not fit a release, vLLM's loader logs the import error and starts without it, SGLang skips a renamed hook target, and a failing hook is logged at most once a minute and switches itself off after 100 failures in a row. The backend's card says “L2 plugin” while batches arrive and “L1 only” after 60 s without one.</p>
+<h2 id="the-machine-behind-each-backend">The machine behind each backend<a class="headerlink" href="#the-machine-behind-each-backend" title="Permanent link">&para;</a></h2>
+<p>The System view lists the machines: this one first, with the server's own process, then the machine behind each backend, down to the process behind the backend's port. For a vLLM on the same machine that is its API server and its engine core, with their RSS, CPU, threads, uptime and GPU memory. A backend's host setting says where to read it:</p>
+<table>
+<thead>
+<tr>
+<th>setting</th>
+<th>reads</th>
+<th>per process</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>this machine when the backend's URL is loopback or one of its addresses; nothing for a cloud API</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>same</code></td>
+<td>this machine, whatever the URL says</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>collector</code></td>
+<td><code>tandem-app hostcollect</code> on the backend's machine</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>exporter</code></td>
+<td>a node_exporter page and a DCGM exporter page</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>off</code></td>
+<td>nothing</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><em>A backend's host setting.</em></p>
+<p>On a remote machine, run the collector next to the backend and give both sides the same token:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># on the backend's machine</span>
+<span class="nv">TANDEM_COLLECTOR_TOKEN</span><span class="o">=</span><span class="k">$(</span>openssl<span class="w"> </span>rand<span class="w"> </span>-hex<span class="w"> </span><span class="m">24</span><span class="k">)</span><span class="w"> </span>tandem-app<span class="w"> </span>hostcollect<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">9108</span>
+<span class="c1"># on the proxy's machine</span>
+<span class="nv">TANDEM_COLLECTOR_TOKEN</span><span class="o">=</span>&lt;the<span class="w"> </span>same<span class="w"> </span>token&gt;
+<span class="nv">TANDEM_BACKEND_VLLM1_HOST</span><span class="o">=</span>collector
+<span class="nv">TANDEM_BACKEND_VLLM1_HOST_URL</span><span class="o">=</span>http://gpu-host:9108
+</code></pre></div>
+<p>The collector answers <code>GET /host</code> as JSON and <code>GET /metrics</code> as Prometheus text (<code>tandem_host_*</code>), both behind the bearer token. It refuses to bind beyond loopback without one, because its answer names processes and their command lines. Command lines show the home as <code>~</code>, and the value after any flag whose name holds <code>key</code>, <code>token</code>, <code>secret</code>, <code>passw</code> or <code>auth</code> is masked. A remote read runs on its own thread, so a slow or dead host never holds the page.</p>
+<p>On a GB10 the CPU and the GPU share one memory pool. The driver reports no memory for the GPU itself, so the view shows “unified” there and <code>MemAvailable</code> is the figure to watch. Nothing is sampled while nobody looks: when the System view asks, the collector reads at most every 5 s and scans the processes at most every 15 s. Measured on a DGX Spark against the running engine: one sample with a process scan cost 7.46 ms of CPU, 0.050 % of a core at that cadence; the memory figures equalled <code>/proc/meminfo</code> to the byte, and the engine's GPU memory equalled <code>nvidia-smi</code>'s within 49,152 bytes of 81.7 GB (measured, the 0.4.0 series).</p>
+<h2 id="your-own-prometheus">Your own Prometheus<a class="headerlink" href="#your-own-prometheus" title="Permanent link">&para;</a></h2>
+<p>The controller's <code>/metrics</code> (the <code>metrics:read</code> permission: a viewer's session or an API token with that scope, docs/auth.md) carries its own families (<code>qse_proxy_requests_total</code>, <code>qse_proxy_tokens_total</code>, <code>qse_proxy_cost_micros_total</code>, <code>qse_proxy_ttft_seconds</code>, <code>qse_backend_up</code>, <code>qse_backend_inflight</code> and more), the mapped engine families as <code>qse_backend_*</code>, and the plugin's age and joins. The collector's <code>/metrics</code> carries <code>tandem_host_*</code>. <a href="../reference/metrics/">reference/metrics.md</a> lists every family registered in the code.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../proxy/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The proxy: one dashboard in front of any OpenAI-compatible backend">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                The proxy: one dashboard in front of any OpenAI-compatible backend
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../dashboard/" class="md-footer__link md-footer__link--next" aria-label="Next: Dashboard">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Dashboard
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

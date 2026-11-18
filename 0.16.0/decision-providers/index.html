@@ -1,0 +1,1707 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/0.16.0/decision-providers/">
+      
+      
+        <link rel="prev" href="../plugins-sdk/">
+      
+      
+        <link rel="next" href="../reference/commands/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Decision providers - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#decision-providers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Decision providers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-decision-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a decision is
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-questions-are-asked" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the questions are asked
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kinds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-systemone-wire" class="md-nav__link">
+    <span class="md-ellipsis">
+      The systemone wire
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setting-one-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setting one up
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-decision-providers-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Decision providers pages
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Modes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-and-fallbacks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Health and fallbacks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-text-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the text goes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-journal-and-the-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      The journal and the report
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-hook-as-the-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      A hook as the adapter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-checked" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is checked
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-decision-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      What a decision is
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-questions-are-asked" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the questions are asked
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kinds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-systemone-wire" class="md-nav__link">
+    <span class="md-ellipsis">
+      The systemone wire
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setting-one-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      Setting one up
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-decision-providers-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Decision providers pages
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Modes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-and-fallbacks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Health and fallbacks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-text-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where the text goes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-journal-and-the-report" class="md-nav__link">
+    <span class="md-ellipsis">
+      The journal and the report
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-hook-as-the-adapter" class="md-nav__link">
+    <span class="md-ellipsis">
+      A hook as the adapter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-checked" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is checked
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="decision-providers">Decision providers<a class="headerlink" href="#decision-providers" title="Permanent link">&para;</a></h1>
+<p>The conductor makes small decisions all the time: which kind of work a message is, which package fits it, whether the user asked to remember something, whether a tool's output shows a failure. Each is a typed question with a fixed set of answers, and a small decision model answers it in tens of milliseconds. A <strong>decision provider</strong> is who answers. The built-in one is the conductor's own decider; you can put your own model in its place, per question, behind an API of yours.</p>
+<h2 id="what-a-decision-is">What a decision is<a class="headerlink" href="#what-a-decision-is" title="Permanent link">&para;</a></h2>
+<p>A question has an id, its wording, its options (<code>{id: what it means}</code>) and the text it is about (a digest of the user's message, the session, or a tool's output). The answer is one option id with a probability. The conductor asks its stages in order (the <strong>cascade</strong>): the decider stage first, then the served model's own stage where the router document has it. A stage's answer is taken when its probability reaches the stage's threshold (0.8 for the decider by default); otherwise the next stage is asked, and with none left the turn falls back to the router's default.</p>
+<p>A provider answers in the <strong>decider stage's place</strong>. Which stages a question asks is the router document's choice: to have a provider answer the class question, the decider stage must be enabled there.</p>
+<table>
+<thead>
+<tr>
+<th>question id</th>
+<th>asked by</th>
+<th>answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>classify</code></td>
+<td>the router, on a new user message</td>
+<td>the router's classes</td>
+</tr>
+<tr>
+<td><code>packages</code></td>
+<td>the router and the library</td>
+<td>the package names, and <code>none</code></td>
+</tr>
+<tr>
+<td><code>deliverable</code></td>
+<td>the router</td>
+<td>what the turn is to deliver</td>
+</tr>
+<tr>
+<td><code>memory_intent</code></td>
+<td>the memory notes</td>
+<td><code>yes</code> / <code>no</code>: does the message ask to remember, forget or recall</td>
+</tr>
+<tr>
+<td><code>memory_gate</code></td>
+<td>the memory writer</td>
+<td><code>yes</code> / <code>no</code>: anything worth a note in the session</td>
+</tr>
+<tr>
+<td><code>judge</code></td>
+<td>the tester's questions after a turn</td>
+<td><code>failure</code> / <code>clean</code> / <code>unclear</code>, <code>ok</code> / <code>failed</code> / <code>incomplete</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="where-the-questions-are-asked">Where the questions are asked<a class="headerlink" href="#where-the-questions-are-asked" title="Permanent link">&para;</a></h2>
+<p>Two conductors exist, and a provider serves one of them:</p>
+<ul>
+<li><strong>The controller's conductor</strong> (TandemApp's own, switched on from the page) runs around requests relayed to backends: the harness asks it before a request goes out, its judge after the turn, its memory writer in the idle time. Every question above is asked in the controller's process, and <strong>a provider can answer all of them today</strong>. Its decider role names <code>self</code> by default, which on a controller answers nothing: without a provider the decider stage there says <code>decider_no_endpoint</code> and the served model's stage decides.</li>
+<li><strong>The engine's conductor</strong> (inside a TandemLLM engine, through the engine extension) asks the engine's own decision models in process, in the engine's idle window. Its questions decide what goes into the prompt, so they touch the engine's tokens. <strong>Providers do not serve it in this version.</strong> Routing them needs one of: the extension asking the controller (<code>POST</code> a question to the controller, one LAN hop of a few milliseconds, inside the idle window, with the controller's answer or the built-in on any failure), or the engine reaching the provider itself (the provider set pushed to the engine with its keys sealed for that host). Either changes the engine's decisions and needs the GPU check (G3) in a stop window first.</li>
+</ul>
+<h2 id="kinds">Kinds<a class="headerlink" href="#kinds" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>kind</th>
+<th>what answers</th>
+<th>configured with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>builtin</code></td>
+<td>the conductor's own decider (its <code>decider</code> role's endpoint; <code>tester</code> for the judge) at a model per question</td>
+<td>models per question</td>
+</tr>
+<tr>
+<td><code>systemone-http</code></td>
+<td>any service that speaks the systemone wire below</td>
+<td>endpoint, API key, model and timeout, each also per question</td>
+</tr>
+<tr>
+<td><code>hook</code></td>
+<td>a <code>decision.ask</code> hook of <a href="../hooks/">hooks</a>: an adapter you write for any other API shape</td>
+<td>the hook's id</td>
+</tr>
+<tr>
+<td><code>plugin</code></td>
+<td>a running plugin's provider (<a href="../plugins/#decision-providers">plugins</a>): <code>decision/ask</code> over its stdio</td>
+<td><code>target</code>: <code>&lt;plugin&gt;/&lt;provider&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p>A running plugin's providers are also there on their own, in <code>shadow</code>, as <code>&lt;plugin&gt;/&lt;provider&gt;</code>: asked off the request's path and journaled, never used. A provider of kind <code>plugin</code> naming the same target takes its place, with your mode.</p>
+<h2 id="the-systemone-wire">The systemone wire<a class="headerlink" href="#the-systemone-wire" title="Permanent link">&para;</a></h2>
+<p>Three calls, the shapes pinned in <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/contracts/engine-api-v1/decision/systemone.schema.json"><code>contracts/engine-api-v1/decision/systemone.schema.json</code></a>. With an API key every call carries <code>Authorization: Bearer &lt;key&gt;</code>.</p>
+<p><code>POST {endpoint}/v1/systemone</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Rename the variable cnt to count in utils.py and run the tests."</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"questions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"q"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"choice"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"instructions"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What kind of work does this request ask for?"</span><span class="p">,</span>
+<span class="w">                     </span><span class="nt">"criteria"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"code_edit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"change code in a project"</span><span class="p">,</span>
+<span class="w">                                  </span><span class="nt">"chat"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a question or a conversation"</span><span class="p">}}}}</span>
+</code></pre></div>
+<p>answers</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"contract_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.0"</span><span class="p">,</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-decider"</span><span class="p">,</span>
+<span class="w"> </span><span class="nt">"answers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"q"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"choice"</span><span class="p">,</span><span class="w"> </span><span class="nt">"choice"</span><span class="p">:</span><span class="w"> </span><span class="s2">"code_edit"</span><span class="p">,</span>
+<span class="w">                   </span><span class="nt">"probabilities"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"code_edit"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.93</span><span class="p">,</span><span class="w"> </span><span class="nt">"chat"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.07</span><span class="p">},</span><span class="w"> </span><span class="nt">"confidence"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.93</span><span class="p">}},</span>
+<span class="w"> </span><span class="nt">"usage"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"input_tokens"</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span><span class="w"> </span><span class="nt">"output_tokens"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"routing"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-decider"</span><span class="p">,</span><span class="w"> </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"default"</span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"single"</span><span class="p">,</span><span class="w"> </span><span class="nt">"latency_ms"</span><span class="p">:</span><span class="w"> </span><span class="mf">21.4</span><span class="p">}</span>
+</code></pre></div>
+<p><code>GET {endpoint}/readyz</code> answers <code>{"status": "ready", ...}</code> when it can serve. <code>GET {endpoint}/v1/models</code> lists the models with their <code>limits</code> (<code>context_tokens</code>, <code>question_tokens</code>, <code>max_options</code>): the conductor sizes the text it sends to what the model reads, at 3.5 characters a token (512 and 192 tokens when not given). <code>model</code> is the one the provider maps for the question, <code>auto</code> by default.</p>
+<p><a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/tools/systemone_example.py"><code>tools/systemone_example.py</code></a> is a whole provider in the standard library: run it, point a provider at it, then replace its <code>decide()</code> with your model.</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>tools/systemone_example.py<span class="w"> </span>--port<span class="w"> </span><span class="m">8720</span><span class="w"> </span>--key<span class="w"> </span><span class="s2">"</span><span class="nv">$MY_KEY</span><span class="s2">"</span>
+</code></pre></div>
+<h2 id="setting-one-up">Setting one up<a class="headerlink" href="#setting-one-up" title="Permanent link">&para;</a></h2>
+<p>The API is <code>/v1/fleet/decision-providers</code> (the configuration's rights, as backends and hooks). A provider that answers the class question with its own endpoint and key, and the memory gate at the default endpoint:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8080/v1/fleet/decision-providers<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{</span>
+<span class="s1">  "name": "My decider", "kind": "systemone-http",</span>
+<span class="s1">  "endpoint": "http://decider.example:8720", "api_key": "&lt;key&gt;",</span>
+<span class="s1">  "timeout_ms": 400, "mode": "shadow",</span>
+<span class="s1">  "questions": {</span>
+<span class="s1">    "classify": {"endpoint": "http://classes.example:8720", "api_key": "&lt;another key&gt;",</span>
+<span class="s1">                 "model": "classes-v2"},</span>
+<span class="s1">    "memory_gate": {}}}'</span>
+</code></pre></div>
+<ul>
+<li><code>questions</code> maps each question it answers; a question may set its own <code>endpoint</code>, <code>api_key</code>, <code>model</code> and <code>timeout_ms</code>, and takes the provider's for the rest.</li>
+<li>A key is write-only: a string sets it, <code>null</code> clears it, and every answer shows only whether it is set, its last 4 characters and a sha256 prefix. Keys are stored sealed under the master key, never logged, journaled or exported; a controller move carries them inside its sealed handover and the new controller seals them again under its own master key.</li>
+<li>The provider's own key goes only to its own endpoint's origin: a question with an endpoint on another host gets its own key or none.</li>
+<li>One enabled provider may answer a question <code>on</code> or <code>ab</code>; any number may watch it in <code>shadow</code>.</li>
+<li><code>POST .../{id}/test</code> asks it once with a sample question; <code>GET .../{id}/health</code> probes it; <code>GET .../report</code> has the numbers below. The list (<code>GET /v1/fleet/decision-providers</code>) carries each provider's health from its last probes and probes nothing: an endpoint not probed since the provider last changed shows no probe, and the status <code>unknown</code>.</li>
+<li>A refusal is <code>{error: {type, code, message, field?}}</code> (contracts/conductor-v1 <code>error.schema.json</code>); <code>field</code> names the value it is about.</li>
+</ul>
+<p>A provider's switches and keys are also keys of the settings interface's <code>hooks</code> scope (<code>providers.&lt;id&gt;.&lt;field&gt;</code>, <a href="../settings/#decision-providers">settings</a>). There a change is planned, versioned and can be restored with the other settings. Its keys stay write-only there; a change set that adds a question may set that question's key (<code>providers.&lt;id&gt;.questions.&lt;question&gt;.api_key</code>) in the same change.</p>
+<h2 id="the-decision-providers-pages">The Decision providers pages<a class="headerlink" href="#the-decision-providers-pages" title="Permanent link">&para;</a></h2>
+<p>Settings, Hooks, Decision providers shows who answers each question and who watches in shadow, each provider with its health and mode, and the report with its arms side by side: on, shadow and both sides of an A/B. A provider's page has each endpoint's probe and breaker, the mapping per question with the last four characters of its key, a test call, the fallback reasons counted from its recent calls, and those calls. Add a provider offers the three kinds, and a new one starts in shadow.</p>
+<p>The mode, the A/B share, the sticky key, the questions and the keys are staged and go through the settings' review. The name, endpoint, model and time limit are written at once.</p>
+<h2 id="modes">Modes<a class="headerlink" href="#modes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>on</code></strong>: the provider answers its questions. On any failure the built-in answer is used.</li>
+<li><strong><code>shadow</code></strong>: the conductor decides as without the provider. The same question goes to the provider beside it, off the request's path, and the journal keeps its answer, its time and whether it agrees with the conductor's decision. Nothing it says is used. Start here.</li>
+<li><strong><code>ab</code></strong>: a share of sessions (<code>ab_percent</code>, 0 to 100) get the provider as in <code>on</code>, the rest the built-in. The split is sticky: by <code>session</code> (default), <code>user</code> or <code>request</code>, the next one taken when the first is missing, and a provider's id seeds it, so two providers split the sessions differently. The router's class cache keeps each arm's answers apart.</li>
+</ul>
+<h2 id="health-and-fallbacks">Health and fallbacks<a class="headerlink" href="#health-and-fallbacks" title="Permanent link">&para;</a></h2>
+<p>A provider is not used for a call, and the built-in answer is, when:</p>
+<table>
+<thead>
+<tr>
+<th>reason</th>
+<th>what happened</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>timeout</code></td>
+<td>no answer within its timeout (at most the stage's, 400 ms for the router's questions)</td>
+</tr>
+<tr>
+<td><code>unreachable</code>, <code>http_&lt;code&gt;</code></td>
+<td>the endpoint did not answer, or answered an error (<code>http_401</code>: the key)</td>
+</tr>
+<tr>
+<td><code>unknown_label</code></td>
+<td>the answer is not one of the options</td>
+</tr>
+<tr>
+<td><code>breaker_open</code></td>
+<td>five failures in a row, or a p95 at its timeout over the last minute: skipped for 30 s, then one probe call</td>
+</tr>
+<tr>
+<td><code>provider_down</code></td>
+<td>its last health probe (<code>/readyz</code>, kept 10 s) failed</td>
+</tr>
+<tr>
+<td><code>hook_off</code>, <code>no_answer</code>, <code>out_of_scope</code></td>
+<td>a hook provider's hook is off or in shadow, answered no decision, or its scope does not take the request</td>
+</tr>
+<tr>
+<td><code>replay_miss</code></td>
+<td>replaying recorded answers, and none recorded for this question</td>
+</tr>
+<tr>
+<td><code>not_granted</code></td>
+<td>the endpoint's host is not in the provider's grant, or is outside the LAN without its confirm (below)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="where-the-text-goes">Where the text goes<a class="headerlink" href="#where-the-text-goes" title="Permanent link">&para;</a></h2>
+<p>A <code>systemone-http</code> provider is sent the question's text, a digest of what people wrote, so it takes the rules of a hook at the full payload (<a href="../hooks/">hooks</a>). Making one, or changing where it or one of its questions answers, is a grant: it takes pairing's rights (403 <code>trust_required</code> without them; with no admin password set, only the controller's own machine). The grant (<code>grant</code> in the provider's view) names each destination host and whether it is on the LAN, who granted it and when. A host outside the LAN asks a second time: the write answers 409 <code>confirm_needed</code> with a <code>confirm</code>, and the same write with it grants it and records who confirmed. A call to a host the grant does not hold is not made (<code>not_granted</code>). In the settings interface a change of <code>providers.&lt;id&gt;.questions</code> that adds such a host is planned the same way (<code>grant_keys</code>, <code>confirm_grant</code>).</p>
+<p>The stage's row in the conductor's journal names the provider (<code>provider: {id, mode, arm?, fallback?}</code>) whenever one answered or fell back; without a provider the row is as it was. The health view (<code>GET .../{id}/health</code>) gives each endpoint's probe, its breaker and its questions, and a status: <code>ok</code>, <code>failing</code> (a breaker not closed, or the last call within a minute failed), <code>down</code> (a probe failed) or <code>off</code>; in the list's view also <code>unknown</code> (an endpoint not probed yet).</p>
+<h2 id="the-journal-and-the-report">The journal and the report<a class="headerlink" href="#the-journal-and-the-report" title="Permanent link">&para;</a></h2>
+<p>Every provider call, and every decision of an A/B arm <code>a</code>, is a row of the conductor's journal (<code>kind: provider</code>, the question id as its task): the provider, its mode and arm, which answer was used, the provider's answer (label, probabilities, model, time, error), the built-in decision, agreement, the fallback's reason, and a hash of the question's text. The text itself is never in the row.</p>
+<p><code>GET /v1/fleet/decision-providers/report?hours=24</code> reads them back per provider, question and bucket (<code>on</code>, <code>shadow</code>, <code>ab_a</code>, <code>ab_b</code>): calls, answered, failures, fallbacks and each fallback's reason counted (<code>fallback_reasons</code>, the reasons below), agreement in % (shadow), p50 and p95 of the provider's time (the built-in decider's in arm <code>a</code>) and the answers given.</p>
+<p><strong>Replay.</strong> <code>tools/decision_replay.py --ledger &lt;the usage ledger's file&gt; &gt; answers.json</code> collects the recorded answers by their hash; a controller started with <code>TANDEM_DECISION_REPLAY=answers.json</code> answers every provider question from it, with no call, so a run replayed decides the same every time.</p>
+<h2 id="a-hook-as-the-adapter">A hook as the adapter<a class="headerlink" href="#a-hook-as-the-adapter" title="Permanent link">&para;</a></h2>
+<p>When your model's API has another shape, write a webhook for the <code>decision.ask</code> stage with the role <code>decider</code> (<a href="../hooks/">hooks.md</a> has the signing), then a provider of kind <code>hook</code> that names it. The hook gets the question (its payload level decides whether the text comes too):</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"question"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"classify"</span><span class="p">,</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"choice"</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"instructions"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What kind of work does this request ask for?"</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"options"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"code_edit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"change code in a project"</span><span class="p">,</span><span class="w"> </span><span class="nt">"chat"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a question"</span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"auto"</span><span class="p">,</span><span class="w"> </span><span class="nt">"deadline_ms"</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="p">,</span><span class="w"> </span><span class="nt">"state_chars"</span><span class="p">:</span><span class="w"> </span><span class="mi">63</span><span class="p">},</span>
+<span class="w"> </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"state"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Rename the variable cnt to count in utils.py and run the tests."</span><span class="p">}}</span>
+</code></pre></div>
+<p>and answers with an option id, or with its probability:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"decide"</span><span class="p">,</span><span class="w"> </span><span class="nt">"decision"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"answer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"choice"</span><span class="p">:</span><span class="w"> </span><span class="s2">"code_edit"</span><span class="p">,</span><span class="w"> </span><span class="nt">"confidence"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.91</span><span class="p">}}}</span>
+</code></pre></div>
+<p>A bare id (<code>{"answer": "code_edit"}</code>) counts as sure (1.0). Keep the hook's own mode <code>on</code>: the provider's mode decides shadow and A/B.</p>
+<h2 id="what-is-checked">What is checked<a class="headerlink" href="#what-is-checked" title="Permanent link">&para;</a></h2>
+<p>With no provider (none stored, only disabled ones, or only ones for other questions), every decision of the conductor and every relayed byte is what it was; a provider in shadow changes no decision either (<code>tests/test_decision_providers.py</code>, <code>tests/test_decision_providers_api.py</code>). The same check with the engine's real models and tokens (G3) needs a GPU stop window; providers do not reach the engine's conductor in this version.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../plugins-sdk/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The plugin SDK">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                The plugin SDK
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../reference/commands/" class="md-footer__link md-footer__link--next" aria-label="Next: Reference: commands">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Reference: commands
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

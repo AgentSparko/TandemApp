@@ -1,0 +1,1633 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/0.16.0/session-monitor/">
+      
+      
+        <link rel="prev" href="../conductor/">
+      
+      
+        <link rel="next" href="../status-lines/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>The session monitor - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-session-monitor" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              The session monitor
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#modes-and-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Modes and policy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safe-points-and-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Safe points and actions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      The tasks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reasoning-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reasoning loops
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-call-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tool-call checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-claim-check-e2" class="md-nav__link">
+    <span class="md-ellipsis">
+      The claim check: E2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turn-snapshots-and-outcomes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Turn snapshots and outcomes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Session tasks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Observability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extending-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      Extending it
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/v0.16.0/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#modes-and-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Modes and policy
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safe-points-and-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Safe points and actions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      The tasks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reasoning-loops" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reasoning loops
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-call-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Tool-call checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-claim-check-e2" class="md-nav__link">
+    <span class="md-ellipsis">
+      The claim check: E2
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#turn-snapshots-and-outcomes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Turn snapshots and outcomes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Session tasks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      Observability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extending-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      Extending it
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="the-session-monitor">The session monitor<a class="headerlink" href="#the-session-monitor" title="Permanent link">&para;</a></h1>
+<p>The session monitor is the conductor's second half. The router plans a turn before it runs; the monitor watches the turn while it runs and acts when the model goes wrong in a way it can recognise without guessing: a reasoning block that goes in circles, an answer that ends empty, a tool call that does not parse, the same call a third time, a claim of done without the evidence. This page lists where it may act, what it may do, and each task.</p>
+<h2 id="modes-and-policy">Modes and policy<a class="headerlink" href="#modes-and-policy" title="Permanent link">&para;</a></h2>
+<p><code>--conductor raw|shadow|on</code> switches it. <code>raw</code>, the code default, runs none of it, and nothing closes a reasoning block but a budget. <code>shadow</code> runs every rule and journals what it would do, and executes nothing. <code>on</code>, the shipped profile's value, executes each task in the mode its policy gives it. A request's <code>X-Tandem</code> header can lower the mode, never raise it, and a request with <code>n</code> above 1 never acts.</p>
+<p>The policy is a file, <code>ops/supervisor.yaml</code>, validated at start against <code>ops/supervisor.schema.json</code>. It holds every task's mode (<code>off</code>, <code>shadow</code>, <code>act</code>), every threshold and every text the monitor may write. The conductor keeps it as its <code>monitor</code> document, versioned and edited like the others, and a profile's <code>tasks</code> section overrides a task's mode per profile.</p>
+<h2 id="safe-points-and-actions">Safe points and actions<a class="headerlink" href="#safe-points-and-actions" title="Permanent link">&para;</a></h2>
+<p>The monitor acts only at four safe points, from a fixed set of actions.</p>
+<pre class="mermaid"><code>flowchart LR
+    sp4(["SP4 before the prefill&lt;br/&gt;note, think budget"]) --&gt; pre[prefill]
+    pre --&gt; blk["reasoning: verify blocks"]
+    blk -- "SP1 after each block&lt;br/&gt;close the reasoning, give up" --&gt; blk
+    blk --&gt; ans[answer]
+    ans --&gt; sp2(["SP2 at the end token&lt;br/&gt;continue hidden, give up"])
+    sp2 --&gt; sp3(["SP3 the held tool calls&lt;br/&gt;repair, regenerate, give up"])</code></pre>
+<p><em>The session monitor's four safe points on one request: before the prefill, after each committed block, at the end token before it reaches the client, and when the answer's held tool calls are complete.</em></p>
+<table>
+<thead>
+<tr>
+<th>point</th>
+<th>when</th>
+<th>actions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SP4</td>
+<td>the prompt is rendered, before the prefill</td>
+<td><code>PROMPT_TAIL_NOTE</code>, <code>SET_THINK_BUDGET</code></td>
+</tr>
+<tr>
+<td>SP1</td>
+<td>a verify block is committed</td>
+<td><code>CLOSE_REASONING</code>, <code>GIVE_UP</code></td>
+</tr>
+<tr>
+<td>SP2</td>
+<td>the model wrote its end token, before the client sees it</td>
+<td><code>CONTINUE_HIDDEN</code>, <code>GIVE_UP</code></td>
+</tr>
+<tr>
+<td>SP3</td>
+<td>the answer ended and its tool calls are held</td>
+<td><code>REPAIR_CALL</code>, <code>REGENERATE_CALL</code>, <code>GIVE_UP</code></td>
+</tr>
+</tbody>
+</table>
+<p><em>Safe points and the actions each allows.</em></p>
+<p>What the client sees is little. A hidden close forwards the policy's phrase through the engine and streams only from the closer on (<code>&lt;/think&gt;</code> in the <code>tags</code> format). A hidden continue drops the end token and forwards a nudge, and the answer follows in the same response. <code>GIVE_UP</code> is one visible sentence with finish <code>stop</code>. Hidden tokens are never in <code>usage</code>, never in the suffix store, and a response the monitor acted on is not stored in the response cache. The KV holds them, and the end anchor puts them back into the next prompt where the rows hold them (<a href="https://github.com/TandemLLM/TandemEngine/blob/main/docs/caches.md#after-a-long-generation">TandemEngine's caches</a>).</p>
+<p>Caps hold the monitor back: at most 2 acts a request and 6 a session hour in the shipped policy, and never the same hidden action twice in a row on one turn. Beyond a cap a decision is journaled and not executed.</p>
+<h2 id="the-tasks">The tasks<a class="headerlink" href="#the-tasks" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>task</th>
+<th>rule</th>
+<th>what it catches, and what it does</th>
+<th>mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D1</td>
+<td><code>reasoning_loop</code></td>
+<td>a reasoning block that goes in circles (below); closes it, hidden</td>
+<td>act</td>
+</tr>
+<tr>
+<td>D2</td>
+<td><code>reasoning_backstop</code></td>
+<td>reasoning that reaches 32,768 tokens, or the output limit less 2,048; closes it</td>
+<td>act</td>
+</tr>
+<tr>
+<td>E1</td>
+<td><code>empty_turn</code></td>
+<td>an end token inside the reasoning, or an empty answer to a request that offered tools; tool calls the model wrote inside its reasoning go out as its answer when they parse and name an offered tool, else continues hidden, then gives up after two tries</td>
+<td>act</td>
+</tr>
+<tr>
+<td>E2</td>
+<td><code>claim_check</code></td>
+<td>a coding turn that ends claiming the work is done without the tool evidence (below); acts in the <code>coding</code>, <code>hermes</code> and <code>chat-app</code> profiles, shadow in <code>overnight</code></td>
+<td>act</td>
+</tr>
+<tr>
+<td>C4</td>
+<td><code>malformed_call</code></td>
+<td>a tool-call block that does not parse; repairs it when the fix is not a guess, else has the model write it again</td>
+<td>act</td>
+</tr>
+<tr>
+<td>C3</td>
+<td><code>repeated_call</code></td>
+<td>the same call a third time after identical results; asks for something different</td>
+<td>act</td>
+</tr>
+<tr>
+<td>C5</td>
+<td><code>sequential_mutations</code></td>
+<td>an answer with two or more calls that change something outside the conversation (send, schedule, create, write, delete, read off each tool's declaration); has the model write them again one at a time, each after the last one's result</td>
+<td>shadow; act in <code>tools</code></td>
+</tr>
+<tr>
+<td>C1</td>
+<td><code>risk_floor</code></td>
+<td><code>rm -rf</code> outside the project root, <code>git push</code>, a write outside the root, a download piped into a shell</td>
+<td>shadow</td>
+</tr>
+<tr>
+<td>C2</td>
+<td><code>project_rules</code></td>
+<td>what text alone can decide of the project's <code>AGENTS.md</code>: a numbered copy of a file, a path under <code>/tmp/</code>, a written file over 400 lines</td>
+<td>shadow</td>
+</tr>
+<tr>
+<td>S1</td>
+<td><code>gate_stagnation</code></td>
+<td>a checker gate that failed 3 times in a row without getting closer; one hidden note</td>
+<td>act</td>
+</tr>
+<tr>
+<td>S2</td>
+<td><code>context_health</code></td>
+<td>after a compaction, two tool steps that read none of the state files; one hidden note</td>
+<td>act</td>
+</tr>
+<tr>
+<td>S4</td>
+<td><code>stall_watchdog</code></td>
+<td>no file changed, nothing committed and no checker number better for 20 minutes; one hidden note, and a push when the client has gone</td>
+<td>act</td>
+</tr>
+<tr>
+<td>S5</td>
+<td><code>turn_budget</code></td>
+<td>on every client: the same problem stated three times; a build turn three minutes and five tool steps in with nothing written; an Open WebUI turn past 12 minutes without a new product file, or 18 in any case; one hidden note</td>
+<td>act</td>
+</tr>
+</tbody>
+</table>
+<p><em>The session monitor's tasks, with their shipped modes.</em></p>
+<p>Each profile sets its tasks' modes on top of the policy. S5 runs under every profile that runs the monitor and needs no state file. The session tasks S1, S2 and S4 act only in the <code>overnight</code> profile, and only in a project whose system prompt names a <code>PROGRESS.yaml</code>; the tool checks run where the profile holds calls (the coding and overnight profiles).</p>
+<h2 id="reasoning-loops">Reasoning loops<a class="headerlink" href="#reasoning-loops" title="Permanent link">&para;</a></h2>
+<p>D1 watches the reasoning with three arms: a pattern of 1 to 16 tokens repeated at least 4 times over 128 tokens or more; the share of the last 256 tokens' 16-grams already seen earlier in the block, checked every 64 tokens once the block has 2,048; and novelty collapse, the share of new 8-grams in the last 128 tokens falling under 0.1. When an arm fires in act mode, the monitor closes the block with a hidden phrase and the model answers from what it has. D2 is the backstop: no reasoning block runs past 32,768 tokens, or past the output limit less 2,048, so an answer always has room. With the conductor raw, nothing closes a block but a budget.</p>
+<h2 id="tool-call-checks">Tool-call checks<a class="headerlink" href="#tool-call-checks" title="Permanent link">&para;</a></h2>
+<p>With a tool-call task able to act, every call of an answer is held until the answer ends; a block that does not parse is held too, not let out as content. At the end token every call is checked by every SP3 task before any is released. If all pass, the calls go out whole, each in one delta with an id made at release. If any act fails, none goes out: the end token is dropped, a hidden turn shaped as the calls' tool result carries the reminders, and the model writes the set again in the same response. An answer that ended without its end token (the token limit) cannot be written again, so there a failure gives up. A block the client's own stop string cut is let out as the text it was.</p>
+<p>C4's repairs are deterministic: JSON with trailing commas or Python literals, an unquoted name, a closing tag that never came. It checks arguments against the tool's JSON schema (required keys, types) in shadow. The tool-argument loop guard (<a href="https://github.com/TandemLLM/TandemEngine/blob/main/docs/server.md#the-tool-argument-loop-guard-0326-test">TandemEngine's server</a>) runs beside these checks and also stops a call that streams live.</p>
+<h2 id="the-claim-check-e2">The claim check: E2<a class="headerlink" href="#the-claim-check-e2" title="Permanent link">&para;</a></h2>
+<p>A model can end a coding turn with “done, verified in the browser” after a test that set a key's state in code instead of pressing it, or that read a lost game as a working one. E2 checks such a claim before the end token reaches the client. The trigger is structural: the turn's class is one of the building classes, the request offered tools, and the model wrote its end token after a non-empty answer with no tool call. Then Qwen itself answers, thinking off, one letter a question: does the message tell the user the work is done; and if so, what the tool evidence since the last write says (supported, no run after the last write, errors in the evidence, an unexplained surprise, a faked test). The questions are asked in place, inside the conversation the engine holds, because a request to the server's own port would wait for the lock the turn holds. In act mode an unsupported claim gets a hidden note with the turn's evidence digest, and the model continues.</p>
+<h2 id="turn-snapshots-and-outcomes">Turn snapshots and outcomes<a class="headerlink" href="#turn-snapshots-and-outcomes" title="Permanent link">&para;</a></h2>
+<p>A profile's <code>outcomes</code> section drives a structural reading of each tool-result turn, every switch off when absent.</p>
+<ul>
+<li>The snapshot: from the request body alone, what the session did since the last one: the calls, the files written, each screenshot's hash and size, a console's level counts and error lines, checker lines, exit codes, a test runner's counts, a state dump's diff. It is stored beside the transcript block, at most 32 KB, and takes about 0.023 ms a request (measured).</li>
+<li>The outcome: the first label whose facts matched, in order: no visible change (the same screenshot after a write), regression, error, low quality, surprise, stuck, tool misuse, a faked test (a script that assigns to a member of an object it did not declare), an environment error, lost context; else progress or none. Every fact is structural; no word decides what anybody meant.</li>
+<li>In act mode an outcome raises the turn's effort (no visible change and regression to xhigh, error to high) for two tool turns or until progress, and the acting outcomes add their note once per signature.</li>
+<li>Retrieval: a low-quality or stuck outcome asks the package question over the test skills, and the package that fits becomes the note.</li>
+</ul>
+<h2 id="session-tasks">Session tasks<a class="headerlink" href="#session-tasks" title="Permanent link">&para;</a></h2>
+<p>Three tasks look across turns. They read what a request carries about the turns before it, each call taken once per session by its id, so a retried request counts nothing twice. Each acts with one hidden note at the end of the prompt, and a request carries at most one of their notes. S1 watches a checker gate (a line such as <code>RESULT: FAIL &lt;- ...</code> from a project's checker) that fails three times in a row without getting closer to its limit. S2 watches the first two tool steps after a compaction for a read of the state files. S4 watches for 20 minutes without a change, a commit or a better number. When no request comes for S4's minutes after a turn ended, the client has gone, and with the policy's <code>notify</code> on the watch sends a push to <code>TANDEM_NOTIFY_URL</code>; the URL is empty in the shipped policy.</p>
+<p>S5, the turn budget, watches the turn: the requests that carry the same last user message. Its first arm reads the model's own visible text between its tool calls: when the first sentence states the same problem three times among the last eight problem sentences (shared word triples, a number in common), the note tells it to stop tuning, deliver what works and say what is untested. An Open WebUI agent chat had a working game after 25 minutes and then wrote “The bot is stuck at x=436” seven times while it tuned its own playtest bot; it never answered. The second arm watches a build turn: three minutes and five tool steps in, with nothing the user asked for written (a write outside the scratch directory, <code>/tmp</code>, logs and pid files), the note says to write the deliverable first. The third is a wall clock for a chat client someone waits in front of (Open WebUI): after 12 minutes of tool calls with no product file in the last 4, or after 18 in any case, the note says to finish and answer, and every 4 minutes after it a shorter one. Replayed on that chat, the notes come at 3.1, 18.0 and 36.0 minutes; on four clean opencode runs it adds none (measured). The fourth arm, <code>verify</code>, watches what follows the deliverable: when the steps since the last product write wrote only scratch files, two of them test tools (scripts or pages, not logs or data), and 90 s have passed since that write, the note says to stop building test tools, check once with a tool that works here and answer. An opencode page run wrote its page at 176 s, its last product edit at 257 s, then spent the run's remaining five minutes on a browser driver of its own; replayed, the note comes at 347 s, and four clean opencode runs get none (measured). Time alone is not a reason: opencode has no clock, and a chat client has the wall clock's quiet rule. A box whose policy is a stored document gets S5, or the keys its stored S5 lacks, with <code>tools/monitor_migrate.py</code>.</p>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>Every decision, passes included, is one journal row and one <code>[conductor]</code> log line with the task, the decision, the reason and counts, never a text. The ledger's <code>requests</code> row gets <code>conductor_acts</code>, <code>conductor_hidden_tokens</code> and <code>conductor_acted</code>, and the dashboard's speed figures leave out the requests the conductor acted in. Prometheus counts every decision and action (<code>qse_conductor_*</code>). <code>GET /v1/conductor/events</code> lists the decisions, and <code>GET /v1/conductor/watch</code> what the session tasks hold per session.</p>
+<h2 id="extending-it">Extending it<a class="headerlink" href="#extending-it" title="Permanent link">&para;</a></h2>
+<p>The interface the policy engine builds on is kept stable. A rule is <code>tier0.register(name, safe_point, params, required, doc)</code> on a function from an event to an action; <code>params</code> is the JSON Schema of the task's parameters, which the policy schema picks up. The events are <code>RequestEvent</code>, <code>BlockEvent</code>, <code>FinishEvent</code> and <code>ToolCallEvent</code>. An action is one of the fixed set. <code>python tools/conductor_policy.py --schema</code> writes the schema from the rule registry, and <code>python tools/conductor_policy.py &lt;file&gt;</code> checks a policy file.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../conductor/" class="md-footer__link md-footer__link--prev" aria-label="Previous: The conductor">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                The conductor
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../status-lines/" class="md-footer__link md-footer__link--next" aria-label="Next: Status lines, the voice and the shadow reader">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Status lines, the voice and the shadow reader
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>
