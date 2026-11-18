@@ -215,7 +215,7 @@
  ],
  "community_sync": {
   "source": "github",
-  "url": "https://raw.githubusercontent.com/0xBakeer/TandemLLM/main/models/community-index.json",
+  "url": "https://raw.githubusercontent.com/TandemLLM/TandemEngine/main/models/community-index.json",
   "fetched_at": null,
   "checked_at": null,
   "error": null,
@@ -227,6 +227,6 @@
     "reason": "$.hf.revision: a 40-hex commit is required, not \"main\""
    }
   ],
-  "add_url": "https://github.com/0xBakeer/TandemLLM/issues/new?template=community-quant.yml&title=Community+quant%3A+%3Cname%3E&labels=community-weights&base_model=qwen3.8-27b"
+  "add_url": "https://github.com/TandemLLM/TandemEngine/issues/new?template=community-quant.yml&title=Community+quant%3A+%3Cname%3E&labels=community-weights&base_model=qwen3.8-27b"
  }
 }

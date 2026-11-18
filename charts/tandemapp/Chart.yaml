@@ -2,8 +2,8 @@ apiVersion: v2
 name: tandemapp
 description: TandemApp's controller (gateway, ledger, fleet, page) with its own chatd, from a stock Python image and a release archive
 type: application
-version: 0.1.0
-appVersion: "0.15.0"
+version: 0.16.0
+appVersion: "0.16.0"
 kubeVersion: ">=1.27.0-0"
 keywords:
   - llm

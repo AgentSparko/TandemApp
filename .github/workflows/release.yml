@@ -1,0 +1,94 @@
+# Builds TandemApp's release files when a tag v* is pushed and attaches them to that tag's GitHub
+# release. tools/release.sh creates the release with its notes; when this workflow gets there first
+# it makes a draft that the script then fills. The files:
+#   tandemapp-<version>.tar.gz (+ .sha256)            the tree packaging/install.sh installs, the page inside
+#   tandemapp-<version>-py3-none-any.whl              the engine's extension for the chat mode
+#                                                     (install.sh --with-chat --app-wheel FILE), the page inside
+#   tandemapp-dashboard-<version>.tar.gz (+ .sha256)  the page alone (tools/dashboard_bundle.py fetch)
+#   tandemapp-<version>.tgz                           the Helm chart (charts/tandemapp)
+#   SHA256SUMS                                        every file above
+# The tag, VERSION and the chart's appVersion must agree, or nothing is attached.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  page:
+    name: dashboard
+    uses: ./.github/workflows/dashboard-dist.yml
+
+  files:
+    name: release files
+    needs: page
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: The versions agree
+        run: |
+          v="$(cat VERSION)"
+          chart="$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' charts/tandemapp/Chart.yaml)"
+          echo "tag ${TAG#v}, VERSION $v, chart appVersion $chart"
+          [ "${TAG#v}" = "$v" ] && [ "$chart" = "$v" ] || { echo "::error::the tag, VERSION and the chart's appVersion differ"; exit 1; }
+
+      - name: The page from the dashboard job
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: dashboard-dist
+          path: dashboard/dist
+
+      - name: Check the page
+        run: python3 tools/dashboard_bundle.py verify dashboard/dist --expect "${{ needs.page.outputs.bundle }}"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.2.0
+        with:
+          version: v3.16.3
+
+      - name: Build the files
+        run: |
+          set -euo pipefail
+          v="$(cat VERSION)"; out="$RUNNER_TEMP/out"; mkdir -p "$out"
+          python3 tools/app_release.py pack --out "$out/tandemapp-$v.tar.gz"
+          python3 tools/dashboard_bundle.py pack dashboard/dist --out "$out/tandemapp-dashboard-$v.tar.gz"
+          python3 -m pip install --quiet build==1.2.2
+          python3 -m build --wheel --outdir "$out" .
+          helm lint charts/tandemapp
+          helm package charts/tandemapp --destination "$out"
+          ( cd "$out" && sha256sum -- *.tar.gz *.whl *.tgz > SHA256SUMS && cat SHA256SUMS )
+          {
+            echo "### TandemApp $v"
+            echo '```'
+            cat "$out/SHA256SUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach them to the release
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag \
+              --title "TandemApp ${TAG#v}" --notes "The release notes follow."
+          fi
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP"/out/*

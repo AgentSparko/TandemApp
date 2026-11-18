@@ -754,7 +754,7 @@ export class MockSetup {
       if (fetching) {
         if (o.communitySource === 'github') Object.assign(sync, { source: 'github', fetched_at: new Date().toISOString() });
         else if (o.communitySource === 'cache') Object.assign(sync, { source: 'cache', fetched_at: new Date(Date.now() - 3 * 3600_000).toISOString() });
-        else if (o.communitySource === 'error') Object.assign(sync, { source: 'cache', fetched_at: new Date(Date.now() - 3 * 3600_000).toISOString(), error: 'https://raw.githubusercontent.com/0xBakeer/TandemLLM/main/models/community-index.json: HTTP 404' });
+        else if (o.communitySource === 'error') Object.assign(sync, { source: 'cache', fetched_at: new Date(Date.now() - 3 * 3600_000).toISOString(), error: 'https://raw.githubusercontent.com/TandemLLM/TandemEngine/main/models/community-index.json: HTTP 404' });
         else Object.assign(sync, { source: 'bundled', fetched_at: null });
       }
       const body: CommunityBody = { contract_version: '1.0', sync, models: { [MODEL.id]: o.communityEmpty ? [] : COMMUNITY.community, [FLASH_NEXT.id]: FLASH_NEXT.community ?? [], [LFM25.id]: [] } };

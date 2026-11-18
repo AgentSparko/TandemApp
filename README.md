@@ -6,12 +6,23 @@ to the backend that serves it and records tokens, timings and cost. It also mana
 machines through TandemNode, its agent on each machine, and carries Chat (chatd) and the
 conductor.
 
-TandemApp runs no model itself. The TandemLLM engine is a separate project
-([TandemLLM](https://github.com/TandemLLM/TandemEngine)); TandemApp talks to it, and to any other
+TandemApp runs no model itself. The engine is a separate project,
+[TandemEngine](https://github.com/TandemLLM/TandemEngine); TandemApp talks to it, and to any other
 OpenAI-compatible server, over HTTP. The engine API it expects is
 [contracts/engine-api-v1](contracts/engine-api-v1/README.md).
 
 ## Install
+
+From a release: the archive carries the built page, so the host needs Python alone.
+
+    curl -fsSLO https://github.com/TandemLLM/TandemApp/releases/download/v0.16.0/tandemapp-0.16.0.tar.gz
+    tar -xzf tandemapp-0.16.0.tar.gz && bash tandemapp-0.16.0/packaging/install.sh
+
+A release also has the wheel the engine loads as its extension for the chat mode
+(`tandemapp-0.16.0-py3-none-any.whl`, for the engine's `install.sh --with-chat --app-wheel FILE`), the
+page alone (`tandemapp-dashboard-0.16.0.tar.gz`) and the Helm chart (`tandemapp-0.16.0.tgz`).
+
+From a checkout:
 
 Python 3.11 or newer. The web page is a build output and not in git: build it with Node 20.19 or
 newer, or fetch a released bundle (`tools/dashboard_bundle.py fetch`).

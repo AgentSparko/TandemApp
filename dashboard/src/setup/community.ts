@@ -15,7 +15,7 @@
 import type { CommunityEntry, SetupCommunityDrafters, SetupDevice, SetupMaker, SetupModality, SetupModel, SetupProfile, SetupSelection, SetupSocialNetwork } from '../api/types';
 
 export const COMMUNITY_PREFIX = 'community/';
-export const DOCS_URL = 'https://github.com/0xBakeer/TandemLLM/blob/main/docs/community-weights.md';
+export const DOCS_URL = 'https://github.com/TandemLLM/TandemEngine/blob/main/docs/community-weights.md';
 
 export function isCommunity(p: Pick<SetupProfile, 'id' | 'community'>): boolean {
   return !!p.community || p.id.startsWith(COMMUNITY_PREFIX);
