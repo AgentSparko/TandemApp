@@ -9,7 +9,7 @@
      an OpenAI route's, a Messages API route's), the wrong-token limit among them
                                                                    test_answers_validate
   3  nothing points to the old way: the old sign-in's variables are named only in
-     docs/auth.md's migration section (docs, manual, README, contracts)
+     docs/auth.md's migration section (docs, README, contracts)
                                                                    test_the_old_way_only_in_the_migration
   4  docs/auth.md has the role table, the token scopes, both client setups and the recovery
      steps; the threat model's first item names sessions and tokens
@@ -128,7 +128,7 @@ def test_answers_validate():
 # ---------------------------------------------------------------------------- 3
 def _doc_files():
     out = [os.path.join(ROOT, "README.md")]
-    for top, ext in (("docs", ".md"), ("manual/chapters", ".tex"), ("contracts", ".md")):
+    for top, ext in (("docs", ".md"), ("contracts", ".md")):
         for d, _, files in os.walk(os.path.join(ROOT, top)):
             out += [os.path.join(d, f) for f in files if f.endswith(ext)]
     return [p for p in out if os.path.isfile(p)]

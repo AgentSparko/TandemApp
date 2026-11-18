@@ -21,6 +21,62 @@ The System view shows the machine behind each backend, down to the GPU memory of
 
 ![The System view's panel for a vLLM backend on another machine, read through the remote collector (the dashboard's mock data)](media/dashboard_hosts.png)
 
+The engine card carries one neutral line, the speed check: “passed for 0.4.0 · <date>” when the build has a speed guard report (the release ships its own, `release/speed-guard.json`), “not run for this build” otherwise; the numbers are in its tooltip and on the Conductor's Compare screen. It is no warning: the speed guard is the release process's check, not something to act on in the dashboard.
+
+## The views at a glance
+
+| view | what it reads | for |
+|-|-|-|
+| Chat | `/v1/chat-app/*` | chatd's chats, runs and sandbox ([chat.md](chat.md)) |
+| Usage | `/v1/dashboard/summary`, `/usage` | a year of tokens, cost by backend and user |
+| Performance | `/v1/dashboard/live` (SSE), `/requests`, `/metrics`, `/parallel` | the Live panel, the history, the lanes, every request at once ([monitoring.md](monitoring.md)) |
+| Dev | `/v1/dashboard/logs`, `/logs/export` | the live log, filterable, and each request's detail: its timings, cache source, tokens, the conductor's decisions and why it ended; a memory-gate refusal is an error line with the allocated and reserved figures |
+| Playground | `/v1/chat/completions` | the OpenAI API itself |
+| Conductor | `/v1/conductor/*` | decisions, documents, sessions, memory ([conductor.md](conductor.md)) |
+| Backends | `/v1/config/*` | backends, models, prices, rules ([backends.md](backends.md)) |
+| System | `/v1/dashboard/system` | settings, the memory plan, the hosts |
+| Setup | `/v1/setup/*` | the engine's Setup Guide: models, weights, the install job |
+
+The nine views, in the order of the navigation rail. Chat sends messages and Setup installs a model; the other views only read, except where an edit makes a new version of a document or a configuration row.
+
+The Live panel reads as an instrument: (1) the state line, in the server's own words, and the panel's report on its own stream; (2) the two big figures with 5-minute sparklines, each leaving the request's warm-up out and reading a dash when nothing runs; (3) tokens a round and milliseconds a round, the two factors of the engine's speed; (4) one lane per request in flight: state, client, profile, tokens split into thinking and content, time to first token, and a strip with one segment per state; (5) the newest status line, and what the agent did between two turns; (6) how each of the last 20 requests ended, in one sentence; a row opens its detail in the Dev view.
+
+![The Performance view, Engine page: the Live panel with a request writing, the decode and prefill rates, and the last requests](media/dashboard-performance.png)
+
+*The Performance view, Engine page: the Live panel with a request writing, the decode and prefill rates, and the last requests. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Usage view: a year of tokens, requests and cost, filtered by model, client, backend and user](media/dashboard-usage.png)
+
+*The Usage view: a year of tokens, requests and cost, filtered by model, client, backend and user. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Dev view: the live log, which never holds prompt or answer text, and the recent requests](media/dashboard-dev.png)
+
+*The Dev view: the live log, which never holds prompt or answer text, and the recent requests. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Playground before the first message: the chat on the left, the system prompt and the sampling parameters on the right, the engine's own figures for each turn below](media/dashboard-playground.png)
+
+*The Playground before the first message: the chat on the left, the system prompt and the sampling parameters on the right, the engine's own figures for each turn below. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Conductor view, Overview: decisions and the session monitor's acts over 24 hours, the classifier's latency, the roles online and the task classes](media/dashboard-conductor-overview.png)
+
+*The Conductor view, Overview: decisions and the session monitor's acts over 24 hours, the classifier's latency, the roles online and the task classes. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Conductor view, Sessions: each session's client, profile, current class, turns and the hidden notes it carries](media/dashboard-conductor-sessions.png)
+
+*The Conductor view, Sessions: each session's client, profile, current class, turns and the hidden notes it carries. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Conductor view, Memory, the Notes tab: the live notes by scope, with kind, status, writer and use](media/dashboard-conductor-memory.png)
+
+*The Conductor view, Memory, the Notes tab: the live notes by scope, with kind, status, writer and use. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The Backends view with a vLLM, an SGLang and a DeepSeek backend, and the line for this engine's own settings](media/dashboard-backends.png)
+
+*The Backends view with a vLLM, an SGLang and a DeepSeek backend, and the line for this engine's own settings. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
+![The System view: the engine, the memory, the GPU, the queue, the caches and the machine](media/dashboard-system.png)
+
+*The System view: the engine, the memory, the GPU, the queue, the caches and the machine. Demo data from the dashboard's mock server (`npm run preview:mock`), not a measurement.*
+
 ## Live activity
 
 ![The Performance view: live requests, the last requests and their timing](media/dashboard_performance.gif)

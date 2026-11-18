@@ -38,7 +38,7 @@ In this order:
 
 These matter less and stay in scope: the dashboard's own XSS from server data, the conductor and memory routes, the metrics route.
 
-Out of scope: `bench/`, the scripts under `tools/` (measurement and evaluation; nothing serves them), `docs/`, `manual/` and `tests/`.
+Out of scope: `bench/`, the scripts under `tools/` (measurement and evaluation; nothing serves them), `docs/` and `tests/`.
 
 ## Where to test
 

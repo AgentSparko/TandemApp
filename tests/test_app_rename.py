@@ -26,7 +26,6 @@ SCRIPT = "import sys; from proxy.__main__ import {fn}; sys.exit({fn}())"
 # docs/proxy.md the migration note (its lines name the old name on purpose)
 ALLOWED = {
     "CHANGELOG.md": None,
-    "manual/chapters/changelog.tex": None,
     "pyproject.toml": re.compile(r'^tandem-dash = "proxy\.__main__:main_old_name"$'),
     "proxy/__main__.py": None,
     "tests/test_app_rename.py": None,

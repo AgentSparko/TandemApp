@@ -47,7 +47,39 @@ The `tools` profile adds nothing to the prompt. It asks no class question: that 
 
 Before a request queues, the router decides what kind of task the turn is. The shipped classes are `code_edit`, `debug`, `design_ui`, `drawing`, `three_d`, `writing`, `plan`, `research`, `summarize` and `chat`. Only a new user message asks a classifier. A turn that carries only tool results keeps the session's class, and so does the first message after a compaction.
 
-In the shipped router the served model classifies its own requests: raw, thinking off, its answer limited to the class ids by a choice grammar. Every class's probability comes from the answer's first token. The answer counts at 0.45 or more. Below that, the turn keeps the session's class, or takes the profile's default class on a first turn. One exception covers a first turn whose top class builds something and leads the second by 0.1: the turn takes that class (SRV-255). On 216 labelled prompts the served model was right 0.949 of the time and a small decision model 0.782 (manual, chapter "Profiles and the router"). The classifier reads the head and the tail of the new message. On TandemApp's controller, your own decision model can answer the decider stage's questions in place of the built-in one, per question, in shadow or A/B first ([decision-providers.md](decision-providers.md)).
+```mermaid
+flowchart TD
+    req[request] --> prof["profile<br/>header, client, default"]
+    prof --> side{"a side request's shape?"}
+    side -- yes --> small["small plan<br/>no note, capped output"]
+    side -- no --> new{"a new user message?"}
+    new -- yes --> cls["Qwen classifies<br/>raw, thinking off, choice grammar"]
+    new -- "no: a tool turn" --> keep["keep the session's class<br/>(first turn: the profile's default)"]
+    cls -- "below 0.45" --> keep
+    cls -- class --> plan["plan<br/>effort, cap, note, packages"]
+    keep --> plan
+```
+
+*The router's path from a request to a plan. A client's side request gets a small plan of its own. A tool turn keeps the session's class. A new user message asks Qwen; below 0.45 the turn keeps the session's class, or the profile's default class on a first turn.*
+
+In the shipped router the served model classifies its own requests: raw, thinking off, its answer limited to the class ids by a choice grammar. Every class's probability comes from the answer's first token. The answer counts at 0.45 or more. Below that, the turn keeps the session's class, or takes the profile's default class on a first turn. One exception covers a first turn whose top class builds something and leads the second by 0.1: the turn takes that class (SRV-255). On 216 labelled prompts the served model was right 0.949 of the time and a small decision model 0.782. The classifier reads the head and the tail of the new message. On TandemApp's controller, your own decision model can answer the decider stage's questions in place of the built-in one, per question, in shadow or A/B first ([decision-providers.md](decision-providers.md)).
+
+No word list decides anything. The classifiers read a digest of the new user message, its head and its tail, sized to what each stage reads. Two more stages exist and are off by default in the router document: Qwen classifying inside the conversation the engine already holds (`classifier.context_stage`, for follow-ups and long prompts; every class is a single-letter token, so one forward's softmax is the answer), and a linear probe on Qwen's own hidden rows (`classifier.probe_stage`).
+
+| class | what | effort | packages |
+|-|-|-|-|
+| `code_edit` | write, change, refactor or extend code | xhigh | coding (core), testing, Laya's test skills, test-web, test-cli, test-api, test-data, test-lib |
+| `debug` | find and fix a bug, a failing test, an error, a crash | xhigh | the same |
+| `design_ui` | the look of a page or an app | high | testing, Laya's, ui-design |
+| `drawing` | draw, paint or animate with code | high | testing, Laya's, three drawing skills |
+| `three_d` | a 3D scene or model | high | testing, Laya's, threejs-scene (core), photo-to-3d, voxel-seasons |
+| `writing` | prose: an essay, an email, documentation | medium | none |
+| `plan` | plan an approach before building | high | none |
+| `research` | look up, compare, explain | medium | none |
+| `summarize` | summarize given text, or a compaction | off | none |
+| `chat` | small talk or a short question | medium | none |
+
+*The router's shipped classes, with each class's effort and packages. A package marked core goes in on every turn of the class.*
 
 ## Effort and the thinking cap
 
@@ -161,4 +193,6 @@ The configuration is a set of versioned JSON documents outside any repository: p
 | the dashboard's Conductor view | [dashboard.md](dashboard.md#views) |
 | the `/v1/conductor/*` API | [contracts/conductor-v1](../contracts/conductor-v1/README.md) |
 | benchmarks, raw and conductor | [benchmarks.md](https://github.com/TandemLLM/TandemEngine/blob/main/docs/benchmarks.md), [tool-eval-bench.md](https://github.com/TandemLLM/TandemEngine/blob/main/docs/tool-eval-bench.md) |
-| the manual's chapters: profiles and the router, packages, the session monitor | [`tandemllm-manual.pdf`](https://github.com/TandemLLM/TandemEngine/blob/main/manual/tandemllm-manual.pdf) |
+| the session monitor, every task | [session-monitor.md](session-monitor.md) |
+| status lines, the voice, the shadow reader | [status-lines.md](status-lines.md) |
+| the conductor in front of another backend | [proxy.md](proxy.md#the-harness-in-front-of-a-backend) |

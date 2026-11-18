@@ -15,6 +15,38 @@ its own page with the steps.
 
 All three run the same code and the same page, and start the same way: bare.
 
+## From a checkout
+
+```sh
+git clone https://github.com/TandemLLM/TandemApp.git && cd TandemApp
+pip install '.[host]'  # the host extra adds psutil and NVML for the System view
+tandem-app                 # http://127.0.0.1:8080/dashboard/ opens on Setup
+```
+
+With backends declared in an env file instead of the page:
+
+```sh
+cat > app.env <<'EOF'
+TANDEM_BACKENDS=vllm1
+TANDEM_BACKEND_VLLM1_KIND=vllm
+TANDEM_BACKEND_VLLM1_URL=http://127.0.0.1:8100/v1
+EOF
+tandem-app check --env-file app.env        # prints what would run, writes nothing
+tandem-app serve --env-file app.env
+```
+
+A first backend from the command line, a cloud API with its key, and one request through it:
+
+```sh
+printf 'TANDEM_BACKENDS=deepseek\nTANDEM_BACKEND_DEEPSEEK_KIND=deepseek\nTANDEM_BACKEND_DEEPSEEK_KEY=
+    "$DEEPSEEK_API_KEY" > app.env && chmod 600 app.env
+tandem-app serve --env-file app.env &
+curl -s localhost:8080/v1/chat/completions -H 'Content-Type: application/json' \
+    -d '{"model": "deepseek-flash", "messages": [{"role": "user", "content": "Say hi"}]}'
+```
+
+Then open `http://127.0.0.1:8080/dashboard/#/usage`: the request is one row there, with its tokens, its time to first token and its cost at the model's price. [backends.md](backends.md) has a section for each kind of backend.
+
 ## What a new install runs
 
 A new TandemApp runs only the gateway in front of the engines you pair (OPS-288):
@@ -133,6 +165,8 @@ controller answers. Streaming answers need buffering off and long timeouts at th
 | container | the `/data` volume | the same, plus `container.env` (the chat mode its first start chose) |
 | Helm | one ReadWriteOnce volume at `/var/lib/tandemapp` | `state/` (the same files), `data/chat`, `conductor/`, `releases/<id>` and `current`, `ca/`, `home/`, `incoming/`, `backups/` |
 
+Each page's window layout per device class is kept in the config database too (`layouts/<page>`); the last write wins.
+
 ## Upgrades
 
 - One command: unpack the new release archive and run its `packaging/install.sh` again. It switches
@@ -140,7 +174,7 @@ controller answers. Streaming answers need buffering off and long timeouts at th
   old releases stay. `app.env` keeps its values; only `--listen`, `--port` and `--chat` change it.
 - Container: pull or build the new image and recreate the container on the same volume.
 - Helm: `helm upgrade` with the new `release.id` and archive; `helm rollback` goes back. See
-  [install-kubernetes.md](install-kubernetes.md#upgrades-and-rollback).
+  [install-kubernetes.md](install-kubernetes.md#9-upgrades-and-rollback).
 
 ## Backups
 

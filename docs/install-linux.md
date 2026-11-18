@@ -159,3 +159,12 @@ container needs a runtime's socket for its sandboxes:
 or a rootless Podman socket, with `--user` its owner. Without one, chat runs without its sandbox
 tools and the health page says so. The System view sees the container, not the host: add
 `--pid=host`, or run `tandem-app hostcollect` on the host.
+
+To build the image yourself from a checkout and run it:
+
+```sh
+docker build -f packaging/Dockerfile.app -t tandemllm-app app
+cp packaging/app.env.example app.env  # fill in; no quotes around values
+docker run -d --name tandem-app -p 127.0.0.1:8080:8080 -v tandem-app:/data \
+    --env-file app.env tandemllm-app
+```

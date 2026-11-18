@@ -128,6 +128,13 @@ engine's `QSE_CHATD=off`.
 The sandbox is optional: without a container runtime the chat answers and uses the file tools;
 `ops/sandbox/install.sh` adds the rest.
 
+On a machine where TandemNode runs chatd:
+
+```sh
+tandem-node chat status            # who owns chatd, pid, URL, the watcher's count
+tandem-node chat start | stop | restart | logs
+```
+
 ## When the Chat tab says the chat service is not running
 
 The tab probes `GET /v1/chat-app/capabilities` and never falls back to an in-browser mock (VIS-179).
@@ -174,6 +181,8 @@ setup guide's sign-in card. A write with `Sec-Fetch-Site: cross-site` is refused
 - A `VACUUM INTO` copy once a day in `backups/`, 7 kept. A deleted chat stays in the trash for 7
   days; text deltas in the event log are dropped after 7 days (the messages keep their text).
 - chatd's log has ids, counts and times, never message text.
+
+A deleted chat goes to the trash for 7 days, and its sandbox stops at once. `POST /v1/chat-app/conversations/<id>/restore` brings the chat back, and its sandbox starts again on its next tool call. When the 7 days end, or on `DELETE /v1/chat-app/conversations/<id>?forever=1`, chatd removes the container and the chat's folders under `workspaces/`, `homes/`, `egress/` and `snapshots/`. At its start chatd also removes every container whose chat is gone or in the trash, and logs each one.
 
 ## The sandbox (phase 2)
 
@@ -285,6 +294,10 @@ so a folder swapped for a symlink after a check cannot redirect it; a write goes
 (O_EXCL) in the verified folder and is renamed over the name; a read takes a regular file only (a
 FIFO would block chatd). A path with a symlink on the way is refused, and the file tools say so.
 
+### The port preview
+
+The port preview shows an app that listens in the sandbox. Since 0.12.2 an app's answer goes on to the browser once its head is read, so an event stream or a long-poll shows as it arrives. A page, script or style sheet up to 8 MiB is read whole and rewritten; a bigger one passes as it is, with `X-Tandem-Rewrite: skipped`. The app has 300 s to start its answer. A browser that leaves ends the relay in the sandbox, and the idle stop can stop it again.
+
 ## Attachments
 
 An image goes to a model that reads images; a text file goes into the prompt, and its tokens show on
@@ -346,6 +359,8 @@ PUT  /v1/chat-app/conversations/{id}/permission-mode     {mode: ask|auto|yolo}
 A bash rule names a command's first word, or its first two for programs with subcommands (`git push`, `npm install`). A chained command (`&&`, `||`, `;`, `|`) runs without a prompt when every part has an allow rule, and is refused when any part hits a deny rule. "Always allow" on it saves a rule for each part not yet allowed. A command with `$(...)` or backticks matches no rule.
 
 `PATCH /conversations/{id}/settings` takes `permission_mode` too. A chat from before 0.8.2 has none and runs in the default mode.
+
+A bash rule names a command's first word, or its first two for programs with subcommands (`git push`, `npm install`); `grep tilt` saves `grep`. A chained command (`&&`, `||`, `;`, `|`) runs without a prompt when every part has an allow rule, and is refused when any part hits a deny rule. “Always allow” on such a command saves a rule for every part no rule covers yet, and the prompt names them: “Always allow cd, node, echo, cat”. Until 0.8.2 it offered only the first word, which never covered the whole command, so the prompt came back: one chat saved `cd` 11 times for `cd /workspace && node ... > run.log 2>&1; echo "exit:$?"; cat run.log`. Store schema 6 keeps one copy of each duplicate rule. A command with `$(...)` or backticks matches no rule and offers no “Always”. All of this matters in Ask mode; Auto runs bash in the sandbox without asking.
 
 ## Agents mode: a main agent with workers
 

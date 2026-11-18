@@ -1,9 +1,10 @@
-"""The HTTP reference of TandemApp's manual: every route, header and error, checked against the code.
+"""The HTTP reference of TandemApp's docs (docs/reference/http.md): every route, header and error,
+checked against the code.
 
-TandemApp's copy of the engine's manual/tools/http_ref.py (ENG-413): the controller's routes
+TandemApp's copy of the engine's tools/http_ref.py (ENG-413): the controller's routes
 (`tandem-app`, proxy/app.py), the routes its extension serves inside a TandemLLM engine in chat
 mode, the host collector, and the headers and errors TandemApp's code (proxy/, tandemapp/) reads,
-writes or answers. The engine's own API is in the engine's manual.
+writes or answers. The engine's own API is in the engine's docs.
 
 The routes, headers and errors are written here by hand, because a handler's purpose and the
 shape of its body are not in the code in a form a script can read. What keeps them true is the
@@ -26,7 +27,29 @@ import os
 import re
 
 # --------------------------------------------------------------------------- who may call a route
-# The labels of the `who` column; ref-http.tex explains them.
+# The controller's routes: the permission proxy/authz.py's route table names for the row's method
+# and path, read from that file (`authz_routes`), and the lowest role that holds it. PERMS says
+# what each permission is; a permission the table uses and PERMS lacks is a problem.
+PERMS = {
+    "open": "anyone who reaches the port: the page shell, /health's status, the sign-in and the first-run setup (which checks its own setup code)",
+    "session-address": "a /s/<token>/ address: its token is the credential, for the library and Laya only",
+    "read": "every read of the page. For the fleet, the settings, the configuration and the conductor a write needs its kind's own permission too: settings:write, fleet:write or trust",
+    "metrics:read": "the Prometheus page",
+    "fleet:read": "the fleet's reads and the cache peek",
+    "inference": "the data plane: the OpenAI and Messages API routes, the models, the library and Laya; an API token needs the protocol's scope (inference:openai, inference:anthropic)",
+    "self": "a signed-in person's own sessions, password, API tokens and usage",
+    "settings:write": "changes to the settings, the configuration and the conductor's documents",
+    "fleet:write": "the fleet's writes: nodes, deployments, the Setup Guide relay, clearing a cache",
+    "chat": "the Chat tab",
+    "users": "every account but the owners, every session, the audit",
+    "trust": "trusting a plugin, a publisher key or a node",
+    "owner": "the owners, the identity provider, the exposure switches and the auth and api settings",
+    "collect:write": "a service identity only: a backend's collector or plugin (svc:collect:<id>)",
+    "chat-engine": "a service identity only: chatd (svc:chatd)",
+    "plugin-backend": "a service identity only: the plugin relay, in process",
+}
+
+# The routes the extension serves inside an engine follow the engine's own rule (the engine's docs):
 WHO = {
     "open": "anyone who reaches the port",
     "admin": "the admin rule: anyone while no admin password is set; with one, the admin token, a dashboard session, or a tool on the machine itself",
@@ -110,9 +133,47 @@ PROXY_ROUTES = [
     ("GET", "/v1/library", "open", "The package library, as on the engine, also under /v1/library/*.", "", ""),
     ("GET", "/v1/laya", "open", "Laya, when the decider role names an endpoint.", "", ""),
     ("POST", "/v1/laya/ask", "open", "As on the engine, relayed to the decider role's endpoint.", "", ""),
+    ("POST", "/v1/messages", "key",
+     "The Messages API: translated to a chat completion and run through the pipeline, or passed through untouched when every backend of the model's route is of kind anthropic (docs/proxy.md).",
+     "the Messages API's body, the key as x-api-key or a bearer", "the Messages API's answer or event stream, with request-id"),
+    ("POST", "/v1/messages/count_tokens", "key",
+     "The prompt's exact token count from a backend that can count it; any other answers 404 not_found_error.", "", "{input_tokens}"),
+    ("POST", "/v1/cache/peek", "key",
+     "With a deployment's model: relayed to the member that holds the conversation; the same for /v1/cache/prewarm and /v1/cache/release. Without the model: 400 model_required.",
+     "{model, session?, ...}", "the member's answer, with X-Tandem-Node and X-Tandem-Deployment"),
+    ("POST", "/v1/cache/prewarm", "key", "As /v1/cache/peek.", "", ""),
+    ("POST", "/v1/cache/release", "key", "As /v1/cache/peek.", "", ""),
+    ("GET|POST|DELETE", "/v1/auth/session", "open",
+     "Who this request is (account, role, permissions, CSRF token, provider, setup_required, local_mode); POST signs in, DELETE signs out (docs/auth.md).",
+     "POST: {username, password}", "the session; the cookie on a sign-in"),
+    ("POST", "/v1/auth/setup", "open", "The first owner, with the one-time setup code; 404 once an owner exists.",
+     "{code, username, password}", "the session"),
+    ("PUT", "/v1/auth/password", "self", "A signed-in person's own password.", "{current, password}", ""),
+    ("GET|DELETE", "/v1/auth/sessions", "self",
+     "The live sessions (?user= another's, with the users permission); DELETE ends them, DELETE .../{id} one.", "", ""),
+    ("GET|POST|PATCH|DELETE", "/v1/auth/tokens", "self",
+     "API tokens (?all=1 every account's): POST makes one, PATCH /{id} changes one, DELETE /{id} revokes, POST /{id}/rotate, GET /{id}/usage.",
+     "", "a new token's secret once"),
+    ("GET|POST|PATCH|DELETE", "/v1/auth/users", "users",
+     "The accounts: POST makes one, PATCH /{id} changes one, DELETE /{id} removes one, POST /{id}/reset a one-time code.", "", ""),
+    ("GET", "/v1/auth/audit", "users", "Sign-ins, sessions, accounts, tokens and the auth settings, as audit rows.", "", ""),
+    ("GET", "/v1/auth/usage", "self", "What an account used (?user= another's, with the users permission).", "", ""),
+    ("GET", "/v1/chat-app/capabilities", "dash", "What the Chat tab can do here: whether chatd answers, the sandbox, the session.", "", ""),
+    ("*", "/v1/chat-app/*", "admin", "The Chat tab: relayed to chatd behind the controller (off, own or external; docs/chat.md).", "", "chatd's answer"),
+    ("GET|POST", "/s/{token}/v1/library/*", "session",
+     "The library and Laya under a session address, the address the notes give the model, journaled to that session.", "", ""),
+    ("*", "/v1/settings/*", "admin",
+     "The settings interface over every store: scopes, change sets, versions and restore, the audit (docs/settings.md). Reads need the read permission, writes the scope's own.",
+     "the contract's body", "the contract's JSON"),
+    ("GET", "/plugin-panels/{id}/{panel}/", "dash",
+     "A running plugin's panel: its HTML and the files beside it, served sandboxed for the page's frame (docs/plugins.md).",
+     "", "the panel's files"),
+    ("*", "/plugin-backends/{id}/{name}", "open",
+     "A plugin's backend, the URL of its row in the backends store; the gateway routes a model there. From this machine only (403 forbidden otherwise).",
+     "the relayed request", "the plugin's answer"),
 ]
 
-# The host collector beside the controller (the engine's status responder is in the engine's manual).
+# The host collector beside the controller (the engine's status responder is in the engine's docs).
 SIDE_ROUTES = [
     ("tandem-app hostcollect", "GET", "/host?watch=", "the machine's sample as JSON (the bearer token when --token is set)"),
     ("tandem-app hostcollect", "GET", "/metrics", "the same sample in the Prometheus text format"),
@@ -123,6 +184,21 @@ SIDE_ROUTES = [
 # (name, direction, where, meaning). direction: in (TandemApp reads it), out (it writes it), both.
 # where: engine (the extension, inside an engine), proxy (the controller and TandemNode), both.
 HEADERS = [
+    ("x-api-key", "in", "controller",
+     "a Messages API client's credential, as an API token or a backend key would be sent as a bearer; removed from the request once checked"),
+    ("X-Tandem-Auth", "out", "controller", "accounts on /health: the controller runs the accounts sign-in, so a front proxy asks it"),
+    ("X-Tandem-CSRF", "in", "controller",
+     "a cookie request that writes carries the session's token (GET /v1/auth/session returns it); without it 403"),
+    ("X-Tandem-Dropped", "out", "controller",
+     "the client's fields a translated request went without (a Messages API field the chat shape has no place for, thinking the stash evicted)"),
+    ("X-Tandem-Hook", "both", "controller",
+     "to a webhook: the hook's id; on an answer a guard refused: the hook that refused it"),
+    ("X-Tandem-Delivery", "out", "controller", "to a webhook: the call's id, also the body's id, which the signature covers"),
+    ("X-Tandem-Timestamp", "out", "controller", "to a webhook: unix seconds, inside the signed text"),
+    ("X-Tandem-Signature", "out", "controller",
+     "to a webhook: v1=<hex HMAC-SHA256(secret, timestamp.body)>, one v1= per secret while a secret rotates (docs/hooks.md)"),
+    ("X-Tandem-*", "out", "controller",
+     "every X-Tandem- answer header, and the backend's anthropic-ratelimit-* headers, also reach a Messages API client"),
     ("X-Tandem", "both", "both",
      "raw, shadow or on: lowers the conductor's mode for one request; the response says which mode ran"),
     ("X-Tandem-Profile", "both", "both", "picks a conductor profile; the response names the profile that ran; an unknown name is a 400"),
@@ -155,7 +231,7 @@ HEADERS = [
     ("X-Content-Type-Options", "out", "both", "nosniff on the dashboard's static files"),
     ("x-ratelimit-*", "out", "proxy", "a cloud backend's rate-limit headers, passed on to the client"),
     ("OpenAI-Beta", "both", "proxy", "a client's OpenAI-Beta header, passed on to an openai backend"),
-    ("Authorization", "in", "both", "Bearer: the admin token, the metrics token, the collect token or a proxy user key, by route; the engine's OpenAI routes ignore it and file the request under a hash of it"),
+    ("Authorization", "in", "both", "Bearer: an API token (tdm-...), a service identity's token (a collector, chatd) or a management token for scripts, by route (docs/auth.md); the engine's OpenAI routes ignore it and file the request under a hash of it"),
     ("User-Agent", "in", "both", "the client kind in the ledger: open-webui, opencode, openai-sdk, curl, other (a Hermes-shaped body: hermes)"),
     ("Last-Event-ID", "in", "both", "resumes the log stream after that line"),
     ("Retry-After", "out", "both", "with a 503 (queue full, memory gate, draining, a full backend), a 429, or a decision model that is loading"),
@@ -175,14 +251,14 @@ ERRORS = [
     ("400", ["bad_request"], "a dashboard, fleet or conductor query or body that does not parse (a level, a range, a number, a body that is not an object)", False),
     ("400", ["model_required"], "a cache route through the gateway without the model that names the deployment", False),
     ("400", ["context_length_exceeded"], "a prompt and max_tokens that no member of the deployment has the window for", False),
-    ("401", ["unauthorized"], "a guarded route without the token or the session it needs, once an admin password is set; a wrong collect token", False),
-    ("401", ["invalid_api_key"], "the proxy, once a user key exists: no key, or a key it does not know (code invalid_api_key)", False),
+    ("401", ["unauthorized"], "a route that needs a credential, without a session or an API token, or with one that is unknown, revoked or expired; a wrong collect token; wrong_credentials: a sign-in whose name or password is wrong", False),
+    ("401", ["invalid_api_key"], "the data plane (OpenAI shape): no API token, a token it does not know, or two credentials that name different tokens (code invalid_api_key)", False),
     ("403", ["forbidden"], "a memory route outside a known session address; a cross-site write; a weights copy with another token", False),
-    ("403", ["wrong_password"], "a change of the admin password whose current password (or admin token) is not right", False),
+    ("403", ["wrong_password"], "PUT /v1/auth/password whose current password is not right", False),
     ("404", ["not_found"], "no such route, or a route whose part is off on this server (the conductor, the backends, the fleet)", False),
     ("404", ["unsupported_route"], "the proxy: a route the backend's kind does not serve, such as embeddings on deepseek (code unsupported_route)", False),
     ("404", ["model_not_found"], "a model id no backend serves, or one two backends serve (the message names the prefixed forms) (code model_not_found)", False),
-    ("405", ["method_not_allowed"], "the admin password or the Setup Guide's relay with a method it does not take", False),
+    ("405", ["method_not_allowed"], "the sign-in routes, the accounts or the Setup Guide's relay with a method they do not take", False),
     ("409", ["busy"], "an Add Spark session or an install that already runs; a chatd job that runs on TandemNode", False),
     ("409", ["closed", "stale"], "a package proposal already closed, or whose base text changed since", False),
     ("409", ["conflict"], "an Add Spark session in another state, a device picked twice, more devices than one add takes", False),
@@ -287,9 +363,27 @@ def header_names(root: str) -> set:
     return out
 
 
-def error_types(root: str) -> set:
-    """The error.type and error.code values the server and the proxy put in an error body."""
-    out = set()
+def _text(node) -> str:
+    """A message argument as text: a string, or an f-string with {...} for its values."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(v.value if isinstance(v, ast.Constant) else "{...}" for v in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _text(node.left) + _text(node.right)
+    return ""
+
+
+_TYPE = re.compile(r"[a-z][a-z_]+")
+# the calls that raise or answer an error: an ...Error class, a Refused or Refusal, a refuse helper,
+# _err and _json (a 200 call with a status-like number, such as a token budget, is no error)
+_ERRCALL = re.compile(r"(?:Error|Refused|Refusal|_refuse|^_err|^_json)$")
+
+
+def error_sites(root: str) -> list:
+    """(status or None, type, message, rel) for every error.type and error.code the code puts in
+    an error body or raises with a status."""
+    out = []
     for rel in _py_files(root, HEADER_DIRS):
         tree = _parse(root, rel)
         if tree is None:
@@ -298,25 +392,124 @@ def error_types(root: str) -> set:
             if isinstance(n, ast.Dict):
                 for k, v in zip(n.keys, n.values):
                     if isinstance(k, ast.Constant) and k.value == "error" and isinstance(v, ast.Dict):
+                        msg = next((_text(v2) for k2, v2 in zip(v.keys, v.values)
+                                    if isinstance(k2, ast.Constant) and k2.value == "message"), "")
                         for k2, v2 in zip(v.keys, v.values):
                             if (isinstance(k2, ast.Constant) and k2.value in ("type", "code")
-                                    and isinstance(v2, ast.Constant) and isinstance(v2.value, str)):
-                                out.add(v2.value)
+                                    and isinstance(v2, ast.Constant) and isinstance(v2.value, str)
+                                    and _TYPE.fullmatch(v2.value)):
+                                out.append((None, v2.value, msg, rel))
             elif isinstance(n, ast.Call):
                 fn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
                 args = n.args
                 if fn == "_error_body":
-                    out |= {a.value for a in args[1:3] if isinstance(a, ast.Constant) and isinstance(a.value, str)}
+                    msg = _text(args[0]) if args else ""
+                    out += [(None, a.value, msg, rel) for a in args[1:3]
+                            if isinstance(a, ast.Constant) and isinstance(a.value, str) and _TYPE.fullmatch(a.value)]
                 elif (fn == "Refused" and len(args) >= 2 and isinstance(args[0], ast.Constant)
-                      and isinstance(args[0].value, str) and re.fullmatch(r"[a-z_]+", args[0].value)):
-                    out.add(args[0].value)          # a memory note's or a proposal's reason (422)
-                elif (fn in ("Refused", "ApiError") and len(args) >= 2
-                      and isinstance(args[0], ast.Constant) and isinstance(args[0].value, int)
-                      and isinstance(args[1], ast.Constant) and isinstance(args[1].value, str)):
-                    out.add(args[1].value)
+                      and isinstance(args[0].value, str) and _TYPE.fullmatch(args[0].value)):
+                    out.append((422, args[0].value, _text(args[1]), rel))   # a memory note's or a proposal's reason
                 elif fn == "_busy":
-                    out.add("server_busy")
+                    out.append((503, "server_busy", "", rel))
+                elif _ERRCALL.search(fn):
+                    # any error a call raises or answers as (..., status, "type", message?): Refused,
+                    # ApiError, AddError, UpdateError, PluginError, _err(handler, 403, "type", ...)
+                    for x, (a, b) in enumerate(zip(args, args[1:])):
+                        if (isinstance(a, ast.Constant) and isinstance(a.value, int) and not isinstance(a.value, bool)
+                                and 400 <= a.value <= 599 and isinstance(b, ast.Constant)
+                                and isinstance(b.value, str) and _TYPE.fullmatch(b.value)):
+                            msg = _text(args[x + 2]) if len(args) > x + 2 else ""
+                            out.append((a.value, b.value, msg, rel))
     return out
+
+
+def error_types(root: str) -> set:
+    """The error.type and error.code values the code puts in an error body."""
+    return {t for _, t, _, _ in error_sites(root)}
+
+
+class _Eval:
+    """A small evaluator for proxy/authz.py's module constants: literals, frozenset(), |, names,
+    and the route table's starred generators."""
+
+    def __init__(self, env: dict):
+        self.env = env
+
+    def __call__(self, n):
+        if isinstance(n, ast.Constant):
+            return n.value
+        if isinstance(n, (ast.Tuple, ast.List)):
+            out = []
+            for e in n.elts:
+                if isinstance(e, ast.Starred):
+                    out.extend(self(e.value))
+                else:
+                    out.append(self(e))
+            return tuple(out)
+        if isinstance(n, ast.Set):
+            return frozenset(self(e) for e in n.elts)
+        if isinstance(n, ast.Name):
+            return self.env[n.id]
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "frozenset":
+            return frozenset(self(n.args[0])) if n.args else frozenset()
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.BitOr):
+            return frozenset(self(n.left)) | frozenset(self(n.right))
+        if isinstance(n, ast.GeneratorExp) and len(n.generators) == 1:
+            g = n.generators[0]
+            out = []
+            for v in self(g.iter):
+                self.env[g.target.id] = v
+                out.append(self(n.elt))
+            return tuple(out)
+        raise ValueError(ast.dump(n)[:80])
+
+
+def authz_routes(root: str):
+    """(ROUTES, {role: permissions}) of proxy/authz.py, read without importing it."""
+    env = {}
+    svc = _parse(root, "proxy/service.py")
+    for n in svc.body if svc else ():
+        if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "PROXY_PATHS":
+            env["PROXY_PATHS"] = ast.literal_eval(n.value)
+    tree = _parse(root, "proxy/authz.py")
+    ev = _Eval(env)
+    for n in tree.body:
+        target = n.targets[0] if isinstance(n, ast.Assign) else (n.target if isinstance(n, ast.AnnAssign) else None)
+        if target is None or not isinstance(target, ast.Name) or n.value is None:
+            continue
+        try:
+            env[target.id] = ev(n.value)
+        except (ValueError, KeyError):
+            pass
+    roles = {r: env[r.upper()] for r in env["ROLES"]}
+    return list(env["ROUTES"]), roles
+
+
+def _lowest(roles: dict, perm: str) -> str:
+    if perm == "open":
+        return "anyone"
+    if perm == "session-address":
+        return "the session address"
+    for r, perms in roles.items():
+        if perm in perms:
+            return r + (" and up" if r != "owner" else "")
+    return "a service identity"
+
+
+def _route_method(method: str) -> str:
+    return "GET" if method == "*" else method.split("|")[0]
+
+
+def who_for(routes: list, method: str, path: str) -> str:
+    """The permission the controller's route table names for a row (its first method)."""
+    p = _static(path)
+    m = _route_method(method)
+    for methods, how, route, perm in routes:
+        if m not in methods:
+            continue
+        if (how == "exact" and p == route) or (how == "prefix" and (p == route or p.startswith(route.rstrip("/") + "/"))):
+            return perm
+    return "none (refused)"
 
 
 def _static(path: str) -> str:
@@ -362,8 +555,29 @@ def problems(root: str) -> list:
             else:
                 ok = any(l == s or l.startswith(s + "/") or s.startswith(l + "/") or s.startswith(l)
                          for l in found if l != "/")
+            if not ok and rel == "proxy/app.py":
+                # a route a helper serves (the Messages API, the sign-in, the Chat tab's relay):
+                # the controller's route table names it
+                ok = not who_for(authz_routes(root)[0], "GET" if d.endswith("*") else "POST", d).startswith("none") \
+                    or any(not who_for(authz_routes(root)[0], m, d).startswith("none") for m in ("GET", "PUT", "DELETE"))
             if not ok:
                 out.append(f"documented route not in {rel}: {d}")
+    # every route family of the controller's route table has a row (a route served through a helper
+    # the literal scan above cannot see: the Messages API, the sign-in, the Chat tab)
+    routes, roles = authz_routes(root)
+    docs = [r[1] for r in PROXY_ROUTES]
+    for methods, how, route, perm in routes:
+        if route.startswith(("/chat-engine", "/v1/dashboard/session", "/v1/fleet/session", "/v1/chat-app/session")):
+            continue                        # chatd's own relay, and the old sign-in's routes
+        if route in ALIASES:
+            continue                        # /healthz and /v1/health: the /health row names them
+        if not (_covers(docs, route) or any(_static(d) == route or _static(d).startswith(route.rstrip("/") + "/") for d in docs)):
+            out.append(f"no route row for the route table's {how} {route} (proxy/authz.py)")
+        if perm not in PERMS:
+            out.append(f"no description of the permission {perm} (PERMS)")
+    for method, path, *_ in PROXY_ROUTES:
+        if who_for(routes, method, path).startswith("none"):
+            out.append(f"a route row the route table refuses: {method} {path}")
     code_h = header_names(root)
     doc_h = {h[0].lower() for h in HEADERS}
     for h in sorted(code_h):
@@ -379,8 +593,7 @@ def problems(root: str) -> list:
             out.append(f"documented header not in the code: {d}")
     code_e = error_types(root)
     doc_e = {t for row in ERRORS for t in row[1]}
-    for t in sorted(code_e - doc_e):
-        out.append(f"undocumented error type: {t}")
+    # every type the code has and no row explains is listed by gen_errors' second table
     for t in sorted(doc_e - code_e):
         if t in ("invalid_api_key",):
             continue                      # built from a variable (the runtime's state, an f-string)
@@ -389,85 +602,109 @@ def problems(root: str) -> list:
 
 
 # --------------------------------------------------------------------------- rendering
-_REF = re.compile(r"\b(Section|Chapter|Table) ((?:sec:|ch:|tab:)?[a-z][a-z0-9:-]*[a-z0-9])")
+# "Section x" and "Table x" in a row's text become links to the page that has it
+LINKS = {
+    "sec:fleet": ("the fleet", "../proxy.md#the-fleet-v1fleet"),
+    "sec:routing": ("routing by model id", "../backends.md#routing-by-model-id"),
+    "tab:ref-conductor-routes": ("the conductor's routes", "#the-conductors-routes-v1conductor"),
+    "tab:ref-config-routes": ("the configuration routes", "#the-configuration-routes-v1config"),
+}
+_REF = re.compile(r"\b(?:Section|Chapter|Table) ((?:sec:|ch:|tab:)[a-z][a-z0-9:-]*[a-z0-9])")
 _CODEISH = re.compile(r"(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|\[DONE\]|(?<![\w])--[a-z][a-z-]*|"
                       r"(?<![\w/])/[\w{}.<>/*?=&|-]*|\b[A-Za-z][\w.-]*\.(?:schema\.)?json\b|"
                       r"\b[a-z]+(?:_[a-z0-9]+)+(?:\.[a-z_]+)*\b|\b[A-Z]+(?:_[A-Z0-9]+)+\b|\bqse_\w+)")
 
 
 def _ref(m: re.Match) -> str:
-    kind, label = m.group(1), m.group(2)
-    if ":" not in label:
-        label = {"Section": "sec:", "Chapter": "ch:", "Table": "tab:"}[kind] + label
-    return "\x00" + kind + "~\\ref{" + label + "}\x00"
+    text, href = LINKS[m.group(1)]
+    return "\x00[" + text + "](" + href + ")\x00"
 
 
-def fmt(text: str, code, tex) -> str:
-    """Prose with identifiers, paths, flags and {json} set in monospace, and Section x as a \\ref."""
+def fmt(text: str, code, esc) -> str:
+    """Prose with identifiers, paths, flags and {json} set as code, and Section x as a link."""
     if not text:
         return ""
     parts = re.split("\x00", _REF.sub(_ref, text))
     out = []
     for i, part in enumerate(parts):
         if i % 2:
-            out.append(part)              # a \ref, already TeX
+            out.append(part)              # a link, already Markdown
             continue
         for j, piece in enumerate(_CODEISH.split(part)):
-            out.append(code(piece) if j % 2 else tex(piece))
+            out.append(code(piece) if j % 2 else esc(piece))
     return "".join(out)
 
 
-def _route_rows(rows, code, tex) -> list:
+def _route_rows(rows, code, esc, root: str = None) -> list:
     out = []
+    authz = authz_routes(root) if root else None
     for method, path, who, what, body, answer in rows:
-        cell = fmt(what, code, tex)
+        if authz:
+            who = who_for(authz[0], method, path)
+        cell = fmt(what, code, esc)
         if body:
-            cell += r" \emph{Body:} " + fmt(body, code, tex) + "."
+            cell += " *Body:* " + fmt(body, code, esc) + "."
         if answer:
-            cell += r" \emph{Answer:} " + fmt(answer, code, tex) + "."
-        out.append(code(method) + r"\newline " + code(path) + " & " + tex(who) + " & " + cell + r" \\")
+            cell += " *Answer:* " + fmt(answer, code, esc) + "."
+        out.append([code(method) + " " + code(path), esc(who), cell])
     return out
 
 
-def gen_who_tex(header: str, code, tex) -> str:
-    out = [header, r"\begin{reftabletwo}{Who may call a route: the labels of the routes' \hd{who} column}{tab:ref-http-who}{\hd{label} & \hd{who may call}}"]
-    for k, v in WHO.items():
-        out.append(code(k) + " & " + fmt(v, code, tex) + r" \\")
-    out.append(r"\end{reftabletwo}")
-    return "\n".join(out) + "\n"
+def gen_who(table, code, esc, root: str) -> str:
+    routes, roles = authz_routes(root)
+    used = []
+    for r in routes:
+        if r[3] not in used:
+            used.append(r[3])
+    rows = [[code(k), esc(_lowest(roles, k)), fmt(PERMS.get(k, ""), code, esc)] for k in used]
+    return (table("Who may call a controller route: the permission proxy/authz.py names, and the lowest role that holds it",
+                  ["permission", "held by", "what it covers"], rows)
+            + "\n" + table("Who may call a route the extension serves inside an engine: the engine's own rule",
+                           ["label", "who may call"],
+                           [[code(k), fmt(v, code, esc)] for k, v in WHO.items() if k in {r[2] for r in EXT_ROUTES}]))
 
 
-def gen_ext_routes_tex(header: str, code, tex) -> str:
-    out = [header, r"\begin{httptable}{The routes the extension serves inside an engine}{tab:ref-ext-routes}"]
-    out += _route_rows(EXT_ROUTES, code, tex)
-    out.append(r"\end{httptable}")
-    return "\n".join(out) + "\n"
+def gen_ext_routes(table, code, esc, root: str = None) -> str:
+    return table("The routes the extension serves inside an engine", ["route", "who", "what"],
+                 _route_rows(EXT_ROUTES, code, esc))
 
 
-def gen_proxy_routes_tex(header: str, code, tex) -> str:
-    out = [header, r"\begin{httptable}{The standalone proxy's routes (\texttt{tandem-app})}{tab:ref-proxy-routes}"]
-    out += _route_rows(PROXY_ROUTES, code, tex)
-    out.append(r"\end{httptable}")
-    out.append(r"\begin{reftable}{The host collector beside the controller}{tab:ref-side-routes}{\hd{server} & \hd{route} & \hd{answer}}")
-    for server, method, path, what in SIDE_ROUTES:
-        out.append(code(server) + " & " + code(method) + " " + code(path) + " & " + fmt(what, code, tex) + r" \\")
-    out.append(r"\end{reftable}")
-    return "\n".join(out) + "\n"
+def gen_proxy_routes(table, code, esc, root: str) -> str:
+    return (table("The controller's routes (`tandem-app`)", ["route", "permission", "what"], _route_rows(PROXY_ROUTES, code, esc, root))
+            + "\n" + table("The host collector beside the controller", ["server", "route", "answer"],
+                           [[code(server), code(method) + " " + code(path), fmt(what, code, esc)]
+                            for server, method, path, what in SIDE_ROUTES]))
 
 
-def gen_headers_tex(header: str, code, tex) -> str:
-    out = [header, r"\begin{reftable}{Every header TandemApp reads or writes}{tab:ref-headers}{\hd{header} & \hd{direction, where} & \hd{meaning}}"]
-    for name, direction, where, meaning in HEADERS:
-        out.append(code(name) + " & " + tex(direction + ", " + where) + " & " + fmt(meaning, code, tex) + r" \\")
-    out.append(r"\end{reftable}")
-    return "\n".join(out) + "\n"
+def gen_headers(table, code, esc) -> str:
+    return table("Every header TandemApp reads or writes", ["header", "direction, where", "meaning"],
+                 [[code(name), esc(direction + ", " + where), fmt(meaning, code, esc)]
+                  for name, direction, where, meaning in HEADERS])
 
 
-def gen_errors_tex(header: str, code, tex) -> str:
-    out = [header, r"\begin{reftable}{Every error status and type}{tab:ref-errors}{\hd{status, Retry-After} & \hd{error.type or code} & \hd{when}}"]
-    for status, types, when, retry in ERRORS:
-        out.append(code(status) + (r"\newline with \texttt{Retry-After}" if retry else "") + " & "
-                   + (", ".join(code(t) for t in types) if types else "none") + " & "
-                   + fmt(when, code, tex) + r" \\")
-    out.append(r"\end{reftable}")
-    return "\n".join(out) + "\n"
+def gen_errors(table, code, esc, root: str) -> str:
+    first = table("The errors explained", ["status", "error.type or code", "when"],
+                  [[code(status) + (" with `Retry-After`" if retry else ""),
+                    ", ".join(code(t) for t in types) if types else "none", fmt(when, code, esc)]
+                   for status, types, when, retry in ERRORS])
+    explained = {t for row in ERRORS for t in row[1]}
+    by_type: dict = {}
+    for status, t, msg, rel in error_sites(root):
+        if t in explained:
+            continue
+        e = by_type.setdefault(t, {"status": set(), "msg": "", "files": set()})
+        if status:
+            e["status"].add(status)
+        if msg and not e["msg"]:
+            e["msg"] = msg
+        e["files"].add(rel)
+    rows = []
+    for t in sorted(by_type):
+        e = by_type[t]
+        st = ", ".join(str(x) for x in sorted(e["status"])) or "in the body"
+        files = sorted(e["files"])
+        where = ", ".join(code(f) for f in files[:2]) + (f" and {len(files) - 2} more" if len(files) > 2 else "")
+        rows.append([code(t), esc(st), esc(e["msg"]) or " ", where])
+    second = table("Every other error type the code answers, with its status and the code's own message ({...} is a value)",
+                   ["error.type or code", "status", "message", "where"], rows)
+    return first + "\n" + second

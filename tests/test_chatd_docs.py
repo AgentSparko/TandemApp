@@ -9,7 +9,6 @@ owns chatd on an engine box, and the pages say so.
      ?chat=mock                                                              test_the_down_state
   3  no doc names a qwen38-spark-engine path for chatd; the launcher is ops/chatd.sh (chatd/ops in a
      wheel)                                                                  test_paths_match_the_installer
-  4  the manual's chapter says the same                                      test_the_manual_follows
 
 Run: python tests/test_chatd_docs.py
 """
@@ -54,7 +53,7 @@ def test_the_down_state():
 
 
 def test_paths_match_the_installer():
-    for p in (("docs", "chat.md"), ("manual", "chapters", "chat.tex"), ("ops", "chatd.service")):
+    for p in (("docs", "chat.md"), ("ops", "chatd.service")):
         text = _read(*p)
         for ln in text.splitlines():
             if "chatd" in ln:
@@ -63,14 +62,6 @@ def test_paths_match_the_installer():
     assert "The launcher is TandemApp's `ops/chatd.sh`" in chat and "`chatd/ops/chatd.sh` inside an installed wheel" in chat
     assert "bash app/ops/chatd.sh start             #" not in chat
     assert os.path.isfile(os.path.join(ROOT, "ops", "chatd.sh"))
-
-
-def test_the_manual_follows():
-    tex = " ".join(_read("manual", "chapters", "chat.tex").split())
-    assert r"On an engine box TandemNode owns chatd (SRV-823)" in tex
-    assert "starts a chatd that died at most 3 times an hour, and never restarts the engine for it" in tex
-    assert "tandem-node chat start | stop | restart | logs" in tex and "QSE_CHATD=off" in tex
-    assert r"\code{~/TandemLLM/bin/tandem chat} runs the same commands through TandemNode" in tex
 
 
 if __name__ == "__main__":

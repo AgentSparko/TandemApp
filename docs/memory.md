@@ -53,6 +53,23 @@ The rules are code, not prompt text (`tandemapp/conductor/notes.py`):
 
 The model's scripts have the same write as a route, under the session's address only: `POST {tandem_url}/v1/memory`, `GET {tandem_url}/v1/memory/search?q=`, `GET {tandem_url}/v1/memory/<id>` (`server/memory_api.py`). Without a known session token the routes answer 403.
 
+The rules are code, not prompt text (`tandemapp/conductor/notes.py`).
+
+```mermaid
+flowchart LR
+    block["a &lt;tandem_memory&gt; block in an answer"] --> checks
+    writer["the writer's hidden turn"] --> checks
+    script["a script: POST /v1/memory"] --> checks
+    checks["checks<br/>caps refuse, never cut<br/>secret patterns refused<br/>a rule needs the user's words<br/>same fact: a revision"] --> prov["note, provisional<br/>one fact, one file"]
+    checks -.-> refused["refused: the text goes out as it was"]
+    prov -- a person --> rat["ratified, pinned<br/>on the Notes tab"]
+    prov -- archive --> arch["archived<br/>deleted after 30 days"]
+    prov --> reads["read back<br/>the card, the index, matching notes"]
+    rat --> reads
+```
+
+*The life of a memory note. Three ways in, one set of checks, a provisional note that a person may ratify or pin, reads back into later turns, and an archive.*
+
 ## How the model reads
 
 A profile's `memory` switch: `none` (nothing at all: no card, no note, the request is the release's; a profile stored without the key reads the same), `off` (as `none`, and one note a session tells the model that memory is off in this profile, so it says so instead of claiming it has no memory), `shadow` (the card goes in and blocks are written, nothing is read back) or `on`. Every shipped profile sets it (SRV-703): `on` in `chat`, `coding`, `hermes` and `chat-app`, `none` in `general`, `tools`, `overnight` and the locked `raw` and `bench`. With `on`, three tail notes, each replayed at its place on later turns so each costs its prefill once:
@@ -64,6 +81,8 @@ A profile's `memory` switch: `none` (nothing at all: no card, no note, the reque
 Memory also needs a place for the notes in the served model's prompt: the end of the last message, before its `<|im_end|>`. A model whose template ends no message with a token has none, and its adapter's conductor fit says so (`notes: false`, [chat-mode.md](chat-mode.md#the-model-fit)). Flint's template is such a one (a message runs until the next role token), so on Flint no profile reads or writes notes: each turn's decision row has `extra.memory = {mode: off, why: model_notes}`, no memory card, index or body goes in, the model writes no block and the background writer has no session to write. Before 0.14.2 those turns said `memory: on` with the error `no_insertion_point` (SRV-703). The Notes tab's "Where memory is on" panel names the served model when it reads no note, and every profile with its switch and its clients (`where` in `GET /v1/conductor/memory/notes`).
 
 Laya's question "does this message ask to remember, forget or recall" attaches the long `memory` skill (`settings.memory.notes.intent`, shadow by default: journaled only).
+
+On the first turn of a session, and again after a compaction, the model gets the index: the pinned ratified rules, then one line per note the request may see, within 1,500 tokens.
 
 ## The background writer
 
@@ -79,6 +98,8 @@ Besides the blocks in its answers, a session's facts are written by a hidden tur
 - `QWEN38_MEMORY_WRITER_TEXT`: a file a test engine appends each writer turn's text to. Never set it on the service; the text is the session's.
 - Its own NONE (0.3.35-test): `ban_tool_call` (on by default) adds a logit bias of -100 to the `<tool_call>` token for the writer's turn, so a call cannot start; the cut above stays as the backstop. `prefill` (empty by default) is text the answer starts with; its tokens follow the generation prompt. The run records `ban` (the token ids, or `unavailable`) and `prefill` (its token count).
 - Shadow (0.3.35-test): what a shadow run would write, each block after the secret-pattern refusal, is appended to `<user>/shadow/writer-<yyyy-mm-dd>.md` (`0600`). Nothing reads it back; the store reads only `user/`, `projects/` and `sessions/`, and the user's delete removes it with the rest.
+
+Measured on a test engine (the 0.4.0 series, a synthetic 10-turn coding session, low effort, writer on): the writer at the session's end wrote 2 notes in 7.6 s for 282 tokens from a 5,374-token record. A new session that asked what was remembered got 1,781 prompt tokens with memory on (the index and 3 notes) against 136 off, and its first token in 0.97 s against 0.39 s; the answer named both rules the user had asked to keep. Decode was 99.7 ms a block with memory on and 99.6 off (measured).
 
 ### Behind the proxy
 
