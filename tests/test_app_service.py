@@ -345,8 +345,8 @@ def test_app_extra():
     text = open(os.path.join(ROOT, "packaging", "homebrew", "tandemapp.rb")).read()
     assert 'depends_on "cryptography"' in text and "tandem-app service install" in text
     assert 'resource "torch' not in text
-    # the formula installs app/ of the repository's tarball (its root once TandemApp ships alone)
-    assert 'buildpath/"app/pyproject.toml"' in text and "venv.pip_install_and_link src" in text
+    # the formula installs the release archive (the built page inside) from its root
+    assert "releases/download/v" in text and "src = buildpath" in text and "venv.pip_install_and_link src" in text
     desc = next(x for x in text.splitlines() if x.strip().startswith("desc "))
     assert "DGX" not in desc and len(desc.split('"')[1]) <= 80, desc
 

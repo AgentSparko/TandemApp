@@ -17,7 +17,7 @@
 #   gate       on the box (ssh --box): a git archive of HEAD into ~/release-gate-tandemapp-X.Y.Z-<sha>, the
 #              page built there (tools/dashboard_bundle.py build), TandemApp installed into a venv of its
 #              own and the app suite (tests/script_suite.py --all, every tests/test_*.py), under nohup and
-#              polled; then tools/app_release.py pack and a wheel build, the release workflow's files
+#              polled; then tools/app_release.py pack and tandem-app package (the wheel), the release workflow's files
 #   tag        the annotated tag vX.Y.Z "TandemApp X.Y.Z" on HEAD
 #   push       HEAD as the remote's main and the tag, no force
 #   release    one GitHub release, "TandemApp X.Y.Z", the notes file, latest; the release workflow
@@ -126,12 +126,12 @@ D="$(cd "$(dirname "$0")" && pwd)"; T="$D/tree"; cd "$T"
 for n in "$HOME"/.local/node-*/bin; do [ -d "$n" ] && PATH="$n:$PATH"; done
 step() { echo "== $1 $(date -u +%H:%M:%SZ)"; }
 step page;  python3 tools/dashboard_bundle.py build --commit "$(cat "$D/sha")" > "$D/page.log" 2>&1 || { echo "GATE FAIL page"; exit 1; }
-step venv;  python3 -m venv "$D/venv" && "$D/venv/bin/pip" install -q ".[host]" pytest jsonschema pyyaml build > "$D/venv.log" 2>&1 || { echo "GATE FAIL venv"; exit 1; }
+step venv;  python3 -m venv "$D/venv" && "$D/venv/bin/pip" install -q ".[host]" pytest jsonschema pyyaml > "$D/venv.log" 2>&1 || { echo "GATE FAIL venv"; exit 1; }
 step suite; mkdir -p "$D/suite"
 ls tests/test_*.py | xargs -P 4 -n 1 "$D/venv/bin/python" tests/script_suite.py --all --out "$D/suite/logs" > "$D/suite/RESULT" 2>&1
 grep -E -i "fail|error" "$D/suite/RESULT" | grep -v -E "(^| )0 (failed|errors?)" | head -20 > "$D/suite/bad"
 step files; "$D/venv/bin/python" tools/app_release.py pack --out "$D/out/tandemapp-$(cat VERSION).tar.gz" > "$D/files.log" 2>&1 \
-  && "$D/venv/bin/python" -m build --wheel --outdir "$D/out" . >> "$D/files.log" 2>&1 || { echo "GATE FAIL files"; exit 1; }
+  && w="$("$D/venv/bin/python" -m proxy package --out "$D/wheel" 2>>"$D/files.log" | head -1)" && cp "$w" "$D/out/" || { echo "GATE FAIL files"; exit 1; }
 ls "$D/out"
 if [ -s "$D/suite/bad" ]; then echo "GATE FAIL suite"; cat "$D/suite/bad"; exit 1; fi
 echo "GATE PASS"

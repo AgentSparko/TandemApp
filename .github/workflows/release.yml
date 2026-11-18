@@ -72,8 +72,9 @@ jobs:
           v="$(cat VERSION)"; out="$RUNNER_TEMP/out"; mkdir -p "$out"
           python3 tools/app_release.py pack --out "$out/tandemapp-$v.tar.gz"
           python3 tools/dashboard_bundle.py pack dashboard/dist --out "$out/tandemapp-dashboard-$v.tar.gz"
-          python3 -m pip install --quiet build==1.2.2
-          python3 -m build --wheel --outdir "$out" .
+          python3 -m pip install --quiet ".[app]"
+          wheel="$(python3 -m proxy package --version "$v" --out "$RUNNER_TEMP/wheel" | head -1)"
+          cp "$wheel" "$out/"
           helm lint charts/tandemapp
           helm package charts/tandemapp --destination "$out"
           ( cd "$out" && sha256sum -- *.tar.gz *.whl *.tgz > SHA256SUMS && cat SHA256SUMS )
