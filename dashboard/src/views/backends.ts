@@ -215,7 +215,7 @@ const PRESET_GROUPS: [Preset['group'], string][] = [
 ];
 
 /** what Add a backend holds while a provider is picked */
-interface Pick {
+interface ProviderPick {
   preset: string;
   protocol: Protocol;
   url: string;
@@ -223,7 +223,7 @@ interface Pick {
   label: string;
 }
 
-function pickFor(p: Preset, protocol?: Protocol): Pick {
+function pickFor(p: Preset, protocol?: Protocol): ProviderPick {
   const ep = p.endpoints.find((e) => e.protocol === protocol) ?? p.endpoints[0];
   return { preset: p.id, protocol: ep.protocol, url: ep.url, key: '', label: '' };
 }
@@ -245,7 +245,7 @@ export class QseBackends extends LightElement {
   @state() private modelDrafts: Record<string, ModelDraft> = {};
   @state() private flash: string | null = null;
   /** Add a backend: the provider picked, and its Connect in flight or refused */
-  @state() private pick: Pick | null = null;
+  @state() private pick: ProviderPick | null = null;
   @state() private connecting: { busy: boolean; error: string | null; confirm: boolean } = { busy: false, error: null, confirm: false };
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -424,7 +424,7 @@ export class QseBackends extends LightElement {
   private renderConnect(d: ConfigOverview, presets: Preset[]): TemplateResult {
     const p = this.pick ?? pickFor(presets[0]);
     const pre = presets.find((x) => x.id === p.preset) ?? presets[0];
-    const set = (patch: Partial<Pick>) => {
+    const set = (patch: Partial<ProviderPick>) => {
       this.pick = { ...p, ...patch };
       this.connecting = { busy: false, error: null, confirm: false };
     };
@@ -488,7 +488,7 @@ export class QseBackends extends LightElement {
   }
 
   /** Connect: tested first, saved when the test passes (or when Save anyway confirms) */
-  private async connect(e: Event, d: ConfigOverview, pre: Preset, p: Pick, confirm: boolean): Promise<void> {
+  private async connect(e: Event, d: ConfigOverview, pre: Preset, p: ProviderPick, confirm: boolean): Promise<void> {
     e.preventDefault();
     const ep = pre.endpoints.find((x) => x.protocol === p.protocol) ?? pre.endpoints[0];
     this.connecting = { busy: true, error: null, confirm: false };
@@ -509,7 +509,7 @@ export class QseBackends extends LightElement {
   }
 
   /** the whole form, filled from the provider picked */
-  private moreSettings(d: ConfigOverview, pre: Preset, p: Pick): void {
+  private moreSettings(d: ConfigOverview, pre: Preset, p: ProviderPick): void {
     const ep = pre.endpoints.find((x) => x.protocol === p.protocol) ?? pre.endpoints[0];
     const base = draftFor(null, ep.kind, d);
     this.draft = { ...base, id: this.uniqueId(d, pre.group === 'custom' ? 'custom' : pre.id), url: p.url, key: p.key, label: p.label, preset: pre.id, cloud: pre.cloud };
