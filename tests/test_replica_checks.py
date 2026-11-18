@@ -148,7 +148,7 @@ def test_identity_not_available():
         assert r1["state"] == "serving" and ms["Gold"]["check"]["identity"] == "read", ms
         # the light check stays: another release is a mismatch
         src = fx.f.source(fx.px.svc.cfg.node(fx.ids["R-1"]))
-        src.version = lambda: "0.16.0"
+        src.version = lambda: "0.99.0"
         fx.f.deps._ctx = None
         r1 = _members(td._dep(fx, "qwen-r"))["R-1"]
         assert r1["state"] == "mismatch" and "Replicas members run one release" in r1["text"], r1

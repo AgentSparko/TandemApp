@@ -8,7 +8,8 @@
 #
 # Sections (--only takes a comma-separated list; the default is preflight,gate,tag,push,release,verify):
 #
-#   bump       VERSION, the chart's version and appVersion, the Homebrew formula's url and the README's
+#   bump       VERSION, the chart's version and appVersion, the Homebrew formula's source tarball and page
+#              resource, and the README's
 #              install lines. CHANGELOG.md stays the author's. Writes files, no commit.
 #   preflight  read-only: a clean tree on main; the remote's main an ancestor of HEAD; no vX.Y.Z on the
 #              remote; every version line says X.Y.Z and none the previous release; CHANGELOG.md's first
@@ -74,7 +75,7 @@ bump() {
     say "== bump $VERSION"
     printf '%s\n' "$VERSION" > "$ROOT/VERSION"
     sed -i.bak -E "s/^version: .*/version: $VERSION/; s/^appVersion: .*/appVersion: \"$VERSION\"/" "$ROOT/charts/tandemapp/Chart.yaml"
-    sed -i.bak -E "s#releases/download/v[0-9]+\.[0-9]+\.[0-9]+/tandemapp-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz#releases/download/$TAG/tandemapp-$VERSION.tar.gz#" "$ROOT/packaging/homebrew/tandemapp.rb"
+    sed -i.bak -E "s#archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz#archive/refs/tags/$TAG.tar.gz#; s#releases/download/v[0-9]+\.[0-9]+\.[0-9]+/tandemapp-dashboard-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz#releases/download/$TAG/tandemapp-dashboard-$VERSION.tar.gz#" "$ROOT/packaging/homebrew/tandemapp.rb"
     sed -i.bak -E "s#v[0-9]+\.[0-9]+\.[0-9]+/tandemapp-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz#$TAG/tandemapp-$VERSION.tar.gz#g; s#tandemapp-[0-9]+\.[0-9]+\.[0-9]+(\.tar\.gz|/packaging|-py3-none-any\.whl|\.tgz)#tandemapp-$VERSION\1#g; s#tandemapp-dashboard-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz#tandemapp-dashboard-$VERSION.tar.gz#g" "$ROOT/README.md"
     rm -f "$ROOT/charts/tandemapp/Chart.yaml.bak" "$ROOT/packaging/homebrew/tandemapp.rb.bak" "$ROOT/README.md.bak"
     say "written; CHANGELOG.md's \"## $VERSION, YYYY-MM-DD\" section stays the author's"
@@ -94,7 +95,8 @@ preflight() {
     [ "$(g show HEAD:VERSION)" = "$VERSION" ] && pass "VERSION $VERSION" || fail "VERSION says $(g show HEAD:VERSION)"
     pin charts/tandemapp/Chart.yaml "version: $VERSION" "chart version"
     pin charts/tandemapp/Chart.yaml "appVersion: \"$VERSION\"" "chart appVersion"
-    pin packaging/homebrew/tandemapp.rb "releases/download/$TAG/tandemapp-$VERSION.tar.gz" "Homebrew url"
+    pin packaging/homebrew/tandemapp.rb "archive/refs/tags/$TAG.tar.gz" "Homebrew url"
+    pin packaging/homebrew/tandemapp.rb "releases/download/$TAG/tandemapp-dashboard-$VERSION.tar.gz" "Homebrew page resource"
     pin README.md "releases/download/$TAG/tandemapp-$VERSION.tar.gz" "README install line"
     if [ -n "$PREV" ]; then
         p="${PREV#v}"
@@ -130,7 +132,7 @@ step venv;  python3 -m venv "$D/venv" && "$D/venv/bin/pip" install -q ".[host]" 
 step suite; mkdir -p "$D/suite"
 ls tests/test_*.py | xargs -P 4 -n 1 "$D/venv/bin/python" tests/script_suite.py --all --out "$D/suite/logs" > "$D/suite/RESULT" 2>&1
 grep -E -i "fail|error" "$D/suite/RESULT" | grep -v -E "(^| )0 (failed|errors?)" | head -20 > "$D/suite/bad"
-step files; "$D/venv/bin/python" tools/app_release.py pack --out "$D/out/tandemapp-$(cat VERSION).tar.gz" > "$D/files.log" 2>&1 \
+step files; mkdir -p "$D/out"; "$D/venv/bin/python" tools/app_release.py pack --out "$D/out/tandemapp-$(cat VERSION).tar.gz" > "$D/files.log" 2>&1 \
   && w="$("$D/venv/bin/python" -m proxy package --out "$D/wheel" 2>>"$D/files.log" | head -1)" && cp "$w" "$D/out/" || { echo "GATE FAIL files"; exit 1; }
 ls "$D/out"
 if [ -s "$D/suite/bad" ]; then echo "GATE FAIL suite"; cat "$D/suite/bad"; exit 1; fi

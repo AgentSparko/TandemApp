@@ -415,7 +415,7 @@ def test_replicas():
         assert len(fx.nodes["R-1"].srv.fake.bodies) > n_r1      # unconstrained: handed on
         # a member on another release takes no request; a new Replicas over two releases 409
         src = fx.f.source(fx.px.svc.cfg.node(r1))
-        src.version = lambda: "0.16.0"
+        src.version = lambda: "0.99.0"
         fx.f.deps._ctx = None
         d = _dep(fx, "qwen-r")
         assert d["member_states"][1]["state"] == "mismatch" and \
@@ -431,7 +431,7 @@ def test_replicas():
         assert fleetwatch._split_groups([{"name": "Qwen", "type": "replicas",
                                           "members": [g, r1]}],
                                         [{"id": g, "version": "0.15.0", "status": "up"},
-                                         {"id": r1, "version": "0.16.0", "status": "up"}]) == \
+                                         {"id": r1, "version": "0.99.0", "status": "up"}]) == \
             "Qwen (Replicas)"
     finally:
         fx.close()
