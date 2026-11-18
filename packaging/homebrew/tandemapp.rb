@@ -11,7 +11,7 @@ class Tandemapp < Formula
   desc "Controller and dashboard for OpenAI-compatible LLM engines and cloud APIs"
   homepage "https://github.com/TandemLLM/TandemApp"
   url "https://github.com/TandemLLM/TandemApp/archive/refs/tags/v0.16.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "16082428f22bbc45fd54f09fa80bad868baab272bf00754580b8650ca6745820"
   license "AGPL-3.0-only"
 
   head do
@@ -27,7 +27,7 @@ class Tandemapp < Formula
   # against its manifest
   resource "dashboard" do
     url "https://github.com/TandemLLM/TandemApp/releases/download/v0.16.0/tandemapp-dashboard-0.16.0.tar.gz"
-    sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+    sha256 "36c207e8563ff26ff23b338fa9b2de7eb3bd862d9b242cf71646662cdd4d0e2d"
   end
 
   resource "psutil" do
