@@ -1,0 +1,1951 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/dev/install-kubernetes/">
+      
+      
+        <link rel="prev" href="../install-linux/">
+      
+      
+        <link rel="next" href="../auth/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>TandemApp on Kubernetes with Helm - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tandemapp-on-kubernetes-with-helm" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              TandemApp on Kubernetes with Helm
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-the-cluster-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. What the cluster needs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-release-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The release archive
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-before-helm-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Before helm install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-ingress-tls-and-a-reverse-proxy-in-front" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Ingress, TLS and a reverse proxy in front
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-values-that-matter" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Values that matter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-chat-and-its-sandboxes" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Chat and its sandboxes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-mcp-bridge-sidecar" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. The MCP bridge sidecar
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-upgrades-and-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Upgrades and rollback
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-what-the-cluster-needs" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. What the cluster needs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-release-archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. The release archive
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-before-helm-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. Before helm install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Install
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-ingress-tls-and-a-reverse-proxy-in-front" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Ingress, TLS and a reverse proxy in front
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-values-that-matter" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Values that matter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-chat-and-its-sandboxes" class="md-nav__link">
+    <span class="md-ellipsis">
+      7. Chat and its sandboxes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-mcp-bridge-sidecar" class="md-nav__link">
+    <span class="md-ellipsis">
+      8. The MCP bridge sidecar
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-upgrades-and-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      9. Upgrades and rollback
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="tandemapp-on-kubernetes-with-helm">TandemApp on Kubernetes with Helm<a class="headerlink" href="#tandemapp-on-kubernetes-with-helm" title="Permanent link">&para;</a></h1>
+<p>The chart <code>charts/tandemapp</code> runs TandemApp's controller in one pod. No image is built: every
+container runs a stock Python image pinned by digest, and an init container unpacks a release
+archive into the pod's volume and makes a virtualenv there from the archive's own wheels. The values
+are listed in the <a href="https://github.com/TandemLLM/TandemApp/blob/main/charts/tandemapp/README.md">chart's README</a>; the overview, the first page and
+backups are in <a href="../install/">install.md</a>.</p>
+<p>The procedure below is the one tested end to end (OPS-292) on a single-node cluster: Kubernetes
+1.35 (MicroK8s, amd64) with Calico, the hostpath storage class on ext4, the nginx ingress
+controller behind a reverse proxy that ends TLS, Chat with sandbox pods, and an MCP bridge sidecar.</p>
+<h2 id="1-what-the-cluster-needs">1. What the cluster needs<a class="headerlink" href="#1-what-the-cluster-needs" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>what</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kubernetes 1.27 or newer; 1.33 or newer with containerd 2 for sandbox pods</td>
+<td><code>sandbox.kubernetes.hostUsers: false</code> (a user namespace per sandbox pod) needs 1.33</td>
+</tr>
+<tr>
+<td>a storage class with ReadWriteOnce volumes, or a host folder (<code>persistence.hostPath.path</code>)</td>
+<td>one volume holds the state, the releases and chat's data</td>
+</tr>
+<tr>
+<td>a file system on that volume that takes POSIX ACLs (ext4, XFS)</td>
+<td>sandbox pods only: chatd and the sandbox are different users on the same folders</td>
+</tr>
+<tr>
+<td>an ingress controller (<code>ingress.className</code>)</td>
+<td>the page and the API; or reach the Service another way</td>
+</tr>
+<tr>
+<td>a network plugin that enforces NetworkPolicy (Calico, Cilium)</td>
+<td>sandbox pods only: without it chatd offers no sandbox</td>
+</tr>
+<tr>
+<td><code>kubectl</code> and Helm 3.12 or newer where you run the steps</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The nodes pull the stock Python image (<code>image.*</code>). Nothing else is pulled at run time: the release
+comes on the volume, and the sandbox image is built in the cluster.</p>
+<h2 id="2-the-release-archive">2. The release archive<a class="headerlink" href="#2-the-release-archive" title="Permanent link">&para;</a></h2>
+<p>The pod runs <code>tandemapp-&lt;id&gt;.tar.gz</code>: one folder <code>&lt;id&gt;/</code> (the commit's first 12 characters) with the
+release's files (<code>tools/app_release.py</code>: no tests, no page sources), the built page in
+<code>dashboard/dist</code>, a <code>wheelhouse/</code> for the image's Python and the nodes' architecture, and a
+<code>RELEASE</code> file (commit, page hash, date). The init container refuses an archive without
+<code>&lt;id&gt;/proxy</code>.</p>
+<p>Build it on a Linux build host, from a fresh copy of the commit, so the archive depends on the
+commit and the pinned inputs only:</p>
+<div class="highlight"><pre><span></span><code>COMMIT=$(git rev-parse &lt;tag or branch&gt;)
+mkdir build-1 &amp;&amp; git archive "$COMMIT" | tar -x -C build-1
+cd build-1
+# Node 24.11.1 (check its tarball against nodejs.org's SHASUMS256.txt) on PATH
+python3 tools/dashboard_bundle.py build --commit "$COMMIT" --prune-modules
+python3 tools/dashboard_bundle.py verify
+cd ..
+WHEELS=$PWD/wheels bash &lt;checkout&gt;/charts/tandemapp/scripts/make-archive.sh \
+    "$COMMIT" build-1/dashboard/dist out-1
+</code></pre></div>
+<p><code>WHEELS</code> is a folder that holds exactly the wheels for the image's Python (3.12) and the nodes'
+platform: <code>cryptography</code>, <code>psutil</code> and their dependencies (<code>cffi</code>, <code>pycparser</code>,
+<code>typing_extensions</code>). Fetch them once with <code>pip download --only-binary=:all: --python-version 3.12
+--platform manylinux_2_28_x86_64 -d wheels cryptography psutil</code> (arm64 nodes:
+<code>manylinux_2_28_aarch64</code>) and keep that folder; without <code>WHEELS</code> the script fetches the newest ones.
+<code>make-archive.sh</code> prints <code>release.id</code> and the archive's sha256.</p>
+<p>Every entry has the commit's time and owner 0, and the entries are sorted, so the same commit, page
+and wheels give the same bytes. Build a second time from a second fresh copy (<code>build-2</code>, <code>out-2</code>)
+and compare the two sha256: they must be equal. Copy trees between a Mac and the build host with
+<code>COPYFILE_DISABLE=1 tar --no-xattrs</code>: a Mac's tar otherwise adds <code>._</code> files, which the packer
+refuses.</p>
+<h2 id="3-before-helm-install">3. Before <code>helm install</code><a class="headerlink" href="#3-before-helm-install" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>kubectl create namespace tandemapp
+</code></pre></div>
+<p><strong>Sign-in with accounts (<code>auth.mode: accounts</code>, the only mode).</strong> User accounts with roles,
+sessions and API tokens are the sign-in; the admin-token mode of older charts (<code>legacy</code>) is gone
+and refused. The chart puts no auth secret into the pod's environment:</p>
+<ul>
+<li>
+<p>The Secret is mounted into the controller as a file (<code>TANDEM_SETUP_CODE_FILE</code>) that holds a
+  one-time setup code. Leave <code>auth.existingSecret</code> empty and the chart makes it with a 20-character
+  code; or name your own with <code>auth.bootstrap.existingSecret</code> (and <code>.secretKey</code>). Read it once:</p>
+<p>kubectl -n tandemapp get secret tandemapp-admin -o jsonpath='{.data.admin-token}' | base64 -d; echo</p>
+</li>
+</ul>
+<p>Open the page, enter the code with the first owner's name and password. The code is single use
+  and spent after 5 wrong tries. With no Secret at all (<code>auth.create: false</code>) each start logs a
+  fresh code while no owner exists.
+- On a new install, make no admin token. A Secret named by <code>auth.existingSecret</code> (or the one an
+  older chart made with an admin token) is the old admin token as well: a value of 32 characters
+  or more there becomes an API token for scripts for 30 days once the owner exists
+  (<a href="../auth/#moving-from-the-old-sign-in">auth.md</a>). Let the chart make the code, or give your own in a
+  Secret named by <code>auth.bootstrap.existingSecret</code>, which is only ever a setup code.
+- Nobody signs in before the owner exists: every route but <code>/health</code> and the page shell answers
+  401. That includes <code>kubectl port-forward</code>, which reaches the pod on its own loopback: on
+  Kubernetes (<code>TANDEM_DEPLOY=kubernetes</code>, which the chart sets) loopback is never trusted.
+- A new code, and a lost password, through <code>kubectl exec</code> (<code>helm install</code> prints both lines):</p>
+<div class="highlight"><pre><span></span><code>  kubectl -n tandemapp exec deploy/tandemapp -c controller -- env PYTHONPATH=/var/lib/tandemapp/current \
+    /var/lib/tandemapp/current/venv/bin/python -m proxy users setup-code --config-db /var/lib/tandemapp/state/config.sqlite3
+  kubectl -n tandemapp exec deploy/tandemapp -c controller -- env PYTHONPATH=/var/lib/tandemapp/current \
+    /var/lib/tandemapp/current/venv/bin/python -m proxy users reset-password NAME --config-db /var/lib/tandemapp/state/config.sqlite3
+</code></pre></div>
+<p><code>reset-password</code> prints a one-time code, valid 24 hours: sign in with it as the password, then
+  set one.
+- Once the owner exists the health page asks to delete the Secret (<code>bootstrap_secret_left</code>). The
+  mount is optional, so the pod starts without it; set <code>auth.create: false</code> (or
+  <code>auth.bootstrap.create: false</code>) so an upgrade does not make it again.
+- A chatd on another host (<code>chat.mode: external</code>) needs a key of its own: <code>tokens chatd-key FILE</code>
+  through the same <code>kubectl exec</code>, then give that chatd the key as <code>QSE_CHAT_ENGINE_KEY</code>.</p>
+<p><strong>Extra CAs.</strong> When the controller calls services with a private CA (engines over https, MCP
+servers), give it the CA: <code>--set-file trust.extraCA=ca.pem</code>.</p>
+<h2 id="4-install">4. Install<a class="headerlink" href="#4-install" title="Permanent link">&para;</a></h2>
+<p>A minimal values file, <code>values.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code>release:
+  id: "0123456789ab"                 # make-archive.sh's release.id
+  archive:
+    url: ""                          # or an https URL the pod can fetch
+    sha256: "&lt;the archive's sha256&gt;"
+persistence:
+  storageClass: &lt;your class&gt;
+  size: 20Gi
+auth:
+  existingSecret: tandemapp-admin
+  create: false
+ingress:
+  enabled: true
+  className: nginx
+  host: tandemapp.example.com
+networkPolicy:
+  enabled: true
+  ingressNamespaces: [ingress-nginx] # the ingress controller's namespace
+
+helm install tandemapp charts/tandemapp -n tandemapp -f values.yaml
+</code></pre></div>
+<p>This is a bare TandemApp: the gateway only, Chat and the conductor off, no MCP bridge (OPS-288).
+Switch parts on from the page (Settings → App → What runs here) or with the values in section 6.</p>
+<p><strong>Putting the archive on the volume.</strong> Either:</p>
+<ul>
+<li><code>release.archive.url</code> and <code>.sha256</code>: the init container fetches it and checks the sha256; or</li>
+<li>
+<p><code>url</code> empty: the pod waits in its init container <code>release</code> (up to <code>waitSeconds</code>, then it fails and
+  retries), and <code>helm install</code> prints the line that copies it in:</p>
+<p>POD=$(kubectl -n tandemapp get pod -l app.kubernetes.io/instance=tandemapp,app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}')
+  kubectl -n tandemapp cp tandemapp-<id>.tar.gz $POD:/var/lib/tandemapp/incoming/tandemapp-<id>.tar.gz -c release</p>
+</li>
+</ul>
+<p>The init container waits until the file's size holds still, checks the sha256 when it is set,
+  unpacks the release to <code>releases/&lt;id&gt;</code>, makes its venv offline from the wheelhouse and points
+  <code>current</code> at it. A release that is unpacked already is used as it is.</p>
+<p>Then:</p>
+<div class="highlight"><pre><span></span><code>kubectl -n tandemapp rollout status deploy/tandemapp
+helm test tandemapp -n tandemapp       # /health and the page through the Service
+</code></pre></div>
+<p>and open <code>https://tandemapp.example.com/</code>: the setup wizard (pairing an engine host:
+<a href="../install/#the-first-page">install.md</a>).</p>
+<h2 id="5-ingress-tls-and-a-reverse-proxy-in-front">5. Ingress, TLS and a reverse proxy in front<a class="headerlink" href="#5-ingress-tls-and-a-reverse-proxy-in-front" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The Ingress sends everything to the controller except <code>ingress.blockedPaths</code> (<code>/chat-engine</code>,
+  chatd's way to the gateway inside the pod), which go to a Service with no endpoints (503). Check
+  it after the install: <code>/chat-engine/health</code> must answer 503 from outside.</li>
+<li>A reverse proxy in front that forwards only some paths must still send the controller every
+  prefix it owns: the list is in <a href="../install/#behind-a-reverse-proxy">install.md</a>.</li>
+<li>TLS at the ingress: <code>ingress.tls</code> with a Secret for the host. TLS at a reverse proxy in front:
+  leave <code>ingress.tls</code> empty, have the proxy forward plain HTTP to the ingress with the original
+  <code>Host</code>, <code>X-Forwarded-Proto</code> and <code>X-Forwarded-For</code>, and let the ingress controller trust them
+  (ingress-nginx: <code>use-forwarded-headers: "true"</code>). The session cookie is marked Secure from
+  <code>X-Forwarded-Proto: https</code>.</li>
+<li>The chart's annotations turn buffering off and allow an hour per request: answers stream, and a
+  long one takes minutes. A proxy in front needs the same.</li>
+<li>Behind an ingress every client reaches the controller from the ingress pod's address, so the
+  sign-in limit (5 wrong passwords a minute) is shared by all clients until <code>auth.trustedProxy</code>
+  names that address (below).</li>
+<li><strong>The API paths.</strong> The ingress routes the OpenAI-compatible routes (<code>/v1/chat/completions</code>,
+  <code>/v1/completions</code>, <code>/v1/embeddings</code>, <code>/v1/responses</code>, <code>/v1/cache</code>) and the Messages API
+  (<code>/v1/messages</code>) by default, on a new install and an upgrade alike.
+  <code>/v1/models</code> is always routed: the page reads it. <code>ingress.api.openai: false</code> or
+  <code>ingress.api.anthropic: false</code> sends that protocol's paths to the Service with no endpoints
+  (503). The page's Playground, its model windows and the developer view post to
+  <code>/v1/chat/completions</code>, so <code>ingress.api.openai: false</code> breaks them through the ingress.
+  Who may call is the controller's rule, the page's API exposure switch (accounts mode): while a
+  protocol is "this machine", an API token from another device gets 403 <code>api_not_exposed</code>;
+  "network" lets a token with the protocol's scope in. A signed-in page session always reaches
+  the routes its role allows, whatever the switch says. On Kubernetes no caller counts as this
+  machine, so a client with a token needs its protocol at "network". The chart tells the
+  controller what it routes (<code>TANDEM_INGRESS_API</code>), and the health page says when a switch is on
+  for a path the ingress blocks (<code>exposure_unreachable</code>).</li>
+<li><strong>The trusted proxy.</strong> With TLS ended at the ingress, set <code>auth.trustedProxy</code> to the ingress
+  controller (<code>TANDEM_TRUSTED_PROXY</code>: a comma list of addresses and CIDR ranges, IPv4 and IPv6).
+  Only then do its <code>X-Forwarded-Proto</code> and <code>X-Real-IP</code> count; without it every API token through
+  the ingress is taken as sent over plain HTTP (<code>exposure_plain_http</code>) and every client shares one
+  sign-in limit. An ingress controller's pod gets a new address when it restarts, so name the
+  cluster's pod range rather than one address, for example with <code>--set</code>
+  <code>auth.trustedProxy=192.0.2.0/24\,2001:db8:42::/64</code> (write your cluster's own pod CIDR). An
+  entry that is neither an address nor a range is ignored, and the health page names the variable
+  (<code>trusted_proxy_invalid</code>).</li>
+<li><code>networkPolicy.enabled</code> admits the controller's port from <code>ingressNamespaces</code> and this release's
+  pods only (<code>extraFrom</code> adds more). The kubelet's probes still pass.</li>
+</ul>
+<h2 id="6-values-that-matter">6. Values that matter<a class="headerlink" href="#6-values-that-matter" title="Permanent link">&para;</a></h2>
+<p>The full table is the <a href="https://github.com/TandemLLM/TandemApp/blob/main/charts/tandemapp/README.md">chart's README</a>. The ones to decide:</p>
+<table>
+<thead>
+<tr>
+<th>value</th>
+<th>default</th>
+<th>what</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>release.id</code>, <code>release.archive.url</code>, <code>.sha256</code></td>
+<td>required, empty, empty</td>
+<td>the release the pod runs</td>
+</tr>
+<tr>
+<td><code>persistence.storageClass</code>, <code>.size</code>, <code>.existingClaim</code>, <code>.hostPath.path</code></td>
+<td>the cluster's default, 20Gi</td>
+<td>the volume; kept on uninstall (<code>persistence.keep</code>)</td>
+</tr>
+<tr>
+<td><code>auth.mode</code></td>
+<td><code>accounts</code></td>
+<td>the only value; <code>legacy</code> is refused (section 3)</td>
+</tr>
+<tr>
+<td><code>auth.existingSecret</code>, <code>.secretKey</code></td>
+<td>a Secret the chart makes</td>
+<td>the setup code, or an older release's admin token</td>
+</tr>
+<tr>
+<td><code>auth.bootstrap.existingSecret</code>, <code>.secretKey</code>, <code>.create</code></td>
+<td>empty: the Secret above</td>
+<td>the setup code's own Secret</td>
+</tr>
+<tr>
+<td><code>auth.trustedProxy</code></td>
+<td>empty</td>
+<td>the ingress controller's address or its pods' CIDR range when it ends TLS (section 5)</td>
+</tr>
+<tr>
+<td><code>ingress.api.openai</code>, <code>.anthropic</code></td>
+<td>empty: routed</td>
+<td><code>false</code> blocks that API's paths (section 5)</td>
+</tr>
+<tr>
+<td><code>chat.mode</code></td>
+<td>empty: off on a new install, the running release's on an upgrade</td>
+<td><code>off</code>, <code>own</code> (chatd in this pod), <code>external</code> (another host's chatd)</td>
+</tr>
+<tr>
+<td><code>sandbox.mode</code></td>
+<td><code>off</code></td>
+<td><code>off</code>, <code>podman-socket</code>, <code>kubernetes</code> (section 7)</td>
+</tr>
+<tr>
+<td><code>controller.conductor</code></td>
+<td>empty: off on a new install, the running release's on an upgrade</td>
+<td>a folder under the volume, an absolute path, or <code>off</code></td>
+</tr>
+<tr>
+<td><code>controller.env</code></td>
+<td><code>TANDEM_NODE_AGENT: "off"</code></td>
+<td>the controller's variables (<a href="../proxy/">proxy.md</a>): backends declared here are locked on the page</td>
+</tr>
+<tr>
+<td><code>mcpBridge.*</code></td>
+<td>off</td>
+<td>a stdio MCP server as HTTP on the pod's loopback (section 8)</td>
+</tr>
+<tr>
+<td><code>ingress.*</code>, <code>networkPolicy.*</code>, <code>trust.*</code></td>
+<td>off</td>
+<td>section 5</td>
+</tr>
+</tbody>
+</table>
+<p>The page's switches (Chat, the conductor) are stored in the config database on the volume. Once one
+was used, it wins over <code>chat.mode</code> and <code>controller.conductor</code>. An empty <code>chat.mode</code> or
+<code>controller.conductor</code> keeps what the running release has, so an upgrade to a chart with other
+defaults flips nothing. <code>helm template</code> and client-side dry runs cannot read the running release:
+they render the new-install default. Set both values explicitly in a release's values file when its
+renders are checked before an upgrade.</p>
+<h2 id="7-chat-and-its-sandboxes">7. Chat and its sandboxes<a class="headerlink" href="#7-chat-and-its-sandboxes" title="Permanent link">&para;</a></h2>
+<p><code>chat.mode</code>:</p>
+<ul>
+<li><code>off</code> (a new install): no chatd; the Chat tab says Chat is off. Switched on from the page, chatd
+  runs in this pod with the chart's <code>chatd.env</code> (data in <code>data/chat</code>).</li>
+<li><code>own</code>: chatd runs in this pod from the start, a child of the controller. A pod restart ends the
+  chat runs that are open (they come back <code>interrupted</code>; Continue resumes them).</li>
+<li><code>external</code>: another host runs chatd; the Chat tab forwards to <code>QSE_CHAT_URL</code>
+  (<code>controller.env</code>).</li>
+</ul>
+<p><code>sandbox.mode</code>:</p>
+<table>
+<thead>
+<tr>
+<th>mode</th>
+<th>what</th>
+<th>needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>off</code></td>
+<td>no sandbox runtime: chat runs without its sandbox tools and says so</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td><code>podman-socket</code></td>
+<td>a rootless Podman socket on the node, mounted into the pod</td>
+<td><code>ops/sandbox/install.sh</code> on the node; <code>persistence.hostPath.path</code> equal to <code>persistence.mountPath</code> (the runtime binds host paths); the socket's ACL open to uid 10001</td>
+</tr>
+<tr>
+<td><code>kubernetes</code></td>
+<td>each chat's sandbox is a pod in this namespace (<code>chatd/k8s.py</code>)</td>
+<td><code>chat.mode</code> own or off; the items below</td>
+</tr>
+</tbody>
+</table>
+<p>For <code>kubernetes</code>:</p>
+<ol>
+<li><strong>Access.</strong> The chart makes a Role (pods: get, list, watch, create, delete; pods/exec; pods/log;
+   this namespace only) and gives its token to the controller container only. The sandbox pods run
+   as their own account, with no Role and no token.</li>
+<li><strong>Network.</strong> Two NetworkPolicies: a sandbox pod reaches only chatd's egress proxy port
+   (<code>sandbox.kubernetes.egressPort</code>, 3128) on the controller's pod, and nothing reaches it. At each
+   start chatd runs a probe pod that tries the controller's port and the API; when either answers,
+   the cluster does not enforce NetworkPolicy and chatd offers no sandbox. Its log says
+   <code>the cluster check passed</code>, or why not.</li>
+<li><strong>Isolation.</strong> <code>hostUsers: false</code> (the default) gives each sandbox pod a user namespace and a
+   512-process limit per pod. Set <code>true</code> where the cluster cannot (the node's <code>podPidsLimit</code> is then
+   the only process limit). <code>runtimeClassName</code> takes gVisor or Kata where the cluster has one.</li>
+<li>
+<p><strong>The image.</strong> <code>tandem-sandbox:1</code> is built in the cluster and imported into each node's
+   containerd; nothing is pushed or pulled (<code>imagePullPolicy: Never</code>). Per node, amd64 and arm64
+   alike:</p>
+<p>bash ops/sandbox/build-k8s.sh tandemapp <node name> <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#117;&#115;&#101;&#114;&#64;&#110;&#111;&#100;&#101;">&#117;&#115;&#101;&#114;&#64;&#110;&#111;&#100;&#101;</a>                 # MicroK8s
+   bash ops/sandbox/build-k8s.sh tandemapp <node name> <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#117;&#115;&#101;&#114;&#64;&#110;&#111;&#100;&#101;">&#117;&#115;&#101;&#114;&#64;&#110;&#111;&#100;&#101;</a> --ctr "ctr -n k8s.io"</p>
+</li>
+</ol>
+<p>A kaniko Job on that node builds <code>ops/sandbox/Containerfile</code> for its architecture and writes a
+   tar to a host folder; the script imports it over SSH (<code>sudo -n</code>). The node needs the internet for
+   the build only. Check it: <code>sudo microk8s ctr images ls | grep tandem-sandbox</code>.
+5. <strong>Files.</strong> A sandbox's <code>/workspace</code> and <code>/home/agent</code> are subPaths of the release's volume
+   (<code>data/chat/workspaces/&lt;chat&gt;</code>, <code>data/chat/homes/&lt;chat&gt;</code>), so the sandbox pods run on the
+   controller's node. chatd (uid 10001) and the sandbox (uid 1000) both get access through POSIX
+   ACLs on the chat's two folders.
+6. <strong>Limits.</strong> <code>memoryGiB</code> (2), <code>cpus</code> (4) and <code>maxRunning</code> (2) per release, counted from the
+   cluster's pods.</p>
+<p>The values for sandbox pods:</p>
+<div class="highlight"><pre><span></span><code>chat:
+  mode: own
+sandbox:
+  mode: kubernetes
+  kubernetes:
+    image: tandem-sandbox:1
+    imagePullPolicy: Never
+    hostUsers: false
+    memoryGiB: "2"
+    maxRunning: "2"
+</code></pre></div>
+<p>After the upgrade, check one sandbox end to end: a chat that runs a shell command, a fetch from the
+internet through the egress proxy, and no sandbox pod left after the chat is deleted for good.</p>
+<p><strong>Moving chat's data in.</strong> <code>tandem-app chat-move</code> brings an older chatd's data folder into
+<code>data/chat</code> (each file checked by sha256). A tar copy carries no ACLs: the first sandbox start of
+each moved chat sets them on its workspace and home once, which takes a while for a chat with tens
+of thousands of files; later starts set none.</p>
+<h2 id="8-the-mcp-bridge-sidecar">8. The MCP bridge sidecar<a class="headerlink" href="#8-the-mcp-bridge-sidecar" title="Permanent link">&para;</a></h2>
+<p><code>mcpBridge</code> serves a stdio MCP server (a program you put on the volume, with its own login folder)
+as streamable HTTP on the pod's loopback, for chatd's MCP servers
+(<code>http://127.0.0.1:&lt;port&gt;&lt;path&gt;</code>):</p>
+<div class="highlight"><pre><span></span><code>mcpBridge:
+  enabled: true
+  name: tools
+  port: 8031
+  path: /mcp
+  command: [/var/lib/tandemapp/mcp/bin/server, mcp]
+  env:
+    SERVER_HOME: /var/lib/tandemapp/mcp/home
+</code></pre></div>
+<p>The bridge must never take the controller down. Kubernetes counts a pod Ready only while all of its
+containers run, and the Service sends traffic to Ready pods only: a sidecar in CrashLoopBackOff
+makes the page and the API answer 503 for minutes, whatever the controller's state. So the bridge's
+container never exits (a loop starts the bridge again 5 s after it ends) and has no probe. Check it
+after an install or upgrade with an MCP <code>initialize</code> and <code>tools/list</code> from the controller container:</p>
+<div class="highlight"><pre><span></span><code>kubectl -n tandemapp exec deploy/tandemapp -c controller -- python3 -c '
+import json, urllib.request as u
+def call(m, i, p=None, s=None):
+    h = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if s: h["Mcp-Session-Id"] = s
+    r = u.urlopen(u.Request("http://127.0.0.1:8031/mcp", json.dumps({"jsonrpc": "2.0", "id": i, "method": m, "params": p or {}}).encode(), h), timeout=60)
+    return r.headers.get("Mcp-Session-Id"), r.read().decode()
+s, _ = call("initialize", 1, {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "check", "version": "1"}})
+print(call("tools/list", 2, s=s)[1][:300])'
+</code></pre></div>
+<h2 id="9-upgrades-and-rollback">9. Upgrades and rollback<a class="headerlink" href="#9-upgrades-and-rollback" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Build the new archive (section 2).</li>
+<li>
+<p>Put it on the volume while the old release runs: copy it into <code>incoming/</code> through the running
+   controller container and check it there:</p>
+<p>kubectl -n tandemapp cp tandemapp-<new id>.tar.gz <pod>:/var/lib/tandemapp/incoming/tandemapp-<new id>.tar.gz -c controller
+   kubectl -n tandemapp exec <pod> -c controller -- sha256sum /var/lib/tandemapp/incoming/tandemapp-<new id>.tar.gz</p>
+</li>
+</ol>
+<p>(Or set <code>release.archive.url</code>; or copy it into the waiting init container after the upgrade, as
+   on install.)
+3. Note the revision: <code>helm history tandemapp -n tandemapp</code>.
+4. <code>helm upgrade tandemapp charts/tandemapp -n tandemapp -f values.yaml</code> with the new <code>release.id</code>
+   and <code>sha256</code>. The Deployment is Recreate (one volume, one pod): the API is down from the old
+   pod's stop until the new one is Ready (longer when the init container unpacks a new release).
+5. Check: <code>rollout status</code>, <code>helm test</code>, the pod's containers all Ready with 0 restarts, and watch it
+   for a few minutes (the same pod, restarts unchanged, the page answering).</p>
+<p><strong>From the admin token to accounts.</strong> Upgrade (leave <code>auth.mode</code> and <code>auth.bootstrap</code> empty). The Secret keeps its name, key and value: the old admin token works once as the setup code,
+and once an owner exists (made with it, or from the controller's admin password) it is an API token,
+from that moment and with no restart, for scripts that ends after 30 days, marked for review. It never signs in to the page. Keep the
+Secret while you may roll back: <code>helm rollback</code> to the revision before brings back the template
+that reads it as the admin token, which signs in there as before. A network-
+reachable release with no admin password answers 401 everywhere after this upgrade until the
+setup code is used.</p>
+<p><code>helm rollback tandemapp &lt;revision&gt; -n tandemapp</code> goes back. The old release's folder is still on
+the volume, so no archive is needed. Releases are never removed by the chart: remove old
+<code>releases/&lt;id&gt;</code> folders by hand once you will not roll back to them.</p>
+<h2 id="10-troubleshooting">10. Troubleshooting<a class="headerlink" href="#10-troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>what you see</th>
+<th>why, and what to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the pod stays <code>Init:0/1</code></td>
+<td>the init container waits for the archive: <code>kubectl logs &lt;pod&gt; -c release</code> says the path; copy it in (section 4). <code>sha256 differs</code>: the file or the value is wrong</td>
+</tr>
+<tr>
+<td>the page and the API answer 503, the controller's log is fine</td>
+<td>a container of the pod is not running, so the pod is not Ready: <code>kubectl get pod</code> (READY, RESTARTS) and <code>kubectl describe pod</code>. Never give a sidecar a <code>tcpSocket</code> or <code>httpGet</code> probe on a port it binds on loopback only: the kubelet probes the pod's address, the probe fails forever, and the sidecar's restarts take the Service down</td>
+</tr>
+<tr>
+<td>Chat says "Chat is off"</td>
+<td>it is: switch it on in Settings → App, or set <code>chat.mode: own</code> (the page's switch wins once used)</td>
+</tr>
+<tr>
+<td>chats run without sandbox tools</td>
+<td><code>sandbox.mode</code> is off, or chatd's start check found isolation missing: the controller's log and <code>&lt;volume&gt;/state/logs/chatd.log</code> say which (NetworkPolicy not enforced, a runtimeClass that does not exist, the image not on the node)</td>
+</tr>
+<tr>
+<td>a moved chat's first sandbox start is slow</td>
+<td>the one ACL pass over its files (section 7)</td>
+</tr>
+<tr>
+<td>every client is throttled after a few wrong passwords</td>
+<td>they share the ingress's address (section 5)</td>
+</tr>
+<tr>
+<td>accounts mode: every route answers 401, also through <code>kubectl port-forward</code></td>
+<td>no owner yet: use the setup code (section 3); <code>users setup-code</code> through <code>kubectl exec</code> makes a new one</td>
+</tr>
+<tr>
+<td>the health page says <code>exposure_plain_http</code> behind a TLS ingress</td>
+<td><code>auth.trustedProxy</code> does not cover the ingress controller's address (section 5)</td>
+</tr>
+<tr>
+<td>an OpenAI client gets 503 through the ingress</td>
+<td><code>ingress.api.openai</code> is false: unset it</td>
+</tr>
+<tr>
+<td>an OpenAI client with a token gets 403 <code>api_not_exposed</code></td>
+<td>the OpenAI API is "this machine" on the page's API exposure switch: set it to "network"</td>
+</tr>
+<tr>
+<td><code>/chat-engine</code> answers from outside</td>
+<td>the Ingress is not the chart's, or a proxy in front routes around it: block the path there too</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../install-linux/" class="md-footer__link md-footer__link--prev" aria-label="Previous: TandemApp in one command, or in one container">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                TandemApp in one command, or in one container
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../auth/" class="md-footer__link md-footer__link--next" aria-label="Next: Sign-in, users and API tokens">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Sign-in, users and API tokens
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

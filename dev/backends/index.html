@@ -1,0 +1,1783 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One address and one dashboard in front of any number of engines and cloud APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://tandemapp.0xbakeer.com/dev/backends/">
+      
+      
+        <link rel="prev" href="../auth/">
+      
+      
+        <link rel="next" href="../proxy/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Backends: other engines and cloud APIs behind TandemApp - TandemApp</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#backends-other-engines-and-cloud-apis-behind-tandemapp" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="TandemApp" class="md-header__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TandemApp
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Backends: other engines and cloud APIs behind TandemApp
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Light"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Light" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Dark"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Dark" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="TandemApp" class="md-nav__button md-logo" aria-label="TandemApp" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TandemApp
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TandemLLM/TandemApp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TandemLLM/TandemApp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Installing
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Installing
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Installing TandemApp
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-linux/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp in one command, or in one container
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-kubernetes/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TandemApp on Kubernetes with Helm
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auth/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Sign-in, users and API tokens
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Backends, the gateway and the dashboard
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Backends, the gateway and the dashboard
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Backends: other engines and cloud APIs behind TandemApp
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#backend-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backend kinds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adding a backend
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      vLLM
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sglang" class="md-nav__link">
+    <span class="md-ellipsis">
+      SGLang
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-tandem-app-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      One command: tandem-app launch
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#any-openai-compatible-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      Any OpenAI-compatible server
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openai-and-the-responses-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      OpenAI and the Responses API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deepseek" class="md-nav__link">
+    <span class="md-ellipsis">
+      DeepSeek
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anthropic-and-other-messages-api-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Anthropic and other Messages API servers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#another-tandemengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Another TandemEngine
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-by-model-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      Routing by model id
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys-at-rest" class="md-nav__link">
+    <span class="md-ellipsis">
+      Keys at rest
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accounts-and-api-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      Accounts and API tokens
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prices-and-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prices and cost
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-proxy-measures" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the proxy measures
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../proxy/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The proxy: one dashboard in front of any OpenAI-compatible backend
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../monitoring/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Monitoring: several engines and the machines behind them
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Dashboard
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The Chat tab and chatd
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Settings
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            The conductor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conductor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The conductor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../session-monitor/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The session monitor
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../status-lines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Status lines, the voice and the shadow reader
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chat-mode/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Chat mode: the conductor inside the engine
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packages/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Packages
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../memory/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Memory notes
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Extending it
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Extending it
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hooks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hooks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Plugins
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins-sdk/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    The plugin SDK
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decision-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Decision providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/commands/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: commands
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/variables/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: variables and knobs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: HTTP
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/metrics/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Reference: metrics and the usage ledger
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Troubleshooting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Glossary
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../threat-model/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Threat model
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/TandemLLM/TandemApp/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CHANGELOG
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#backend-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      Backend kinds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-a-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adding a backend
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vllm" class="md-nav__link">
+    <span class="md-ellipsis">
+      vLLM
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sglang" class="md-nav__link">
+    <span class="md-ellipsis">
+      SGLang
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-command-tandem-app-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      One command: tandem-app launch
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#any-openai-compatible-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      Any OpenAI-compatible server
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#openai-and-the-responses-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      OpenAI and the Responses API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deepseek" class="md-nav__link">
+    <span class="md-ellipsis">
+      DeepSeek
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anthropic-and-other-messages-api-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Anthropic and other Messages API servers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#another-tandemengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Another TandemEngine
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-by-model-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      Routing by model id
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys-at-rest" class="md-nav__link">
+    <span class="md-ellipsis">
+      Keys at rest
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accounts-and-api-tokens" class="md-nav__link">
+    <span class="md-ellipsis">
+      Accounts and API tokens
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prices-and-cost" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prices and cost
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-proxy-measures" class="md-nav__link">
+    <span class="md-ellipsis">
+      What the proxy measures
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="backends-other-engines-and-cloud-apis-behind-tandemapp">Backends: other engines and cloud APIs behind TandemApp<a class="headerlink" href="#backends-other-engines-and-cloud-apis-behind-tandemapp" title="Permanent link">&para;</a></h1>
+<p>TandemApp puts any number of engines and cloud APIs behind one address, from vLLM and SGLang to OpenAI, Anthropic, DeepSeek, OpenRouter and another TandemEngine. Clients send every request to TandemApp, which routes it by the model id and copies the answer back. This page covers the flags each engine needs, how a request finds its backend, and how keys and costs are kept. The figures TandemApp reads from each engine and machine are on <a href="../monitoring/">monitoring.md</a>.</p>
+<pre class="mermaid"><code>flowchart LR
+    c1[opencode] --&gt; px
+    c2[OpenAI SDK] --&gt; px
+    c3[Open WebUI] --&gt; px
+    c4[a script] --&gt; px
+    px["TandemApp&lt;br/&gt;keys, users&lt;br/&gt;route by model id&lt;br/&gt;fallbacks, max in flight&lt;br/&gt;harness (optional)&lt;br/&gt;one ledger, one dashboard"]
+    px --&gt; b1["TandemEngine&lt;br/&gt;kind tandemllm"]
+    px --&gt; b2["vLLM + plugin&lt;br/&gt;kind vllm"]
+    px --&gt; b3["SGLang + plugin&lt;br/&gt;kind sglang"]
+    px --&gt; b4["llama.cpp, LM Studio, Ollama&lt;br/&gt;kind generic"]
+    px --&gt; b5["OpenAI, DeepSeek, Anthropic, OpenRouter ...&lt;br/&gt;kinds openai, deepseek, anthropic, generic"]
+    h2[host collector] -.-&gt; b2
+    h3[node and DCGM exporters] -.-&gt; b3</code></pre>
+<p>TandemApp reads each engine's <code>/metrics</code> every 15 s, and the plugins' posts.</p>
+<h2 id="backend-kinds">Backend kinds<a class="headerlink" href="#backend-kinds" title="Permanent link">&para;</a></h2>
+<p>Every backend has a kind. The kind decides the default URL, the routes that are relayed, how the proxy reads cached and reasoning tokens, and what the conductor can do there.</p>
+<table>
+<thead>
+<tr>
+<th>kind</th>
+<th>for</th>
+<th>routes relayed</th>
+<th>the engine's own figures</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vllm</code></td>
+<td>a vLLM server</td>
+<td>chat, completions, embeddings, Responses</td>
+<td><code>/metrics</code> every 15 s, and the plugin</td>
+</tr>
+<tr>
+<td><code>sglang</code></td>
+<td>an SGLang server</td>
+<td>the same</td>
+<td><code>/metrics</code> every 15 s, and the plugin</td>
+</tr>
+<tr>
+<td><code>generic</code></td>
+<td>llama.cpp, LM Studio, Ollama, any OpenAI-compatible server</td>
+<td>the same</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>tandemllm</code></td>
+<td>another TandemLLM engine</td>
+<td>the same</td>
+<td>its live board, read through the relay</td>
+</tr>
+<tr>
+<td><code>openai</code></td>
+<td>OpenAI's API</td>
+<td>the same</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>deepseek</code></td>
+<td>DeepSeek's API</td>
+<td>chat, completions</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>anthropic</code></td>
+<td>Anthropic's API, or any server that speaks the Messages API</td>
+<td>the Messages API; a chat completion is translated to it</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><em>Backend kinds.</em></p>
+<p>A vLLM or SGLang server also works as <code>generic</code>. The <code>vllm</code> and <code>sglang</code> kinds add the metrics page, the plugin join and the conductor's reasoning close (<a href="../proxy/#the-harness-in-front-of-a-backend">proxy.md</a>). A backend speaks one of two protocols: <code>openai</code> (chat completions, completions, embeddings, the Responses API where the server has it) or <code>anthropic</code> (the Messages API). Clients can use either protocol against any backend; <a href="../proxy/#the-messages-api">proxy.md</a> says what a translation between them keeps and loses.</p>
+<h2 id="adding-a-backend">Adding a backend<a class="headerlink" href="#adding-a-backend" title="Permanent link">&para;</a></h2>
+<p>In the GUI, open <code>/dashboard/#/backends</code> and choose Add backend. One form does it:</p>
+<ol>
+<li><strong>Provider.</strong> A list in three groups: cloud APIs that need only a key (OpenAI, Anthropic, OpenRouter, DeepSeek, Z.ai, Moonshot, MiniMax, Nous Research, Google Gemini, xAI, Mistral, Groq, Together AI, Fireworks AI, Cerebras, Qwen, Hugging Face), servers you run (TandemEngine, vLLM, SGLang, Ollama, LM Studio, llama.cpp) and two custom entries, <em>Custom (OpenAI-compatible)</em> and <em>Custom (Anthropic-compatible)</em>, for any other server by its URL.</li>
+<li><strong>Protocol.</strong> For a provider that serves both, OpenAI-compatible or Anthropic-compatible.</li>
+<li><strong>Base URL.</strong> Filled in from the provider; a custom entry needs one.</li>
+<li><strong>Key.</strong> With a link to the provider's key page; optional or absent for most servers you run.</li>
+<li><strong>Connect.</strong> TandemApp tests the backend first (the latency and the models found) and saves it only when the test passes. A refused test offers <em>Save anyway</em>; <em>More settings</em> opens the full form.</li>
+</ol>
+<p>The providers are in <code>proxy/presets.py</code> and on <code>GET /v1/config/presets</code>. A preset only fills the form: the backend stores its kind, URL, key, whether it is a paid cloud API (the longer cloud timeouts; the harness stays off for its paid models) and the preset's id, which names it on its card. A provider that moves its URL breaks nothing already saved. Adding a provider is one entry in <code>proxy/presets.py</code>.</p>
+<p>The full form holds the backend's label, its models (discovered from <code>GET /models</code> or a fixed list), fallbacks, the most requests it takes at once, timeouts, where its machine is read, and the conductor's switches. Every change is a row in the audit table with who and when, never a key's value.</p>
+<p>In an env file, the same fields are <code>TANDEM_*</code> variables:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">TANDEM_BACKENDS</span><span class="o">=</span>vllm1,deepseek
+<span class="nv">TANDEM_BACKEND_VLLM1_KIND</span><span class="o">=</span>vllm
+<span class="nv">TANDEM_BACKEND_VLLM1_URL</span><span class="o">=</span>http://gpu-host:8100/v1
+<span class="nv">TANDEM_BACKEND_DEEPSEEK_KIND</span><span class="o">=</span>deepseek<span class="w">          </span><span class="c1"># a cloud kind fills its URL in</span>
+<span class="nv">TANDEM_BACKEND_DEEPSEEK_KEY</span><span class="o">=</span>&lt;your<span class="w"> </span>DeepSeek<span class="w"> </span>key&gt;
+<span class="nv">TANDEM_ROUTE_1</span><span class="o">=</span><span class="s2">"deepseek-*=deepseek"</span>
+<span class="nv">TANDEM_PRICE_1</span><span class="o">=</span><span class="s2">"deepseek/deepseek-flash=0.30,0.006,1.2"</span>
+</code></pre></div>
+<p><code>&lt;ID&gt;</code> in a variable name is the backend id in capitals, with <code>-</code> written as <code>_</code>. The environment wins field by field: at every start the variables are written over the database's rows, and a backend is created when it is missing. The GUI shows each field a variable sets as locked, with the variable's name on it; a save that changes such a field answers 422 and names the variable. When the variable goes away, the field can be edited again and keeps its last value. An unknown variable, an unknown backend or a value the schema refuses stops the start with a message that names the variable. One schema, <code>proxy/config.schema.json</code>, checks both ways in. <a href="../reference/variables/">reference/variables.md</a> lists every variable.</p>
+<h2 id="vllm">vLLM<a class="headerlink" href="#vllm" title="Permanent link">&para;</a></h2>
+<p>Start vLLM with a tool-call parser and the flags the dashboard reads. For a Qwen3.5 or Qwen3.8 model:</p>
+<div class="highlight"><pre><span></span><code>vllm<span class="w"> </span>serve<span class="w"> </span>Qwen/Qwen3.5-4B<span class="w"> </span>--port<span class="w"> </span><span class="m">8100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--enable-auto-tool-choice<span class="w"> </span>--tool-call-parser<span class="w"> </span>qwen3_coder<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--reasoning-parser<span class="w"> </span>qwen3<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--enable-prompt-tokens-details
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--enable-auto-tool-choice --tool-call-parser &lt;p&gt;</code></td>
+<td>without a tool parser vLLM answers 400 to any request that carries <code>tools</code>. Coding agents send tools on every turn, and so does the conductor's memory writer (with <code>tool_choice: "none"</code>)</td>
+</tr>
+<tr>
+<td><code>--enable-prompt-tokens-details</code></td>
+<td>the cached prompt tokens in each answer's <code>usage</code>; without it the ledger has no per-request cache figure</td>
+</tr>
+<tr>
+<td><code>--reasoning-parser &lt;p&gt;</code></td>
+<td>the reasoning arrives as <code>delta.reasoning</code> and counts as reasoning tokens; without it the reasoning is part of the content</td>
+</tr>
+</tbody>
+</table>
+<p><em>The vLLM flags the proxy needs, and why.</em></p>
+<p>vLLM's <code>/metrics</code> page is always on. Then add the backend with kind <code>vllm</code> and the URL <code>http://engine-host:8100/v1</code>. Two facts from vLLM v0.30.0's source matter here: vLLM removed the <code>guided_choice</code> family of fields and still answers 200 without the constraint, so a constrained question must use <code>structured_outputs.choice</code>; and vLLM takes a client's <code>X-Request-Id</code> as the request id, which the plugin join uses.</p>
+<h2 id="sglang">SGLang<a class="headerlink" href="#sglang" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>sglang.launch_server<span class="w"> </span>--model-path<span class="w"> </span>Qwen/Qwen3.5-4B<span class="w"> </span>--port<span class="w"> </span><span class="m">30000</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--enable-metrics<span class="w"> </span>--enable-cache-report<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--tool-call-parser<span class="w"> </span>qwen3_coder<span class="w"> </span>--reasoning-parser<span class="w"> </span>qwen3
+</code></pre></div>
+<p><code>--enable-metrics</code> turns on the <code>/metrics</code> page; without it the page answers 404, the backend's card says how to turn it on, and the plugin's hooks do not run. <code>--enable-cache-report</code> puts the cached prompt tokens into each answer's <code>usage</code>. <code>--tool-call-parser</code> returns tool calls as OpenAI <code>tool_calls</code>; without it SGLang returns the model's raw call text, and it does not hold the model to <code>tool_choice: "none"</code>. <code>--reasoning-parser</code> returns the reasoning as <code>reasoning_content</code>; without it SGLang still sends <code>reasoning_tokens: 0</code>, which the proxy reads as null when the stream carried reasoning.</p>
+<p>Add the backend with kind <code>sglang</code>. The proxy never calls SGLang's <code>/health</code>: on an idle server that route runs a one-token generation. The health poll reads <code>GET /v1/models</code> instead.</p>
+<h2 id="one-command-tandem-app-launch">One command: tandem-app launch<a class="headerlink" href="#one-command-tandem-app-launch" title="Permanent link">&para;</a></h2>
+<p>On the engine's machine, <code>tandem-app launch</code> does the steps above at once. It registers the backend in the config database (kind, <code>http://127.0.0.1:&lt;port&gt;/v1</code>, host <code>same</code>), hands the engine the proxy's collect URL and token, adds the flags the dashboard reads (<code>--enable-prompt-tokens-details</code> on vLLM; <code>--enable-metrics</code> and <code>--enable-cache-report</code> on SGLang), checks that the plugin is installed in the engine's Python, and then replaces itself with the engine, so the process id it records is the engine's.</p>
+<div class="highlight"><pre><span></span><code>tandem-app<span class="w"> </span>launch<span class="w"> </span>vllm<span class="w"> </span>--model<span class="w"> </span>Qwen/Qwen3.5-4B<span class="w"> </span>--port<span class="w"> </span><span class="m">8100</span><span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--enable-auto-tool-choice<span class="w"> </span>--tool-call-parser<span class="w"> </span>qwen3_coder<span class="w"> </span>--reasoning-parser<span class="w"> </span>qwen3
+tandem-app<span class="w"> </span>launch<span class="w"> </span>sglang<span class="w"> </span>--model<span class="w"> </span>Qwen/Qwen3.5-4B<span class="w"> </span>--port<span class="w"> </span><span class="m">30000</span><span class="w"> </span>--<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--tool-call-parser<span class="w"> </span>qwen3_coder<span class="w"> </span>--reasoning-parser<span class="w"> </span>qwen3
+</code></pre></div>
+<p>Everything after <code>--</code> goes to the engine unchanged. Without the plugin installed, <code>launch</code> says how to install it and starts the engine without it (layer L1 only). <code>--dry-run</code> prints the command and starts nothing. <a href="../reference/commands/">reference/commands.md</a> lists the options; <a href="../monitoring/#inside-vllm-and-sglang-the-plugins-l2">monitoring.md</a> explains the plugins.</p>
+<h2 id="any-openai-compatible-server">Any OpenAI-compatible server<a class="headerlink" href="#any-openai-compatible-server" title="Permanent link">&para;</a></h2>
+<p>llama.cpp's <code>llama-server</code>, LM Studio, Ollama's <code>/v1</code> API and other servers are kind <code>generic</code>. Give the base URL including <code>/v1</code>: <code>http://127.0.0.1:1234/v1</code> for LM Studio, <code>http://127.0.0.1:11434/v1</code> for Ollama. What the proxy can measure depends on what the server sends. Tokens come from the answer's <code>usage</code>; the proxy asks a stream for its usage frame when the client did not and drops that frame before the client sees it. A server that never sends <code>usage</code> gets null token counts, never estimates. Thinking on or off goes through <code>chat_template_kwargs.enable_thinking</code>, which Qwen-family templates read and others ignore. <code>llama-server</code> needs <code>--jinja</code> for tools.</p>
+<h2 id="openai-and-the-responses-api">OpenAI and the Responses API<a class="headerlink" href="#openai-and-the-responses-api" title="Permanent link">&para;</a></h2>
+<p>Kind <code>openai</code>, with the key in the key field or <code>TANDEM_BACKEND_&lt;ID&gt;_KEY</code>; the URL is filled in. Chat completions, completions, embeddings and the Responses API (<code>POST /v1/responses</code>) are relayed. A Responses request goes to the backend as the client sent it, apart from the model id, and the conductor does not act on it. Cached tokens come from <code>prompt_tokens_details.cached_tokens</code> (chat) and <code>input_tokens_details.cached_tokens</code> (Responses); reasoning tokens from <code>completion_tokens_details.reasoning_tokens</code>. The conductor sends <code>reasoning_effort</code> only to model ids that start with <code>o1</code>, <code>o3</code>, <code>o4</code> or <code>gpt-5</code>. The adapter is tested on frames written from OpenAI's documented shapes, not on a paid call.</p>
+<h2 id="deepseek">DeepSeek<a class="headerlink" href="#deepseek" title="Permanent link">&para;</a></h2>
+<p>Kind <code>deepseek</code>, or the DeepSeek provider with the Anthropic-compatible protocol (kind <code>anthropic</code>). Chat completions and completions are relayed; DeepSeek has no embeddings or Responses API. Cached tokens come from <code>prompt_cache_hit_tokens</code>, and the reasoning arrives as <code>reasoning_content</code>. Thinking goes on and off through <code>thinking.type</code>; DeepSeek has no budget, so an effort level is on or off and never a cap. DeepSeek charges half outside its peak hours (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays); a price row can carry an <code>offpeak</code> block, and the adapter picks it by the request's UTC hour. Chinese public holidays count as peak here, so their cost reads high.</p>
+<h2 id="anthropic-and-other-messages-api-servers">Anthropic and other Messages API servers<a class="headerlink" href="#anthropic-and-other-messages-api-servers" title="Permanent link">&para;</a></h2>
+<p>Kind <code>anthropic</code>, with the key; the Anthropic provider fills in <code>https://api.anthropic.com</code>, and DeepSeek, Z.ai, Moonshot and MiniMax offer an Anthropic-compatible URL too. TandemApp sends the key as <code>x-api-key</code> (or <code>Authorization: Bearer</code> with the backend's <code>anthropic.auth: bearer</code>) and <code>anthropic-version</code> (<code>2023-06-01</code> by default); none of the client's headers go on. A Messages API client's request passes through untranslated when every backend of its route is of kind <code>anthropic</code>; an OpenAI client's chat completion is translated to a Messages request and back. Models come from <code>GET &lt;base&gt;/v1/models</code>, page by page. The usage arrives in every answer: the prompt is input plus cache read plus cache write, the cached tokens are the cache read, and 1-hour cache writes are priced at <code>cache_write_1h</code>. The harness does not run on this kind. <a href="../proxy/#the-messages-api">proxy.md</a> has every rule of the translation, the pass-through and the thinking stash; the backend's settings (<code>auth</code>, <code>api_version</code>, <code>sampling</code>, <code>default_max_tokens</code>, <code>auto_cache</code>, <code>thinking_display</code>, <code>thinking_shape</code>) are its <code>anthropic</code> object, or <code>TANDEM_BACKEND_&lt;ID&gt;_ANTHROPIC_&lt;FIELD&gt;</code>.</p>
+<h2 id="another-tandemengine">Another TandemEngine<a class="headerlink" href="#another-tandemengine" title="Permanent link">&para;</a></h2>
+<p>Kind <code>tandemllm</code>, with the engine's URL. The proxy lists the engine's <code>TandemLLM</code> model and relays to it. The relay sends <code>X-Tandem-Relay-Id</code>; the engine files the request under it, and the Parallel view reads the engine's own live counts while requests run there. That read follows the engine's dashboard rule: with the engine's login off it answers anyone who reaches the port, and with the login on only a caller on the engine's own machine.</p>
+<h2 id="routing-by-model-id">Routing by model id<a class="headerlink" href="#routing-by-model-id" title="Permanent link">&para;</a></h2>
+<p><code>GET /v1/models</code> lists every backend's real model ids, with <code>owned_by</code> set to the backend's id and a <code>tandem</code> block (backend, kind, label, upstream id, context length, switches). A request goes to the first of these that applies:</p>
+<ol>
+<li>an explicit <code>&lt;backend&gt;/&lt;model&gt;</code> prefix, such as <code>vllm1/Qwen/Qwen3.5-4B</code>;</li>
+<li>the first enabled routing rule whose glob matches the id (Backends, Routing, or <code>TANDEM_ROUTE_&lt;n&gt;</code>, ordered by <code>n</code>);</li>
+<li>the one backend that serves the id;</li>
+<li>else OpenAI's 404 <code>model_not_found</code>, which names the prefixed forms when two backends serve the id.</li>
+</ol>
+<p>When two backends serve one id, both are listed as <code>&lt;backend&gt;/&lt;model&gt;</code> and the bare id is not. A model can get a public id of its own in the GUI. In the engine's own server, <code>TandemLLM</code> stays the engine's.</p>
+<p>A backend or a single model may name fallbacks. On a connect error, a 429, a 502 or a 503 before any byte reached the client, the proxy tries the next backend at once, or the same one again after 1 s, then 2 s (or its <code>Retry-After</code>, up to 30 s), at most 2 more tries in all. After the first byte, a failure is an <code>error</code> frame and <code>[DONE]</code>. The proxy adds no limit of its own to how many requests a backend takes at once: a cloud API, vLLM or SGLang gets as many as clients send and answers its own 429 or 503 when it is full. A backend's <code>max_inflight</code> (1 to 4,096; empty or <code>none</code> is no limit, the default) is a cap you set: past it a request goes to a fallback with room, else it gets a 503 with <code>Retry-After: 1</code>. How many requests TandemLLM's own engine decodes at once is the engine's setting (<code>QSE_PARALLEL</code>, <a href="https://github.com/TandemLLM/TandemEngine/blob/main/docs/parallel-requests.md">TandemEngine's parallel requests</a>), shown on the Backends screen under its name. Timeouts are per backend: a local engine gets 5 s to connect, 600 s to the first byte and 120 s between frames; a cloud API 10, 120 and 60 s. A client that leaves closes the upstream connection within a quarter second, so the backend stops generating.</p>
+<h2 id="keys-at-rest">Keys at rest<a class="headerlink" href="#keys-at-rest" title="Permanent link">&para;</a></h2>
+<p>A backend's key is stored as AES-256-GCM ciphertext in the config database. The master key comes from the first of these sources that answers:</p>
+<ol>
+<li><code>TANDEM_SECRETS_KEY</code>, base64 of 32 bytes (<code>openssl rand -base64 32</code>);</li>
+<li>the OS keychain (<code>security</code> on macOS, <code>secret-tool</code> on Linux), read only; <code>--no-keychain</code> skips it;</li>
+<li><code>secrets.key</code> beside the config database, made once at mode 0600.</li>
+</ol>
+<p><code>tandem-app secrets status</code> says which one answers. No API answer, log line, ledger row or audit row holds a key: the GUI gets whether a key is set, its last 4 characters and 6 hex digits of its sha256, and the key field is write-only.</p>
+<p>This protects a copied or backed-up database. It does not protect against a process that runs as the same user, which can read the key file as easily as the proxy can, and a backup of the whole directory carries the key file too. Keep the master key in the environment or the keychain when backups leave the machine. A lost master key means typing the backends' keys in again, nothing else. To move the key file into the macOS keychain:</p>
+<div class="highlight"><pre><span></span><code>security<span class="w"> </span>add-generic-password<span class="w"> </span>-s<span class="w"> </span>tandemllm<span class="w"> </span>-a<span class="w"> </span>secrets-key<span class="w"> </span>-w<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>~/.tandemllm/secrets.key<span class="k">)</span><span class="s2">"</span>
+rm<span class="w"> </span>~/.tandemllm/secrets.key
+</code></pre></div>
+<h2 id="accounts-and-api-tokens">Accounts and API tokens<a class="headerlink" href="#accounts-and-api-tokens" title="Permanent link">&para;</a></h2>
+<p>People sign in with an account (viewer, operator, admin or owner). Programs use an API token, made on the Access page or with <code>tandem-app tokens create</code>: <code>tdm-</code> and random characters, shown once and stored as its sha256, with scopes (<code>inference:openai</code>, <code>inference:anthropic</code>, <code>settings:read</code> and others), model globs, an expiry and limits. Another device needs a token and the protocol's exposure switch on network (Settings, API). The token's owner goes into the ledger's <code>user</code> column, and the Usage view filters by it. <a href="../auth/">auth.md</a> has the details.</p>
+<p>The configuration routes (<code>/v1/config</code>) need an operator's session, or a token with <code>settings:write</code>, to change anything. Being on the same machine opens nothing outside local mode. The default bind is <code>127.0.0.1</code>; keep the port on a trusted network.</p>
+<p>Putting one cloud key in front of several people makes you the provider toward them. The provider's terms hold the key holder responsible for what those people send, and most forbid reselling access without an agreement. Per-user keys keep each person's usage visible in the ledger. This is not legal advice.</p>
+<h2 id="prices-and-cost">Prices and cost<a class="headerlink" href="#prices-and-cost" title="Permanent link">&para;</a></h2>
+<p>A price row per model holds USD per million tokens for input, cached input, cache write and output. The cost of a request is</p>
+<div class="highlight"><pre><span></span><code>(prompt - cached) · p_in + cached · p_cached + cache_write · p_write + completion · p_out
+</code></pre></div>
+<p>written into the ledger row when the request ends, at the price of that moment, so a later price change never rewrites history. A model without a price has a null cost. The proxy never fetches a price list: <code>proxy/prices.seed.json</code> holds OpenAI's and DeepSeek's list prices as read on 2026-10-04, which the model rows offer and apply only on a click. Check the providers' pages before you bill anyone from these numbers.</p>
+<h2 id="what-the-proxy-measures">What the proxy measures<a class="headerlink" href="#what-the-proxy-measures" title="Permanent link">&para;</a></h2>
+<p>The proxy records what a client could measure, and every figure is measured or null.</p>
+<table>
+<thead>
+<tr>
+<th>figure</th>
+<th>source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>prompt, completion tokens</td>
+<td>the backend's <code>usage</code>; null when it sends none</td>
+</tr>
+<tr>
+<td>cached prompt tokens</td>
+<td><code>prompt_tokens_details.cached_tokens</code> (OpenAI; vLLM and SGLang with their flags), <code>prompt_cache_hit_tokens</code> (DeepSeek), <code>input_tokens_details.cached_tokens</code> (Responses)</td>
+</tr>
+<tr>
+<td>reasoning tokens</td>
+<td><code>completion_tokens_details.reasoning_tokens</code>, SGLang's <code>reasoning_tokens</code>; a reported 0 beside streamed reasoning is null</td>
+</tr>
+<tr>
+<td>TTFT</td>
+<td>arrival at the proxy to the first frame with a token; the network and the backend's queue are inside it</td>
+</tr>
+<tr>
+<td>decode tok/s</td>
+<td>(completion tokens - 1) / (last token frame - first token frame); null without <code>usage</code>, because a frame is not a token</td>
+</tr>
+<tr>
+<td>cost</td>
+<td>the model's price when the row is written</td>
+</tr>
+<tr>
+<td>proxy overhead</td>
+<td>arrival to the upstream send, plus the first frame's delay through the proxy</td>
+</tr>
+</tbody>
+</table>
+<p><em>Where each figure of a relayed request comes from.</em></p>
+<p>What the proxy adds is small (measured, the 0.4.0 series). Against a fake backend on one machine it added 0.33 ms to the client's time to first token at the median, its own time was 0.17 ms at p50 and 0.22 ms at p90, and 64 streams at once ended in 5.18 s against 5.22 s for one alone. Against the live engine over the local network, 20 greedy requests gave equal token counts and a decode rate within 0.8 % of the engine's own.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../auth/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Sign-in, users and API tokens">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Sign-in, users and API tokens
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../proxy/" class="md-footer__link md-footer__link--next" aria-label="Next: The proxy: one dashboard in front of any OpenAI-compatible backend">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                The proxy: one dashboard in front of any OpenAI-compatible backend
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      The documentation is CC BY 4.0. The code has its own license.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>
