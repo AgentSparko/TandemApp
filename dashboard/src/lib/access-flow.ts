@@ -3,8 +3,26 @@
 // call under way. A token or a one-time code lives here only while its dialog shows it: closing
 // the dialog drops it, and nothing here writes to the URL, the console or the browser's storage.
 
-import { AuthError, type AuditRow, type AuthApi, type ExposureView, type Exposure, type Finding, type Me, type Protocol, type Role, type Session, type Token, type TokenOnce, type TokenUsage, type User, type UserCode } from '../api/auth';
+import { AuthError, type AuditRow, type AuthApi, type ExposureView, type Exposure, type Finding, type Me, type Protocol, type Role, type RoleViews, type Session, type Token, type TokenOnce, type TokenUsage, type User, type UserCode, type ViewRole } from '../api/auth';
 import { can, errorWords, pageDef, tokenBody, userNameError, type Page, type TokenForm } from './access';
+import { MENU, type Section } from './menu';
+
+/** SRV-890: the sections hidden from the menu only: the shell reads their data too (proxy/authz.py
+ *  MENU_ONLY); the others' own routes refuse a role they are hidden from */
+export const MENU_ONLY: Section[] = ['overview', 'performance', 'health', 'sparks', 'playground', 'start'];
+/** SRV-890: every section an admin may show or hide, in the menu's order */
+export const ALL_SECTIONS: Section[] = MENU.flatMap((g) => g.items.map((i) => i.id));
+
+/** The `views.<role>` value with `section` shown or hidden: "all" when every page is shown (a
+ *  viewer's Chat aside, which is `auth.chat_min_role`). */
+export function viewsValue(role: ViewRole, now: string[] | null, section: Section, on: boolean): string {
+  const cur = new Set(now ?? ALL_SECTIONS);
+  if (on) cur.add(section);
+  else cur.delete(section);
+  const every = ALL_SECTIONS.filter((s) => role !== 'viewer' || s !== 'chat');
+  if (every.every((s) => cur.has(s))) return 'all';
+  return ALL_SECTIONS.filter((s) => cur.has(s) && (role !== 'viewer' || s !== 'chat')).join(',');
+}
 
 export type Dialog =
   | { kind: 'token-new' }
@@ -37,6 +55,8 @@ export class AccessFlow {
   usage: Record<string, TokenUsage> = {};
   audit: AuditRow[] | null = null;
   exposure: ExposureView | null = null;
+  /** SRV-890: Views, and the role Add a user picks first */
+  roleViews: RoleViews | null = null;
   findings: Finding[] = [];
   /** All tokens and Sessions: one account's alone */
   filter: string | null = null;
@@ -102,8 +122,11 @@ export class AccessFlow {
         if (here()) this.usage = Object.fromEntries(live.flatMap((t, i) => (use[i] ? [[t.id, use[i]!]] : [])));
       }
     } else if (page === 'users') {
-      const got = await a.users();
-      if (here()) this.users = got;
+      const [got, rv] = [await a.users(), await a.roleViews().catch(() => null)];
+      if (here()) [this.users, this.roleViews] = [got, rv];
+    } else if (page === 'views') {
+      const got = await a.roleViews();
+      if (here()) this.roleViews = got;
     } else if (page === 'audit') {
       const got = await a.audit();
       if (here()) this.audit = got;
@@ -238,7 +261,7 @@ export class AccessFlow {
   }
 
   // ---- users ----------------------------------------------------------------------------------------
-  addUser(username: string, role: Role, display: string): Promise<void> {
+  addUser(username: string, role: Role | undefined, display: string): Promise<void> {
     const bad = userNameError(username);
     if (bad) {
       this.dialogError = bad;
@@ -246,7 +269,7 @@ export class AccessFlow {
       return Promise.resolve();
     }
     return this.inDialog(
-      () => this.api.addUser({ username: username.trim().toLowerCase(), role, ...(display.trim() ? { display_name: display.trim() } : {}) }),
+      () => this.api.addUser({ username: username.trim().toLowerCase(), ...(role ? { role } : {}), ...(display.trim() ? { display_name: display.trim() } : {}) }),
       (data) => (this.dialog = { kind: 'user-code', data, reset: false }),
     );
   }
@@ -265,6 +288,25 @@ export class AccessFlow {
   }
   removeUser(u: User): void {
     this.show({ kind: 'confirm', title: `Remove ${u.username}`, text: 'The account, its sessions and its tokens go for good. Past usage keeps the name.', go: 'Remove', run: () => this.api.removeUser(u.id) });
+  }
+
+  // ---- views (SRV-890) ------------------------------------------------------------------------------
+  /** whether `role` sees `section` now */
+  shows(role: ViewRole, section: Section): boolean {
+    const rv = this.roleViews;
+    if (!rv) return true;
+    if (role === 'viewer' && section === 'chat') return rv.viewerChat;
+    const l = rv.views[role];
+    return !l || l.includes(section);
+  }
+  showSection(role: ViewRole, section: Section, label: string, on: boolean): Promise<boolean> {
+    const rv = this.roleViews;
+    if (!rv) return Promise.resolve(false);
+    const set = role === 'viewer' && section === 'chat' ? { chat_min_role: on ? 'viewer' : 'operator' } : { [`views.${role}`]: viewsValue(role, rv.views[role], section, on) };
+    return this.act(`views:${role}:${section}`, () => this.api.setAuth(set), `${label} is ${on ? 'shown to' : 'hidden from'} the ${role} role.`);
+  }
+  setDefaultRole(role: ViewRole): Promise<boolean> {
+    return this.act('views:default', () => this.api.setAuth({ default_role: role }), `A new account is a ${role} unless you pick another role.`);
   }
 
   // ---- exposure -------------------------------------------------------------------------------------

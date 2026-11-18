@@ -42,7 +42,7 @@ import { registerWorker } from './lib/pwa';
 import { knownJob, rememberStatusPort } from './lib/restart';
 import { browserTz } from './lib/time';
 import { isTypingTarget, splitTabs } from './lib/phone';
-import { PHONE_BAR, SCOPED, crumb, menuNow, sectionHref, sectionOf, setRights, subPages, type MenuItem, type Section } from './lib/menu';
+import { PHONE_BAR, SCOPED, crumb, firstVisible, menuNow, sectionHref, sectionOf, setRights, setViews, subPages, visible, type MenuItem, type Section } from './lib/menu';
 import { CHAT_RAIL_MIN, CTX_W, RAIL_W, currentWidthClass, type WidthClass } from './lib/layout';
 import { clearSelection, contextFor, currentSelection, onContext, pageKey, panelFor, setDefaultContext, setPage, setSidebarControl, sidebarsChanged } from './lib/context';
 import { flush, onWorkspace, openWindowMenu, setTray, shownLayout, showPage, trayOpen, windowMenu, change, currentLayout, savedLayouts } from './lib/workspace';
@@ -203,6 +203,7 @@ export class QseApp extends LightElement {
         const page = r.view !== this.route.view || r.path.join('/') !== this.route.path.join('/');
         this.route = r;
         if (this.setupMode && r.view !== 'setup') navigate('setup');
+        else if (!visible(sectionOf(r.view))) return navigate(firstVisible());
         if (this.more && !this.pendingNav) this.closeMore();
         setPage(pageKey(r.view, r.path));
         showPage(sectionOf(r.view), this.wclass, window.innerWidth);
@@ -605,8 +606,11 @@ export class QseApp extends LightElement {
     setCsrf(s?.csrf);
     this.authLocal = !!s?.local_mode;
     this.authWho = s?.account?.username ?? s?.principal?.name ?? '';
-    // SRV-875: the menu's entries follow the rights of who is signed in
+    // SRV-875: the menu's entries follow the rights of who is signed in; SRV-890: and the views
+    // an admin shows their role (a hidden page's link goes to the first page shown)
     setRights(s?.authenticated ? (s.permissions ?? []) : null);
+    setViews(s?.authenticated ? s.views : null);
+    if (!visible(sectionOf(this.route.view))) navigate(firstVisible());
     this.auth = m.needOf(s) as 'signin' | 'setup' | 'password' | null;
     this.requestUpdate();
   }
@@ -830,7 +834,7 @@ export class QseApp extends LightElement {
   }
 
   private renderView(): TemplateResult {
-    if (!this.booted || (this.setupMode && this.route.view !== 'setup')) return html``;
+    if (!this.booted || (this.setupMode && this.route.view !== 'setup') || !visible(sectionOf(this.route.view))) return html``;
     switch (this.route.view) {
       case 'chat':
         void loadChat();

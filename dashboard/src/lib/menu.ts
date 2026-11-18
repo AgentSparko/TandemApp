@@ -77,19 +77,34 @@ export const ACCESS_PAGES: [string, string, string, string][] = [
   ['exposure', '#/access/exposure', 'API exposure', 'users'],
   ['sessions', '#/access/sessions', 'Sessions', 'users'],
   ['audit', '#/access/audit', 'Sign-ins', 'users'],
+  // SRV-890: which pages each role sees, and a new account's role
+  ['views', '#/access/views', 'Views', 'users'],
 ];
 /** the rights of who is signed in; null while the controller runs without accounts */
 let rights: string[] | null = null;
 export function setRights(r: string[] | null): void {
   rights = r;
 }
+/** SRV-890: the sections an admin shows this person's role (GET /v1/auth/session `views`);
+ *  null: every one. Account and Users & access follow the rights alone. */
+let shown: Section[] | null = null;
+export function setViews(v: string[] | null | undefined): void {
+  shown = v ? (v as Section[]) : null;
+}
+/** whether the menu shows `id` to this person */
+export const visible = (id: Section): boolean => !shown || shown.includes(id) || ACCOUNT_MENU.some((x) => x.id === id);
+/** where a hidden page sends one: the first section shown, else one's account */
+export function firstVisible(): View {
+  for (const g of MENU) for (const it of g.items) if (visible(it.id)) return it.id as View;
+  return 'account';
+}
 /** The menu as this person sees it: without accounts today's, with them the entries their rights
- *  open (a viewer: Account alone). */
+ *  open (a viewer: Account alone) and the sections their role is shown. */
 export function menuNow(): MenuGroup[] {
   const r = rights;
   if (!r) return MENU;
   const add = ACCOUNT_MENU.filter((x) => r.includes(x.right)).map(({ id, label }) => ({ id, label }));
-  return MENU.map((g) => (g.label === 'Settings' ? { ...g, items: [...g.items, ...add] } : g));
+  return MENU.map((g) => ({ ...g, items: [...g.items.filter((it) => visible(it.id)), ...(g.label === 'Settings' ? add : [])] })).filter((g) => g.items.length);
 }
 
 /** the pages that watch the fleet: the scope bar stands above them and their links keep the scope */

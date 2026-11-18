@@ -66,6 +66,39 @@
   "local_mode": {
    "type": "boolean"
   },
+  "views": {
+   "description": "SRV-890: the menu sections this account sees (auth.views.<role>); null: every one (an owner, local mode, a role nobody restricted). A hidden section's own routes answer 403 view_hidden",
+   "anyOf": [
+    {
+     "type": "array",
+     "items": {
+      "enum": [
+       "chat",
+       "overview",
+       "performance",
+       "usage",
+       "hardware",
+       "events",
+       "health",
+       "sparks",
+       "models",
+       "api",
+       "conductor",
+       "playground",
+       "dev",
+       "start",
+       "add-engine",
+       "add-spark",
+       "app"
+      ]
+     },
+     "uniqueItems": true
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
   "expires_at": {
    "anyOf": [
     {
@@ -87,6 +120,7 @@
   "provider",
   "setup_required",
   "local_mode",
+  "views",
   "expires_at"
  ],
  "additionalProperties": false,

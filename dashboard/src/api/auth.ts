@@ -17,7 +17,23 @@ export interface Me {
   permissions: string[];
   setup_required: boolean;
   local_mode: boolean;
+  /** SRV-890: the menu sections this account's role is shown; null: every one (older servers
+   *  send none) */
+  views?: string[] | null;
   expires_at: string | null;
+}
+
+/** SRV-890: the roles an admin picks views for (an owner sees every page) */
+export type ViewRole = 'viewer' | 'operator' | 'admin';
+export const VIEW_ROLES: ViewRole[] = ['viewer', 'operator', 'admin'];
+/** the `auth` settings behind Users & access, Views */
+export interface RoleViews {
+  /** per role: null = every page, else the sections shown */
+  views: Record<ViewRole, string[] | null>;
+  /** the role a new account gets when none is picked */
+  defaultRole: ViewRole;
+  /** a viewer's Chat is `auth.chat_min_role` */
+  viewerChat: boolean;
 }
 
 export interface User {
@@ -189,7 +205,7 @@ export interface AuthApi {
   /** every session of an account: one's own without `user` */
   endSessions(user?: string): Promise<void>;
   users(): Promise<User[]>;
-  addUser(body: { username: string; role: Role; display_name?: string }): Promise<UserCode>;
+  addUser(body: { username: string; role?: Role; display_name?: string }): Promise<UserCode>;
   patchUser(id: string, body: { role?: Role; enabled?: boolean }): Promise<User>;
   resetUser(id: string): Promise<UserCode>;
   removeUser(id: string): Promise<void>;
@@ -203,6 +219,10 @@ export interface AuthApi {
   exposure(): Promise<ExposureView>;
   /** plans one key of the `api` scope and applies the plan */
   setApi(key: string, value: string): Promise<void>;
+  /** SRV-890: the views per role, the default role and the viewer's Chat */
+  roleViews(): Promise<RoleViews>;
+  /** plans keys of the `auth` scope and applies the plan */
+  setAuth(set: Record<string, string>): Promise<void>;
   findings(): Promise<Finding[]>;
 }
 
@@ -247,6 +267,22 @@ export function authApi(send: Send): AuthApi {
     },
     setApi: async (key, value) => {
       const changes = [{ scope: 'api', set: { [key]: value } }];
+      const plan = await call<{ changed: boolean; confirm: string | null }>('POST', '/v1/settings/plan', { changes });
+      if (plan.changed && plan.confirm) await call('POST', '/v1/settings/apply', { changes, confirm: plan.confirm });
+    },
+    roleViews: async () => {
+      const v = await call<{ values: { key: string; value: unknown }[] }>('GET', '/v1/settings/auth');
+      const of = (k: string) => v.values.find((x) => x.key === k)?.value;
+      const list = (x: unknown): string[] | null => (typeof x !== 'string' || x === 'all' ? null : x.split(',').map((s) => s.trim()).filter(Boolean));
+      const d = of('default_role');
+      return {
+        views: { viewer: list(of('views.viewer')), operator: list(of('views.operator')), admin: list(of('views.admin')) },
+        defaultRole: d === 'operator' || d === 'admin' ? d : 'viewer',
+        viewerChat: of('chat_min_role') === 'viewer',
+      };
+    },
+    setAuth: async (set) => {
+      const changes = [{ scope: 'auth', set }];
       const plan = await call<{ changed: boolean; confirm: string | null }>('POST', '/v1/settings/plan', { changes });
       if (plan.changed && plan.confirm) await call('POST', '/v1/settings/apply', { changes, confirm: plan.confirm });
     },

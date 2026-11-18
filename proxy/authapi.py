@@ -13,7 +13,8 @@
     DELETE /v1/auth/sessions[?user=]   sign out everywhere (another account: `users`)
     DELETE /v1/auth/sessions/{id}      end one session (another account's: `users`)
     GET    /v1/auth/users              the accounts (permission `users`)
-    POST   /v1/auth/users              {username, role, password?, display_name?}; without a
+    POST   /v1/auth/users              {username, role?, password?, display_name?} (no role:
+                                       auth.default_role, SRV-890); without a
                                        password the answer holds a one-time code, once (SRV-875):
                                        the person signs in with it and sets a password
     PATCH  /v1/auth/users/{id}         {role?, enabled?, display_name?}
@@ -98,7 +99,16 @@ def _session_answer(handler, a, p) -> dict:
             "provider": {"kind": a.provider.kind, "capabilities": a.provider.capabilities()},
             "setup_required": a.store.setup_required(),
             "local_mode": p is not None and p.kind == "local",
+            # SRV-890: the sections the menu shows this person; null: every one
+            "views": _views(a, p),
             "expires_at": _iso(p.expires_at) if p is not None else None}
+
+
+def _views(a, p) -> list | None:
+    if p is None or p.kind != "account":
+        return None
+    shown = a.policy.views(p.role)
+    return None if shown is None else [x for x in authz.SECTIONS if x in shown]
 
 
 def handle(handler, a, method: str, path: str, raw: bytes | None) -> None:
@@ -365,12 +375,14 @@ def _users(handler, a, method: str, rest: list, body) -> None:
             return _err(handler, 405, "method_not_allowed", "the users take GET and POST")
         if not isinstance(body, dict) or set(body) - {"username", "role", "password",
                                                       "display_name"}:
-            return _err(handler, 400, "bad_request", "the body is {username, role, password?, "
+            return _err(handler, 400, "bad_request", "the body is {username, role?, password?, "
                                                      "display_name?}")
         if p is not None and p.kind == "local":
             # SEC-26: a second user lets another device in: the owner's password first
             return _err(handler, 409, "password_first", "set the owner's password first: local "
                         "mode trusts this machine only")
+        if body.get("role") is None:
+            body = {**body, "role": a.policy.default_role}     # SRV-890: auth.default_role
         if body.get("role") == "owner" and not owner:
             return _err(handler, 403, "permission_denied", "only an owner makes an owner",
                         permission="owner")

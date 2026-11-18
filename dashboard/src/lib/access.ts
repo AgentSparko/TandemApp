@@ -6,7 +6,7 @@ import { ACCESS_PAGES } from './menu';
 import { LIMIT_KEYS, type AuditRow, type AuthError, type Finding, type LimitKey, type Limits, type LimitState, type Me, type NewToken, type Protocol, type Role, type Session, type Token, type TokenUsage, type User } from '../api/auth';
 import { compact, money } from './format';
 
-export type Page = 'account' | 'my-tokens' | 'users' | 'tokens' | 'exposure' | 'sessions' | 'audit';
+export type Page = 'account' | 'my-tokens' | 'users' | 'tokens' | 'exposure' | 'sessions' | 'audit' | 'views';
 
 export interface PageDef {
   id: Page;
@@ -26,6 +26,7 @@ const HEADS: Record<Page, [string, string]> = {
   exposure: ['API exposure', 'Whether other devices may use each API. No setting lets a device in without a token.'],
   sessions: ['Sessions', 'Every browser that is signed in.'],
   audit: ['Sign-ins and changes', 'Who signed in from where, and every change to users, sessions, tokens and these settings.'],
+  views: ['Views', 'Which pages each role sees, and the role a new account gets. Owners see every page.'],
 };
 /** the menu's pages (lib/menu.ts) with each one's head */
 export const PAGES: PageDef[] = ACCESS_PAGES.map(([id, href, label, right]) => ({ id: id as Page, href, label, right, title: HEADS[id as Page][0], sub: HEADS[id as Page][1] }));
@@ -34,7 +35,7 @@ export const PAGES: PageDef[] = ACCESS_PAGES.map(([id, href, label, right]) => (
 export function pageOf(view: string, path: string[]): Page {
   const p = path[0] ?? '';
   if (view === 'account') return p === 'tokens' ? 'my-tokens' : 'account';
-  return (['tokens', 'exposure', 'sessions', 'audit'] as const).find((x) => x === p) ?? 'users';
+  return (['tokens', 'exposure', 'sessions', 'audit', 'views'] as const).find((x) => x === p) ?? 'users';
 }
 export const pageDef = (p: Page): PageDef => PAGES.find((x) => x.id === p)!;
 

@@ -5,8 +5,9 @@
 // from the flow (lib/access-flow.ts), so they render in a test without a browser.
 
 import { html, nothing, type TemplateResult } from 'lit';
-import { LIMIT_KEYS, type Finding, type Session, type Token, type User } from '../../api/auth';
-import type { AccessFlow, Dialog } from '../../lib/access-flow';
+import { LIMIT_KEYS, VIEW_ROLES, type Finding, type Session, type Token, type User } from '../../api/auth';
+import { MENU_ONLY, type AccessFlow, type Dialog } from '../../lib/access-flow';
+import { MENU } from '../../lib/menu';
 import { DAY_CHOICES, EXPOSURE_WORDS, LIMIT_WORDS, PAGES, PROTOCOLS, REFUSED_WORDS, ROLE_WORDS, ago, auditWords, browserOf, can, endsSoon, findingsFor, isImported, isLoopback, isSignIn, lastOwner, limitText, mayChange, mayCreate, mine, nameOf, ownersOf, pageDef, peopleOf, reviewOf, roleOf, rolesFor, scopeLabel, scopesFor, servicesOf, snippets, stateWords, tokensFor, unpricedText, useText } from '../../lib/access';
 import { copyButton, icon, skeleton } from '../../ui/bits';
 
@@ -213,6 +214,46 @@ function auditPage(f: AccessFlow): TemplateResult {
 
 const finding = (x: Finding): TemplateResult => html`<p class="note ac-finding is-${x.severity}" data-finding=${x.code}>${icon(x.severity === 'info' ? 'info' : 'warn')}<span>${x.sentence} <span class="muted">${x.fix}</span></span></p>`;
 
+// ---- views (SRV-890) --------------------------------------------------------------------------------
+
+function viewsPage(f: AccessFlow): TemplateResult {
+  const rv = f.roleViews;
+  if (!rv) return panel('Views', skeleton(6));
+  const def = panel(
+    'New accounts',
+    html`<div class="seg ac-switch" role="group" aria-label="The role of a new account">
+        ${VIEW_ROLES.map((r) => html`<button type="button" class="seg-btn ${rv.defaultRole === r ? 'is-on' : ''}" aria-pressed=${rv.defaultRole === r} data-default=${r} ?disabled=${!!f.busy} @click=${() => rv.defaultRole !== r && void f.setDefaultRole(r)}>${r}</button>`)}
+      </div>
+      <p class="small muted">Add a user starts with this role; you can pick another one there.</p>`,
+    { data: 'default-role' },
+  );
+  // a viewer's Chat is `auth.chat_min_role`, an owner's setting
+  const owner = can(f.me, 'owner');
+  const groups = MENU.map((g) =>
+    panel(
+      g.label ?? 'Chat',
+      list(
+        g.items.map((it) =>
+          row(
+            it.id,
+            html`<div class="ac-t"><b>${it.label}</b></div>${MENU_ONLY.includes(it.id) ? html`<p class="small muted" data-menu-only>Hidden from the menu only: the top bar shows its data too.</p>` : nothing}${it.id === 'chat' && !owner ? html`<p class="small muted">An owner switches a viewer’s Chat.</p>` : nothing}`,
+            html`<div class="seg" role="group" aria-label=${`Who sees ${it.label}`}>
+              ${VIEW_ROLES.map((r) => {
+                const on = f.shows(r, it.id);
+                const locked = r === 'viewer' && it.id === 'chat' && !owner;
+                return html`<button type="button" class="seg-btn ${on ? 'is-on' : ''}" aria-pressed=${on} data-role=${r} ?disabled=${!!f.busy || locked} @click=${() => void f.showSection(r, it.id, it.label, !on)}>${r}</button>`;
+              })}
+            </div>`,
+          ),
+        ),
+        '',
+      ),
+      { data: `views-${(g.label ?? 'chat').toLowerCase()}` },
+    ),
+  );
+  return html`${def}${groups}`;
+}
+
 function exposurePage(f: AccessFlow): TemplateResult {
   const x = f.exposure;
   if (!x) return panel('The switches', skeleton(4));
@@ -278,7 +319,7 @@ export function accessView(f: AccessFlow, on: On): TemplateResult {
   else
     body = html`${f.error ? html`<p class="login-error" role="alert" data-unread>${f.error} <button type="button" class="btn btn-sm" @click=${on.retry}>Try again</button></p>` : nothing}
       ${f.failed ? html`<p class="login-error" role="alert" data-failed>${f.failed}</p>` : nothing} ${f.note ? html`<p class="note note-info" role="status" data-note>${f.note}</p>` : nothing}
-      ${f.page === 'account' ? accountPage(f, on) : f.page === 'my-tokens' ? myTokensPage(f) : f.page === 'users' ? usersPage(f) : f.page === 'tokens' ? allTokensPage(f, on) : f.page === 'sessions' ? sessionsPage(f) : f.page === 'audit' ? auditPage(f) : exposurePage(f)}`;
+      ${f.page === 'account' ? accountPage(f, on) : f.page === 'my-tokens' ? myTokensPage(f) : f.page === 'users' ? usersPage(f) : f.page === 'tokens' ? allTokensPage(f, on) : f.page === 'sessions' ? sessionsPage(f) : f.page === 'audit' ? auditPage(f) : f.page === 'views' ? viewsPage(f) : exposurePage(f)}`;
   return html`<header class="page-head" data-page="access" data-access=${f.page}><div class="eyebrow">${own ? 'Account' : 'Users & access'}</div><h1>${def.title}</h1><p class="page-sub">${def.sub}</p></header>
     ${tabs.length > 1 ? html`<nav class="ac-tabs" aria-label=${own ? 'Account pages' : 'Users and access pages'}>${tabs.map((p) => html`<a class="ac-tab ${p.id === f.page ? 'is-on' : ''}" href=${p.href} aria-current=${p.id === f.page ? 'page' : nothing} data-tab=${p.id}>${p.label}</a>`)}</nav>` : nothing}
     ${body}`;
@@ -337,7 +378,7 @@ function dialogBody(f: AccessFlow, d: Dialog, on: On, origin: string): { title: 
         body: html`<form class="ac-form" data-form="user" novalidate @submit=${(e: Event) => on.submit('user', e)}>
           ${field('Username', html`<input name="username" maxlength="64" required autocomplete="off" spellcheck="false" autocapitalize="off" />`)}
           ${field('Name', html`<input name="display" maxlength="120" autocomplete="off" />`, 'Optional: the name shown beside the username.')}
-          ${field('Role', html`<select name="role">${rolesFor(f.me).map((r) => html`<option value=${r}>${r}: ${ROLE_WORDS[r]}</option>`)}</select>`)}
+          ${field('Role', html`<select name="role">${rolesFor(f.me).map((r) => html`<option value=${r} ?selected=${r === (f.roleViews?.defaultRole ?? 'viewer')}>${r}: ${ROLE_WORDS[r]}</option>`)}</select>`)}
           <p class="small muted">You type no password for someone else. You get a one-time code to hand over; they sign in with it and choose their own.</p>
           ${err} ${foot('Add the user', { submit: true })}
         </form>`,

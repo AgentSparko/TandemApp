@@ -128,6 +128,71 @@ ROUTES: tuple = (
 )
 
 
+# SRV-890: the views (the menu's sections) an admin shows to each role, and the routes of the
+# sections whose data no other page reads. A role a section is hidden from gets 403 `view_hidden`
+# on those routes, by session and by its API tokens alike; owners, local mode and the service
+# identities see every view. Overview, Performance, Health, Sparks, Playground and Get started
+# read only what the shell (top bar, live panel, health dot) reads too: they are hidden in the
+# menu and by a direct link, not on the server (MENU_ONLY). The route map is the page's own
+# requests per view (tests/test_role_views.py pins it); the first entry that matches wins, and
+# None keeps a route that a hidden section's family holds but another page reads.
+SECTIONS = ("chat", "overview", "performance", "usage", "hardware", "events", "health", "sparks",
+            "models", "api", "conductor", "playground", "dev", "start", "add-engine",
+            "add-spark", "app")
+VIEW_ROLES = ("viewer", "operator", "admin")
+MENU_ONLY = ("overview", "performance", "health", "sparks", "playground", "start")
+SECTION_ROUTES: tuple = (
+    ("/v1/chat-app/capabilities", None),        # the shell asks whether Chat is there
+    ("/v1/chat-app", "chat"),
+    ("/v1/fleet/ledger", "usage"),
+    ("/v1/fleet/host", "hardware"),
+    ("/v1/fleet/rules", "events"),
+    ("/v1/fleet/weights", "models"),
+    ("/v1/config/backends", "api"), ("/v1/config/prices", "api"),
+    ("/v1/conductor/evals", None),              # the speed check of Hardware and Dev
+    ("/v1/conductor/meta", None),               # the live panel
+    ("/v1/conductor/residency", None),          # Hardware, System: the residency limits
+    ("/v1/conductor", "conductor"),
+    ("/v1/dashboard/logs", "dev"),
+    ("/v1/settings/auth", None), ("/v1/settings/api", None),   # Users & access
+    ("/v1/settings/plan", None), ("/v1/settings/apply", None),
+    ("/v1/settings", "app"),
+    ("/v1/fleet/app", "app"), ("/v1/fleet/hooks", "app"), ("/v1/fleet/plugins", "app"),
+    ("/v1/fleet/add", "add-spark"), ("/v1/fleet/discovery", "add-spark"),
+    ("/v1/fleet/pair", "add-engine"),
+)
+
+
+def section_for(path: str) -> str | None:
+    """The section whose own route this is, or None (every role that may use it reads it)."""
+    p = _norm(path)
+    for route, section in SECTION_ROUTES:
+        if p == route or p.startswith(route + "/"):
+            return section
+    return None
+
+
+def parse_views(raw) -> frozenset | None:
+    """A `views.<role>` value: "all" (None), or sections separated by commas (unknown ones
+    dropped; an empty value: no section)."""
+    if raw is None or raw == "all":
+        return None
+    if not isinstance(raw, str):
+        return None
+    parts = {x.strip() for x in raw.split(",") if x.strip()}
+    return frozenset(x for x in parts if x in SECTIONS)
+
+
+def view_allowed(principal, section: str | None, policy: "Policy | None" = None) -> bool:
+    """May `principal` open `section`'s own routes? Owners, local mode, services: always."""
+    if section is None or principal is None:
+        return True
+    if principal.kind in ("local", "service", SESSION_ADDRESS) or principal.via == "local":
+        return True
+    shown = (policy or Policy()).views(principal.role)
+    return shown is None or section in shown
+
+
 def _norm(path: str) -> str:
     return path.split("?", 1)[0].rstrip("/") or "/"
 
@@ -167,6 +232,26 @@ class Policy:
     @property
     def chat_min_role(self) -> str:
         return "viewer" if self.get("auth.chat_min_role") == "viewer" else "operator"
+
+    def views(self, role: str | None) -> frozenset | None:
+        """SRV-890: the sections `role` sees, or None for every one (owners; a role nobody
+        restricted). A viewer's Chat is `auth.chat_min_role`, never a second switch."""
+        if role not in VIEW_ROLES:
+            return None
+        shown = parse_views(self.get(f"auth.views.{role}", "all"))
+        if role != "viewer":
+            return shown
+        base = set(SECTIONS if shown is None else shown)
+        base.discard("chat")
+        if self.chat_min_role == "viewer":
+            base.add("chat")
+        return frozenset(base)
+
+    @property
+    def default_role(self) -> str:
+        """SRV-890: the role a new account gets when none is named."""
+        v = self.get("auth.default_role", "viewer")
+        return v if v in VIEW_ROLES else "viewer"
 
     @property
     def viewers_may_create(self) -> bool:

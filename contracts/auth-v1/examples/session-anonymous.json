@@ -18,5 +18,6 @@
  },
  "setup_required": true,
  "local_mode": false,
+ "views": null,
  "expires_at": null
 }

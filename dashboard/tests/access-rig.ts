@@ -20,7 +20,7 @@ export const ORIGIN = 'https://tandem.example';
 
 /** the fields of each view of /v1/auth/*, as the controller's answers hold them */
 export const KEYS = {
-  me: ['contract_version', 'authenticated', 'account', 'principal', 'permissions', 'csrf', 'provider', 'setup_required', 'local_mode', 'expires_at'],
+  me: ['contract_version', 'authenticated', 'account', 'principal', 'permissions', 'csrf', 'provider', 'setup_required', 'local_mode', 'views', 'expires_at'],
   account: ['id', 'username', 'display_name', 'role', 'must_change'],
   user: ['id', 'username', 'display_name', 'role', 'enabled', 'provider', 'has_password', 'must_change', 'created_at', 'last_login_at'],
   session: ['id', 'account_id', 'username', 'created_at', 'last_seen_at', 'idle_until', 'expires_at', 'address', 'agent', 'current'],

@@ -1175,9 +1175,17 @@ class AccountsAuth:
         if p.must_change and (method, path) not in MUST_CHANGE_OK:
             return self._refuse(handler, method, 403, "password_change_required",
                                 "set a new password first (PUT /v1/auth/password)")
+        # SRV-890: a section an admin hid from the role: its own routes too, by session or token,
+        # once the permission itself is there (a missing permission is refused as before)
+        section = authz.section_for(raw)
+        hidden = section is not None and not authz.view_allowed(p, section, self.policy)
         if p.via == "token":
             if self._token_gate(handler, method, raw, peer, perm, p):
                 return True
+            if hidden:
+                return self._token_refuse(handler, method, raw, 403, "view_hidden",
+                                          f"the page {section} is hidden from the role {p.role}",
+                                          section=section)
             conn = getattr(handler, "connection", None)
             if conn is not None and p.id != tokens_mod.PLUGIN_SERVICE:
                 # SRV-869: a revoked token's open stream is closed as an ended session's is
@@ -1188,6 +1196,10 @@ class AccountsAuth:
         if not authz.allow(p, perm, self.policy):
             return self._refuse(handler, method, 403, "permission_denied",
                                 f"this needs the permission {perm}", permission=perm)
+        if hidden:
+            return self._refuse(handler, method, 403, "view_hidden",
+                                f"the page {section} is hidden from the role {p.role}",
+                                section=section)
         return False
 
     def _token_gate(self, handler, method: str, raw: str, peer: str, perm: str, p) -> bool:

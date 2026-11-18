@@ -55,7 +55,7 @@ import { MockHooks, type MockHook, type MockProvider } from './hooks.ts';
 import { MockPlugins, needsConfirm } from './plugins.ts';
 import { validateField } from '../src/lib/plugins.ts';
 import { schemaForm } from '../src/lib/schema-form.ts';
-import type { MockAuth } from './auth.ts';
+import { SECTIONS, type MockAuth } from './auth.ts';
 import type { AuditRow, Change, DiffRow, KeySpec, KeyType, KeyValue, PartPlan, PartResult, Plan, Restart, RestartClass, RestartEstimate, RestoreRef, Result, Scope, Target, Version } from '../src/api/settings.ts';
 
 export type Reply = { status: number; body: unknown; headers?: Record<string, string> };
@@ -362,6 +362,9 @@ export const ACCOUNT_KEYS: Record<'auth' | 'api', Record<string, AccountKey>> = 
     'session.idle_days': days(30, 'a session ends after this many idle days'),
     'session.absolute_days': days(180, 'a session ends this many days after the sign-in'),
     'password.min_length': { type: 'integer', def: 12, lo: 12, hi: 256, text: 'a new password’s length at least' },
+    // SRV-890: the views each role sees, and a new account's role
+    ...Object.fromEntries(['viewer', 'operator', 'admin'].map((role): [string, AccountKey] => [`views.${role}`, { type: 'string', def: 'all', admin: true, text: `the pages a ${role} sees: all, or menu sections separated by commas (an owner sees every page)` }])),
+    default_role: { type: 'enum', def: 'viewer', values: ['viewer', 'operator', 'admin'], admin: true, text: 'the role a new account gets when none is named' },
   },
   api: {
     'openai.exposure': { type: 'enum', def: 'this-machine', values: ['this-machine', 'network'], password: true, text: 'who may use the OpenAI API with a token: this machine, or any device (network)' },
@@ -434,7 +437,11 @@ class AccountKeys extends KeyValueScope {
       if (d.type === 'enum' && !d.values!.includes(v as string)) no('bad_value', `${n}.${k} is one of ${d.values!.join(', ')}`, { key: k });
       if (d.type === 'integer' && (typeof v !== 'number' || !Number.isInteger(v) || v < d.lo! || v > d.hi!)) no('bad_value', `${n}.${k} is a whole number from ${d.lo} to ${d.hi}`, { key: k });
       if (d.type === 'number' && (typeof v !== 'number' || !Number.isFinite(v) || v < d.lo! || v > d.hi!)) no('bad_value', `${n}.${k} is a number from ${d.lo} to ${d.hi}`, { key: k });
-      if (d.type === 'string' && (typeof v !== 'string' || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(v))) no('bad_value', 'api.listen is an address: 127.0.0.1, 0.0.0.0, ::, or a name', { key: k });
+      if (k === 'listen' && (typeof v !== 'string' || !/^[A-Za-z0-9.:[\]-]{1,253}$/.test(v))) no('bad_value', 'api.listen is an address: 127.0.0.1, 0.0.0.0, ::, or a name', { key: k });
+      if (k.startsWith('views.')) {
+        const bad = typeof v !== 'string' ? ['?'] : v === 'all' ? [] : v.split(',').map((x) => x.trim()).filter((x) => x && !SECTIONS.includes(x));
+        if (bad.length) no('bad_value', `${n}.${k} names no such page: ${bad.join(', ')}`, { key: k });
+      }
       if (k === 'listen' && this.auth.setupRequired()) no('password_first', 'api.listen lets other devices in: an owner with a password first', { key: k });
     }
   }

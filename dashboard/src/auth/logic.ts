@@ -12,6 +12,8 @@ export interface AuthSession {
   csrf: string | null;
   setup_required: boolean;
   local_mode: boolean;
+  /** SRV-890: the sections this account's role is shown; null or absent: every one */
+  views?: string[] | null;
 }
 
 export const T = {

@@ -38,5 +38,13 @@
  },
  "setup_required": true,
  "local_mode": false,
+ "views": [
+  "chat",
+  "overview",
+  "performance",
+  "usage",
+  "models",
+  "api"
+ ],
  "expires_at": "2026-12-17T10:35:25Z"
 }

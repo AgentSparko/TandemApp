@@ -2,6 +2,13 @@
 
 Releases of TandemApp: the dashboard, the controller (`tandem-app`), Chat (chatd), the conductor and TandemNode. Up to TandemLLM 0.15.4 TandemApp shipped inside the engine's releases; 0.16.0 is its first release of its own, and its first section below is TandemApp's part of the engine's Unreleased section, taken over when the docs were split (ENG-413). Older releases are in the engine's [CHANGELOG.md](https://github.com/TandemLLM/TandemEngine/blob/main/CHANGELOG.md).
 
+## Unreleased
+
+### Pages per role
+
+- An admin picks which pages each role sees, under Users & access, Views (SRV-890): a TandemApp that many people use, such as one in the cloud, can show a new user Chat and API alone. Owners see every page; Account and Users & access follow the permissions. A hidden page leaves the menu, its link opens the first page shown, and its own routes answer 403 `view_hidden` to a session and to the role's API tokens. Overview, Performance, Health, Sparks, Playground and Get started read only what the top bar reads on every page, so the menu alone hides them. The settings are `auth.views.<role>` and `auth.default_role`; `GET /v1/auth/session` names the pages in `views`.
+- `auth.default_role` is the role a new account gets when the request names none, and the one Add a user starts with.
+
 ## 0.16.0, 2026-11-18
 
 0.16.0 is TandemApp's first release of its own, from its own repository. It runs beside any OpenAI-compatible server and needs no engine: the page, the gateway with its usage ledger, the fleet through TandemNode, Chat with its sandboxes, and the conductor, which the engine loads as its extension for the chat mode. Sign-in is accounts and server-side sessions with four roles (owner, admin, operator, viewer) and API tokens with scopes; the shared admin token is gone. New pages: Health, Hooks with decision providers, Plugins (signed, each in its own process), and one Settings interface over every store. A Split serves one model across two Sparks, chat sandboxes can run as Kubernetes pods from the Helm chart, and a release ships the archive for `packaging/install.sh`, the engine's extension wheel, the page and the Helm chart.

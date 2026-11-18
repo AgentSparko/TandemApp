@@ -798,7 +798,26 @@ class AuthScope(AccountsScope):
                                        "the sign-in", lo=1, hi=400),
         "password.min_length": _spec("integer", 12, "a new password's length at least",
                                      lo=12, hi=256),
+        # SRV-890: the views each role sees (proxy/authz.py SECTIONS), and a new account's role
+        "views.viewer": _spec("string", "all", "the pages a viewer sees: all, or menu sections "
+                              "separated by commas (Chat: chat_min_role)", perm="users"),
+        "views.operator": _spec("string", "all", "the pages an operator sees: all, or menu "
+                                "sections separated by commas", perm="users"),
+        "views.admin": _spec("string", "all", "the pages an admin sees: all, or menu sections "
+                             "separated by commas (an owner sees every page)", perm="users"),
+        "default_role": _spec("enum", "viewer", "the role a new account gets when none is "
+                              "named", values=("viewer", "operator", "admin"), perm="users"),
     }
+
+    def _check_value(self, k: str, v) -> None:
+        super()._check_value(k, v)
+        if k.startswith("views.") and v != "all":
+            from proxy import authz
+            bad = sorted({x.strip() for x in v.split(",") if x.strip()} - set(authz.SECTIONS))
+            if bad:
+                raise SettingsError(422, "bad_value", f"auth.{k} names no such page: "
+                                    f"{', '.join(bad)} (all, or of {', '.join(authz.SECTIONS)})",
+                                    key=k)
 
 
 class ApiScope(AccountsScope):

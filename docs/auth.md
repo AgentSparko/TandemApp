@@ -21,6 +21,32 @@ Each role holds the permissions of the roles above it in the table.
 lets viewers make inference tokens. The last enabled owner cannot be disabled, demoted or
 removed.
 
+## Pages per role
+
+An admin picks which pages each role sees under Users & access, Views. A TandemApp that many
+people use, such as one in the cloud, can show a new user Chat and API alone. The settings
+behind it are `auth.views.viewer`, `auth.views.operator` and `auth.views.admin`: `all` (the
+default), or the menu's sections separated by commas (`chat`, `overview`, `performance`, `usage`,
+`hardware`, `events`, `health`, `sparks`, `models`, `api`, `conductor`, `playground`, `dev`,
+`start`, `add-engine`, `add-spark`, `app`). Owners see every page. Account and Users & access
+follow the role's permissions, never this list.
+
+A hidden page leaves the menu, and its link opens the first page the role sees. Its own routes
+answer 403 `view_hidden`, to a session and to the role's API tokens alike: Usage
+(`/v1/fleet/ledger`), Hardware (`/v1/fleet/host`), Events (`/v1/fleet/rules`), Models
+(`/v1/fleet/weights`), API (`/v1/config/backends`, `/v1/config/prices`), the Conductor
+(`/v1/conductor/*` but its speed check, live panel and residency limits), Dev
+(`/v1/dashboard/logs`), App (`/v1/settings/*` but the `auth` and `api` scopes, `/v1/fleet/app`,
+`/v1/fleet/hooks`, `/v1/fleet/plugins`), Chat (`/v1/chat-app/*`), Add Spark (`/v1/fleet/add`,
+`/v1/fleet/discovery`) and Add engine (`/v1/fleet/pair`). Overview, Performance, Health,
+Sparks, Playground and Get started read only what the top bar and the live panel read on every
+page, so the menu alone hides them. The gate checks the permission first and answers a missing
+one as before.
+
+A viewer's Chat is `auth.chat_min_role`, an owner's setting; the Views page switches it there.
+`auth.default_role` (`viewer` by default, never `owner`) is the role a new account gets when the
+request names none, and the one Add a user starts with.
+
 ## The first owner
 
 **Local mode.** A TandemApp process bound to loopback only (`127.0.0.1`, `::1`), not in a

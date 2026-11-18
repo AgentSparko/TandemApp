@@ -27,6 +27,8 @@ export const ROLES: Role[] = ['viewer', 'operator', 'admin', 'owner'];
 const VIEWER = ['read', 'metrics:read', 'fleet:read', 'inference', 'self'];
 const OPERATOR = [...VIEWER, 'settings:write', 'fleet:write', 'chat', 'tokens:inference', 'tokens:management'];
 const ADMIN = [...OPERATOR, 'trust', 'users'];
+/** proxy/authz.py SECTIONS: the menu's sections an admin shows or hides per role (SRV-890) */
+export const SECTIONS = ['chat', 'overview', 'performance', 'usage', 'hardware', 'events', 'health', 'sparks', 'models', 'api', 'conductor', 'playground', 'dev', 'start', 'add-engine', 'add-spark', 'app'];
 const BY_ROLE: Record<Role, string[]> = { viewer: VIEWER, operator: OPERATOR, admin: ADMIN, owner: [...ADMIN, 'owner'] };
 
 export const INFERENCE = ['inference:openai', 'inference:anthropic'];
@@ -130,6 +132,19 @@ export class MockAuth {
       if (this.setting<string>('api.tokens.viewers_may_create', 'off') === 'on') out.push('tokens:inference');
     }
     return out;
+  }
+  /** SRV-890: proxy/authz.py Policy.views: the sections `role` sees, null for every one */
+  views(role: Role | null): string[] | null {
+    if (role !== 'viewer' && role !== 'operator' && role !== 'admin') return null;
+    const raw = this.setting<string>(`auth.views.${role}`, 'all');
+    let shown = raw === 'all' ? null : raw.split(',').map((x) => x.trim()).filter((x) => SECTIONS.includes(x));
+    if (role === 'viewer') {
+      const base = new Set(shown ?? SECTIONS);
+      base.delete('chat');
+      if (this.setting<string>('auth.chat_min_role', 'operator') === 'viewer') base.add('chat');
+      shown = SECTIONS.filter((x) => base.has(x));
+    }
+    return shown;
   }
   account(c: Caller): Account | null {
     return c?.kind === 'account' ? (this.accounts.find((a) => a.id === c.id && a.enabled) ?? null) : null;
@@ -278,7 +293,7 @@ export class MockAuth {
       principal: a ? { kind: 'account', name: a.username } : local ? { kind: 'local', name: 'local' } : null,
       permissions: [...this.rights(this.roleOf(c))].sort(), csrf: a ? `csrf-${(c as { session: string }).session}` : null,
       provider: { kind: 'local', capabilities: { password: true, redirect: false, header: false, groups: false, manage_users: true, change_password: true } },
-      setup_required: this.setupRequired(), local_mode: local, expires_at: null,
+      setup_required: this.setupRequired(), local_mode: local, views: a ? this.views(a.role) : null, expires_at: null,
     };
   }
 
@@ -411,8 +426,9 @@ export class MockAuth {
       if (method === 'GET') return { status: 200, body: { contract_version: CONTRACT, users: this.accounts.map((a) => this.user(a)) } };
       if (method !== 'POST') no(405, 'method_not_allowed', 'the users take GET and POST');
       const b = body as Record<string, unknown> | null;
-      if (!b || typeof b !== 'object' || Object.keys(b).some((k) => !['username', 'role', 'password', 'display_name'].includes(k))) no(400, 'bad_request', 'the body is {username, role, password?, display_name?}');
+      if (!b || typeof b !== 'object' || Object.keys(b).some((k) => !['username', 'role', 'password', 'display_name'].includes(k))) no(400, 'bad_request', 'the body is {username, role?, password?, display_name?}');
       if (c?.kind === 'local') no(409, 'password_first', 'set the owner’s password first: local mode trusts this machine only');
+      if (b!.role == null) b!.role = this.setting<string>('auth.default_role', 'viewer');      // SRV-890
       if (b!.role === 'owner' && !owner) no(403, 'permission_denied', 'only an owner makes an owner', { permission: 'owner' });
       const name = typeof b!.username === 'string' ? b!.username.trim().toLowerCase() : '';
       if (!USERNAME.test(name)) no(400, 'bad_request', 'a username is 1 to 64 characters: letters, digits and . _ @ -, starting with a letter or a digit');

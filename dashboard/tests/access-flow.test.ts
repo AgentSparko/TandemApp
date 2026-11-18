@@ -215,7 +215,7 @@ describe('the viewer rule (decision 4)', () => {
 
 describe('every screen has a mock and a page', () => {
   it('each page opens for an owner on the mock, with its head, its strip and its panels', async () => {
-    const panels: Record<Page, string[]> = { account: ['me', 'password', 'sessions'], 'my-tokens': ['my-tokens'], users: ['users'], tokens: ['review', 'tokens', 'services'], exposure: ['exposure-openai', 'exposure-anthropic', 'exposure-now'], sessions: ['all-sessions'], audit: ['audit'] };
+    const panels: Record<Page, string[]> = { account: ['me', 'password', 'sessions'], 'my-tokens': ['my-tokens'], users: ['users'], tokens: ['review', 'tokens', 'services'], exposure: ['exposure-openai', 'exposure-anthropic', 'exposure-now'], sessions: ['all-sessions'], audit: ['audit'], views: ['default-role', 'views-chat', 'views-monitor', 'views-fleet', 'views-tune', 'views-settings'] };
     expect(PAGES.map((p) => p.id).sort()).toEqual(Object.keys(panels).sort());
     for (const def of PAGES) {
       const r = rig('kim');
@@ -261,7 +261,7 @@ describe('every screen has a mock and a page', () => {
       expect(got.slice(0, base.length), name).toEqual(base);
     }
     setRights(await rightsOf(rig('sam')));
-    expect(subPages(parseHash('#/access/tokens')).map((s) => [s.label, s.on])).toEqual([['Users', false], ['All tokens', true], ['API exposure', false], ['Sessions', false], ['Sign-ins', false]]);
+    expect(subPages(parseHash('#/access/tokens')).map((s) => [s.label, s.on])).toEqual([['Users', false], ['All tokens', true], ['API exposure', false], ['Sessions', false], ['Sign-ins', false], ['Views', false]]);
     expect(subPages(parseHash('#/account/tokens')).find((s) => s.on)!.label).toBe('My tokens');
     setRights(null);
   });
@@ -353,7 +353,7 @@ describe('Users', () => {
     await open(r, 'users');
     r.flow.show({ kind: 'user-new' });
     // an admin makes no owner
-    expect([...dialog(r).matchAll(/<option value=(\w+)>/g)].map((m) => m[1])).toEqual(['viewer', 'operator', 'admin']);
+    expect([...dialog(r).matchAll(/<option value=(\w+)[ >]/g)].map((m) => m[1])).toEqual(['viewer', 'operator', 'admin']);
     await r.flow.addUser('Bad Name!', 'viewer', '');
     expect(dialog(r)).toContain('data-dialog-error>A username is 1 to 64 characters');
     await r.flow.addUser('sam', 'viewer', '');
@@ -617,7 +617,7 @@ describe('Settings: the Sign-in and the API page', () => {
   it('Sign-in draws every key of the auth scope by name, with the session times and their limits', async () => {
     const r = rig('kim');
     const { text: t, fields } = await scopePage(r, 'auth');
-    expect(fields.map((f) => f.key).sort()).toEqual(['chat_min_role', 'local_login', 'local_mode', 'password.min_length', 'provider', 'session.absolute_days', 'session.idle_days']);
+    expect(fields.map((f) => f.key).sort()).toEqual(['chat_min_role', 'default_role', 'local_login', 'local_mode', 'password.min_length', 'provider', 'session.absolute_days', 'session.idle_days', 'views.admin', 'views.operator', 'views.viewer']);
     for (const label of ['Idle days before a session ends', 'Longest session, in days', 'Shortest password', 'Local mode', 'Who may chat', 'The password form', 'Who checks a sign-in']) expect(t, label).toContain(label);
     expect(fields.find((f) => f.key === 'session.idle_days')!.value).toBe(30);
     expect(fields.find((f) => f.key === 'session.absolute_days')!.value).toBe(180);

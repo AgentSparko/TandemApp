@@ -133,6 +133,11 @@ const ACCOUNT_LABEL: Record<string, string> = {
   'session.idle_days': 'Idle days before a session ends',
   'session.absolute_days': 'Longest session, in days',
   'password.min_length': 'Shortest password',
+  // SRV-890: Users & access, Views writes them too
+  'views.viewer': 'Pages a viewer sees',
+  'views.operator': 'Pages an operator sees',
+  'views.admin': 'Pages an admin sees',
+  default_role: 'A new account’s role',
   'openai.exposure': 'OpenAI-compatible API',
   'anthropic.exposure': 'Messages API',
   listen: 'Listen address',
