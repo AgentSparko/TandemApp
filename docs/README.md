@@ -53,6 +53,7 @@ TandemApp is one address and one dashboard in front of any number of engines and
 | [troubleshooting.md](troubleshooting.md) | symptoms, causes and what to do: the dashboard, the Chat tab, vLLM and SGLang, the gateway |
 | [glossary.md](glossary.md) | TandemApp's terms |
 | [threat-model.md](threat-model.md) | where untrusted input enters TandemApp, the parts that matter most for security |
+| [gallery/README.md](gallery/README.md) | the dashboard's pictures the README and the site use |
 | [CHANGELOG.md](../CHANGELOG.md) | every release |
 
 `tools/gen_reference.py` writes the reference pages' tables from the code, between marked blocks. `python3 tools/gen_reference.py --check`, which `tests/test_docs_reference.py` runs, fails while a table is stale or the HTTP reference lacks a route or header the code has.
