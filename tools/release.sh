@@ -131,7 +131,8 @@ step page;  python3 tools/dashboard_bundle.py build --commit "$(cat "$D/sha")" >
 step venv;  python3 -m venv "$D/venv" && "$D/venv/bin/pip" install -q ".[host]" pytest jsonschema pyyaml > "$D/venv.log" 2>&1 || { echo "GATE FAIL venv"; exit 1; }
 step suite; mkdir -p "$D/suite"
 ls tests/test_*.py | xargs -P 4 -n 1 "$D/venv/bin/python" tests/script_suite.py --all --out "$D/suite/logs" > "$D/suite/RESULT" 2>&1
-grep -E -i "fail|error" "$D/suite/RESULT" | grep -v -E "(^| )0 (failed|errors?)" | head -20 > "$D/suite/bad"
+grep -E "fail=[1-9]|FAIL \(" "$D/suite/RESULT" | head -20 > "$D/suite/bad"
+[ "$(grep -c '^files=' "$D/suite/RESULT")" = "$(ls tests/test_*.py | wc -l | tr -d ' ')" ] || echo "not every test file reported" >> "$D/suite/bad"
 step files; mkdir -p "$D/out"; "$D/venv/bin/python" tools/app_release.py pack --out "$D/out/tandemapp-$(cat VERSION).tar.gz" > "$D/files.log" 2>&1 \
   && w="$("$D/venv/bin/python" -m proxy package --out "$D/wheel" 2>>"$D/files.log" | head -1)" && cp "$w" "$D/out/" || { echo "GATE FAIL files"; exit 1; }
 ls "$D/out"
