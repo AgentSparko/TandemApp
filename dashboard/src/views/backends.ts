@@ -7,7 +7,7 @@
 
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { api, describeError } from '../api/client';
+import { api, apiBase, describeError } from '../api/client';
 import { config, WRITER_DEFAULTS, type BackendConfig, type BackendKind, type ConfigOverview, type FeatureValue, type ModelRow, type Price, type ProxyUser, type Rule, type SeedPrices, type TestResult, type WriterConfig, type WriterMode } from '../api/config';
 import { ago, compact, exact, money, ms } from '../lib/format';
 import { inflightOnce } from '../lib/inflight';
@@ -245,6 +245,10 @@ export class QseBackends extends LightElement {
   /** VIS-54: the server's proxy mode from /v1/dashboard/system, read once; `off` needs no
    *  /v1/config call (a 404 in the console on every visit and poll); null: an older server */
   private proxyMode: string | null | undefined = undefined;
+  /** A reverse proxy that sends /v1/dashboard/* to an engine and /v1/config to TandemApp's
+   *  controller (docs/proxy.md) shows this page the engine's `off`: the controller is still here,
+   *  and its /health says so (X-Tandem-Auth: accounts; an engine alone never sends it) */
+  private controllerHere: boolean | undefined = undefined;
 
   private async load(quiet = false): Promise<void> {
     if (!quiet) this.ov = { state: 'loading' };
@@ -255,7 +259,15 @@ export class QseBackends extends LightElement {
         this.proxyMode = null;
       }
     }
-    if (this.proxyMode === 'off') {
+    if (this.proxyMode === 'off' && this.controllerHere === undefined) {
+      try {
+        const r = await fetch(apiBase() + '/health', { cache: 'no-store', credentials: 'same-origin' });
+        this.controllerHere = r.headers.get('X-Tandem-Auth') === 'accounts';
+      } catch {
+        this.controllerHere = false;
+      }
+    }
+    if (this.proxyMode === 'off' && !this.controllerHere) {
       this.off = 'the proxy is off on this server (--backends off)';
       this.ov = { state: 'empty' };
       return;

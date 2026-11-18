@@ -218,6 +218,23 @@ test('VIS-54: the proxy off is said without a 404 for /v1/config, at 1440 and 39
   await page.request.post('/__mock/backends', { data: { reset: true, off: false } });
 });
 
+test('a mixed front: the engine says off, the controller with accounts still adds a backend @mock', async ({ page }) => {
+  // tandem.khaled.de 2026-11-18: /v1/dashboard/* reached the engine (proxy.mode off since engine API
+  // 1.8) and /v1/config the controller; the page said "The proxy is off" and hid Add backend
+  await setMode(page.request, 'ok');
+  await page.request.post('/__mock/backends', { data: { reset: true, systemOff: true } });
+  await page.goto(`./?auth=kim&t=${Date.now()}#/backends`);
+  await expect(page.locator('qse-backends')).toBeVisible();
+  await expect(page.locator('#proxy-off')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add backend' }).click();
+  await expect(page.locator('.bk-setup-card[data-kind="generic"]')).toBeVisible();
+  // without accounts (an engine alone) the same `off` stays the quiet panel of VIS-54
+  await page.request.post('/__mock/backends', { data: { reset: true, systemOff: true } });
+  await page.goto(`./?auth=off&t=${Date.now()}#/backends`);
+  await expect(page.locator('#proxy-off')).toContainText('The proxy is off on this server');
+  await page.request.post('/__mock/backends', { data: { reset: true } });
+});
+
 test('PL1: a new backend has no in-flight limit from us; parallel is this engine\'s own setting @mock', async ({ page }) => {
   // a backend stored without a cap: the card shows no "/N", its page says no limit
   await open(page, '#/backends');

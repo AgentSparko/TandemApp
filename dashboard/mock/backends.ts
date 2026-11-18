@@ -131,6 +131,8 @@ export class MockBackends {
   rules: J[] = [];
   users: J[] = [];
   off = false;
+  /** the system read says `off` (an engine behind a mixed front) while /v1/config answers */
+  systemOff = false;
   /** SRV-749: the ids of the backends connected from Get started (the fleet's backend members) */
   connected = new Set<string>();
   private nextUser = 1;
@@ -142,6 +144,7 @@ export class MockBackends {
 
   reset(): void {
     this.off = false;
+    this.systemOff = false;
     this.connected.clear();
     this.backends = [
       backend('vllm1', 'vllm', 'http://vllm.local:8000/v1', { label: 'vLLM (Qwen3.5-4B)', host: { mode: 'collector', url: 'http://vllm.local:9108', dcgm_url: null }, harness: { mode: 'on', profile: 'coding' } }),

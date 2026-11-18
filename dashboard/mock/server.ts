@@ -396,7 +396,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
       disk: { state_dir_free_bytes: mode === 'busy' ? 15_000_000_000 : 119_185_342_464 },
       ...(mode === 'nogpu' ? {} : { hosts: mockHosts(now, inflight != null, !backends.off, liveRng) }),
       // VIS-54: an engine without --backends says `off`, so the Backends view never asks /v1/config
-      proxy: backends.off ? { mode: 'off' as const, backends: [] } : { mode: 'embedded' as const, backends: backends.status() as unknown as BackendStatus[] },
+      proxy: backends.off || backends.systemOff ? { mode: 'off' as const, backends: [] } : { mode: 'embedded' as const, backends: backends.status() as unknown as BackendStatus[] },
     };
   };
 
@@ -866,6 +866,7 @@ export function createMockMiddleware(opts: MockOptions = {}): Middleware {
         if (b.reset) backends.reset();
         if (b.empty) backends.empty();
         if (typeof b.off === 'boolean') backends.off = b.off;
+        if (typeof b.systemOff === 'boolean') backends.systemOff = b.systemOff;
         return json(res, 200, { backends: backends.backends.length, off: backends.off });
       }
       if (path === '/v1/config' || path.startsWith('/v1/config/')) {
