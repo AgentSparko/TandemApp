@@ -3,6 +3,7 @@
 // environment (locked fields). POST /__mock/backends {"empty": true} empties it (the Setup screen);
 // {"off": true} answers /v1/config as an engine without --backends.
 
+import { PRESETS } from './presets';
 import { engineBlock } from './engines.ts';
 
 type J = Record<string, unknown>;
@@ -205,7 +206,7 @@ export class MockBackends {
 
   overview(): J {
     return {
-      contract_version: '1.0', setup_needed: this.backends.length === 0, key_source: 'file', config_path: '~/.tandemllm/config.sqlite3', kinds: KINDS, feature_groups: GROUPS,
+      contract_version: '1.0', setup_needed: this.backends.length === 0, key_source: 'file', config_path: '~/.tandemllm/config.sqlite3', kinds: KINDS, feature_groups: GROUPS, presets: PRESETS,
       backends: this.backends.map((b) => this.view(b)), rules: this.rules, users: this.users, users_active: this.users.some((u) => u.enabled),
       engine: { model: 'TandemLLM', base_model: 'qwen38-spark-engine', embedded: true, parallel: { n: 2, requested: 2, side_max_len: 65536, side_graphs: 'off', floor_gib: 15 }, roles: { deciders: ['laya-english'], narrator: { model: 'qwen3.5-2b', state: 'loaded' } } }, generation: 1,
       harness: { conductor: true, profiles: ['chat', 'coding', 'general', 'hermes', 'overnight'], defaults: DEFAULTS },
@@ -314,7 +315,8 @@ export class MockBackends {
         if (!/^https?:\/\//.test(url)) return bad('url does not match', 'url');
         const key = body?.key ? String(body.key) : null;
         const b = backend(id, kind, url, {
-          label: body?.label || id, max_inflight: body?.max_inflight ?? null, fallback: body?.fallback ?? [], models: body?.models ?? [],
+          label: body?.label || id, max_inflight: body?.max_inflight ?? null, preset: body?.preset ?? null,
+          ...(typeof body?.cloud === 'boolean' ? { cloud: body.cloud } : {}), fallback: body?.fallback ?? [], models: body?.models ?? [],
           harness: { mode: 'off', profile: null, ...((body?.harness ?? {}) as J) },
           key: key ? { key_set: true, last4: key.slice(-4), sha256_6: 'c0ffee', source: 'database', readable: true } : { key_set: false, last4: null, sha256_6: null, source: null, readable: null },
           ...(t.ok ? {} : { health: { state: 'down', since: Date.now() / 1000, last_check: Date.now() / 1000, last_error: t.error, latency_ms: null, models_at: null, key_rejected: t.reason === 'key_rejected' } }),

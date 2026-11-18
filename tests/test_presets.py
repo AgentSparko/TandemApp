@@ -13,6 +13,8 @@
                                                                          test_an_unknown_preset_is_refused
   5  A PATCH sets the cloud flag back to the kind's (null)
                                                                          test_cloud_back_to_the_kind
+  6  The page's mock offers the same providers (dashboard/mock/presets.ts, made from this list)
+                                                                         test_the_mock_matches
 
 CPU only. Run: python tests/test_presets.py
 """
@@ -103,6 +105,14 @@ def test_cloud_back_to_the_kind():
         assert st == 200, body
         assert json.loads(body)["cloud"] is False, body
     return "null is the kind's flag"
+
+
+def test_the_mock_matches():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    text = open(os.path.join(root, "dashboard", "mock", "presets.ts")).read()
+    body = text[text.index("= [") + 2: text.rindex("];") + 1]
+    assert json.loads(body) == presets_mod.presets(), "dashboard/mock/presets.ts differs: make it again from proxy/presets.py"
+    return "the same list"
 
 
 if __name__ == "__main__":

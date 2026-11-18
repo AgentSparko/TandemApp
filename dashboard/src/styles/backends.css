@@ -17,37 +17,32 @@
   max-width: 72ch;
 }
 
-/* setup */
-.bk-setup {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-.bk-setup-card {
+/* setup: Add a backend, one form for every provider */
+.bk-connect {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  text-align: left;
-  padding: 14px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: var(--bg-inset);
-  color: var(--ink);
-  cursor: pointer;
-  min-height: 150px;
+  gap: 12px;
+  max-width: 820px;
 }
-.bk-setup-card:hover,
-.bk-setup-card:focus-visible {
-  border-color: var(--cobalt);
+.bk-connect select {
+  width: 100%;
 }
-.bk-setup-title {
-  font-weight: 600;
+.bk-connect .seg {
+  flex-wrap: wrap;
 }
-.bk-setup-body {
+.bk-proto {
   color: var(--ink-2);
-  font-size: var(--fs-sm);
-  flex: 1;
+  padding: 6px 0;
+}
+.bk-connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bk-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* cards */

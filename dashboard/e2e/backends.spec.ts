@@ -15,10 +15,16 @@ async function open(page: Page, hash = '#/backends', mock: Record<string, unknow
   if (hash.startsWith('#/backends')) await expect(page.locator('qse-backends')).toBeVisible();
 }
 
+/** Add a backend: pick a provider, then the whole form (More settings) */
+async function moreSettings(page: Page, preset: string): Promise<void> {
+  await page.locator('#connect select[data-provider]').selectOption(preset);
+  await page.locator('#connect [data-more]').click();
+}
+
 test('an empty registry opens on Setup, and a backend is tested and saved @mock', async ({ page }) => {
   await open(page, '#/backends', { reset: true, empty: true });
   await expect(page.locator('#setup')).toBeVisible();
-  await page.locator('.bk-setup-card[data-kind="deepseek"]').click();
+  await moreSettings(page, 'deepseek');
   const form = page.locator('#backend-form');
   await expect(form.locator('[data-field="url"] input')).toHaveValue('https://api.deepseek.com/v1');
   await form.locator('[data-field="key"] input').fill('sk-fixture-ABCDEFGH1234');
@@ -32,7 +38,7 @@ test('an empty registry opens on Setup, and a backend is tested and saved @mock'
 
 test('a failing test says why, before anything is saved @mock', async ({ page }) => {
   await open(page, '#/backends?screen=setup');
-  await page.locator('.bk-setup-card[data-kind="generic"]').click();
+  await moreSettings(page, 'custom-openai');
   const form = page.locator('#backend-form');
   await form.locator('[data-field="url"] input').fill('http://down.local:1/v1');
   await form.getByRole('button', { name: 'Test connection' }).click();
@@ -227,12 +233,72 @@ test('a mixed front: the engine says off, the controller with accounts still add
   await expect(page.locator('qse-backends')).toBeVisible();
   await expect(page.locator('#proxy-off')).toHaveCount(0);
   await page.getByRole('button', { name: 'Add backend' }).click();
-  await expect(page.locator('.bk-setup-card[data-kind="generic"]')).toBeVisible();
+  await expect(page.locator('#connect select[data-provider]')).toBeVisible();
   // without accounts (an engine alone) the same `off` stays the quiet panel of VIS-54
   await page.request.post('/__mock/backends', { data: { reset: true, systemOff: true } });
   await page.goto(`./?auth=off&t=${Date.now()}#/backends`);
   await expect(page.locator('#proxy-off')).toContainText('The proxy is off on this server');
   await page.request.post('/__mock/backends', { data: { reset: true } });
+});
+
+test('a provider, a key and go: OpenRouter connects with its URL filled in and shows its name @mock', async ({ page }) => {
+  await open(page, '#/backends?screen=setup', { reset: true, empty: true });
+  const f = page.locator('#connect');
+  await f.locator('select[data-provider]').selectOption('openrouter');
+  await expect(f.locator('[data-field="url"] input')).toHaveValue('https://openrouter.ai/api/v1');
+  await expect(f.locator('[data-protocol]')).toContainText('OpenAI-compatible');
+  await expect(f.locator('[data-connect]')).toBeDisabled();            // its key is required
+  await f.locator('[data-field="key"] input').fill('sk-or-test');
+  await f.locator('[data-connect]').click();
+  await page.goto('./#/backends');
+  const card = page.locator('.bk-card[data-backend="openrouter"]');
+  await expect(card).toBeVisible();
+  await expect(card.locator('[data-preset="openrouter"]')).toHaveText('OpenRouter');
+  await expect(card).toContainText('cloud');
+});
+
+test('a provider with both protocols: the Anthropic base of Z.ai is one click @mock', async ({ page }) => {
+  await open(page, '#/backends?screen=setup');
+  const f = page.locator('#connect');
+  await f.locator('select[data-provider]').selectOption('zai');
+  await expect(f.locator('[data-field="url"] input')).toHaveValue('https://api.z.ai/api/paas/v4');
+  await f.locator('[data-protocol-option="anthropic"]').click();
+  await expect(f.locator('[data-field="url"] input')).toHaveValue('https://api.z.ai/api/anthropic');
+  await expect(f.locator('[data-protocol-option="anthropic"]')).toHaveAttribute('aria-checked', 'true');
+  expect(await noHorizontalOverflow(page)).toBe(true);
+});
+
+test('a refused key saves nothing until Save anyway @mock', async ({ page }) => {
+  await open(page, '#/backends?screen=setup', { reset: true, empty: true });
+  const f = page.locator('#connect');
+  await f.locator('select[data-provider]').selectOption('deepseek');
+  await f.locator('[data-field="key"] input').fill('wrong-key');
+  await f.locator('[data-connect]').click();
+  await expect(f.locator('[data-connect-error]')).toContainText('refused the API key');
+  await page.goto('./#/backends?screen=setup');
+  await page.goto('./#/backends');
+  await expect(page.locator('.bk-card[data-backend="deepseek"]')).toHaveCount(0);
+  await page.goto('./#/backends?screen=setup');
+  await f.locator('select[data-provider]').selectOption('deepseek');
+  await f.locator('[data-field="key"] input').fill('wrong-key');
+  await f.locator('[data-connect]').click();
+  await f.locator('[data-confirm]').click();
+  await page.goto('./#/backends');
+  await expect(page.locator('.bk-card[data-backend="deepseek"]')).toBeVisible();
+});
+
+test('Custom (Anthropic-compatible): a URL and an optional token @mock', async ({ page }) => {
+  await open(page, '#/backends?screen=setup', { reset: true, empty: true });
+  const f = page.locator('#connect');
+  await f.locator('select[data-provider]').selectOption('custom-anthropic');
+  await expect(f.locator('[data-protocol]')).toContainText('Anthropic-compatible');
+  await expect(f.locator('[data-connect]')).toBeDisabled();            // no URL yet
+  await f.locator('[data-field="url"] input').fill('http://192.0.2.7:8080');
+  await f.locator('[data-field="label"] input').fill('Lab Claude proxy');
+  await f.locator('[data-connect]').click();
+  await page.goto('./#/backends');
+  const card = page.locator('.bk-card[data-backend="custom"]');
+  await expect(card).toContainText('Lab Claude proxy');
 });
 
 test('PL1: a new backend has no in-flight limit from us; parallel is this engine\'s own setting @mock', async ({ page }) => {
@@ -249,7 +315,7 @@ test('PL1: a new backend has no in-flight limit from us; parallel is this engine
   await expect(own).toContainText('2 requests at once');
   await expect(own).toContainText('laya-english');
   await expect(own).toContainText('qwen3.5-2b');
-  await page.locator('.bk-setup-card[data-kind="vllm"]').click();
+  await moreSettings(page, 'vllm');
   const form = page.locator('#backend-form');
   const cap = form.locator('[data-field="max_inflight"] input');
   await expect(cap).toHaveValue('');

@@ -117,6 +117,8 @@ export interface BackendConfig {
   /** P1.5: where the System view reads the backend's machine (absent on an older server) */
   host?: { mode: 'auto' | 'same' | 'collector' | 'exporter' | 'off'; url: string | null; dcgm_url: string | null };
   cloud: boolean;
+  /** the provider it was made from (proxy/presets.py), null for one made by hand */
+  preset?: string | null;
   created_at: number;
   updated_at: number;
   updated_by: string | null;
@@ -174,6 +176,19 @@ export interface OwnEngine {
   roles?: { deciders?: string[]; narrator?: { model: string | null; state: string } };
 }
 
+/** A provider the page offers when a backend is added (proxy/presets.py, GET /v1/config/presets). */
+export type Protocol = 'openai' | 'anthropic';
+export interface Preset {
+  id: string;
+  label: string;
+  group: 'cloud' | 'self-hosted' | 'custom';
+  key: 'required' | 'optional' | 'none';
+  key_url: string | null;
+  cloud: boolean;
+  note: string;
+  endpoints: { protocol: Protocol; kind: BackendKind; url: string }[];
+}
+
 export interface ConfigOverview {
   contract_version: string;
   setup_needed: boolean;
@@ -181,6 +196,8 @@ export interface ConfigOverview {
   config_path: string;
   kinds: Record<BackendKind, KindInfo>;
   feature_groups: string[];
+  /** the providers to pick from; older servers send none */
+  presets?: Preset[];
   backends: BackendConfig[];
   rules: Rule[];
   users: ProxyUser[];
@@ -224,7 +241,7 @@ export const config = {
   create: (b: Partial<BackendConfig> & { id: string; kind: BackendKind; key?: string }) => request<BackendConfig>('/v1/config/backends', { method: 'POST', headers: J, body: body(b) }),
   /** SRV-749: add a server by its URL, tested first: a failed test saves nothing and answers 409
    *  (`key_rejected`, `unreachable`, `not_openai`, the test in `error.test`) until `confirm` */
-  connect: (b: { url: string; key?: string; label?: string; kind?: BackendKind; confirm?: boolean }) =>
+  connect: (b: { url: string; key?: string; label?: string; kind?: BackendKind; confirm?: boolean; id?: string; preset?: string; cloud?: boolean }) =>
     request<BackendConfig>('/v1/config/backends', { method: 'POST', headers: J, body: body({ ...b, verify: true }) }),
   update: (id: string, patch: Record<string, unknown>) => request<BackendConfig>(`/v1/config/backends/${enc(id)}`, { method: 'PATCH', headers: J, body: body(patch) }),
   remove: (id: string) => request<void>(`/v1/config/backends/${enc(id)}`, { method: 'DELETE' }, 'none'),

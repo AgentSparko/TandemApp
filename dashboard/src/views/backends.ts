@@ -8,7 +8,7 @@
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { api, apiBase, describeError } from '../api/client';
-import { config, WRITER_DEFAULTS, type BackendConfig, type BackendKind, type ConfigOverview, type FeatureValue, type ModelRow, type Price, type ProxyUser, type Rule, type SeedPrices, type TestResult, type WriterConfig, type WriterMode } from '../api/config';
+import { config, WRITER_DEFAULTS, type BackendConfig, type BackendKind, type ConfigOverview, type FeatureValue, type ModelRow, type Preset, type Price, type Protocol, type ProxyUser, type Rule, type SeedPrices, type TestResult, type WriterConfig, type WriterMode } from '../api/config';
 import { ago, compact, exact, money, ms } from '../lib/format';
 import { inflightOnce } from '../lib/inflight';
 import { setParams } from '../lib/router';
@@ -141,6 +141,9 @@ export function modelPatch(dr: ModelDraft): { patch: Record<string, unknown>; er
 interface Draft {
   id: string;
   kind: BackendKind;
+  /** the provider picked in Add a backend (sent on create only), and its cloud flag */
+  preset: string | null;
+  cloud: boolean | null;
   label: string;
   url: string;
   key: string;
@@ -188,7 +191,7 @@ const HOST_MODES: [HostMode, string][] = [
 function draftFor(b: BackendConfig | null, kind: BackendKind, ov: ConfigOverview | null): Draft {
   if (b)
     return {
-      id: b.id, kind: b.kind, label: b.label === b.id ? '' : b.label, url: b.url, key: '', keyAction: 'keep', enabled: b.enabled,
+      id: b.id, kind: b.kind, preset: b.preset ?? null, cloud: null, label: b.label === b.id ? '' : b.label, url: b.url, key: '', keyAction: 'keep', enabled: b.enabled,
       models_mode: b.models_mode, models: b.models.join(', '), fallback: b.fallback.join(', '), max_inflight: b.max_inflight == null ? '' : String(b.max_inflight), inject_usage: b.inject_usage,
       host_mode: (b.host?.mode ?? 'auto') as HostMode, host_url: b.host?.url ?? '', host_dcgm: b.host?.dcgm_url ?? '',
       harness_mode: b.harness.mode, harness_profile: b.harness.profile ?? '',
@@ -196,12 +199,33 @@ function draftFor(b: BackendConfig | null, kind: BackendKind, ov: ConfigOverview
     };
   const k = ov?.kinds?.[kind];
   return {
-    id: kind === 'generic' ? 'engine1' : kind === 'vllm' ? 'vllm1' : kind === 'sglang' ? 'sglang1' : kind === 'tandemllm' ? 'engine2' : kind, kind, label: '', url: k?.url ?? '', key: '', keyAction: 'set', enabled: true,
+    id: kind === 'generic' ? 'engine1' : kind === 'vllm' ? 'vllm1' : kind === 'sglang' ? 'sglang1' : kind === 'tandemllm' ? 'engine2' : kind, kind, preset: null, cloud: null, label: '', url: k?.url ?? '', key: '', keyAction: 'set', enabled: true,
     models_mode: 'discover', models: '', fallback: '', max_inflight: '', inject_usage: k?.inject_usage ?? true,
     host_mode: 'auto', host_url: '', host_dcgm: '',
     harness_mode: 'off', harness_profile: '',
     ...writerDraft(WRITER_DEFAULTS),
   };
+}
+
+const PROTOCOL_LABEL: Record<Protocol, string> = { openai: 'OpenAI-compatible', anthropic: 'Anthropic-compatible' };
+const PRESET_GROUPS: [Preset['group'], string][] = [
+  ['cloud', 'Cloud APIs: a key and go'],
+  ['self-hosted', 'Servers you run'],
+  ['custom', 'Anything else, by its URL'],
+];
+
+/** what Add a backend holds while a provider is picked */
+interface Pick {
+  preset: string;
+  protocol: Protocol;
+  url: string;
+  key: string;
+  label: string;
+}
+
+function pickFor(p: Preset, protocol?: Protocol): Pick {
+  const ep = p.endpoints.find((e) => e.protocol === protocol) ?? p.endpoints[0];
+  return { preset: p.id, protocol: ep.protocol, url: ep.url, key: '', label: '' };
 }
 
 @customElement('qse-backends')
@@ -220,6 +244,9 @@ export class QseBackends extends LightElement {
   private seedFlight = inflightOnce(() => config.seedPrices());
   @state() private modelDrafts: Record<string, ModelDraft> = {};
   @state() private flash: string | null = null;
+  /** Add a backend: the provider picked, and its Connect in flight or refused */
+  @state() private pick: Pick | null = null;
+  @state() private connecting: { busy: boolean; error: string | null; confirm: boolean } = { busy: false, error: null, confirm: false };
   private timer: ReturnType<typeof setInterval> | null = null;
 
   connectedCallback(): void {
@@ -374,26 +401,121 @@ export class QseBackends extends LightElement {
 
   // ---- setup ----------------------------------------------------------------------------
   private renderSetup(d: ConfigOverview): TemplateResult {
-    const card = (kind: BackendKind, title: string, body: string, cta: string) => html`<button class="bk-setup-card" data-kind=${kind} @click=${() => this.startAdd(kind, d)}>
-      <span class="bk-setup-title">${title}</span>
-      <span class="bk-setup-body">${body}</span>
-      <span class="btn btn-primary btn-sm">${cta}</span>
-    </button>`;
+    const presets = d.presets ?? [];
+    const lead = d.engine?.embedded
+      ? html`This server runs <b>${d.engine.model}</b> itself; every backend you add sits beside it, routed by model id.`
+      : html`Pick a provider, paste its key and connect. Its models show up in <code>/v1/models</code> under their real names, for OpenAI and Anthropic clients alike.`;
     return panel(
       d.setup_needed ? 'Set up the first backend' : 'Add a backend',
-      html`<p class="panel-sub bk-lead">${d.engine?.embedded ? html`This server runs <b>${d.engine.model}</b> itself; every backend you add sits beside it, routed by model id.` : html`Pick what this dashboard sits in front of. One backend tested and saved, and its models show up in <code>/v1/models</code> under their real names.`}</p>
-        <div class="bk-setup">
-          ${card('tandemllm', 'Our engine', 'A TandemLLM server at a URL (another box, or this one behind the standalone proxy).', 'Add a TandemLLM URL')}
-          ${card('vllm', 'vLLM', 'A vLLM server: its requests relayed, and its own /metrics read for KV, prefix-cache hits, the queue and speculation.', 'Add vLLM')}
-          ${card('sglang', 'SGLang', 'An SGLang server started with --enable-metrics: relayed, with its KV, cache hit rate and speculation read.', 'Add SGLang')}
-          ${card('generic', 'Another engine', 'llama.cpp, LM Studio, Ollama or any OpenAI-compatible URL: relayed and measured at the proxy.', 'Add an engine')}
-          ${card('deepseek', 'A cloud provider', 'DeepSeek or OpenAI with your own key. The key is stored encrypted and never shown again.', 'Add DeepSeek')}
-          ${card('openai', 'OpenAI', 'Chat completions, embeddings and the Responses API, relayed as they are.', 'Add OpenAI')}
-        </div>
+      html`<p class="panel-sub bk-lead">${lead}</p>
+        ${presets.length ? this.renderConnect(d, presets) : this.renderKinds(d)}
         ${this.renderEngineOwn(d)}
         <p class="panel-foot">Headless instead: the same objects as TANDEM_* variables in an env file (<code>TANDEM_BACKENDS=deepseek</code>, <code>TANDEM_BACKEND_DEEPSEEK_KIND=deepseek</code>, <code>…_KEY</code>). A field a variable sets is locked here and names the variable.</p>`,
       { id: 'setup' },
     );
+  }
+
+  /** an older server sends no presets: the kinds, one button each, straight into the form */
+  private renderKinds(d: ConfigOverview): TemplateResult {
+    const kinds: BackendKind[] = ['generic', 'anthropic', 'openai', 'deepseek', 'tandemllm', 'vllm', 'sglang'];
+    return html`<div class="bk-kinds">${kinds.map((k) => html`<button class="btn btn-ghost btn-sm" data-kind=${k} @click=${() => this.startAdd(k, d)}>${KIND_LABEL[k] ?? k}</button>`)}</div>`;
+  }
+
+  private renderConnect(d: ConfigOverview, presets: Preset[]): TemplateResult {
+    const p = this.pick ?? pickFor(presets[0]);
+    const pre = presets.find((x) => x.id === p.preset) ?? presets[0];
+    const set = (patch: Partial<Pick>) => {
+      this.pick = { ...p, ...patch };
+      this.connecting = { busy: false, error: null, confirm: false };
+    };
+    const c = this.connecting;
+    const keyLabel = pre.key === 'required' ? 'API key' : 'API key (if the server needs one)';
+    return html`<form class="bk-connect" id="connect" data-preset=${pre.id} novalidate @submit=${(e: Event) => this.connect(e, d, pre, p, false)}>
+      <div class="bk-form-grid">
+        <label class="field field-block bk-field" data-field="provider">
+          <span>Provider</span>
+          <select data-provider @change=${(e: Event) => {
+            const np = presets.find((x) => x.id === (e.target as HTMLSelectElement).value);
+            if (np) {
+              this.pick = pickFor(np, p.protocol);
+              this.connecting = { busy: false, error: null, confirm: false };
+            }
+          }}>
+            ${PRESET_GROUPS.map(([g, title]) => {
+              const list = presets.filter((x) => x.group === g);
+              return list.length ? html`<optgroup label=${title}>${list.map((x) => html`<option value=${x.id} ?selected=${x.id === pre.id}>${x.label}</option>`)}</optgroup>` : nothing;
+            })}
+          </select>
+          ${pre.note ? html`<span class="hint">${pre.note}</span>` : nothing}
+        </label>
+        <div class="field field-block bk-field" data-field="protocol">
+          <span>Protocol</span>
+          ${pre.endpoints.length > 1
+            ? html`<div class="seg" role="radiogroup" aria-label="protocol" data-protocol>${pre.endpoints.map((e) => html`<button type="button" role="radio" aria-checked=${e.protocol === p.protocol} class="seg-btn ${e.protocol === p.protocol ? 'is-on' : ''}" data-protocol-option=${e.protocol} @click=${() => set({ protocol: e.protocol, url: e.url })}>${PROTOCOL_LABEL[e.protocol]}</button>`)}</div>`
+            : html`<span class="bk-proto" data-protocol>${PROTOCOL_LABEL[pre.endpoints[0].protocol]}</span>`}
+        </div>
+        <label class="field field-block bk-field" data-field="url">
+          <span>Base URL</span>
+          <input class="mono" type="url" .value=${p.url} placeholder=${p.protocol === 'anthropic' ? 'https://host/anthropic' : 'http://host:8000/v1'} @input=${(e: Event) => set({ url: (e.target as HTMLInputElement).value.trim() })} />
+          <span class="hint">${pre.group === 'cloud' ? 'filled in for you; change it only for another region or plan' : p.protocol === 'anthropic' ? 'the server’s Messages API base, with or without its /v1' : 'the OpenAI SDK’s base_url; a bare host gets /v1'}</span>
+        </label>
+        ${pre.key !== 'none'
+          ? html`<label class="field field-block bk-field" data-field="key">
+              <span>${keyLabel}${pre.key_url ? html` <a class="small" href=${pre.key_url} target="_blank" rel="noopener noreferrer">get a key</a>` : nothing}</span>
+              <input type="password" autocomplete="new-password" .value=${p.key} placeholder="sk-…" @input=${(e: Event) => set({ key: (e.target as HTMLInputElement).value.trim() })} />
+              <span class="hint">stored encrypted on this server and never shown again</span>
+            </label>`
+          : nothing}
+        <label class="field field-block bk-field" data-field="label">
+          <span>Name</span>
+          <input .value=${p.label} placeholder=${pre.label} @input=${(e: Event) => set({ label: (e.target as HTMLInputElement).value })} />
+        </label>
+      </div>
+      ${c.error ? html`<p class="login-error" role="alert" data-connect-error>${c.error}</p>` : nothing}
+      <div class="bk-connect-actions">
+        <button type="submit" class="btn btn-primary" data-connect ?disabled=${c.busy || !p.url || (pre.key === 'required' && !p.key && !c.confirm)}>${c.busy ? 'Testing…' : 'Connect'}</button>
+        ${c.confirm ? html`<button type="button" class="btn btn-ghost" data-confirm ?disabled=${c.busy} @click=${(e: Event) => this.connect(e, d, pre, p, true)}>Save anyway</button>` : nothing}
+        <button type="button" class="btn btn-ghost" data-more @click=${() => this.moreSettings(d, pre, p)}>More settings</button>
+      </div>
+    </form>`;
+  }
+
+  private uniqueId(d: ConfigOverview, base: string): string {
+    const root = base.replace(/[^a-z0-9_-]/g, '').slice(0, 28) || 'backend';
+    let id = root;
+    for (let i = 2; d.backends.some((b) => b.id === id) || id === 'engine'; i++) id = `${root}${i}`;
+    return id;
+  }
+
+  /** Connect: tested first, saved when the test passes (or when Save anyway confirms) */
+  private async connect(e: Event, d: ConfigOverview, pre: Preset, p: Pick, confirm: boolean): Promise<void> {
+    e.preventDefault();
+    const ep = pre.endpoints.find((x) => x.protocol === p.protocol) ?? pre.endpoints[0];
+    this.connecting = { busy: true, error: null, confirm: false };
+    try {
+      const nb = await config.connect({
+        url: p.url, key: p.key || undefined, label: p.label || pre.label, kind: ep.kind,
+        id: this.uniqueId(d, pre.group === 'custom' ? 'custom' : pre.id), preset: pre.id, cloud: pre.cloud, confirm,
+      });
+      this.connecting = { busy: false, error: null, confirm: false };
+      this.pick = null;
+      this.say(`${nb.label} connected${nb.test ? `: ${nb.test.state}${nb.test.latency_ms != null ? `, ${ms(nb.test.latency_ms)}` : ''}` : ''}`);
+      setParams({ screen: null, backend: nb.id });
+      await this.load(true);
+    } catch (err) {
+      const de = describeError(err);
+      this.connecting = { busy: false, error: de.message, confirm: de.status === 409 };
+    }
+  }
+
+  /** the whole form, filled from the provider picked */
+  private moreSettings(d: ConfigOverview, pre: Preset, p: Pick): void {
+    const ep = pre.endpoints.find((x) => x.protocol === p.protocol) ?? pre.endpoints[0];
+    const base = draftFor(null, ep.kind, d);
+    this.draft = { ...base, id: this.uniqueId(d, pre.group === 'custom' ? 'custom' : pre.id), url: p.url, key: p.key, label: p.label, preset: pre.id, cloud: pre.cloud };
+    this.editing = '';
+    this.test = null;
+    this.formError = null;
   }
 
   private startAdd(kind: BackendKind, d: ConfigOverview): void {
@@ -427,7 +549,7 @@ export class QseBackends extends LightElement {
         <a class="bk-card-title" href=${`#/api/backends?backend=${encodeURIComponent(b.id)}`}>${b.label}</a>
         <span class="pill bk-state is-${st}" data-state=${st}>${st}</span>
       </header>
-      <div class="bk-card-kind"><span class="badge">${KIND_LABEL[b.kind] ?? b.kind}</span>${b.cloud ? html`<span class="badge">cloud</span>` : nothing}${Object.keys(b.locks).length ? html`<span class="badge badge-lock" title="fields set by environment variables">${icon('info')} env</span>` : nothing}</div>
+      <div class="bk-card-kind"><span class="badge" data-preset=${b.preset ?? ''}>${this.presetLabel(b) ?? KIND_LABEL[b.kind] ?? b.kind}</span>${b.cloud ? html`<span class="badge">cloud</span>` : nothing}${Object.keys(b.locks).length ? html`<span class="badge badge-lock" title="fields set by environment variables">${icon('info')} env</span>` : nothing}</div>
       <div class="bk-card-url mono clip" title=${b.url}>${b.url}</div>
       <dl class="bk-card-facts">
         <div><dt>models</dt><dd class="num">${models}</dd></div>
@@ -444,6 +566,11 @@ export class QseBackends extends LightElement {
         <button class="btn btn-ghost btn-sm" @click=${() => this.startEdit(b)}>${icon('edit')} Edit</button>
       </footer>
     </article>`;
+  }
+
+  private presetLabel(b: BackendConfig): string | null {
+    if (!b.preset || this.ov.state !== 'ready') return null;
+    return this.ov.data.presets?.find((p) => p.id === b.preset)?.label ?? null;
   }
 
   private async retest(b: BackendConfig): Promise<void> {
@@ -624,6 +751,8 @@ export class QseBackends extends LightElement {
     try {
       if (isNew) {
         if (dr.key) doc.key = dr.key;
+        if (dr.preset) doc.preset = dr.preset;
+        if (dr.cloud != null) doc.cloud = dr.cloud;
         const nb = await config.create({ ...(doc as object), id: dr.id, kind: dr.kind } as never);
         this.say(`${nb.id} saved${nb.test ? `: ${nb.test.state}${nb.test.latency_ms != null ? `, ${ms(nb.test.latency_ms)}` : ''}` : ''}`);
         this.editing = null;
