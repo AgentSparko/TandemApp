@@ -1449,12 +1449,15 @@ answer 403 <code>view_hidden</code>, to a session and to the role's API tokens a
 (<code>/v1/fleet/ledger</code>), Hardware (<code>/v1/fleet/host</code>), Events (<code>/v1/fleet/rules</code>), Models
 (<code>/v1/fleet/weights</code>), API (<code>/v1/config/backends</code>, <code>/v1/config/prices</code>), the Conductor
 (<code>/v1/conductor/*</code> but its speed check, live panel and residency limits), Dev
-(<code>/v1/dashboard/logs</code>), App (<code>/v1/settings/*</code> but the <code>auth</code> and <code>api</code> scopes, <code>/v1/fleet/app</code>,
-<code>/v1/fleet/hooks</code>, <code>/v1/fleet/plugins</code>), Chat (<code>/v1/chat-app/*</code>), Add Spark (<code>/v1/fleet/add</code>,
-<code>/v1/fleet/discovery</code>) and Add engine (<code>/v1/fleet/pair</code>). Overview, Performance, Health,
-Sparks, Playground and Get started read only what the top bar and the live panel read on every
-page, so the menu alone hides them. The gate checks the permission first and answers a missing
-one as before.</p>
+(<code>/v1/dashboard/logs</code>), App (<code>/v1/settings/*</code> but the <code>auth</code> and <code>api</code> scopes, and any change
+set with another scope; <code>/v1/fleet/app</code>, <code>/v1/fleet/hooks</code>, <code>/v1/fleet/plugins</code>), Chat
+(<code>/v1/chat-app/*</code>), Add Spark (<code>/v1/fleet/add</code>, <code>/v1/fleet/discovery</code>) and Add engine
+(<code>/v1/fleet/pair</code>). Overview, Performance, Health, Sparks, Playground and Get started read only
+what the top bar and the live panel read on every page, so the menu alone hides them. The gate
+checks the permission first and answers a missing one as before.</p>
+<p>Hiding a page hides that page's own data, not the fleet's: every role that may read keeps the
+routes the top bar reads on every page (nodes, deployments, metrics, alerts, the system), and
+<code>GET /v1/config</code> keeps the backend list, which the key dialog on My tokens shows.</p>
 <p>A viewer's Chat is <code>auth.chat_min_role</code>, an owner's setting; the Views page switches it there.
 <code>auth.default_role</code> (<code>viewer</code> by default, never <code>owner</code>) is the role a new account gets when the
 request names none, and the one Add a user starts with.</p>
