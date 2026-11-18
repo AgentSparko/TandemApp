@@ -225,7 +225,7 @@ test('VIS-54: the proxy off is said without a 404 for /v1/config, at 1440 and 39
 });
 
 test('a mixed front: the engine says off, the controller with accounts still adds a backend @mock', async ({ page }) => {
-  // tandem.khaled.de 2026-11-18: /v1/dashboard/* reached the engine (proxy.mode off since engine API
+  // a mixed front (2026-11-18): /v1/dashboard/* reached the engine (proxy.mode off since engine API
   // 1.8) and /v1/config the controller; the page said "The proxy is off" and hid Add backend
   await setMode(page.request, 'ok');
   await page.request.post('/__mock/backends', { data: { reset: true, systemOff: true } });
