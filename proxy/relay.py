@@ -605,6 +605,11 @@ class Relay:
                 event = bytes(buf[:end + sep])
                 del buf[:end + sep]
                 token, drop = adapter.read_frame(path, event[:end], st, injected)
+                if st.response_id is not None and rec.upstream_request is None:
+                    # liverelay: the engine's answer id is its live request id (SRV-733);
+                    # stamped while the stream runs so the live view can join this row to
+                    # the engine's (proxy/liverelay.py). `_finish` still writes the final.
+                    rec.upstream_request = st.response_id
                 if token:
                     rec.stamp_token(t_arr, st.kind, st.tool_name, st.tool_chars)
                 if hk is not None and not drop:
