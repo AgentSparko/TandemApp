@@ -10,11 +10,17 @@ row read null.
 
 THE JOIN. The engine keys its live rows by its request id, which is the id its answer
 carries — `Stamps.response_id` (SRV-733: "our engine's is its ledger row's request_id").
-The relay stamps it onto the record while the stream runs (proxy/relay.py), so a relayed
-request knows its engine row from its first frame on; a request still waiting for its
-first token has no id yet and its row stays exactly what the controller measured. The
-engine's own `phase` is not carried: the controller's row keeps the phase its own stamps
-say, which is what its timings are consistent with.
+A new engine names it in the response header at stream open (`X-Tandem-Request-Id`, the
+sibling TandemEngine PR), and proxy/relay.py stamps it before the pump starts, so the row
+joins through the whole prefill; an old engine's id arrives only with the first frame, and
+the relay stamps it then. The rule for a relayed row's engine figures: **exact when the
+header is there, heuristic only when unambiguous, null otherwise.** The heuristic covers an
+old engine's prefill phase, where the request has no id to join with yet: when the backend
+has exactly one prefill row open (`sole_prefill`), it can only be this request's, and its
+prefill figures merge into the row; two prefill rows is ambiguous and the row stays exactly
+what the controller measured (proxy/app.py `_live_enrich`). The engine's own `phase` is not
+carried: the controller's row keeps the phase its own stamps say, which is what its timings
+are consistent with.
 
 One subscriber thread per enabled `tandemllm` backend reads the engine's live stream
 (`/v1/dashboard/live`, the same SSE the dashboard reads, with the backend's key when it
@@ -50,6 +56,11 @@ READ_TIMEOUT_S = 60.0
 BACKOFF_S = (1.0, 2.0, 5.0, 10.0, 30.0)
 #: the per-request fields carried into the controller's in-flight rows (its own nulls filled)
 ROW_FIELDS = ("decode_live_now_tps", "decode_live_avg_tps", "decode_warmup")
+#: the prefill figures of an engine row in the prefill phase, named as the proxy's row
+#: carries them: the live rate over the engine's chunk marks (`activity.prefill.tps_live`,
+#: its average once the live window has moved past the marks) and the prefill's elapsed
+#: and ETA fields. The controller has no prefill to measure; these are the engine's.
+PREFILL_DST_FIELDS = ("prefill_live_tps", "prefill_elapsed_ms", "prefill_eta_ms")
 #: the rate fields carried into the controller's history sample and `now`
 RATE_FIELDS = ("decode_tps", "prefill_tps", "decode_live_tps", "prefill_live_tps")
 #: the engine block's fields the controller cannot measure itself
@@ -67,6 +78,7 @@ class _Sub:
         self.thread: threading.Thread | None = None
         self.at = 0.0                      # perf time of the last event kept (0: none yet)
         self.rows: dict[str, dict] = {}    # engine request id -> the fields we carry
+        self.prefill: dict[str, dict] = {} # the prefill-phase rows, for the heuristic join
         self.now: dict = {}
         self.sample: dict = {}
         self.engine: dict = {}
@@ -192,19 +204,24 @@ class LiveRelay:
             return
         if not isinstance(doc, dict):
             return
-        rows = {}
+        rows, prefill = {}, {}
         for r in doc.get("requests") or []:
             if not isinstance(r, dict) or r.get("phase") not in IN_FLIGHT:
                 continue
             rid = r.get("request_id")
             if not isinstance(rid, str):
                 continue
-            rows[rid] = {k: r[k] for k in ROW_FIELDS if r.get(k) is not None}
+            row = {k: r[k] for k in ROW_FIELDS if r.get(k) is not None}
+            if r.get("phase") == "prefill":
+                row.update(_prefill_fields(r))
+                prefill[rid] = row
+            rows[rid] = row
         now, sample, engine = (doc.get("now"), doc.get("sample"), doc.get("engine"))
         with self._lock:
             if s.stop.is_set():
                 return
             s.rows = rows
+            s.prefill = prefill
             s.now = now if isinstance(now, dict) else {}
             s.sample = sample if isinstance(sample, dict) else {}
             s.engine = engine if isinstance(engine, dict) else {}
@@ -246,6 +263,23 @@ class LiveRelay:
                 row = s.rows.get(rid)
         return dict(row) if row else None
 
+    def sole_prefill(self, bid: str | None) -> dict | None:
+        """The prefill figures of the one prefill-phase row open on `bid` — the heuristic
+        join for an engine that sends no `X-Tandem-Request-Id` (proxy/app.py `_live_enrich`):
+        a controller request still waiting for its first token can only be that row when the
+        backend has exactly one. None when the backend has none, has more than one (never
+        guess), or its stream went quiet for longer than the TTL. The figures are the
+        engine's for its one running prefill: if the controller's own request is still
+        queued behind it, the rate shown is the prefill the engine is running now."""
+        if not bid:
+            return None
+        with self._lock:
+            s = self._subs.get(bid)
+            if s is None or not s.at or time.monotonic() - s.at > self.ttl_s:
+                return None
+            rows = list(s.prefill.values())
+        return dict(rows[0]) if len(rows) == 1 else None
+
     def rates(self) -> dict | None:
         """The rate fields the controller cannot measure, from the engine it serves by
         default: the newest sample's, falling back to its `now`. None when no engine is
@@ -270,6 +304,23 @@ class LiveRelay:
             return None
         out = {k: s.engine[k] for k in ENGINE_FIELDS if s.engine.get(k) is not None}
         return out or None
+
+
+def _prefill_fields(r: dict) -> dict:
+    """The prefill figures of an engine row in the prefill phase (its `activity.prefill`,
+    tandemapp/activity.py `prefill_of`), named as the controller's row carries them: the
+    live rate over the engine's chunk marks (`tps_live`, its average once the live window
+    has moved past them), the prefill's elapsed time at the newest mark and its ETA. The
+    controller has no prefill to measure; these are the engine's, and they join the row
+    only through the exact join or `sole_prefill` — never a guess."""
+    p = r.get("activity")
+    p = (p.get("prefill") if isinstance(p, dict) else None) or {}
+    out = {"prefill_live_tps": (p.get("tps_live") if p.get("tps_live") is not None
+                                else p.get("tps_live_avg"))}
+    for src, dst in (("at_ms", "prefill_elapsed_ms"), ("eta_ms", "prefill_eta_ms")):
+        if p.get(src) is not None:
+            out[dst] = p[src]
+    return {k: out[k] for k in PREFILL_DST_FIELDS if out.get(k) is not None}
 
 
 def _conn(url: str, connect_s: float = 5.0) -> tuple[http.client.HTTPConnection, str]:

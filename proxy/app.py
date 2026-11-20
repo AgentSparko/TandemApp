@@ -152,11 +152,24 @@ def _live_engine() -> dict:
 
 
 def _live_enrich(rec) -> dict | None:
-    """An in-flight row's engine-side figures (proxy/liverelay.py): the live decode rates
-    of a relayed request, joined by its answer's id. None without a relay or a fresh
-    engine row: the row is what the controller measured."""
+    """An in-flight row's engine-side figures (proxy/liverelay.py): the live rates of a
+    relayed request, joined by its answer's id — the `X-Tandem-Request-Id` header of a new
+    engine names it at stream open (proxy/relay.py), the first frame of an old one carries
+    it. While an old engine's request is still prefilling it has no id to join with: if the
+    backend has exactly one prefill row open it can only be this request's, and its prefill
+    figures join the row (`sole_prefill`); two is ambiguous and the row stays exactly what
+    the controller measured. None without a relay or a fresh engine figure."""
     relay = STATE.get("liverelay")
-    return relay.row_fields(rec) if relay is not None else None
+    if relay is None:
+        return None
+    fields = relay.row_fields(rec)
+    if fields:
+        return fields
+    if (getattr(rec, "upstream_request", None) is None and rec.t_first is None
+            and getattr(rec, "backend_kind", None) == "tandemllm"
+            and getattr(rec, "backend", None)):
+        return relay.sole_prefill(rec.backend)
+    return None
 
 
 def _live_rates() -> dict | None:
