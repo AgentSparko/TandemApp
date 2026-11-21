@@ -281,6 +281,7 @@ Every route but `/health`, the page and the sign-in needs an account's session o
 | `502` | `unreachable` | Add Spark: a paired device whose agent does not answer, or answers with an error |
 | `200` | `upstream_closed`, `upstream_error` | a stream that already began: the backend failed or closed early; the client gets an error event, then `[DONE]` |
 | `503` with `Retry-After` | `server_busy` | a backend or a deployment that cannot take the request now; error.code says why (the codes below) |
+| `503` | `server_busy` | the bodies being read at this moment are past the box's budget (2 GiB, `QSE_MAX_INFLIGHT_BODY_MB`): the request is refused unread |
 | `503` with `Retry-After` | `max_inflight` | every backend for the model is at the `max_inflight` you set (Retry-After: 1) |
 | `503` with `Retry-After` | `deployment_stopped` | a request for a deployment that is stopped, or a Split without a plan |
 | `503` with `Retry-After` | `no_member`, `member_not_serving` | a deployment with no member that takes requests now, or the pinned member does not |
