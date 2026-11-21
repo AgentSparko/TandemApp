@@ -271,7 +271,7 @@ Every route but `/health`, the page and the sign-in needs an account's session o
 | `409` | `closed`, `stale` | a package proposal already closed, or whose base text changed since |
 | `409` | `conflict` | an Add Spark session in another state, a device picked twice, more devices than one add takes |
 | `409` | `not_a_member` | X-Tandem-Pin names a node that is not a member of the deployment |
-| `413` | `too_large` | a request body over the limit (a fleet request's body over 4 MiB) |
+| `413` | `too_large` | a request body over the limit (a fleet request's body over 4 MiB; a chunked body is measured against its route's cap as it arrives, not only by its Content-Length) |
 | `422` | `invalid_request_error`, `invalid_report` | a value the schema refuses: a config field (error.field), a field an environment variable locks (error.variable), a Laya, library or memory call's fields, an eval report |
 | `422` | `schema`, `secret`, `cap`, `user`, `unknown_id`, `unknown_package`, `rule_from_tool`, `no_session`, `no_user`, `refused_root`, `no_proposals`, `propose` | a memory note or a package proposal refused, with the reason as the type: a field (schema), a secret, a cap, an unknown note or package |
 | `429` with `Retry-After` | `too_many` | a fifth log or live stream at once; a sixth failed sign-in in a minute; too many wrong passwords or pairing attempts |

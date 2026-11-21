@@ -8,6 +8,11 @@ half-read is the next request parsed from the middle of a body).
 
 `MAX_BODY_BYTES` is looked up per request through this module global, so a test or
 an embedder can set it; QSE_MAX_BODY_MB overrides at import.
+
+A cap one client sizes is not a limit: `read_body(rfile, headers, cap=...)` takes
+the route's own cap when the route has one and measures a chunked body against it
+as the chunks arrive -- a body with no Content-Length used to pass every pre-read
+check and then read up to the global cap.
 """
 
 from __future__ import annotations
@@ -37,17 +42,21 @@ def conflicting_framing(headers) -> bool:
             and headers.get("Content-Length") is not None)
 
 
-def read_body(rfile, headers) -> bytes:
+def read_body(rfile, headers, cap=None) -> bytes:
     """The request's body, consumed whole or not at all. An answer written with the
     body still unread is a desync one request away: every path out of here has read
-    to the end of the framing, and BodyError closes the connection."""
+    to the end of the framing, and BodyError closes the connection. `cap` is the
+    route's own limit when it has one (a fleet route's 4 MiB): the smaller of it and
+    MAX_BODY_BYTES wins, and a chunked body is measured against it chunk by chunk --
+    a body with no Content-Length has no promise a pre-read check could weigh."""
+    limit = MAX_BODY_BYTES if cap is None else min(cap, MAX_BODY_BYTES)
     if "chunked" in (headers.get("Transfer-Encoding") or "").lower():
-        return _read_chunked(rfile)              # Transfer-Encoding outranks Content-Length
-    n = _content_length(headers)                 # validated before a single byte is read
+        return _read_chunked(rfile, limit)       # Transfer-Encoding outranks Content-Length
+    n = _content_length(headers, limit)          # validated before a single byte is read
     return rfile.read(n)
 
 
-def _content_length(headers) -> int:
+def _content_length(headers, limit) -> int:
     """The promised body size, validated before a single byte of it is read. This header
     is the client's and it sizes a pre-auth allocation: 4294967296 was once a
     multi-GB read on a handler thread, and -1 was rfile.read(-1) -- read-until-EOF, a
@@ -64,9 +73,9 @@ def _content_length(headers) -> int:
     n = int(raw)
     if n < 0:
         raise BodyError(400, "invalid_request_error", "Content-Length: negative")
-    if n > MAX_BODY_BYTES:
+    if n > limit:
         raise BodyError(413, "too_large",
-                        f"a request body is at most {MAX_BODY_BYTES} bytes")
+                        f"a request body is at most {limit} bytes")
     return n
 
 
@@ -81,10 +90,13 @@ _CHUNK_SIZE = re.compile(rb"[0-9a-fA-F]+")
 _DIGITS = re.compile(r"[0-9]+")
 
 
-def _read_chunked(rfile) -> bytes:
+def _read_chunked(rfile, limit) -> bytes:
     """A chunked body, RFC 9112 7.1: size line, that many bytes, CRLF, until the zero
     chunk, then the trailers to their empty line. A framing error mid-stream leaves the
-    stream at an unknown offset, and only a closed connection says so."""
+    stream at an unknown offset, and only a closed connection says so. The route's cap
+    is weighed chunk by chunk: a chunked body carries no promise a pre-read check
+    could measure, so the read stops at the cap -- it does not finish first and then
+    complain about what it buffered."""
     out = bytearray()
     while True:
         line = rfile.readline(64)
@@ -110,9 +122,9 @@ def _read_chunked(rfile) -> bytes:
                 raise BodyError(400, "invalid_request_error",
                                 "transfer-encoding: too many trailer lines")
             break
-        if len(out) + size > MAX_BODY_BYTES:
+        if len(out) + size > limit:
             raise BodyError(413, "too_large", f"a request body is at most "
-                                              f"{MAX_BODY_BYTES} bytes")
+                                              f"{limit} bytes")
         chunk = rfile.read(size + 2)
         if len(chunk) != size + 2 or not chunk.endswith(b"\r\n"):
             raise BodyError(400, "invalid_request_error", "transfer-encoding: truncated "
